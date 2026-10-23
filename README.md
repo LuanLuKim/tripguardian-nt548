@@ -13,7 +13,7 @@ Place Decision      src/decision/ → shortlist → người dùng tuyển chọ
 Planning & Valid.   src/planning/ + src/live/ → phương án, chỗ ở, độ vững → Plan Output
 ```
 
-Phần dùng chung: `src/harness/` (HTTP/SSE, hành trình chung), `src/agents/` (Agent, tool, skill), `src/accounts/` + `src/db/` (tài khoản, Postgres), `src/companion/` (chế độ Đang đi), `src/analytics/`, `src/notify/`, `src/requirements/`, `src/social/`, `src/speech/`, `src/bench/` (đo độ trễ). Giao diện: `web/`.
+Phần dùng chung: `src/harness/` (HTTP/SSE, hành trình chung), `src/agents/` (Agent, tool, skill), `src/accounts/` + `src/db/` (tài khoản, Postgres), `src/companion/` (chế độ Đang đi), `src/analytics/`, `src/notify/`, `src/requirements/`, `src/social/`, `src/bench/` (đo độ trễ). Giao diện: `web/`.
 
 ## Tài liệu
 
@@ -86,6 +86,23 @@ Production (gpu156, public qua Cloudflare tunnel):
 `web/server.mjs` chỉ phục vụ phần public: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media` (jpg), thumbnail `/media/thumb` (WebP) và proxy `/api/harness/*`, `/api/auth/*` (keep-alive); `/admin`, analytics, mọi `/api` khác và video trả 404. Cần Postgres đang chạy (`./run.sh db`). Route hostname → cổng nằm trong dashboard Cloudflare của tunnel; `prod` in ra các route nhận được để thấy ngay khi token sai. Đổi cổng / token: `PUBLIC_PORT`, `TUNNEL_TOKEN_FILE`. Tiến trình chạy bằng `nohup`, không tự khởi động lại khi máy reboot.
 
 Tốc độ production: `web/scripts/make_thumbs.py` tạo WebP rộng ≤ 480 px cho mọi ảnh bìa vào `data/thumbs/<nguồn>/` (chỉ ảnh mới); `npm run build:prod` = `vite build` + `web/scripts/prod_assets.mjs`: `dist/data/snapshot.json` chỉ giữ trường User Web đọc (27 → 16 MB, `public/data` vẫn đủ cho dev/admin) và mọi file văn bản có bản `.br` / `.gz` (cache theo hash ở `web/node_modules/.cache/tg-prod`). `server.mjs` gửi bản nén client nhận, gắn `ETag` (lần sau 304); `/data` cache 5 phút + revalidate, `/media` 7 ngày, `/assets` immutable.
+
+**Ping production qua Cloudflare (Linux).** `scripts/keepalive.py` dùng Python 3 chuẩn và `curl`, GET `/app` cùng `/api/harness/me` mỗi phút qua domain public. Script không gửi cookie, không tạo tài khoản/journey hay gọi model; query riêng mỗi lượt tránh dùng lại cache. Thành công khi `/app` trả 200 có app shell và API trả đúng 401 với JSON `{"error":"sign in first"}`. Đây là kiểm tra đường HTTP đến backend, chưa kiểm tra DB, model hay toàn bộ hành trình.
+
+Cron trên gpu156 (`crontab -e`, giữ các job khác):
+
+```cron
+* * * * * /usr/bin/python3 /workingspace_aiclub/WorkingSpace/Personal/vannk/tripguardian/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
+```
+
+Kiểm tra thủ công và xem log:
+
+```sh
+python3 scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk
+tail -n 5 logs/run/keepalive.log
+```
+
+Mỗi request giới hạn 15 giây; khóa file tránh chạy chồng. Log ghi giờ UTC, HTTP status, độ trễ và `ok`, xoay vòng tối đa khoảng 3 MiB (`keepalive.log`, `.1`, `.2`); exit code 1 khi lỗi. Tắt ping: xóa riêng dòng có nhãn `# tripguardian-keepalive` trong `crontab -e`. `prod-stop` không xóa cron; khi stack dừng, ping ghi lỗi. Cron vẫn được giữ qua reboot nhưng app/tunnel chạy bằng `nohup` không tự lên lại. Ping không tự khởi động lại tiến trình hay bảo đảm uptime khi máy/mạng ngừng hoạt động; chưa gửi cảnh báo ra ngoài.
 
 | Dịch vụ | Cổng | Lệnh tương đương |
 |---|---|---|
@@ -162,7 +179,20 @@ python -m pytest -q tests/planning        # một giai đoạn
 python scripts/journey_sim.py [--monkey N]           # mô phỏng người dùng đi hết Trip → Decision → Planning trên dữ liệu thật, không gọi model hay mạng; báo cáo ở data/journey_sim/report.json; `--agent` chạy 5 kịch bản gõ chữ qua Gemma trên UIT (từ chối chạy nếu `AGENT_BASE_URL` không phải UIT) và in thời gian từng lượt
 ```
 
-Test gọi mạng hoặc model thật nằm sau marker `live` và bị `addopts` loại khỏi lần chạy mặc định (`pyproject.toml`). Test marker `pg` cần Postgres: `TEST_DATABASE_URL=<DATABASE_URL> python -m pytest -q` (mỗi test một schema tạm); thiếu biến thì tự skip.
+Test gọi mạng hoặc model thật nằm sau marker `live` và bị `addopts` loại khỏi lần chạy mặc định (`pyproject.toml`). Test marker `pg` cần Postgres: `TEST_DATABASE_URL=<DATABASE_URL> python -m pytest -q` (mỗi test một schema tạm); thiếu biến thì tự skip. Marker `corpus` cần `data/snapshot/current` (`python -m corpus snapshot`); thiếu thì tự skip.
+
+Web (CI không chạy): `cd web && npm run build` (có `tsc -b` kiểm kiểu). Test Node ở `web/scripts/test_*.mjs`, chạy bằng `node --test web/scripts/<file>`: `test_server_security.mjs` (proxy public, không cần dịch vụ ngoài) và `test_planning_state.mjs` chạy được ngay; `test_understand_ui.mjs` / `test_overload_ui.mjs` mở Chromium với fixture riêng (`test_overload_ui.mjs` do `tests/harness/test_overload_browser.py` dựng); `test_journey.mjs` cần `journey.ts` biên dịch trước (`JOURNEY_JS`).
+
+## Hồ sơ dự thi
+
+Không thuộc tài liệu chính thức (`RULE.md` §0.1), chỉ để tra khi cần:
+
+| Tệp | Nội dung |
+|---|---|
+| `submission/TECHNICAL_REPORT.md` | Proposal & Technical Specification (đặc tả kỹ thuật, số đo kèm ngày) |
+| `submission/PITCH_EVIDENCE_20261017.md`, `submission/evidence/` | Bằng chứng chạy thật cho phần thuyết trình (2026-10-17) |
+| `pitch_desk.md` | Kịch bản 13 slide, 11 phút 15 giây |
+| `ARCHITECTURE_MODULES.md` | Kiến trúc các module hỗ trợ (Live Context, …) cho ban giám khảo |
 
 ## Làm việc nhóm
 

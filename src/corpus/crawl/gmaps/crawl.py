@@ -2,7 +2,8 @@
 
 Writes only data/gmaps/places/<fid_dir>/: reviews.json, then place.json (= done; a rerun skips it). Places are
 scraped in parallel tabs (throttle.py). A place with fewer reviews than too_few() allows is retried, never saved, and
-a saved one is crawled again: a signed-out or throttled page shows only a handful of reviews.
+a saved one is crawled again: a signed-out or throttled page shows only a handful of reviews. Maps itself stops
+loading a very popular place at ~500-1,100 reviews; that is taken whole (user 2026-10-28: get as many as there are).
 """
 
 import asyncio
@@ -193,14 +194,16 @@ ATTEMPTS = 3  # per place, when the failure looks like a block
 def too_few(n: int, review_count: str | None, c: dict, age_cut: bool) -> bool:
     """Under half the reviews the place shows (up to the cap) while no review past the age limit was reached: a
     signed-out or throttled page stops at ~8. Maps' count runs a little above what it lists, hence the half.
-    Cut by age: under half of min_reviews_per_place (older reviews are kept up to that many) is too few as well."""
+    Cut by age: under half of min_reviews_per_place (older reviews are kept up to that many) is too few as well.
+    accept_reviews (config): at or above this many the place is taken even under half, because Maps stopped loading."""
     total = count(review_count)
     cap = c.get("max_reviews_per_place")
     if cap == 0 or not total:
         return False
     if age_cut:
         return n < min(total, c.get("min_reviews_per_place") or 0) // 2
-    return n < min(total, cap or total) // 2
+    # a blocked page stops at a handful; Maps' own stop on a popular place is far past accept_reviews
+    return n < min(total, cap or total) // 2 and n < (c.get("accept_reviews") or 10**9)
 
 
 def needs_deeper(p: dict, n: int, c: dict) -> bool:
@@ -213,6 +216,14 @@ def needs_deeper(p: dict, n: int, c: dict) -> bool:
     if p.get("reviews_age_cut") and c.get("max_review_age_months") is not None:
         return False  # the age limit still applies: nothing more to take
     return n < 0.9 * min(total, cap or total)
+
+
+def saved_reviews(d) -> int:
+    f = d / "reviews.json"
+    try:
+        return len(json.loads(f.read_text(encoding="utf-8"))) if f.exists() else 0
+    except ValueError:
+        return 0
 
 
 async def _place(ctx: BrowserContext, row: dict, root, c: dict, throttle: Throttle) -> None:
@@ -228,6 +239,9 @@ async def _place(ctx: BrowserContext, row: dict, root, c: dict, throttle: Thrott
                     raise RuntimeError("reviews incomplete: the list stopped loading without its end signal")
                 if place.get("reviews_complete") is False:  # last attempt: keep what loaded, flagged, and say so
                     log_error(root, row["fid"], "reviews", RuntimeError("reviews incomplete after retries"))
+                if len(reviews) < saved_reviews(d):  # a rerun that got fewer must not replace what is saved
+                    log_error(root, row["fid"], "reviews", RuntimeError(f"kept the saved {saved_reviews(d)} reviews, this run got {len(reviews)}"))
+                    return
                 write_json(d / "reviews.json", reviews)
                 write_json(d / "place.json", {**row, **place, "fetched_at": now()})  # written last = done
                 throttle.success()

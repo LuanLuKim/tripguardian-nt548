@@ -20,7 +20,7 @@ from .page import ensure_login, open_page
 
 FILE = "visit.json"
 ATTEMPTS = 2
-GRAPH = "div.C7xf8b"  # popular times graph (crawl.py reads the same block)
+GRAPH = "div.C7xf8b > div"  # popular times graph (crawl.py reads the same block); the block has height 0, so wait for it attached, not visible
 _LINE_JS = r"""() => { const m = (document.querySelector('div[role="main"]') || document.body).innerText
   .match(/[^\n]*thường dành[^\n]*/i); return m ? m[0].trim() : null; }"""
 
@@ -30,7 +30,7 @@ async def read_visit(ctx: BrowserContext, url: str) -> dict:
     try:
         await open_page(page, url, "h1.DUwDvf")
         try:
-            await page.wait_for_selector(GRAPH, timeout=15000)
+            await page.wait_for_selector(GRAPH, timeout=15000, state="attached")
             complete = True
         except Exception:
             complete = False
@@ -61,7 +61,8 @@ async def _place(ctx, d, url: str, root, c: dict, throttle: Throttle) -> None:
                 await pause(*c.get("pause_s", (2.0, 5.0)))
 
 
-async def run(city: str, headed: bool = False, profile=open_profile, limit: int | None = None) -> None:
+async def run(city: str, headed: bool = False, profile=open_profile, limit: int | None = None,
+              shard: tuple[int, int] | None = None, profile_name: str | None = None) -> None:
     _, cfg = load_config(city)
     c, root = cfg["gmaps"], data_dir() / "gmaps"
     listed = root / "list" / f"{city}.json"
@@ -74,10 +75,12 @@ async def run(city: str, headed: bool = False, profile=open_profile, limit: int 
         if any(place.get("popular_times") or []):
             todo.append((f.parent, place["url"]))
     todo = todo[:limit]
-    print(f"visit {city}: {len(todo)} places left")
+    if shard:  # one process per shard, as in photos / menu
+        todo = todo[shard[0]::shard[1]]
+    print(f"visit {city}: {len(todo)} places left" + (f" (shard {shard[0]}/{shard[1]})" if shard else ""))
     throttle = Throttle(root / "visit_throttle.json", start=c.get("keyword_tabs_start", 4), hi=c.get("keyword_tabs", 8),
                         cooldown_s=c.get("cooldown_s", 60), max_cooldown_s=c.get("max_cooldown_s", 900))
-    async with profile("gmaps", headed) as ctx:
+    async with profile(profile_name or "gmaps", headed) as ctx:
         await ensure_login(ctx)
         try:
             async with asyncio.TaskGroup() as tg:

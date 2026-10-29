@@ -94,3 +94,45 @@ def test_aggregate_place_carries_details_and_official_facts():
     assert res["details"]["order"][0]["text"] == "bánh căn"
     assert res["operation"]["tickets_vnd"]["senior"] == [30000] and res["operation"]["last_entry"] == "16:30"
     assert aggregate_place(files(), ONT)["details"] == {} and aggregate_place(files(), ONT)["operation"]["last_entry"] is None
+
+
+def claim(i="c1", status="kept", kind="best_time", place="F", subject_kind="poi", official=False, evidence=None, text="tháng 11 dã quỳ nở"):
+    ev = [{"doc_id": f"d{i}", "domain": "a.vn", "retrieved_at": "2026-10-28T09:00:00+00:00", "quote": "Tháng 11 dã quỳ nở rộ"},
+          {"doc_id": f"e{i}", "domain": "b.vn", "retrieved_at": "2026-10-27T09:00:00+00:00", "quote": "dã quỳ nở tháng 11"}]
+    return {"claim_id": i, "origin": "document", "status": status, "subject_kind": subject_kind, "subject_id": place, "kind": kind,
+            "text": text, "when": {"months": [11], "days": [], "hours": "", "weather": ""}, "who": "", "official": official,
+            "evidence": ev if evidence is None else evidence}
+
+
+def test_kept_poi_claim_is_extra_evidence_one_vote_per_domain():
+    out = place_details(files(), ONT, {}, claims=[claim()])["best_time"]
+    assert out[0]["text"] == "tháng 11 dã quỳ nở" and out[0]["n"] == 2 and out[0]["authority"] is False
+    assert out[0]["months"] == {"11": 2} or out[0]["months"] == {11: 2}
+    assert all(e.startswith("claim:c1:") for e in out[0]["evidence"])
+
+
+def test_unverified_other_place_unmapped_kind_and_quoteless_claims_are_ignored():
+    bad = [claim("u", status="unverified"), claim("o", place="OTHER"), claim("k", kind="price_norm"),
+           claim("n", subject_kind="poi_unresolved"), claim("q", evidence=[{"doc_id": "d", "domain": "a.vn", "quote": " "}]),
+           claim("m", evidence=[{"doc_id": "", "domain": "a.vn", "quote": "dã quỳ"}]), claim("c", status="confirmed")]
+    assert place_details(files(), ONT, {}, claims=bad) == {}
+
+
+def test_official_claim_is_authority_only_for_a_kind_a_business_can_state():
+    assert place_details(files(), ONT, {}, claims=[claim("a", kind="access", official=True)])["access"][0]["authority"] is True
+    assert "best_time" not in place_details(files(), ONT, {}, claims=[claim("b", official=True)])
+
+
+def test_claim_evidence_merges_with_observations():
+    out = place_details(files(d(1, "best_time", "tháng 11 dã quỳ nở", "z")), ONT, {}, claims=[claim()])["best_time"]
+    assert len(out) == 1 and out[0]["n"] == 3
+
+
+def test_poi_claims_file_loader_tolerates_missing_or_broken_file(tmp_path):
+    from corpus.aggregate.place import _poi_claims
+    assert _poi_claims(tmp_path, "dalat") == []
+    (tmp_path / "dalat" / "local").mkdir(parents=True)
+    (tmp_path / "dalat" / "local" / "poi_claims.json").write_text("{broken", encoding="utf-8")
+    assert _poi_claims(tmp_path, "dalat") == []
+    (tmp_path / "dalat" / "local" / "poi_claims.json").write_text('{"claims": [{"claim_id": "x"}, 3]}', encoding="utf-8")
+    assert _poi_claims(tmp_path, "dalat") == [{"claim_id": "x"}]

@@ -4,18 +4,33 @@ Audio goes to 16 kHz mono (ffmpeg); VAD keeps only the stretches with a voice, s
 the ASR never hears long silences. Each stretch is transcribed on its own and its timestamps shifted back to the
 video's clock. Writes only video.json of data/tiktok/videos/<video_id>/ (after video.mp4 exists):
 transcript = {model, vad_model, at, total_s, speech_s, segments:[{start_s, end_s, text}]}. A video is transcribed
-again when the ASR model changes or the field is missing (crawl rewrote video.json). Model: corpus.llm.asr (ASR role).
+again when the ASR model changes or the field is missing (crawl rewrote video.json). Model: corpus.llm.asr (ASR role). A CUDA out-of-memory (another job took the card) is waited out and the same video
+is tried again, never a permanent error.
 """
 
 import json
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from ...llm import asr as asr_model
 from ..common.files import data_dir, log_error, now, write_json
 
 RATE = 16000
+OOM_WAIT_S = 30  # GPU memory taken by another job: wait, then try the same video again
+OOM_RETRIES = 120  # about an hour at OOM_WAIT_S; after that the video is logged and the run goes on
+
+
+def is_oom(e: Exception) -> bool:
+    return type(e).__name__ == "OutOfMemoryError" or "out of memory" in str(e).lower()
+
+
+def free_gpu_cache() -> None:
+    import torch
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def load_audio(mp4: Path, wav: Path) -> None:
@@ -64,7 +79,16 @@ def run(city: str, shard: tuple[int, int] | None = None) -> dict:
         if (json.loads(doc.read_text(encoding="utf-8")).get("transcript") or {}).get("model") == name:
             continue  # another asr process (other GPU, other shard count) got here first
         try:
-            t = transcribe_video(doc.parent / "video.mp4")
+            t = None
+            for attempt in range(OOM_RETRIES + 1):
+                try:
+                    t = transcribe_video(doc.parent / "video.mp4")
+                    break
+                except Exception as e:
+                    if not is_oom(e) or attempt == OOM_RETRIES:
+                        raise
+                    free_gpu_cache()
+                    time.sleep(OOM_WAIT_S)
             v = json.loads(doc.read_text(encoding="utf-8"))  # read late: other phases may have written meanwhile
             v["transcript"] = t
             v.pop("transcript_check", None)  # new text: the check runs again

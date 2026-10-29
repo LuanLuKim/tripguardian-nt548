@@ -30,7 +30,7 @@ FAIL_STREAK = 8
 def jobs(only: str | None, cfg: live.Settings, today) -> list[tuple]:
     plan = cfg.transit_prewarm or {}
     out = []
-    if only in (None, "flights"):
+    if only in (None, "flights") and cfg.flight_cache:
         air = yaml.safe_load((ROOT / "config" / "airports.yaml").read_text(encoding="utf-8"))
         dest = air["dest"]["iata"]
         for k in range(1, plan.get("flight_days", 30) + 1):  # from tomorrow: today's flights have mostly left

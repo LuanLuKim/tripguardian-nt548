@@ -1,0 +1,34 @@
+# Nhịp Đà Lạt (docs/CORPUS.md §Nhịp): thresholds of python -m corpus pulse. Each value is measured on the crawled data
+# of 2026-10-29 (3172 served places, 685 with TikTok POI videos); the measurement is in .superpowers/sdd/2026-10-29-pulse/progress.md.
+tz_offset_h: 7          # the city's day: video epochs and review dates are read as Vietnam dates
+keep_snapshots: 30      # dated files kept per city (latest.json always)
+stale_after_days: 3     # the bulletin says "chưa được làm mới" when the newest snapshot is older than this
+hide_after_days: 14     # older than this the "đang hot" label is not shown (a trend of a month ago is not a trend)
+hot:                    # new TikTok videos at a place's POI page
+  window_days: 30
+  min_authors: 3        # TREND_MIN=5 (aggregate/place.py) keeps 1 place; 3 keeps 14 and is still different people
+  min_videos: 3
+  max_items: 10
+top:                    # a place several sources talk about at once
+  window_days: 30
+  tiktok_authors: 2     # distinct authors of videos in the window
+  reviews_authors: 10   # distinct authors of Maps reviews in the window
+  web_domains: 2        # distinct sites that name the place (undated: the Documents carry no publication date)
+  rising: true          # Maps rating_trend.direction == "rising" counts as one source
+  min_sources: 2        # of the four above
+  max_items: 10
+new:                    # first Maps review is recent and the crawl holds (nearly) all reviews
+  max_age_days: 120
+  min_reviews: 3
+  coverage: 0.9         # crawled reviews / reviews Maps states
+  exact_days: 45        # older first reviews are only month-precise (Maps says "4 tháng trước")
+  max_items: 8
+closed:
+  min_reviews: 30       # only places people knew
+  max_items: 8
+event:
+  horizon_days: 45      # spec says 30; 45 reaches the first day of next month from any day in this month's last third
+  max_items: 6
+season:
+  video_window_days: 60 # newest video naming the season's subject
+  max_items: 6

@@ -4,6 +4,8 @@ One sub-package per source (gmaps now, tiktok later); all write data/<source>/ob
 records built by observation(), which corpus.aggregate reads without knowing the source.
 """
 
+from .details_gate import amount_in, hour_in  # number checks of a quote, shared with corpus.local
+
 CONTEXT_KEYS = ("time_of_day", "day_type", "weather")
 
 # `sample` of an observation whose source was picked for what it says, not as it came: Maps' lowest / highest rated

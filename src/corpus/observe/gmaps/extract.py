@@ -53,50 +53,67 @@ def first_line(e: BaseException) -> str:
 
 
 class Slots:
-    """Concurrent-call slots over every reachable endpoint: a call takes whichever slot frees first. How many may be
-    in use adapts to a shared key: HTTP 429 cuts it to 3/4 (not below min_cap), `cap` calls in a row that went
-    through add one back, up to all of them."""
+    """Concurrent-call slots over every reachable endpoint: a call takes a slot on the endpoint with the most room.
+    How many calls an endpoint may hold adapts per endpoint (a shared key such as UIT's): HTTP 429 cuts that
+    endpoint's cap to 3/4 (not below min_cap), `cap` calls in a row that went through add one back, up to all of its
+    slots. A 429 on one endpoint never throttles another."""
 
     def __init__(self, providers: list[tuple], min_cap: int = 4):
-        self.free = [(client, model) for client, model, parallel in providers for _ in range(parallel)]
-        self.max = len(self.free)
-        self.cap, self.min_cap = self.max, min(min_cap, self.max)
-        self.in_use = self.streak = 0
+        self.lanes = [(client, model) for client, model, _ in providers]
+        self.maxes = [parallel for _, _, parallel in providers]
+        self.caps = list(self.maxes)
+        self.min_caps = [min(min_cap, n) for n in self.maxes]
+        self.in_use = [0] * len(self.lanes)
+        self.streaks = [0] * len(self.lanes)
         self.cond = asyncio.Condition()
 
-    def busy(self):
-        self.cap, self.streak = max(self.min_cap, int(self.cap * 0.75)), 0
+    @property
+    def cap(self) -> int:
+        return sum(self.caps)
 
-    def ok(self):
-        self.streak += 1
-        if self.streak >= self.cap:
-            self.cap, self.streak = min(self.max, self.cap + 1), 0
+    def busy(self, lane: int = 0):
+        self.caps[lane], self.streaks[lane] = max(self.min_caps[lane], int(self.caps[lane] * 0.75)), 0
+
+    def ok(self, lane: int = 0):
+        self.streaks[lane] += 1
+        if self.streaks[lane] >= self.caps[lane]:
+            self.caps[lane], self.streaks[lane] = min(self.maxes[lane], self.caps[lane] + 1), 0
+
+    def _room(self) -> int | None:
+        rooms = [cap - used for cap, used in zip(self.caps, self.in_use)]
+        best = max(range(len(rooms)), key=rooms.__getitem__, default=None)
+        return best if best is not None and rooms[best] > 0 else None
+
+    @contextlib.asynccontextmanager
+    async def lane(self):
+        """(lane index, client, model) of a free slot; call() needs the index to report 429s to that lane only."""
+        async with self.cond:
+            await self.cond.wait_for(lambda: self._room() is not None)
+            lane = self._room()
+            self.in_use[lane] += 1
+        try:
+            yield (lane, *self.lanes[lane])
+        finally:
+            async with self.cond:
+                self.in_use[lane] -= 1
+                self.cond.notify_all()
 
     @contextlib.asynccontextmanager
     async def take(self):
-        async with self.cond:
-            await self.cond.wait_for(lambda: self.in_use < self.cap and self.free)
-            self.in_use += 1
-            slot = self.free.pop()
-        try:
-            yield slot
-        finally:
-            async with self.cond:
-                self.in_use -= 1
-                self.free.append(slot)
-                self.cond.notify_all()
+        async with self.lane() as (_, client, model):
+            yield client, model
 
 
 async def call(slots: Slots, fn):
     """fn(client, model) on a free slot; HTTP 429 shrinks the slots and the call waits outside them, then retries."""
     for tries in range(1, BUSY_TRIES + 1):
-        async with slots.take() as (client, model):
+        async with slots.lane() as (lane, client, model):
             try:
                 out = await fn(client, model)
-                slots.ok()
+                slots.ok(lane)
                 return out
             except openai.RateLimitError:
-                slots.busy()
+                slots.busy(lane)
                 if tries == BUSY_TRIES:
                     raise
         await asyncio.sleep(BUSY_WAIT_S)
@@ -120,6 +137,8 @@ async def _providers() -> list[tuple]:
     found = [(*role.client(), REVIEW_OBSERVE.parallel)]
     if role.also_uit():  # the UIT key takes 40 calls; two stay free for the Agent
         found.append((*role.uit_client(), UIT_PARALLEL))
+    if role.also_selfhost():  # the self-hosted Gemma behind the model gateway (docs/LLM_PROVIDER.md)
+        found.append(role.selfhost_client())
     # Task.ask retries with backoff
     found = [(c.with_options(timeout=CALL_TIMEOUT_S, max_retries=0), m, n) for c, m, n in found]
     ok = await asyncio.gather(*(healthy(c, m) for c, m, _ in found))
@@ -448,7 +467,7 @@ async def observe_place(slots: Slots, place_dir: Path, ont: Ontology, city: str,
     return tag_samples({
             "place_fid": fid, "place_name": place.get("name"), "as_of": fetched[:10], "observations": obs,
             "details": details, "proposed": proposed, "ratings": ratings,
-            "place": {k: place.get(k) for k in ("category", "lat", "lng", "address")},
+            "place": {k: place.get(k) for k in ("category", "lat", "lng", "address", "phone", "website")},
             "voices": len(voices),
             "place_facts": {"popular_times": parse_popular_times(place.get("popular_times")),
                             "price": parse_price(place.get("price")), "hours": parse_hours(place.get("hours")),

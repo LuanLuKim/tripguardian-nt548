@@ -37,6 +37,15 @@ def _manifest(path: Path, binding: Binding | None = None) -> dict:
     return manifest
 
 
+class PinnedVersionMissing(FileNotFoundError):
+    """A journey pinned to an artifact version that is no longer on disk (pruned). Fail-closed: nothing else is served
+    in its place; the journey needs an explicit revalidation, which the code does not offer yet."""
+
+    def __init__(self, name: str, version: str):
+        super().__init__(f"legacy {name} {version} missing; explicit revalidation is required")
+        self.name, self.version = name, version
+
+
 def _version(root: Path, name: str) -> str | None:
     pointer = root / name / "current"
     return pointer.read_text(encoding="utf-8").strip() if pointer.is_file() else None
@@ -69,7 +78,7 @@ def resolve_binding(root: Path, binding: Binding) -> Path:
     if binding.release_id is None:
         for name, version in (("snapshot", binding.snapshot_version), ("index", binding.index_version)):
             if version is not None and not (root / name / version).is_dir():
-                raise FileNotFoundError(f"legacy {name} {version} missing; explicit revalidation is required")
+                raise PinnedVersionMissing(name, version)
         return root
     path = _path(root / "releases", binding.release_id)
     _manifest(path, binding)

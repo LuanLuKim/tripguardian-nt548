@@ -1,0 +1,25 @@
+# Photo scenes (docs/CORPUS.md, Ảnh Google Maps: scene labels). Thresholds here, logic in code.
+# Raw image statistics are stored in data/gmaps/photo_scenes; the thresholds apply when a photo is picked for display.
+label:
+  batch: 4                 # photos per Extractor call
+  parallel: null           # concurrent calls; null = what the Extractor role takes (38 on the UIT key under EXTRACTOR_ON_UIT=1; never more than 38 from this repo in total)
+  stats_width: 384         # px; blur and brightness are measured on the photo scaled to this width
+cluster_cos: 0.95          # two photos of one place this similar (SigLIP2 cosine) are one near-duplicate cluster
+pick:
+  blur_below: 100          # Laplacian variance (at stats_width) under this is blurry; of 310 sampled photos ~1 % fall below
+  dark_below: 55           # mean luminance 0-255 under this is too dark (night shots)
+  bright_above: 235        # over this is washed out
+  person_free: ["no"]      # a photo is shown as "no people" only when the label is `no` at person_min_confidence or above
+  person_min_confidence: high  # NoPeople rule (owner 2026-10-28, "no photo with a person"): of 22,803 `no` labels 22,600 are high,
+                           # 179 medium, 24 low; medium and low are treated as unknown (a doubtful "no" is dropped, 203 photos)
+  never_scenes: [crowd, unknown]  # a photo of these scenes is never shown, whatever its person label
+  min_scenes: 3            # a place card wants this many distinct scenes
+  groups:                  # corpus category_group -> the kind of place that picks the scene order
+    stay: [stay, rental]
+    eat: [restaurant, cafe, dessert, bar]
+    sight: [attraction, garden_farm, nature, religious, amusement, museum, camping, golf, tour]
+  scene_order:             # best photo per scene, in this order; a kind of place not named above uses `default`
+    default: [exterior, interior, view, food, drink, amenity, room]
+    stay: [room, exterior, view, amenity, interior, bathroom]
+    eat: [interior, food, exterior, drink, view]
+    sight: [view, exterior, amenity, interior]

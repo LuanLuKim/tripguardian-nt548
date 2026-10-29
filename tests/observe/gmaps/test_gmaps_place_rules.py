@@ -41,7 +41,9 @@ def test_popular_times_live_line_and_missing():
 def test_price():
     assert parse_price("Khoảng giá, 100.000-200.000\xa0₫/người, 7 người đã báo cáo") == {
         "min_vnd": 100000, "max_vnd": 200000, "per": "person", "reports": 7}
-    assert parse_price("Khoảng giá, 1-100.000\xa0₫/người, 12 người đã báo cáo")["max_vnd"] == 100000
+    # Maps writes "up to 100K" as "1-100.000": the lower bound is unknown, never 1 VND
+    assert parse_price("Khoảng giá, 1-100.000\xa0₫/người, 12 người đã báo cáo") == {
+        "min_vnd": None, "max_vnd": 100000, "up_to": True, "per": "person", "reports": 12}
     assert parse_price("Giá vừa phải") == {"level": "moderate"}
     assert parse_price(None) is None and parse_price("Khoảng giá, lạ") is None
 

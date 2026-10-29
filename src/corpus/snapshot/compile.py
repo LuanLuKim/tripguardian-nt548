@@ -45,6 +45,12 @@ def _videos(root: Path) -> dict[str, str]:
     return out
 
 
+def _local_claims(root: Path, city: str) -> list[dict]:
+    """The city's LocalClaims (corpus.local, data/<city>/local/local_claims.json); none built yet -> none known."""
+    path = root / city / "local" / "local_claims.json"
+    return json.loads(path.read_text(encoding="utf-8"))["claims"] if path.exists() else []
+
+
 def compile_snapshot(city: str, root: Path | None = None, *, source_root: Path | None = None,
                      publish: bool = True) -> dict:
     import lancedb  # imported here: it takes seconds, and importing corpus.snapshot should not pay for it
@@ -58,6 +64,7 @@ def compile_snapshot(city: str, root: Path | None = None, *, source_root: Path |
         if i["place_fid"] in served:
             intel[i["place_fid"]] = _intel_subset(i)
     videos = _videos(source_root or root)
+    local = _local_claims(source_root or root, city.removesuffix("_stay"))
     cities = yaml.safe_load((ROOT / "config" / "cities.yaml").read_text(encoding="utf-8"))
     by_region: dict[str, list[dict]] = {}
     for r in recs:
@@ -72,7 +79,7 @@ def compile_snapshot(city: str, root: Path | None = None, *, source_root: Path |
     for key, rs in sorted(by_region.items()):
         ids = {r["id"] for r in rs}
         t = tables(rs, [intel[i] for i in sorted(ids) if i in intel],
-                   {v: p for v, p in videos.items() if p in ids})
+                   {v: p for v, p in videos.items() if p in ids}, local if key == city.removesuffix("_stay") else None)
         db = lancedb.connect(str(out / key))
         for name, table in t.items():
             db.create_table(name, table, mode="overwrite")

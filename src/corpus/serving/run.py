@@ -10,7 +10,7 @@ from ..crawl.common.files import ROOT, data_dir, now, write_json
 from ..judge import place_verdicts
 from ..review import label_stats
 from .groups import areas, km, near_duplicate_groups
-from . import dishes
+from . import dishes, reputation
 from .details import finish
 from .record import SERVED, build, config
 
@@ -57,6 +57,7 @@ def run(city: str, *, root=None, source_root=None, publish=True) -> dict:
         rec["near_duplicate_group"] = of.get(rec["id"])
     finish(records, config()["details"])
     with_menu = dishes.attach(records, source_root)
+    with_reputation = reputation.attach(records, source_root)
     status = collections.Counter(f["status"] for r in records for g in ("experience", "environment", "service",
                                                                          "effort", "suitability")
                                  for f in r.get(g, {}).values())
@@ -64,7 +65,7 @@ def run(city: str, *, root=None, source_root=None, publish=True) -> dict:
                "uncertain_places": sum(r["status"] == "UNCERTAIN" for r in records), "areas": len(set(area.values())),
                "near_duplicate_groups": len(groups), "in_groups": len(of), "feature_status": dict(status),
                "usable_as": dict(collections.Counter(u for r in records for u in r["usable_as"])),
-               "menu": with_menu, "details": {"known_for": sum(bool(r["details"]["known_for"]["headline"]) for r in records),
+               "menu": with_menu, "reputation": with_reputation, "details": {"known_for": sum(bool(r["details"]["known_for"]["headline"]) for r in records),
                            "cost_total": sum(bool((r["details"]["cost"] or {}).get("total_vnd")) for r in records),
                            "best_time": sum(bool(r["details"]["timing"]["best_time"]["items"]) for r in records),
                            "fit": sum(bool(r["details"]["fit"]) for r in records)}}

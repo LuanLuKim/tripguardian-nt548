@@ -226,6 +226,7 @@ def test_attributes_and_place_facts(tmp_path, monkeypatch):
         "attributes": ["Phù hợp cho trẻ em", "Không có lối vào cho xe lăn", "Có nhà vệ sinh"],
         "popular_times": [["Mức độ đông là 40% lúc 09 giờ."]] + [[]] * 6,
         "hours": ["Thứ Hai 07:00–21:00"], "status": "Tạm thời đóng cửa", "lat": 11.9, "lng": 108.4,
+        "phone": "0919419835", "website": "https://example.vn/",
         "price": "Khoảng giá, 1-100.000 ₫/người, 9 người đã báo cáo"})
     asyncio.run(extract.run("dalat"))
     res = json.loads(out.read_text(encoding="utf-8"))
@@ -235,10 +236,11 @@ def test_attributes_and_place_facts(tmp_path, monkeypatch):
                    ("gmaps:attr:1", "wheelchair", "unsuitable", "gmaps_attribute", "gmaps:attributes", "attributes",
                     "2026-09-30")]
     assert res["place_facts"] == {"popular_times": {"sun": {"9": 40}},
-                                  "price": {"min_vnd": 1, "max_vnd": 100000, "per": "person", "reports": 9},
+                                  "price": {"min_vnd": None, "max_vnd": 100000, "up_to": True, "per": "person", "reports": 9},
                                   "hours": {"mon": [["07:00", "21:00"]]}, "closure": "temporary", "tickets": None,
                                   "time_spent": None, "price_night": None}
-    assert res["place"] == {"category": "Quán cà phê", "lat": 11.9, "lng": 108.4, "address": None}
+    assert res["place"] == {"category": "Quán cà phê", "lat": 11.9, "lng": 108.4, "address": None,
+                            "phone": "0919419835", "website": "https://example.vn/"}
     assert res["voices"] == 0
     assert calls == []
 
@@ -707,3 +709,48 @@ def test_lodging_price_a_night_comes_from_the_list_and_moves_without_the_model(t
     asyncio.run(extract.run("dalat"))
     assert json.loads(out.read_text(encoding="utf-8"))["place_facts"]["price_night"]["vnd"] == 500000
     assert len(calls) == 1
+
+
+def test_a_429_on_one_endpoint_does_not_throttle_the_other():
+    # LAN and UIT share one Slots: UIT's shared key answering 429 must not cut how many calls the LAN host takes
+    slots = extract.Slots([("lan", "m", 8), ("uit", "m", 8)], min_cap=2)
+    assert slots.cap == 16
+    for _ in range(20):
+        slots.busy(1)
+    assert slots.caps == [8, 2] and slots.cap == 10
+
+    import contextlib
+
+    async def fill():
+        held = []
+        stack = contextlib.AsyncExitStack()
+        async with stack:
+            for _ in range(10):
+                held.append(await stack.enter_async_context(slots.take()))
+            return held
+
+    held = asyncio.run(fill())
+    assert sorted(c for c, _ in held).count("lan") == 8  # every LAN slot is usable while UIT is held at 2
+
+
+def test_extractor_also_selfhost_adds_the_gateway_endpoint(monkeypatch):
+    class Client:
+        def __init__(self, name):
+            self.name = name
+
+        def with_options(self, **kw):
+            return self
+
+    role_cls = extract.REVIEW_OBSERVE.role.__class__
+    monkeypatch.setattr(role_cls, "client", lambda self: (Client("lan"), "m"))
+    monkeypatch.setattr(role_cls, "selfhost_client", staticmethod(lambda: (Client("self"), "s", 8)))
+
+    async def ok(client, model):
+        return True
+
+    monkeypatch.setattr(extract, "healthy", ok)
+    for var in ("EXTRACTOR_ON_UIT", "EXTRACTOR_ALSO_UIT", "EXTRACTOR_ALSO_SELFHOST"):
+        monkeypatch.delenv(var, raising=False)
+    assert [p[0].name for p in asyncio.run(extract._providers())] == ["lan"]
+    monkeypatch.setenv("EXTRACTOR_ALSO_SELFHOST", "1")
+    assert [(p[0].name, p[1], p[2]) for p in asyncio.run(extract._providers())] == [("lan", "m", extract.REVIEW_OBSERVE.parallel), ("self", "s", 8)]

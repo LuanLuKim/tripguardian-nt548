@@ -1,4 +1,4 @@
-# SearXNG for the Trip agent's web_search (src/trip/infrastructure/web.py). Defaults plus JSON output; local only.
+# SearXNG for the corpus web phase and the Trip agent's web_search (src/corpus/crawl/web/client.py). Defaults plus JSON output; local only.
 # The secret comes from the SEARXNG_SECRET environment variable (docker run -e), never from this file.
 use_default_settings: true
 

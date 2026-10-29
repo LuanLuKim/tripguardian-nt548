@@ -18,6 +18,7 @@ kept with `stale: true`. They are for the web cover only; every reader of eviden
 import asyncio
 import collections
 import json
+import os
 import re
 
 from playwright.async_api import BrowserContext, Page
@@ -244,8 +245,17 @@ async def run(city: str, headed: bool = False, profile=open_profile, limit: int 
     n, px = c.get("photos_per_place", 20), c.get("photo_px", 768)
     listed = root / "list" / f"{city}.json"
     keep = {safe_name(r["fid"]) for r in json.loads(listed.read_text(encoding="utf-8"))["items"]} if listed.exists() else None
-    todo = []
-    for f in sorted((root / "places").glob("*/place.json")):
+    todo, wanted_of = [], {}
+    targets = os.environ.get("GMAPS_PHOTO_TARGETS")  # JSON from scripts/photo_targets.py: thin places, most reviewed first
+    if targets:
+        doc = json.loads(open(targets, encoding="utf-8").read())
+        for t in doc["places"]:
+            f = root / "places" / t["dir"] / "place.json"
+            if f.exists() and needs_fetch(f.parent / FILE, doc["wanted"], n):
+                todo.append((f.parent, json.loads(f.read_text(encoding="utf-8"))))
+                wanted_of[f.parent.name] = doc["wanted"]
+    else:
+      for f in sorted((root / "places").glob("*/place.json")):
         if keep is not None and f.parent.name not in keep:
             continue
         place = json.loads(f.read_text(encoding="utf-8"))
@@ -262,7 +272,7 @@ async def run(city: str, headed: bool = False, profile=open_profile, limit: int 
         try:
             async with asyncio.TaskGroup() as tg:
                 for d, place in todo:
-                    tg.create_task(_place(ctx, d, place, want(place, c), px, root, c, throttle))
+                    tg.create_task(_place(ctx, d, place, wanted_of.get(d.name) or want(place, c), px, root, c, throttle))
         except* LoginRequired as eg:
             raise eg.exceptions[0] from None
     done = sum((d / FILE).exists() for d, _ in todo)

@@ -7,3 +7,33 @@ same:
   - [bánh tráng nướng, pizza đà lạt]
   - [xíu mại, xíu mại sốt, siu mai]
   - [cà phê sữa, cafe sữa, cà phê sữa đá]
+  - [cà phê muối, cafe muối, salt coffee]
+  - [cà phê trứng, cafe trứng, egg coffee]
+  - [trà sữa, milk tea]
+  - [sinh tố, smoothie]
+  - [sữa chua, yaourt, yogurt]
+  - [bít tết, bò bít tết, beefsteak]
+  - [mì ý, spaghetti]
+  - [hủ tiếu, hủ tíu]
+
+# A place whose own name says the dish ("Bánh bèo Bà Hường") serves it: name is evidence for these category groups only
+# (a hotel called "Bánh Bèo" is not a dish source). Same groups as gmaps.menu_groups (config/queries.yaml).
+name_groups: [restaurant, cafe, dessert, bar]
+
+# Probe list of common Da Lat dishes for `dishes.report` (docs/CORPUS.md: hit-rate evidence).
+probe: [bánh bèo, bánh căn, bánh ướt lòng gà, bánh mì xíu mại, bánh tráng nướng, nem nướng, lẩu gà lá é, sữa đậu nành,
+        bún bò huế, hủ tiếu, kem bơ, atiso, cà phê muối, dâu tây, bò né]
+
+# Dish sources beyond the owner's Maps menu list. A source is enabled only after its precision on labelled place-dish
+# pairs passes the gate (corpus.review.labels GATE: n >= 30 and Wilson lower >= 0.8, never lowered). Measured in
+# .superpowers/sdd/2026-10-29-dish/progress.md; rebuild serving after changing a flag.
+sources:
+  menu_photo:    # dishes two reads of a Maps menu photo agreed on (data/gmaps/places/*/menu_photo.json)
+    enabled: true   # 2026-10-29: 114/127 correct, Wilson lower 0.833 >= 0.8 (labels_menu_photo.txt); re-measure when the read finishes
+  review_order:  # a dish a review says the author ordered: exact quote + Judge check (dish_review.json)
+    enabled: true   # 2026-10-29: 108/118 correct, Wilson lower 0.851 >= 0.8 on the first 34 places (labels_review_order.txt); re-measure after DISH_REVIEW_CHECK_DONE
+
+# review_order: words that are not a dish by themselves, and wish openers ("muốn ăn ...": not eaten here). Found in the
+# 120-pair label sample (.superpowers/sdd/2026-10-29-dish/labels_review_order.txt).
+generic: [đồ uống, đồ ăn, đồ ăn sáng, bữa sáng, bữa trưa, bữa tối, món ăn, nước sốt, nước lẩu, món bò đặc trưng của quán, signature]
+wish_prefix: [muốn ăn, muốn uống, định ăn, sẽ ăn, thèm]

@@ -80,6 +80,18 @@ def _hours(op: dict, as_of: date, built: date) -> dict | None:
     return fact
 
 
+def _price_range(price: dict | None) -> dict | None:
+    """The per-person range as served. Maps' "up to 100K" reads 1-100.000 (older observation files kept the 1): its lower
+    bound is unknown (None, up_to True), never 1 VND."""
+    if not price:
+        return None
+    out = {k: price.get(k) for k in ("min_vnd", "max_vnd", "level") if k in price}
+    low, high = out.get("min_vnd"), out.get("max_vnd")
+    if price.get("up_to") or (high is not None and low is not None and low < 1000):
+        out["min_vnd"], out["up_to"] = None, True
+    return out
+
+
 def _night(night: dict | None, built: date) -> dict | None:
     """A lodging's price a night from Maps' hotel list: a reference for Maps' default dates, never the trip's price."""
     if not night or not night.get("at"):
@@ -109,6 +121,10 @@ def build(intel: dict, built: date | None = None, judged: str | None = None, qua
     as_of = date.fromisoformat(intel["as_of"])
     ident, op, est = intel.get("identity") or {}, intel.get("operation") or {}, intel.get("estimates") or {}
     features = {fid: f for fid, sig in intel["features"].items() if fid in ont.features and (f := _feature(fid, sig))}
+    fee = features.get("entry_fee")
+    if fee and fee["value"] == "free" and ((est.get("entry_fee") or {}).get("typical_vnd") or 0) > 0:
+        # reviews say free but also quote a fee: disagreement is uncertain, the conflict stays visible (CORPUS.md §4)
+        features["entry_fee"] = {**fee, "status": "UNCERTAIN", "reason": "conflicts_entry_fee_estimate"}
     groups = {g: {fid: f for fid, f in features.items() if ont.features[fid].group == g} for g in ont.groups}
     closure = op.get("closure")
     coverage = intel.get("coverage") or {}
@@ -121,11 +137,12 @@ def build(intel: dict, built: date | None = None, judged: str | None = None, qua
         "status_reason": reason,
         "identity": {"name": intel.get("place_name"), "kind": "POI", "category": ident.get("category"),
                      "category_group": est.get("category_group"), "lat": ident.get("lat"), "lng": ident.get("lng"),
-                     "address": ident.get("address"), "area": None},
+                     "address": ident.get("address"), "phone": ident.get("phone"),
+                     "website": ident.get("website"), "area": None,
+                     "rating": None, "reviews": None},  # Maps' numbers: set by reputation.attach
         "operation": {
             "hours": _hours(op, as_of, built),
-            "price_per_person": _fact({k: price.get(k) for k in ("min_vnd", "max_vnd", "level") if k in price}
-                                      if price else None, as_of, built, "price"),
+            "price_per_person": _fact(_price_range(price), as_of, built, "price"),
             "price_per_night": _night(op.get("price_night"), built),
             "entry_fee": {**est["entry_fee"], "kind": "fact" if est["entry_fee"]["source"] == "official" else "estimate"}
             if est.get("entry_fee") else None,
@@ -138,7 +155,7 @@ def build(intel: dict, built: date | None = None, judged: str | None = None, qua
         "usable_as": usable,
         "details": place_block(intel, quality or {}, config()["details"], features.get("entry_fee")),
         "provenance": {"as_of": intel["as_of"], "coverage": coverage, "voices": intel.get("voices"),
-                       "rating_trend": intel.get("rating_trend"), "inputs": intel.get("inputs", [])},
+                       "rating_trend": intel.get("rating_trend"), "reputation": None, "inputs": intel.get("inputs", [])},
     }
 
 

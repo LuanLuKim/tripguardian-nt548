@@ -21,5 +21,16 @@ details:                 # free-text place details (docs/CORPUS.md, serving `det
   walk_max_min: 20
   walk_road_factor: 1.3
   walk_m_per_min: 80
+reputation:             # Maps rating + review count on one pool scale (src/corpus/serving/reputation.py, docs/CORPUS.md)
+  prior_strength: 20     # m: a rating counts like this many reviews of the pool's mean rating (Bayesian average)
+  weights: {rating: 0.35, volume: 0.65}   # volume outweighs rating: 4.6 from 3000 reviews beats 4.7 from 1000 and 4.9 from 500 in every Da Lat pool (0.7 would let 4.0 from 1500 beat 4.5 from 500)
+  z_span: 3              # pool standard deviations mapped to 0..1 on both axes (clipped beyond)
+  min_pool: 100          # a city x category_group pool smaller than this is measured against its whole city (in pools of 55-75 places a 3000-review place sits past the clip and the owner orderings no longer hold)
+evidence:                # confidence of a served feature (src/corpus/serving/evidence.py, docs/PLACE_DECISION.md §8)
+  full_n: 3              # authors at which support reaches `base`
+  base: 0.7              # support at full_n authors; below it rises linearly from 0
+  ref_n: 300             # authors at which support reaches 1.0 (log-shaped between full_n and here)
+  rate_ref: 0.02         # mention rate (authors / reviewers read) at or above which the rate costs nothing
+  rate_weight: 0.3       # most the rate takes off (rate near 0): 6 mentions in 3000 reviews = x0.73
 default_region: dalat        # the region online reads when the caller names none (config/cities.yaml key)
 snapshot_keep_versions: 3    # data/snapshot/<version>/ kept; older ones are deleted by the next compile

@@ -32,6 +32,7 @@ DAYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")
 _HOUR = re.compile(r"là (\d+)% lúc (\d+) giờ")
 _ABOVE = re.compile(r"Khoảng giá, Trên ([\d.]+)\s*₫/người(?:, (\d+) người đã báo cáo)?")
 _RANGE = re.compile(r"Khoảng giá, ([\d.]+)-([\d.]+)\s*₫/người(?:, (\d+) người đã báo cáo)?")
+UP_TO_BELOW_VND = 1000  # a lower bound under this is Maps' "up to" placeholder (1), not a price
 LEVELS = {"Giá rẻ": "cheap", "Giá vừa phải": "moderate", "Giá đắt": "expensive", "Giá rất đắt": "very_expensive"}
 
 
@@ -70,8 +71,11 @@ def parse_price(raw: str | None) -> dict | None:
     m = _RANGE.search(raw)
     if not m:
         return None
-    return {"min_vnd": vnd(m.group(1)), "max_vnd": vnd(m.group(2)), "per": "person",
-            "reports": int(m.group(3)) if m.group(3) else None}
+    lo, hi = vnd(m.group(1)), vnd(m.group(2))
+    if lo < UP_TO_BELOW_VND:  # "up to 100K" is written "1-100.000": no lower bound was given
+        return {"min_vnd": None, "max_vnd": hi, "up_to": True, "per": "person",
+                "reports": int(m.group(3)) if m.group(3) else None}
+    return {"min_vnd": lo, "max_vnd": hi, "per": "person", "reports": int(m.group(3)) if m.group(3) else None}
 
 
 DAY_NAMES = {"Chủ Nhật": "sun", "Thứ Hai": "mon", "Thứ Ba": "tue", "Thứ Tư": "wed", "Thứ Năm": "thu", "Thứ Sáu": "fri",

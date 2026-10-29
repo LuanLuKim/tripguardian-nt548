@@ -1,5 +1,6 @@
-# Vietnamese public holidays, hand-entered: the lunar ones have no formula here (docs/PLANNING.md).
-# Lunar dates (Tết, Giỗ Tổ Hùng Vương) were taken from the 2026-2027 calendar; check them before a real trip.
+# Hand-entered holidays: a layer on top of the CalendarDay view (data/<city>/views/calendar.json, python -m corpus views
+# calendar). A name here replaces the view's name for that date and a date here the view lacks is added; with no view
+# built this file is the whole truth. Lunar dates were taken from the 2026-2027 calendar; check them before a real trip.
 # Planning uses these only as a crowd signal, never to open or close a place.
 holidays:
   "2026-01-01": Tết Dương lịch

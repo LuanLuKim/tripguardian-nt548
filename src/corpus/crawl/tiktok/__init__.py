@@ -16,5 +16,6 @@ asr_alt.py       segments asr_check could not trust -> second ASR model (alt_tex
 place_verify.py  caption + transcript + 4 frames -> is the video about its matched place -> video.json places
 place_poi.py     the POIs of a place's verified videos -> its own TikTok place, data/tiktok/place_poi/<city>.json
 poi_crawl.py     a place's TikTok place page (logged out) -> its best videos downloaded, then asr .. place_verify
+web_videos.py    video URLs the web search found (data/web/<city>/tiktok_urls.jsonl) -> poi -> Maps places to verify
 clips.py         each place's best verified videos with a clip on disk -> data/tiktok/clips/<city>.json
 """

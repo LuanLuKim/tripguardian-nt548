@@ -92,16 +92,20 @@ class Embedder:
     @cached_property
     def _siglip(self):
         from transformers import AutoModel, AutoProcessor
-        with self._use:
-            m = AutoModel.from_pretrained(self.image_model_id, dtype=self._dtype()).to(self.device).eval()
-            return m, AutoProcessor.from_pretrained(self.image_model_id)
+        with self._use:  # a thread that waited here finds the model the first one loaded (no second copy on the GPU)
+            if "_siglip" not in self.__dict__:
+                m = AutoModel.from_pretrained(self.image_model_id, dtype=self._dtype()).to(self.device).eval()
+                self.__dict__["_siglip"] = (m, AutoProcessor.from_pretrained(self.image_model_id))
+            return self.__dict__["_siglip"]
 
     @cached_property
     def _bge(self):
         from transformers import AutoModel, AutoTokenizer
         with self._use:
-            m = AutoModel.from_pretrained(self.text_model_id, dtype=self._dtype(self.text_device)).to(self.text_device).eval()
-            return m, AutoTokenizer.from_pretrained(self.text_model_id)
+            if "_bge" not in self.__dict__:
+                m = AutoModel.from_pretrained(self.text_model_id, dtype=self._dtype(self.text_device)).to(self.text_device).eval()
+                self.__dict__["_bge"] = (m, AutoTokenizer.from_pretrained(self.text_model_id))
+            return self.__dict__["_bge"]
 
     @staticmethod
     def _out(v):

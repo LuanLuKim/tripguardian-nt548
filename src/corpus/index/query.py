@@ -84,6 +84,7 @@ class Index:
     _place_vecs: dict | None = None
     _photo_idx: dict | None = None  # place_id -> (rows of others' photos, rows of all photos), built on first use
     _lock: threading.Lock = field(default_factory=threading.Lock)
+    strict_people: bool = False  # `load()` sets it: best_photo then returns only photos the scene labels allow (no people)
 
     @staticmethod
     def current_version(data: Path | None = None) -> str | None:
@@ -107,7 +108,7 @@ class Index:
         vecs, rows = _read(db, "photos")
         return cls(version=version, root=root, places=json.loads((root / "places.json").read_text(encoding="utf-8")),
                    styles=json.loads((root / "styles.json").read_text(encoding="utf-8")), photo_vecs=vecs,
-                   photo_rows=rows)
+                   photo_rows=rows, strict_people=True)
 
     # ---------- embedding (nothing is stored) ----------
 
@@ -257,6 +258,11 @@ class Index:
                         others.append(i)
                 self._photo_idx = built
         others, every = self._photo_idx.get(pid, ([], []))
+        if self.strict_people:  # owner rule 2026-10-28: no photo with a person; unlabelled or doubtful photos are left out
+            from ..serving import scenes
+            ok = set(scenes.allowed_for_place(pid))
+            others = [i for i in others if self.photo_rows[i]["file"] in ok]
+            every = [i for i in every if self.photo_rows[i]["file"] in ok]
         idx = others or every
         if not idx:
             return None

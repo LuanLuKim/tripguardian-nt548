@@ -25,6 +25,9 @@ from ..ontology import Ontology, fold_text, load as load_ontology
 from ..snapshot import Region, Snapshot, shared
 from ..releases import Binding, bind, resolve_binding
 from ..serving import feature as served_feature
+from .card import card
+from .find import Criteria, FindResult, find, vocabulary, warm
+from .local import local_knowledge
 from .names import NameHit, NameRecord, search_names
 
 
@@ -201,6 +204,42 @@ class RetrievalEngine:
     def get_place(self, place_id: str) -> dict | None:
         """The full serving record for a place, or None."""
         return self._region.record(place_id)
+
+    def card(self, place_id: str) -> dict | None:
+        """The compact agent card of a place (retrieval.card), or None."""
+        record = self._region.record(place_id)
+        return card(record) if record else None
+
+    def scene_photos(self, place_id: str) -> list[dict]:
+        """The best photo per scene of a place, no people, not blurry, de-duplicated: [{"scene", "photo_id", "file"}], `file`
+        relative to the data directory. [] when the place has no scene labels (the caller keeps the photos it has).
+        Display only; labels come from `python -m corpus gmaps photo_scenes` (docs/CORPUS.md, Ảnh Google Maps)."""
+        from .. import data_root as data_dir
+        from ..serving import scenes
+        record = self._region.record(place_id)
+        return scenes.for_place(place_id, ((record or {}).get("identity") or {}).get("category_group"), data_dir()) if record else []
+
+    def local_claims(self, subject: str | None = None, kind: str | None = None, month: int | None = None,
+                     *, facts_only: bool = False) -> list[dict]:
+        """The city's LocalClaims, filtered and labelled (retrieval.local_knowledge); [] when the snapshot holds none."""
+        return local_knowledge(self._region.local_claims, subject, kind, month, facts_only=facts_only)
+
+    # -- find / vocabulary / warm -----------------------------------------
+
+    def find(self, criteria: Criteria | dict, limit: int = 8) -> FindResult:
+        """Places that pass structured criteria (a Criteria, or a dict that Criteria.parse validates; ValueError if bad)."""
+        if not isinstance(criteria, Criteria):
+            criteria = Criteria.parse(criteria, self._ontology)
+        return find(self._region, criteria, limit=limit, semantic=self.semantic, release_id=self.release_id)
+
+    def vocabulary(self) -> dict:
+        """The groups, features, values and companions that `find` accepts for this region."""
+        return vocabulary(self._ontology, self._region)
+
+    def warm(self) -> None:
+        """Load the region's feature columns and build the caches `find` reads, so the first request pays for neither."""
+        self._region.warm()
+        warm(self._region)
 
     # -- semantic search --------------------------------------------------
 

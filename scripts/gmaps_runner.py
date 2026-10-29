@@ -5,12 +5,14 @@ import datetime, json, os, pathlib, subprocess, sys, threading, time
 import psutil
 
 PHASES = [("crawl", "throttle.json"), ("relevant", "throttle.json"), ("extremes", "throttle.json"),
-          ("photos", "photos_throttle.json"), ("keywords", "keywords_throttle.json"), ("menu", "menu_throttle.json")]  # crawl first: new list places
+          ("photos", "photos_throttle.json"), ("keywords", "keywords_throttle.json"), ("menu", "menu_throttle.json"),
+          ("visit", "visit_throttle.json")]  # crawl first: new list places
 STALL_S = int(os.environ.get("GMAPS_STALL_S", 600))  # no output this long = hung (photos sat 4.5 h at 1 tab, 2026-10-06): restart the phase; places with thousands of reviews need longer
 LOW = 0.5 * 2**30  # Windows pages before it fails; 0.5 GB (2026-10-06, RAM-tight machine)
 ROOT = pathlib.Path("data/gmaps")
 SHARD = os.environ.get("GMAPS_SHARD")  # "i/n": every phase split across n runners (one Python process caps ~8 tabs)
-ONLY = os.environ.get("GMAPS_PHASES")  # e.g. "extremes": run only these phases
+ONLY = os.environ.get("GMAPS_PHASES")  # e.g. "extremes": run only these phases, in the order given
+PROFILE = os.environ.get("GMAPS_PROFILE")  # browser profile for every phase (one signed-in account, no shards)
 CITY = os.environ.get("GMAPS_CITY", "dalat")  # "dalat_stay": the city's lodging list (list/dalat_stay.json)
 
 
@@ -50,7 +52,9 @@ def run(phase, headed, limit=None):
     cmd += ["--headed"] if headed else []
     cmd += ["--limit", str(limit)] if limit else []
     if SHARD:  # one process per shard, each on its own copy of the gmaps profile
-        cmd += ["--shard", SHARD, "--profile", f"gmaps_s{SHARD.split('/')[0]}"]
+        cmd += ["--shard", SHARD, "--profile", PROFILE or f"gmaps_s{SHARD.split('/')[0]}"]
+    elif PROFILE:
+        cmd += ["--profile", PROFILE]
     env = dict(os.environ, CORPUS_FIXED_TABS="1")  # tabs = the ceiling in config/queries.yaml (2026-10-06)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                          errors="replace", env=env)
@@ -85,8 +89,9 @@ HEADED = os.environ.get("GMAPS_HEADLESS") != "1"  # headless: an SSH server with
 REACHABLE = bool(os.environ.get("CORPUS_DEBUG_PORT"))  # headless tabs a person solves through DevTools
 unsolved = 0
 
-for phase, tf in PHASES:
-    if ONLY and phase not in ONLY.split(","):
+order = {p: i for i, p in enumerate(ONLY.split(","))} if ONLY else {}
+for phase, tf in sorted(PHASES, key=lambda x: order.get(x[0], 99)):
+    if ONLY and phase not in order:
         continue
     for attempt in range(200):  # a retry is a RAM kill, not a failure: progress is kept in the place folders
         log(f"== {phase} {'headed' if HEADED else 'headless'} (try {attempt + 1})")

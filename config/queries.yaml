@@ -59,6 +59,7 @@ gmaps:
   cooldown_s: 5  # first cooldown after a block; doubles on back-to-back blocks
   max_cooldown_s: 10
   max_reviews_per_place: 5000  # every review the place has, newest first (user 2026-10-07: "crawl hết comment"); only 22 places list more than 5.000 (Maps pages of 10k+ reviews load for hours and crash the tab)
+  accept_reviews: 200  # a place with at least this many reviews is saved even when Maps stopped loading before half of the shown count (it stops at ~500-1,100 on 2,000+ review places; user 2026-10-28: take all it gives). A blocked page stops at ~8
   max_review_age_months: null  # no age cut: old reviews are evidence of what stays the same (null = keep all); 11 = only under a year (Maps says "một năm trước" for 12-23 months)
   min_reviews_per_place: 40  # the newest 40 are kept even past the age limit: quiet places need evidence too
   relevant_reviews_per_place: 50  # phase relevant: Maps' "most relevant" first (long, detailed), any age; merged by observe
@@ -134,3 +135,64 @@ gmaps:
     - cửa hàng đặc sản
     - spa
     - cho thuê xe máy
+services:  # utilities + rental / tour for the ASSISTANT TOOLS only (docs/CORPUS.md): `gmaps svc_search|svc_list|svc_place`
+  # -> data/gmaps/search/<city>_svc, list/<city>_svc.json, services/places/. Never Decision candidates, never Planning
+  # stops: the files sit outside data/gmaps/places and files.listed(), so observe / aggregate / serving cannot read them
+  # (tests/crawl/gmaps/test_services.py). Reader: corpus.service_places.
+  read_by: assistant_tools
+  decision_candidates: false
+  planning_stops: false
+  zoom: 14  # each word is searched per map tile of the city area at this zoom (20 tiles for Đà Lạt)
+  limit: 120  # cards read per search
+  tabs: 4  # max parallel tabs on the account (user 2026-10-29: <= 4)
+  groups:
+    utilities: [ATM, cây xăng, bệnh viện, phòng khám, hiệu thuốc, nhà vệ sinh công cộng, trạm sạc xe điện]
+    rental_tour: [thuê xe máy, thuê ô tô, tour]
+    transport: [bến xe]  # coach stations: door-to-door legs of config/live.yaml vexere_regions
+web:                       # SearXNG (docs/CORPUS.md §Nguồn): python -m corpus web <search|documents|all>
+  base_url: http://127.0.0.1:8888
+  timeout_s: 10.0
+  cache_ttl_days: 30
+  daily_queries: 300       # queries to the engines per UTC day; cache hits are free
+  min_interval_s: 2.0      # between two real queries
+  stop_after_blocked: 3    # consecutive blocked / failed queries end the search phase
+  slug_queries_per_run: 25
+  gap_queries_per_run: 20
+  doc_max_chars: 40000
+  doc_min_chars: 300
+  page_pause_s: 1.0        # between two page reads
+  serpapi_monthly: 200     # SerpApi (.env SerpAPI_API_KEY) answers only when every engine is blocked; free plan = 250/month
+lodging_price:             # dated lodging price + availability (docs/CORPUS.md): python -m corpus {gtravel,tripcom} price
+  adults: 2                # Google Travel's default party; its ts parameter is built for 2 adults only
+  stays:                   # the date set: next `count` such weekdays after today, `nights` long
+    - {weekday: sat, count: 4, nights: 1}
+    - {weekday: fri, count: 2, nights: 2}
+    - {weekday: tue, count: 2, nights: 1}
+  top_lodgings: 300        # best-scored lodging of the city's stay list that gets priced
+  fresh_h: 12              # a priced (lodging, date) is looked at again after this many hours
+  no_offer_h: 48           # a lodging with no booking offer is asked again after this many hours
+  max_per_run: 200         # pages per run and source; the oldest pairs go first, the rest wait for the next hour
+  tabs: 2                  # at most 2 tabs per source
+  pause_s: [2.0, 5.0]
+  match: {max_m: 400, min_score: 0.7, far_m: 1500, far_score: 0.9, margin: 0.1}
+  tripcom:                 # Trip.com list page by plain HTTP: ~12 popular hotels per call, shuffled, so several calls per date
+    city_ids: {dalat: 5204}
+    calls_per_date: 4
+    pause_s: [3.0, 6.0]
+    timeout_s: 30
+flight_price:              # flights into the city and back (docs/CORPUS.md §Giá chuyến bay): python -m corpus gflights offers
+  dest: DLI                # Liên Khương, the only airport of Đà Lạt (config/airports.yaml dest)
+  routes:                  # origin airports (config/airports.yaml) and how many days ahead each is searched, both directions
+    - {src: SGN, days: 14}   # biggest source of visitors, several direct flights a day
+    - {src: HAN, days: 14}   # second biggest, direct
+    - {src: DAD, days: 14}   # the central coast's gateway, direct
+    - {src: HPH, days: 14}   # the north's second airport, direct (5 flights on 2026-10-09)
+    - {src: VCA, days: 7}    # Mekong delta, a daily direct flight
+    - {src: VDH, days: 7}    # these four have no direct flight on most days: connecting via SGN, searched less
+    - {src: VII, days: 7}
+    - {src: THD, days: 7}
+    - {src: HUI, days: 7}
+  fresh_h: 12              # a search is run again after this many hours (airfares move within a day)
+  max_per_run: 60          # pages per run; never-seen first, then the oldest; the rest wait for the next hour
+  tabs: 2
+  pause_s: [3.0, 6.0]

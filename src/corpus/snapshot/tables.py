@@ -8,12 +8,11 @@ import pyarrow as pa
 from ..categories import group as category_group
 from ..ontology import load as load_ontology
 from ..serving.groups import signature
+from ..serving import conf
 from ..serving.record import feature
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # decision.trip_days.DAYS
 DAYTIME = ("morning", "noon", "afternoon", "evening")     # decision.fit.DAYTIME
-STATUS_W = {"VERIFIED": 1.0, "OUTDATED": 0.7, "UNCERTAIN": 0.5}  # decision.rank.STATUS_W
-FULL_N = 3                                                 # decision.rank.FULL_N
 
 _STR, _LIST = pa.string(), pa.list_(pa.string())
 CROWD_COLS = [f"crowd_{dt}_{b}" for dt in ("weekday", "weekend") for b in DAYTIME]
@@ -21,7 +20,7 @@ PLACES_SCHEMA = pa.schema([
     ("id", _STR), ("name", _STR), ("status", _STR), ("kind", _STR), ("category", _STR), ("category_group", _STR),
     ("area", _STR), ("address", _STR), ("lat", pa.float64()), ("lng", pa.float64()), ("usable_as", _LIST),
     ("role", _STR), ("activity", _STR), ("category_for", _STR), ("is_stay", pa.bool_()),
-    ("near_duplicate_group", pa.int64()), ("voices", pa.int32()), ("price_mid_vnd", pa.float64()),
+    ("near_duplicate_group", pa.int64()), ("voices", pa.int32()), ("reputation", pa.float64()), ("price_mid_vnd", pa.float64()),
     ("hours_status", _STR), ("has_hours_value", pa.bool_()), ("open_mask", pa.uint8()),
     *[(c, pa.int16()) for c in CROWD_COLS], ("has_crowd", pa.bool_()), ("signature", _LIST)])
 FEATURES_SCHEMA = pa.schema([("place_id", _STR), ("fid", _STR), ("value", _STR), ("status", _STR), ("n", pa.int32()),
@@ -30,6 +29,27 @@ CTX_SCHEMA = pa.schema([("place_id", _STR), ("fid", _STR), ("ctx_key", _STR), ("
 VERDICT_SCHEMA = pa.schema([("place_id", _STR), ("who", _STR), ("value", _STR), ("status", _STR)])
 RECORDS_SCHEMA = pa.schema([("id", _STR), ("json", _STR)])
 VIDEOS_SCHEMA = pa.schema([("video_id", _STR), ("place_id", _STR)])
+LOCAL_CLAIMS_SCHEMA = pa.schema([
+    ("claim_id", _STR), ("origin", _STR), ("status", _STR), ("fact", pa.bool_()), ("subject_kind", _STR),
+    ("subject", _STR), ("subject_id", _STR), ("kind", _STR), ("text", _STR), ("months", pa.list_(pa.int8())),
+    ("days", _LIST), ("hours", _STR), ("weather", _STR), ("who", _STR), ("amount_min_vnd", pa.int64()),
+    ("amount_max_vnd", pa.int64()), ("sources", pa.int32()), ("domains", _LIST), ("confidence", pa.float64()),
+    ("evidence_json", _STR), ("matched", _LIST)])
+FACT_STATUSES = ("kept", "confirmed")  # corpus.local: what may be said as a fact
+
+
+def _local_rows(claims: list[dict]) -> list[dict]:
+    """LocalClaims (data/<city>/local/local_claims.json) as rows. A claim about a venue the corpus does not hold
+    (poi_unresolved) stays out: it is a nominee to resolve, not knowledge to serve."""
+    return [{"claim_id": c["claim_id"], "origin": c["origin"], "status": c["status"],
+             "fact": c["status"] in FACT_STATUSES, "subject_kind": c["subject_kind"], "subject": c["subject"],
+             "subject_id": c.get("subject_id"), "kind": c["kind"], "text": c["text"],
+             "months": list(c["when"]["months"]), "days": list(c["when"]["days"]), "hours": c["when"]["hours"],
+             "weather": c["when"]["weather"], "who": c.get("who") or "", "amount_min_vnd": c.get("amount_min_vnd"),
+             "amount_max_vnd": c.get("amount_max_vnd"), "sources": c.get("sources") or 0,
+             "domains": list(c.get("domains") or []), "confidence": c.get("confidence"),
+             "evidence_json": orjson.dumps(c.get("evidence") or []).decode(), "matched": list(c.get("matched") or [])}
+            for c in claims if c["subject_kind"] != "poi_unresolved"]
 
 
 def _role_of(rec: dict) -> str | None:  # decision.model.role_of
@@ -75,12 +95,6 @@ def _final_role(rec: dict) -> str | None:  # decision.pipeline.run without an ac
     return role
 
 
-def _conf(f: dict) -> float:  # decision.rank.conf; derived effort features have n = 0, agreement None: no confidence
-    if f["confidence"]["agreement"] is None:
-        return 0.0
-    return f["confidence"]["agreement"] * min(1.0, f["n"] / FULL_N) * STATUS_W[f["status"]]
-
-
 def _price_mid(rec: dict) -> float | None:  # decision.rank._price_norm before / price_ref_vnd
     p = rec["operation"].get("price_per_person")
     if not p:
@@ -94,7 +108,8 @@ def _table(rows: list[dict], schema: pa.Schema) -> pa.Table:
     return pa.Table.from_pylist(rows, schema=schema)
 
 
-def tables(records: list[dict], intel: list[dict] | None = None, videos: dict[str, str] | None = None) -> dict[str, pa.Table]:
+def tables(records: list[dict], intel: list[dict] | None = None, videos: dict[str, str] | None = None,
+           local_claims: list[dict] | None = None) -> dict[str, pa.Table]:
     ont = load_ontology()
     places, feats, ctx, verdicts, recs = [], [], [], [], []
     for r in records:
@@ -110,7 +125,8 @@ def tables(records: list[dict], intel: list[dict] | None = None, videos: dict[st
                "activity": _activity(r, role), "category_for": _category_for(r),
                "is_stay": ident.get("category_group") == "stay",
                "near_duplicate_group": r.get("near_duplicate_group"),
-               "voices": (r.get("provenance") or {}).get("voices") or 0, "price_mid_vnd": _price_mid(r),
+               "voices": (r.get("provenance") or {}).get("voices") or 0,
+               "reputation": ((r.get("provenance") or {}).get("reputation") or {}).get("score"), "price_mid_vnd": _price_mid(r),
                "hours_status": hours["status"] if hours else None,
                "has_hours_value": bool(hours and hours.get("value")),
                "open_mask": sum(1 << i for i, d in enumerate(DAYS) if hours and (hours.get("value") or {}).get(d)),
@@ -125,7 +141,7 @@ def tables(records: list[dict], intel: list[dict] | None = None, videos: dict[st
             if f is None:
                 continue
             feats.append({"place_id": r["id"], "fid": fid, "value": f["value"], "status": f["status"], "n": f["n"],
-                          "conf": _conf(f), "dist_values": list(f["distribution"])})
+                          "conf": conf(f), "dist_values": list(f["distribution"])})
             for key, d in (f.get("by_context") or {}).items():
                 if d:
                     ctx.append({"place_id": r["id"], "fid": fid, "ctx_key": key, "top": max(d, key=d.get)})
@@ -140,4 +156,5 @@ def tables(records: list[dict], intel: list[dict] | None = None, videos: dict[st
             "feature_ctx": _table(ctx, CTX_SCHEMA), "fit_verdicts": _table(verdicts, VERDICT_SCHEMA),
             "records": _table(recs, RECORDS_SCHEMA),
             "intel": _table([{"id": i["place_fid"], "json": orjson.dumps(i).decode()} for i in intel or []], RECORDS_SCHEMA),
-            "videos": _table([{"video_id": k, "place_id": v} for k, v in sorted((videos or {}).items())], VIDEOS_SCHEMA)}
+            "videos": _table([{"video_id": k, "place_id": v} for k, v in sorted((videos or {}).items())], VIDEOS_SCHEMA),
+            "local_claims": _table(_local_rows(local_claims or []), LOCAL_CLAIMS_SCHEMA)}

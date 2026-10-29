@@ -1,0 +1,15 @@
+# Global views (docs/CORPUS.md §Views): computed from public sources for any city in config/cities.yaml, no model.
+timeout_s: 60
+climate:   # Open-Meteo archive -> monthly ClimateNormal
+  url: https://archive-api.open-meteo.com/v1/archive
+  start_year: 2015
+  end_year: 2025
+  min_years: 10      # fewer full years than this is refused, not published
+  rain_mm: 2.5       # a rainy day = precipitation_sum >= this; ERA5 over-counts drizzle days, 2.5 mm matches station wet-day counts (Jul ~0.74 vs 0.94 at 1 mm)
+calendar:  # holidays (country code) + lunardate -> CalendarDay
+  country: VN
+  first_year: 2025
+  last_year: 2030
+restricted:  # Overpass -> RestrictedArea
+  url: https://overpass-api.de/api/interpreter
+  timeout_s: 180

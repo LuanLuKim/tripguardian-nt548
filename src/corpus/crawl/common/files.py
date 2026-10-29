@@ -6,6 +6,7 @@ import os
 import re
 import unicodedata
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -14,8 +15,15 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[4]
 
 
-def data_dir() -> Path:
+@lru_cache(maxsize=1)
+def _load_env() -> None:
+    """Read .env once per process: load_dotenv does not override, so reading it again changes nothing, but it cost
+    ~30 ms a call and the Decision cards called data_dir() once per card."""
     load_dotenv(ROOT / ".env")
+
+
+def data_dir() -> Path:
+    _load_env()
     d = Path(os.environ.get("DATA_DIR", "data"))
     return d if d.is_absolute() else ROOT / d
 

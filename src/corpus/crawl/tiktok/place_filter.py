@@ -58,8 +58,8 @@ def kept_videos(city: str, cap_per_place: int | None = None) -> list[dict]:
 
 
 def places_by_video(city: str) -> dict[str, list[dict]]:
-    """video_id -> the places ({fid, name, category, address}) its caption was judged about, or whose TikTok place
-    page listed it (poi_crawl)."""
+    """video_id -> the places ({fid, name, category, address}) its caption was judged about, whose TikTok place
+    page listed it (poi_crawl), or that a web-found video's TikTok place points to (web_videos)."""
     root = data_dir() / "tiktok"
     by: dict[str, list[dict]] = {}
 
@@ -81,6 +81,14 @@ def places_by_video(city: str) -> dict[str, list[dict]]:
         doc = json.loads(f.read_text(encoding="utf-8"))
         for v in doc["videos"]:
             add(v["video_id"], {k: doc.get(k) for k in ("fid", "name", "category", "address")})
+    web = root / "web_videos" / f"{city}.jsonl"
+    for line in web.read_text(encoding="utf-8").splitlines() if web.exists() else []:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        for place in row.get("places") or []:
+            add(row["video_id"], {k: place.get(k) for k in ("fid", "name", "category", "address")})
     return by
 
 

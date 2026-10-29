@@ -1,0 +1,11 @@
+# Navigator (docs/CORPUS.md, sol dẫn đường): thresholds of `python -m corpus navigate compare`. The mining map itself
+# comes from sol (corpus.llm NAVIGATOR); nothing here names a city's aspects.
+match:
+  jaccard: 0.5          # token overlap (diacritics folded, at least two shared words unless both sides are one word) at which an aspect counts as an existing feature / query / season / scene
+nominee:
+  held: 0.7             # name_score at or above this: the place is already in the corpus
+  maybe: 0.4            # between maybe and held: listed for the owner, not queued; below: missing (queued for resolve)
+  covered: 0.5          # held also needs this share of the nominee's own words in the corpus name (else maybe)
+resolve:                # python -m corpus gmaps resolve: when a Maps result list names one clear place for a nominee
+  margin: 0.25          # with several different places matching, the best name must beat the next by this much, else the nominee is ambiguous (stays a proposal)
+  limit: 15             # Maps results read per nominee

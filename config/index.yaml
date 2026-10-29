@@ -7,7 +7,8 @@ embedder:
   online_text_device: cuda:1                      # bge-m3 on its own GPU when the harness sees two (HARNESS_GPU=1,3); else cuda:0
   batch: 48                                       # images per forward pass offline (one RTX 2080 Ti, fp16)
   text_batch: 256
-gpus: [0, 1, 2, 3, 4, 5, 6, 7]                    # offline jobs: one process per GPU, places split between them
+gpus: [6, 6, 6, 7, 7, 7]                          # offline jobs: one process per entry, places split between them. Shared
+                                                  # server (owner 2026-10-29): GPUs 6 and 7 only (GPU 4 = Clef nf4), 3 workers each (4 per card OOMed)
 frame_dedup: 0.95                                 # two frames of one video this similar: keep the first
 places_by_photos:                                 # a place matches a query only through several photos of several people
   min_photos: 2

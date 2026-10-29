@@ -74,6 +74,8 @@ class Region:
         self._json = t["records"].column("json").to_pylist() if t["records"].num_rows else []
         self._intel = t["intel"].column("json").to_pylist() if t["intel"].num_rows else []
         self.videos = dict(zip(t["videos"].column("video_id").to_pylist(), t["videos"].column("place_id").to_pylist()))
+        # corpus.local LocalClaims of the region's city; a snapshot built before the table existed has none (unknown)
+        self.local_claims = t["local_claims"].to_pylist() if "local_claims" in t else []
         self.ids = self.places["id"].to_list()
         self.index = {pid: i for i, pid in enumerate(self.ids)}
         self.stay = frozenset(self.places.filter(pl.col("is_stay"))["id"].to_list())
@@ -187,7 +189,12 @@ class Snapshot:
             import lancedb  # imported here: it takes seconds, and only a process that reads a region needs it
             db = lancedb.connect(str(path))
             names = ("places", "features", "feature_ctx", "fit_verdicts", "records", "intel", "videos")
-            self._regions[key] = Region(key, {n: db.open_table(n).to_arrow() for n in names})
+            t = {n: db.open_table(n).to_arrow() for n in names}
+            try:
+                t["local_claims"] = db.open_table("local_claims").to_arrow()
+            except ValueError:  # a snapshot built before corpus.local: no LocalClaims known
+                pass
+            self._regions[key] = Region(key, t)
         return self._regions[key]
 
 

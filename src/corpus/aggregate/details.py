@@ -124,11 +124,46 @@ def build(group: list[dict], jaccard: float) -> dict:
     }
 
 
-def place_details(files: list[dict], ont: Ontology, verdicts: dict[str, str], cfg: dict | None = None) -> dict[str, list[dict]]:
-    """{kind: [cluster]} of one place, biggest first; a kind nobody observed is absent."""
+# poi_claims.json kind (corpus.local) -> place detail kind; a kind not listed (price_norm, tip, notice, event) is not a detail
+CLAIM_KINDS = {"specialty": "known_for", "best_time": "best_time", "season": "best_time", "access": "access",
+               "avoid": "avoid", "crowded_at": "avoid_time"}
+
+
+def claim_items(claims: list[dict] | None, place_fid: str, ont: Ontology, stop) -> dict[str, list[dict]]:
+    """Extra evidence from `kept` POI claims of this place (data/<city>/local/poi_claims.json, P4): one item per source
+    domain (one voice each). Only a claim with a doc_id and a non-empty quote counts; unverified / confirmed / conflict
+    claims never do. An official domain speaks only for a kind a business can state (`owner`)."""
+    out = collections.defaultdict(list)
+    for c in claims or []:
+        kind_id = CLAIM_KINDS.get(c.get("kind"))
+        kind = ont.details.get(kind_id) if kind_id else None
+        if (kind is None or c.get("status") != "kept" or c.get("subject_kind") != "poi" or c.get("subject_id") != place_fid
+                or not c.get("text")):
+            continue
+        if c.get("official") and not kind.owner:
+            continue
+        when = c.get("when") or {}
+        for e in c.get("evidence") or []:
+            if not (e.get("doc_id") and (e.get("quote") or "").strip() and e.get("domain")):
+                continue
+            out[kind.id].append({
+                "text": c["text"], "tokens": tokens(c["text"], stop), "author": f"domain:{e['domain']}",
+                "id": f"claim:{c['claim_id']}:{e['doc_id']}",
+                "detail": {"months": list(when.get("months") or []), "days": list(when.get("days") or []), "hour": None,
+                           "amount_vnd": None, "audience": None, "unit": None, "min_people": None, "who": None, "verdict": None},
+                "context": {"time_of_day": UNKNOWN}, "source_type": "official_page" if c.get("official") else "document",
+                "observed_at": (e.get("retrieved_at") or "")[:10] or None})
+    return out
+
+
+def place_details(files: list[dict], ont: Ontology, verdicts: dict[str, str], cfg: dict | None = None,
+                  claims: list[dict] | None = None) -> dict[str, list[dict]]:
+    """{kind: [cluster]} of one place, biggest first; a kind nobody observed is absent. `claims`: poi_claims.json rows."""
     cfg = cfg or settings()
     stop = frozenset(cfg["stopwords"])
     by_kind = collections.defaultdict(list)
+    for kid, items in claim_items(claims, files[0]["place_fid"], ont, stop).items():
+        by_kind[kid].extend(items)
     for f in files:
         for o in f.get("details") or []:
             kind = ont.detail_kind(o["feature"])

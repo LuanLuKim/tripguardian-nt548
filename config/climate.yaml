@@ -1,6 +1,9 @@
-# Đà Lạt's monthly rain probability (docs/PLANNING.md §Live Context), hand-entered like
-# config/holidays.yaml: used only for a date beyond Open-Meteo's forecast horizon. A rough estimate to tune against
-# local knowledge before the pilot, not a measurement.
+# Monthly rain probability for a date beyond Open-Meteo's forecast horizon (docs/PLANNING.md §Live Context).
+# Three layers, first that has the month wins:
+#   1. rain_prob_override_by_month: a hand correction of the view (empty = trust the view);
+#   2. the city's ClimateNormal view, data/<city>/views/climate.json (python -m corpus views climate);
+#   3. rain_prob_by_month: Đà Lạt's rough hand estimate, used only while no view is built. Not a measurement.
+rain_prob_override_by_month: {}
 rain_prob_by_month:
   1: 0.15
   2: 0.15

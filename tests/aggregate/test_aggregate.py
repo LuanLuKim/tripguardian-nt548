@@ -238,6 +238,13 @@ def test_identity_and_hours_pass_through_first_non_null():
     assert res["operation"]["hours"] == {"mon": [["07:00", "21:00"]]} and res["operation"]["closure"] == "temporary"
 
 
+def test_phone_and_website_reach_identity():
+    a = {**f([]), "place": {"phone": "0919419835", "website": None}}
+    b = {**f([]), "place": {"website": "https://example.vn/"}}
+    ident = aggregate_place([a, b], ONT)["identity"]
+    assert ident["phone"] == "0919419835" and ident["website"] == "https://example.vn/"
+
+
 def test_conflict_is_uncertain_for_any_feature_and_has_no_authority():
     s = aggregate_place([f([attr(1, "outdoor_seating", "present"), attr(2, "laptop_friendly", "present"),
                             o(3, "kids", "unsuitable", "a"), attr(4, "kids", "suitable")])], ONT)["features"]

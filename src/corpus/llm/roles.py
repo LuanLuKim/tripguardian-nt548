@@ -23,6 +23,7 @@ class Role:
     parallel_env: str | None = None  # .env key: concurrent calls the endpoint takes (docs/LLM_PROVIDER.md)
     default_parallel: int = 36  # without parallel_env: the UIT key allows 40 (HTTP 429 above)
     reasoning_env: str | None = None  # .env key: reasoning effort sent to a reasoning model (low, medium, ...)
+    fallback: "Role | None" = None  # a .env key of this role that is unset is read from the same key of this role
 
     def _on_uit(self) -> bool:
         """EXTRACTOR_ON_UIT=1 (process environment): this process runs the Extractor on the UIT Gemma, so a second
@@ -35,12 +36,31 @@ class Role:
         return (self.name == "extractor" and not self._on_uit()
                 and os.environ.get("EXTRACTOR_ALSO_UIT", "").strip() not in ("", "0"))
 
+    def also_selfhost(self) -> bool:
+        """EXTRACTOR_ALSO_SELFHOST=1 (process environment): an Extractor task that spreads calls over endpoints
+        (`gmaps observe`) also uses the self-hosted Gemma behind the model gateway (docs/LLM_PROVIDER.md)."""
+        return self.name == "extractor" and os.environ.get("EXTRACTOR_ALSO_SELFHOST", "").strip() not in ("", "0")
+
+    @staticmethod
+    def selfhost_client() -> tuple[AsyncOpenAI, str, int]:
+        """(client, model, parallel) of the self-hosted Gemma: SELFHOST_EXTRACTOR_* in .env, key MODEL_GATEWAY_API_KEY."""
+        load_dotenv(ROOT / ".env")
+        return (AsyncOpenAI(api_key=os.environ["MODEL_GATEWAY_API_KEY"], base_url=os.environ["SELFHOST_EXTRACTOR_BASE_URL"]),
+                os.environ["SELFHOST_EXTRACTOR_MODEL"], int(os.environ.get("SELFHOST_EXTRACTOR_PARALLEL") or 8))
+
     @staticmethod
     def uit_client() -> tuple[AsyncOpenAI, str]:
         load_dotenv(ROOT / ".env")
         return AsyncOpenAI(api_key=os.environ["UIT_API_KEY"], base_url=os.environ["UIT_API_BASE_URL"]), os.environ["UIT_API_MODEL"]
 
+    def _on_selfhost(self) -> bool:
+        """EXTRACTOR_ON_SELFHOST=1 (process environment): this process runs the Extractor on the self-hosted Gemma
+        behind the model gateway, so a third process can work beside the LAN and UIT ones."""
+        return self.name == "extractor" and os.environ.get("EXTRACTOR_ON_SELFHOST", "").strip() not in ("", "0")
+
     def client(self) -> tuple[AsyncOpenAI, str]:
+        if self._on_selfhost():
+            return self.selfhost_client()[:2]
         if self._on_uit():
             return self.uit_client()
         return self.own_client()
@@ -48,12 +68,25 @@ class Role:
     def own_client(self) -> tuple[AsyncOpenAI, str]:
         """The role's own endpoint from .env, even in an EXTRACTOR_ON_UIT process (a UIT run borrowing the LAN host)."""
         load_dotenv(ROOT / ".env")
-        return AsyncOpenAI(api_key=os.environ[self.key_env], base_url=os.environ[self.base_url_env]), os.environ[self.model_env]
+        return (AsyncOpenAI(api_key=self._env("key_env", required=True), base_url=self._env("base_url_env", required=True)),
+                self._env("model_env", required=True))
+
+    def _env(self, attr: str, required: bool = False) -> str | None:
+        """The value of this role's .env key `attr` (key_env, base_url_env, ...), else the fallback role's."""
+        name = getattr(self, attr)
+        value = (os.environ.get(name or "") or "").strip()
+        if value:
+            return value
+        if self.fallback is not None:
+            return self.fallback._env(attr, required)
+        if required:
+            return os.environ[name]  # KeyError names the missing key
+        return None
 
     def reasoning(self) -> str | None:
         """The reasoning effort the role's model is asked for, or None to send none (a model without reasoning)."""
         load_dotenv(ROOT / ".env")
-        return (os.environ.get(self.reasoning_env or "") or "").strip() or None
+        return self._env("reasoning_env")
 
     def cache_key(self, task: str) -> dict:
         """Extra body for a call on a reasoning endpoint (OpenAI style, through 9router): one prompt cache key per
@@ -62,8 +95,12 @@ class Role:
 
     def parallel(self) -> int:
         """Concurrent calls a task of this role runs when it sets none itself."""
+        if self._on_selfhost():
+            return self.selfhost_client()[2]
         if self._on_uit():
-            return 38  # the UIT key takes 40; two stay free for the Agent
+            # the UIT key takes 40; two stay free for the Agent. UIT_EXTRACTOR_PARALLEL in the process environment
+            # lowers it when several processes share the key.
+            return int(os.environ.get("UIT_EXTRACTOR_PARALLEL") or 38)
         return self.own_parallel()
 
     def own_parallel(self) -> int:
@@ -105,6 +142,13 @@ AGENT = Role(
     purpose="live conversation turns: one streamed structured call per user message (src/trip)",
     key_env="AGENT_API_KEY", base_url_env="AGENT_BASE_URL", model_env="AGENT_MODEL",
     reasoning_env="AGENT_REASONING_EFFORT",
+)
+
+NAVIGATOR = Role(
+    name="navigator",
+    purpose="decides what to mine for a city, from the city name alone (corpus.navigate); the Agent route unless NAVIGATOR_* says otherwise",
+    key_env="NAVIGATOR_API_KEY", base_url_env="NAVIGATOR_BASE_URL", model_env="NAVIGATOR_MODEL",
+    reasoning_env="NAVIGATOR_REASONING_EFFORT", fallback=AGENT, default_parallel=1,
 )
 
 USER_SIM = Role(

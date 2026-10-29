@@ -37,6 +37,27 @@ def test_statuses_never_serve_needs_review_or_disabled_and_unmeasured_is_uncerta
     assert build(intel(closure="permanent"), BUILT)["status"] == "DISABLED"
 
 
+def test_phone_and_website_served_in_identity_and_absent_is_none():
+    src = intel()
+    src["identity"] = {**src["identity"], "phone": "0919419835", "website": "https://example.vn/"}
+    ident = build(src, BUILT)["identity"]
+    assert (ident["phone"], ident["website"]) == ("0919419835", "https://example.vn/")
+    ident = build(intel(), BUILT)["identity"]
+    assert ident["phone"] is None and ident["website"] is None
+
+
+def test_up_to_price_from_old_observations_has_unknown_minimum():
+    for old in ({"min_vnd": 1, "max_vnd": 100000}, {"min_vnd": None, "max_vnd": 100000, "up_to": True}):
+        src = intel()
+        src["operation"] = {**src["operation"], "price_range": {**old, "per": "person", "reports": 9}}
+        v = build(src, BUILT)["operation"]["price_per_person"]["value"]
+        assert v["min_vnd"] is None and v["max_vnd"] == 100000 and v["up_to"] is True
+    src = intel()
+    src["operation"] = {**src["operation"], "price_range": {"min_vnd": 100000, "max_vnd": 200000}}
+    v = build(src, BUILT)["operation"]["price_per_person"]["value"]
+    assert (v["min_vnd"], v["max_vnd"]) == (100000, 200000) and "up_to" not in v
+
+
 def test_check_is_fail_closed():
     rec = build(intel(features={
         "steep_or_stairs": sig("absent"),
@@ -162,3 +183,29 @@ def test_a_lodging_far_from_the_city_centre_is_not_served():
     assert stay_outside(rec("stay", 11.84, 108.38), cities)  # Nam Ban, ~14 km
     assert not stay_outside(rec("nature", 11.84, 108.38), cities)  # only lodging is cut
     assert not stay_outside(rec("stay", 10.77, 106.70), cities)  # outside every area: not this rule's
+
+
+FEE_ESTIMATE = {"min_vnd": 60000, "typical_vnd": 100000, "max_vnd": 120000, "n": 3, "source": "reviews"}
+
+
+def _free_entry(estimate):
+    i = intel(features={"entry_fee": sig("free")})
+    i["estimates"]["entry_fee"] = estimate
+    return build(i, BUILT)
+
+
+def test_free_entry_conflicting_with_fee_estimate_is_uncertain():
+    rec = _free_entry(FEE_ESTIMATE)
+    assert rec["service"]["entry_fee"]["status"] == "UNCERTAIN"
+    assert rec["service"]["entry_fee"]["reason"] == "conflicts_entry_fee_estimate"
+    assert rec["service"]["entry_fee"]["value"] == "free"  # the conflict is kept, not resolved
+    assert rec["operation"]["entry_fee"]["typical_vnd"] == 100000
+    assert rec["details"]["cost"] is None  # place_block got the changed feature: no invented 0 VND entry
+
+
+def test_free_entry_without_fee_estimate_stays_verified():
+    free = _free_entry(None)
+    assert free["service"]["entry_fee"]["status"] == "VERIFIED"
+    assert free["details"]["cost"]["entry"]["adult"]["vnd"] == 0
+    zero = _free_entry({**FEE_ESTIMATE, "min_vnd": 0, "typical_vnd": 0, "max_vnd": 0})
+    assert zero["service"]["entry_fee"]["status"] == "VERIFIED"

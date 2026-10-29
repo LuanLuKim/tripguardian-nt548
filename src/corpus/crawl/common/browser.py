@@ -15,6 +15,9 @@ from .files import ROOT
 LOGIN_URL = {
     "tiktok": "https://www.tiktok.com/login",
     "gmaps": "https://accounts.google.com/ServiceLogin?continue=https://www.google.com/maps",
+    # no account: the person solves the /sorry/ captcha once; its cookie in .browser/gsearch.json lets the
+    # headless gsearch runs through (corpus.crawl.gsearch)
+    "gsearch": "https://www.google.com/search?q=%C4%91%C3%A0+l%E1%BA%A1t&hl=vi&gl=vn",
 }
 _CAPTCHA = re.compile(r"Kéo thanh trượt|Drag the slider|Verify to continue|Xác minh để tiếp tục"
                       r"|unusual traffic|lưu lượng truy cập bất thường")  # last two: Google /sorry/ page

@@ -24,6 +24,7 @@ import re
 import unicodedata
 
 from ...llm import ASR_CHECK
+from ...llm.tasks import Runaway, SchemaError
 from ..common.files import data_dir, load_config, log_error, now, write_json
 from .frames import FRAMES, frames
 from .place_filter import places_by_video
@@ -33,6 +34,25 @@ MIN_KEPT = 0.5  # a "fixed" segment must keep at least this share of the ASR wor
 SOUND_ALIKE = 0.5  # replaced span vs ASR span, accents and spaces dropped: "mini" -> "Pini" 0.75, -> "Quỷ Núi" 0.20
 SOUND_NEAR = 0.3  # enough when the new words are written in the context: "ca giắt" -> "kayak" 0.36
 NEGATIONS = {"khong", "chua", "chang", "cha", "dung", "ko", "k", "hong", "hok"}
+
+
+RETRY_TEMPERATURE = 0.5  # greedy decoding loops on the same input every run; a warmer sample usually finishes
+LOOPS = (Runaway, SchemaError, json.JSONDecodeError)
+
+
+async def ask_check(client, model, images, **fields) -> dict:
+    """The model's answer. A call that loops or breaks the schema is asked again, warmer with the frames, then warmer
+    without them (frames can trigger the loop). Still failing: the error is raised and the video stays unchecked."""
+    last = None
+    for temp, imgs in ((None, images), (RETRY_TEMPERATURE, images), (RETRY_TEMPERATURE, ())):
+        try:
+            answer = await ASR_CHECK.ask(client, model, images=imgs, temperature=temp, **fields)
+            if not imgs:
+                answer = {**answer, "screen_text": []}  # nothing was shown: any screen text would be invented
+            return answer
+        except LOOPS as e:
+            last = e
+    raise last
 
 
 def _client():
@@ -156,8 +176,8 @@ async def run(city: str, shard: tuple[int, int] | None = None) -> dict:
             async with sem:
                 try:
                     images = await asyncio.to_thread(frames, doc.parent / "video.mp4", t["total_s"], doc.parent / "frames")
-                    answer = await ASR_CHECK.ask(
-                        client, model, images=images, city=name, frames=FRAMES, desc=v.get("caption") or "",
+                    answer = await ask_check(
+                        client, model, images, city=name, frames=FRAMES, desc=v.get("caption") or "",
                         hashtags=hashtags,
                         places=", ".join(p["name"] for p in places.get(v["video_id"], [])) or "unknown",
                         segments=segment_lines(t["segments"]))

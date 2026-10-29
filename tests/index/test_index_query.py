@@ -136,3 +136,22 @@ def test_search_spans_within_scope():
     vec = TextVec(photo=unit(1, 0, 0), span=unit(1, 0, 0, 0))
     hits = ix.search_spans(vec, within={"a"})
     assert all(h.place_id == "a" for h in hits)
+
+
+def test_best_photo_strict_people_returns_only_labelled_person_free_photos(tmp_path, monkeypatch):
+    import json
+
+    import numpy as np
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    out = tmp_path / "gmaps" / "photo_scenes"
+    out.mkdir(parents=True)
+    lab = lambda pid, person: {"photo_id": pid, "file": f"photos/{pid}.jpg", "scene": "interior", "blur": 900.0, "brightness": 120.0,
+                               "keep": True, "person": {"value": person, "confidence": "high"}}
+    (out / "0xa_0xb.json").write_text(json.dumps({"place_fid": "0xa:0xb", "photos": [lab("crowd", True), lab("empty", False)]}), encoding="utf-8")
+    rows = [{"place_id": "0xa:0xb", "file": f"gmaps/places/0xa_0xb/photos/{n}.jpg", "owner": False} for n in ("crowd", "empty", "unlabelled")]
+    vecs = np.array([[1.0, 0.0], [0.6, 0.8], [1.0, 0.0]], np.float32)  # the crowd and unlabelled photos match the place best
+    ix = Index(version="t", root=None, places={}, styles={}, photo_vecs=vecs, photo_rows=rows, cfg=CFG, strict_people=True)
+    ref = np.array([1.0, 0.0], np.float32)
+    assert ix.best_photo("0xa:0xb", ref) == "gmaps/places/0xa_0xb/photos/empty.jpg"
+    ix_no = Index(version="t", root=None, places={}, styles={}, photo_vecs=vecs[:1], photo_rows=rows[:1], cfg=CFG, strict_people=True)
+    assert ix_no.best_photo("0xa:0xb", ref) is None

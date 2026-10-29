@@ -56,7 +56,7 @@ def test_harness_bundle_opens_one_reader_for_all_three_factories(tmp_path):
         return reader
     def engine(data, **kwargs):
         return SimpleNamespace(**kwargs)
-    scope = {'Binding': Binding, 'data': tmp_path,
+    scope = {'Binding': Binding, 'data': tmp_path, 'trip_live': None,
              'RetrievalEngine': SimpleNamespace(open=open_reader),
              'trip_engine': engine, 'decision_engine': engine, 'planning_engine': engine,
              'TripTools': lambda e: SimpleNamespace(engine=e),

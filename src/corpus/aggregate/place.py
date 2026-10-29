@@ -285,7 +285,8 @@ def judge(sig: dict, quality: dict | None, decision: str | None) -> dict:
 
 
 def aggregate_place(files: list[dict], ont: Ontology, quality: dict | None = None,
-                    reviewed: dict[str, str] | None = None, verdicts: dict[str, str] | None = None) -> dict:
+                    reviewed: dict[str, str] | None = None, verdicts: dict[str, str] | None = None,
+                    poi_claims: list[dict] | None = None) -> dict:
     """quality: (feature, value) -> label stats row; reviewed: feature -> a person's latest feature_review decision;
     verdicts: label content key -> latest label (person over Judge)."""
     verdicts = verdicts or {}
@@ -358,7 +359,7 @@ def aggregate_place(files: list[dict], ont: Ontology, quality: dict | None = Non
         "place_name": next((f["place_name"] for f in files if f.get("place_name")), None),
         "as_of": as_of.isoformat(), "ontology_version": ont.version, "identity": identity, "voices": voices,
         "voices_targeted": voices_targeted,
-        "features": features, "coverage": coverage(features, ont), "details": place_details(files, ont, verdicts),
+        "features": features, "coverage": coverage(features, ont), "details": place_details(files, ont, verdicts, claims=poi_claims),
         "operation": {"price_range": facts.get("price"), "price_night": facts.get("price_night"), **hours,
                       "closure": facts.get("closure"),
                       "tickets_vnd": official.get("tickets_vnd"), "last_entry": official.get("last_entry"),
@@ -371,6 +372,16 @@ def aggregate_place(files: list[dict], ont: Ontology, quality: dict | None = Non
         "proposed_features": sorted(({"label": k, "count": len(v), "authors": len(set(v))} for k, v in proposed.items()),
                                     key=lambda x: (-x["count"], x["label"])),
     }
+
+
+def _poi_claims(root, city: str) -> list[dict]:
+    """Rows of data/<city>/local/poi_claims.json (corpus.local P4); [] when the file is missing or unreadable."""
+    path = root / city / "local" / "poi_claims.json"
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8")).get("claims", [])
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [r for r in rows if isinstance(r, dict)]
 
 
 def run(city: str, *, output_root=None, root=None, normalization=None) -> dict:
@@ -399,11 +410,12 @@ def run(city: str, *, output_root=None, root=None, normalization=None) -> dict:
         if d != "undo":
             reviewed[place_fid][feature] = d
     verdicts = label_verdicts(root=root)
+    poi_claims = _poi_claims(root, city)
     for fid, fs in files.items():
         if fs[0]["place_fid"] != fid:  # only a merged entry's files: the canonical one has no evidence of its own
             fs = [{**fs[0], "place_fid": fid, "observations": [], "place": {}, "place_facts": {}, "voices": 0,
                    "ratings": [], "proposed": []}] + fs
-        intel = aggregate_place(fs, ont, quality, reviewed.get(fid), verdicts)
+        intel = aggregate_place(fs, ont, quality, reviewed.get(fid), verdicts, poi_claims)
         status.update(f"{k}={v}" for k, v in intel["coverage"].items())
         write_json(out / f"{safe_name(fid)}.json", {**intel, "inputs": inputs[fid], "built_at": now(),
                                                     "observation_versions": sorted({f.get("ontology_version") for f in fs}, key=str)})

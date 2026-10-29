@@ -3,7 +3,44 @@
 > Plan làm việc (`RULE.md` §0.1), tạm thời. Spec: `docs/superpowers/specs/2026-10-26-production-and-course-upgrade-design.md`. Session mới đọc file này trước, rồi ledger của từng track. Xong hết thì gộp phần còn giá trị vào tài liệu chính thức và xoá file này.
 > Viết bởi session `tripguardian-77`, 2026-10-28 ~16:40.
 
-## CHỐT 2026-10-30 02:05 — bàn giao sang tài khoản mới (đọc mục này trước tiên)
+## CHỐT 2026-10-30 ~04:00 — session `tripguardian-05` (đọc mục này trước tiên)
+
+Đã làm xong 6 việc của mục 02:05 bên dưới. Nhật ký: `.superpowers/sdd/2026-10-30-wave/controller.md`.
+
+**Trên prod** (deploy `HARNESS_GPU=7 ./run.sh prod`, smoke ok, kiểm sau đăng nhập ok):
+- Release `r-821680126d9fd8ba47301de1-16eff8c6`: 3.172 nơi, ảnh 40.038 → 53.255, có rating/reviews thật.
+- **Claim local giữ bộ cũ 430 kept** (chủ dự án chọn). Soát tay 10 claim mới: 4 đúng / 3 lệch / 1 nhiễu / 2 sai. Bộ mới 1.257 kept cất ở `data/dalat/local/held_1030/` (có README).
+- Chat trợ lý ở Lịch trình (`Assistant.tsx` dùng chung, `stage="planning"`).
+- Trợ lý Lịch trình không hoàn tác vi phạm mềm nữa: giữ lại và gắn cờ. Bench live terra: move 1,0, reorder 1,0, 0 vi phạm vật lý.
+- 16 lỗi ui-qa đã sửa (B1–B16; B14 chưa xem live). Chuyến ghim snapshot đã xoá trả 409 `stale_data_version`, không còn 500.
+- Bỏ lọc `MIN_PRICE_VND`: đã sửa gốc ở `place_rules.py`.
+- `AGENT_MODEL` giữ terra: nhanh hơn sol, độ đúng ngang nhau (`data/bench/assistant/final-*`, `plan-chat-*`).
+
+**Git:** branch `upgrade/2026-10-30-wave`, 6 commit theo khu vực, chưa push. Ngoài git, cố ý để lại:
+- Các file bị xoá ở thư mục gốc: `*.mp4`, `pitch_desk.md`. Chủ dự án quyết.
+- `2026-10-06_de_tai_08_tour_guide_agent.docx`.
+- Ảnh trong `frontend_images/`.
+
+**Còn mở (chưa lên lịch):**
+1. Siết gate `corpus.local` rồi mới dùng bộ claim mới. Lỗi thấy được: subject không có trong quote, sources đếm trùng domain, tài liệu ngoài chủ đề lọt vào.
+2. `realism[travel_vs_nn]` `short_by_40`: thuật toán tìm thứ tự kẹt ở cực trị cục bộ trên ngày quá tải (`route.py`/`build.py`). Chủ dự án chọn: sửa thuật toán tìm, hay nới ngưỡng cho ngày quá tải.
+3. Gate bench còn trượt trên cả hai model:
+   - ảnh trong Trip p90 18,6 s (gate 15 s);
+   - Decision có 2 câu thiếu nguồn ở `compare`;
+   - nhóm services: tool-group 0,0;
+   - `rr-avoid` đi heuristic.
+4. `test_wish_speed` p95 160 ms > 120 ms (đo lúc máy tải cao).
+5. Gap từ prod-gaps:
+   - giá phòng theo ngày;
+   - giờ mở cửa 50 %;
+   - sự kiện chưa có crawl định kỳ;
+   - `pick_transit` chưa nối;
+   - Trip/Schedule chỉ nằm trong RAM;
+   - lịch đầu chậm.
+6. Chưa có đường re-pin/revalidate cho chuyến ghim snapshot đã xoá; UI chỉ bảo tạo lại chuyến.
+7. Chờ chủ dự án: deploy từ git worktree riêng thay vì cây dùng chung.
+
+## CHỐT 2026-10-30 02:05 — bàn giao sang tài khoản mới
 
 Chủ dự án sắp hết usage, chuyển tài khoản. Usage Codex cũng hết: terra/sol qua 9router trả 503/429, nên **chat Agent trên prod lỗi cho tới khi Codex hồi** (~02:15). Nhật ký đầy đủ: `.superpowers/sdd/2026-10-30-wave/controller.md`. Luật đợt: `.superpowers/sdd/2026-10-30-wave/common.md` và `ui-common.md`. Subagent của session cũ không resume được: đọc dòng cuối ledger của từng track `.superpowers/sdd/2026-10-30-<track>/progress.md`.
 

@@ -207,17 +207,20 @@ score = w_ctx   · context_fit
       + w_exp   · experience_fit      visited rỗng: nơi đặc trưng được cộng; có visited: nơi khác visited được cộng
       + w_pop   · popularity          chỉ là một tín hiệu, trọng số nhỏ
       + w_wish  · wish                1 − Π(1 − a·strength) trên các mong muốn áp cho nơi đó (decision.wishes)
+      + w_rep   · reputation          điểm uy tín Maps (rating + số review cùng thang) − 0,5; không có = 0
       − w_unc   · uncertainty         thiếu coverage / UNCERTAIN / OUTDATED ở khía cạnh quan trọng với user
 ```
 
 Quy tắc:
-
+- **Prior của hồ sơ nhẹ hơn tín hiệu chuyến này.** Soft có `source = profile` (hồ sơ dài hạn, `docs/TRIP_UNDERSTANDING.md` §17) nhân `prior_weight` = 0,4 (`config/decision.yaml`), và bị bỏ khi chuyến này có soft riêng cho cùng feature (đồng ý hay ngược đều thắng). Mẫu số của `preference_fit` vẫn tính prior là 1, nên prior đứng một mình chỉ cộng ≈ 0,4 · confidence, tín hiệu chuyến này cộng đủ. Thứ tự: tín hiệu chuyến này > prior > không có gì. Chọn 0,4: đủ để hai nơi ngang nhau nghiêng về gu cũ, không đủ vượt một tín hiệu hay mong muốn của chuyến này (`wish` 1,5; `pref` 2,0 trên tín hiệu đầy đủ).
 - Feature id dùng chung với ontology của corpus (`docs/CORPUS.md` §Bản ghi địa điểm), nên `preference_fit` là phép khớp trực tiếp.
 - Địa điểm **không có bằng chứng** cho một feature → đóng góp 0, không âm. Phần thiếu đi vào `uncertainty`, chỉ tính cho feature user quan tâm.
 - Feature `off` cho chuyến này (ví dụ `hiking = off`) → không cộng; không loại trừ khi đó không phải hard filter.
 - `novelty = high` → nơi trong Experience History bị giảm mạnh hoặc loại khỏi khám phá (không loại nếu user đưa vào anchor). Đã đến ≠ đã thích (`Project_Context.md` §11).
 - Thứ tự ưu tiên khi hai nguồn trọng số mâu thuẫn giữ đúng `TRIP_UNDERSTANDING.md` §2.
 - `wish` chỉ nâng, gom mọi mong muốn của Trip (`decision/wishes.py`): món (`place_ids` theo thứ tự, 1 → 0,5, mọi nơi có ghi món đó: quán cà phê có cà phê muối cũng được cộng), kiểu nơi (1), phong cách ảnh (1 → 0,5 theo hạng; độ giống ảnh không phải bằng chứng), giống X (`corpus.serving.similarity` ≥ `like_min`, trừ chính X; phần "nhưng" đã là `soft_weights`), `liked_groups` (cả nhóm, mức thấp), `purpose` (theo map, mức thấp nhất). Khớp nhiều mong muốn thì cao hơn; không khớp = 0, không âm, không loại; sàng lọc chạy trước; nơi chưa có bản ghi không được cộng. Mỗi ảnh user gửi và mỗi nơi tham chiếu là một mong muốn riêng. Mức `a`, `like_min`, map `purpose` ở `config/decision.yaml` `wish`. Danh sách mỗi nhóm vẫn đủ mọi nơi qua sàng lọc; không lọc theo ngưỡng điểm.
+- `confidence(f)` của một feature = `agreement × support(n) × mention(rate) × trọng số trạng thái` (`corpus.serving.evidence`, `config/serving.yaml` `evidence`; snapshot lưu cùng hàm ở cột `conf`). `support(n)`: tuyến tính tới `base` (0,7) ở 3 tác giả, rồi tăng theo log tới 1,0 ở `ref_n` (300), nên 3 / 30 / 300 tác giả cùng agreement xếp đúng thứ tự. `mention(rate)`: tỷ lệ người đã đọc có nhắc; dưới `rate_ref` (2 %) trừ tối đa `rate_weight` (30 %), nên 6 lượt nhắc trong 3.000 review nhẹ hơn 6 trong 10. Tỷ lệ 0 / không biết (Maps attribute, chủ quán khai) không bị trừ. Chỉ xếp hạng dùng `confidence`; hard constraint (§6) không đọc nó.
+- **Uy tín** (`rep`): `provenance.reputation.score` (0..1) của bản ghi, đặt `score − 0,5` nên trên giữa nhóm thì cộng, dưới thì trừ; thiếu rating hoặc số review → 0, không âm. Trọng số nhỏ (`w_rep` = 0,3 ở `config/decision.yaml`). Cách tính ở `docs/CORPUS.md` (Serving record, Uy tín). `pop` vẫn đo theo `voices` của corpus và chỉ là tín hiệu phụ.
 - Trọng số `w_*` nằm trong config, có version; mỗi điểm lưu kèm từng thành phần để giải thích và debug.
 - **Né đông.** Khi user né đông (`profile.crowd_tolerance` hoặc `pace.crowd_tolerance` = `avoid`), mỗi tab xếp các nơi Google ghi là đông (≥ `crowd_busy_pct` ở khung giờ nào đó của loại ngày trong chuyến, hoặc cả hai loại ngày khi chưa biết ngày) sau mọi nơi còn lại, bất kể điểm; nơi không có popular times không bị coi là đông (`frame.busy_mask`).
 - **Chế độ ăn** (`decision/diet.py`, chỉ tab `meal`, `snack`). Có yêu cầu chay (hard hoặc soft `vegetarian_options` / `vegan_options` = yes) hay ghi chú "dị ứng hải sản" ở `unmapped` (Trip không có feature dị ứng, chỉ giữ ghi chú): tab xếp theo bậc, rồi mới đến điểm. Bậc 0: nơi tự nhận là quán chay (tên hoặc category Google có "chay"). Bậc 1: không có gì trái chế độ (chay: đã verify `vegetarian_options` = yes). Bậc 2: chưa verify được món chay (chỉ xảy ra với yêu cầu soft; hard thì nơi này vào mục chưa xác minh). Bậc 3: tên hoặc category tự nhận là nơi nướng / thịt / hải sản… (chay) hoặc hải sản (dị ứng). Bậc ≥ 2 không bao giờ được "Hợp nhất"; bậc 3 không vào shortlist và thẻ có ghi chú; bậc 3 vẫn nằm trong tab (không có bằng chứng "chỉ có món mặn" ngoài tự nhận, nên không loại cứng). Thiếu bằng chứng là `unknown`, không bao giờ được xếp như "khớp".
@@ -265,6 +268,8 @@ Mỗi tab là thứ hạng của nó chia thành trang `page_size` nơi; user ch
 
 Dựng lại (act, lượt chat, rebase) giữ số trang; trang được lấy lại từ thứ hạng mới (`window.window`). `change[tab] = {kept, added, removed, replaced_all}` so trang cũ với trang mới (`replaced_all` khi giữ dưới `replace_below` × trang cũ; tab chưa từng hiện thì không có thay đổi) để web chạy chuyển cảnh. Sau `rebase` (Search Input mới), `diff(..., rebuilt=True)` nói gọn điều đó: "Giữ 45 nơi, thay 3 nơi hợp hơn", "Danh sách đổi theo ý bạn: 24 nơi mới" hoặc "Các nơi đang gợi ý vẫn hợp, không cần đổi"; thay đổi không làm xê dịch gì thì `text` rỗng. `rebase` giữ lịch sử hoàn tác.
 
+**Bộ lọc phiên** (`State.filters`, `decision/filters.py`): sau khi xếp hạng, mỗi tab chỉ giữ nơi qua mọi bộ lọc; thẻ ẩn không đổi `status`/`score`. Nơi qua bộ lọc phải có giá trị `VERIFIED`/`OUTDATED` khớp (feature) hoặc giờ mở có trạng thái đó; `unknown` không bao giờ qua (không coi là "có"). Nơi đã chọn / khóa luôn hiện. `total` và số trang của tab đếm sau lọc; "Hợp nhất" (`top`) chọn trong số nơi còn hiện. View có `filter = {active: [{key, value, label}], hidden: n}` và `likes` (id đã bấm "giống"), luôn có; `why-not` của nơi bị ẩn nói do bộ lọc.
+
 `Engine.search(sid, q)`: mỗi chữ gõ (bỏ dấu, hoa thường) phải là đầu một chữ trong tên, category Maps hoặc tên tab của nơi; tìm trên mọi tab và mục chưa xác minh, xếp theo `score`, tối đa 60 thẻ kèm `total`. `outside` = tối đa 8 nơi trong vùng có tên khớp mà không nằm trong danh sách (không tính chỗ ở), mỗi nơi kèm lý do của `why-not`.
 
 `why-not` của một nơi có trong danh sách trả `listed: true` và vị trí ("xếp thứ 41/60; ở trang 2"), kèm mong muốn user đã nói mà nơi đó chưa khớp, khi tab của nó có nơi khớp ("Chưa thấy ghi món bánh căn ở nơi này", "Chưa khớp mong muốn “karaoke”"); thiếu dữ liệu không bao giờ thành "không bán". Nơi bị loại chỉ nêu điều kiện đã loại nó. Prompt của agent có mọi nơi trên màn, nhưng lý do chỉ cho trang đầu mỗi tab và nơi đã chọn. `page_size` = 24, `replace_below` = 0.3 trong `config/decision.yaml`.
@@ -308,6 +313,9 @@ Mỗi ứng viên chỉ hiển thị thông tin phục vụ quyết định (`do
 | Phụ thuộc unknown | "Chưa biết ngân sách của bạn; giá nơi này khoảng …" | `unknowns` |
 | Nổi tiếng vì | `known_for.headline` (cụm hiếm trong nhóm category) kèm số người nhắc | `details` |
 | Tổng tiền | `cost.total_vnd` (một người: vé, gửi xe; kèm các khoản thêm) | `details` |
+| Ảnh | `photos`: tối đa 4 ảnh, mỗi cảnh một ảnh, ảnh bìa đứng đầu; cảnh theo loại nơi (quán ăn / cà phê: interior, food, exterior, drink; chỗ ở: room, exterior, view; điểm tham quan: view, exterior, amenity). Chỉ ảnh không có người, không mờ / tối, không trùng gần (`corpus.serving.scenes`, `docs/CORPUS.md` §Ảnh Google Maps). Nơi chưa có nhãn cảnh: `photos` rỗng, web giữ ảnh của nó | `data/gmaps/photo_scenes` |
+
+`photos` chỉ để hiển thị (`decision/cards.py` `scene_photos`): không điểm, thứ hạng hay lọc nào đọc nó. Web đưa ảnh này lên trước thư viện ảnh của nơi (`web/src/user/pd/api.ts` `withPhotos` → `setScenePhotos` trong `web/src/data/store.ts`), nên thẻ, đĩa xoay và sheet chi tiết dùng cùng ảnh: tối đa 4 cảnh đứng đầu (ảnh bìa là cảnh đầu), sau đó là phần còn lại của thư viện ảnh nơi đó, nên một nơi ít cảnh không bị mất ảnh.
 
 Giờ / giá / vị trí lấy từ bằng chứng official hoặc Google, không trộn với bằng chứng trải nghiệm (`docs/CORPUS.md` §Place Decision dùng corpus thế nào). Không hiển thị một review đơn lẻ như sự thật.
 
@@ -323,6 +331,9 @@ Giờ / giá / vị trí lấy từ bằng chứng official hoặc Google, khôn
 | So sánh | Mở §10 |
 | Thay | Đổi sang nơi thay thế trong nhóm |
 | Xem thêm giống | Mở rộng nhóm / truy xuất thêm quanh feature đó |
+| Ưu tiên | `prefer` `{feature, value, weight: ±1}`: đẩy nơi có (hoặc không có, `-1`) giá trị đó lên (xuống) trong thứ hạng. Chỉ đổi điểm của nơi chưa chọn; không nơi nào bị loại vì nó |
+| Lọc | `filter` `{key, value}` (`key` là feature ontology, hoặc `opens_by` với `HH:MM`: giờ mở đầu tiên của một ngày trong chuyến không muộn hơn mốc đó); `unfilter` bỏ hết. Chỉ **ẩn** khỏi các tab (§9.4), không đổi `status` hay `score`; có undo |
+| Kiếm kiểu này | `like` `{place_id}`: nơi đó thành mong muốn "giống X" của phiên (`State.likes` → `wishes.like`, cùng hệ số `a.like`, §8). Chỉ nâng nơi giống, không đẩy nơi nào xuống hay ra |
 | Chọn chỗ ở | Cả chuyến có **một** chỗ ở (`view.lodging`: `booked` = đã nói ở Hiểu chuyến đi, `chosen` = chọn ở đây, thay `booked`; `needed` = chưa biết). Tab "Chỗ ở" luôn có: chỗ ở trong corpus quanh các nơi đã chọn (Planning xếp, `docs/PLANNING.md` ⓐ). Chưa có chỗ ở thì chọn ngay; đã có (đã đặt hoặc đã chọn) mà muốn đổi thì Web hỏi xác nhận trước khi gửi action. `set_lodging` `{lodging: {kind: corpus, id}}` (tên, toạ độ, giá một đêm đọc từ bản ghi `stay`) hoặc một điểm từ ô tìm `{kind, text, lat, lng}`; `clear_lodging` bỏ. Không xếp hạng lại nơi nào |
 
 Không thao tác nào bị chặn vì lựa chọn quá tải, vướng điều kiện hay chưa có chỗ ở: Web báo cái giá và để người dùng tự quyết (nút "Lập lịch" luôn bấm được khi đã chọn ít nhất một nơi).
@@ -383,7 +394,8 @@ Theo đúng mô hình constraint (`docs/ARCHITECTURE.md` §2): chỉ vi phạm u
 |---|---|
 | Sửa `hard_filters`, ngày, mobility | ③ Sàng lọc |
 | Thêm / đổi anchor, base | ① Resolve (anchor) rồi ④ |
-| Sửa `soft_weights`, novelty, Session Profile | ⑤ Xếp hạng |
+| Sửa `soft_weights`, novelty, Session Profile, `prefer`, `like` | ⑤ Xếp hạng |
+| `filter` / `unfilter` | ⑥ (chỉ ẩn thẻ sau khi đã xếp hạng) |
 | Sửa pace | ⑥ Đa dạng (cỡ shortlist) + ⑨ Khả thi |
 | Thêm / bỏ / khóa | ⑨ Khả thi; ⑤–⑥ cho phần chưa chọn |
 | Planning báo không xếp được | ⑧ Tuyển chọn, kèm nơi gây lỗi |
@@ -469,13 +481,18 @@ Mô phỏng offline trên các Trip State ẩn (dùng chung bộ mô phỏng v�
 | Số vòng tuyển chọn ↔ khả thi trước khi xác nhận | Chi phí quyết định |
 | Tỉ lệ tổ hợp "khả thi" bị Planning trả về | Độ chính xác của ước lượng thô |
 | Kết quả đổi hợp lý khi đổi preference | Cá nhân hóa (`Project_Context.md` §18) |
+| `wish_hit_rate` | Trong các mong muốn user nói (`dish`, `kind`, `like`, khai ở `wishes` của `config/eval_trips.yaml`) mà corpus có nơi qua sàng lọc, tỉ lệ có ≥ 1 nơi khớp trong "Hợp nhất" (`top`). Mục tiêu 1,0; cảnh báo (`wish_hit_warn`) dưới 0,9. Mong muốn corpus không có nơi nào thì vào `wishes_unresolved`, không tính |
+| `wish_rank_median` | Trung vị, qua các mong muốn đó, của thứ hạng tốt nhất một nơi khớp có trong tab của nó. Mục tiêu ≤ `page_size` |
+| `drop_one_changes` | Tỉ lệ mục Search Input (mỗi soft weight, mỗi mong muốn) mà bỏ đi thì thứ hạng một tab hoặc lý do `why` của thẻ đổi. Mục tiêu 1,0; mục không đổi gì được liệt kê ở `drop_one_unchanged` |
+| `wish_penalized` | Số nơi bị mong muốn làm rơi khỏi danh sách, đổi `status` hoặc giảm điểm (so với chạy không có mong muốn). Mục tiêu 0 |
+| `rebase_ms`, `text_turn_ms` | p50 / p95 trên phiên của 10 chuyến đầu: `Tools.rebase` trên phiên có sẵn (mục tiêu < 1.000 ms) và lượt chữ do từ khóa trả lời, không gọi model (mười câu cố định `TEXT_TURNS`, mục tiêu < 300 ms; `via_model` phải 0). `text_turn_ms.max` là lần đầu của tiến trình: bộ lọc giờ mở phải parse bản ghi của nơi có giờ mở chắc chắn, các lần sau dùng bản đã parse |
 
 ---
 
 ## 18. CLI và API
 
 ```
-python -m decision evaluate            # 30 Trip State ẩn ở config/eval_trips.yaml, trong tiến trình
+python -m decision evaluate            # 30 Trip State ẩn ở config/eval_trips.yaml (kèm mong muốn `wishes`), trong tiến trình
 python -m decision serve [--port 8767] # HTTP + SSE độc lập
 ```
 
@@ -508,9 +525,9 @@ POST   /api/decision/sessions/<id>/confirm      → Decision Output; 409 khi ch�
 
 Lỗi: 400 act sai hoặc `text` rỗng / > 1000 ký tự, 404 không có phiên, 409 version ontology của Search Input khác corpus hoặc chưa chốt được.
 
-Lượt chữ: agent trả các update `select | drop | lock | visited` (một nơi trên màn), `travel | crowd | price` (phản hồi chung) và `trip` — mong muốn về chuyến hoặc kiểu nơi ("yên tĩnh hơn", "không thích quán giống X"), quote là đúng lời người dùng. Engine áp các update nơi như act; các update `trip` không đổi phiên Decision mà phát event `trip {texts}` trước `view`. Harness chuyển chúng cho Trip Understanding (`refine`) rồi `rebase` Decision trên Search Input mới (`docs/AGENT_HARNESS.md` §2). Gu không bao giờ thành act `prefer` / `note` từ lượt chữ. Không gọi model khi: lệnh tên chính xác; toàn câu là phản hồi chung có sẵn ("ít đông", "yên tĩnh", "rẻ hơn", "gần trung tâm" → `feedback` crowded / pricey / far, `heuristics.common_wish`); hoặc câu không nêu nơi nào trên màn, không chọn / bỏ, không phải câu hỏi (`general_wish`): khi đó chuyển thẳng thành update `trip` cho Trip Understanding. Còn lại một lượt gọi model với prompt chỉ gồm nơi user nêu tên, nơi đã chọn và vài nơi đầu mỗi tab (`Engine._prompt_places`). Câu trả lời sau khi dựng lại danh sách nêu đúng số nơi ở tiêu đề trang (tổng các tab).
+Lượt chữ: agent trả các update `select | drop | lock | visited | like` (một nơi trên màn), `travel | crowd | price` (phản hồi chung), `prefer | filter | unfilter` và `trip` — mong muốn về chuyến hoặc kiểu nơi ("yên tĩnh hơn", "không thích quán giống X"), quote là đúng lời người dùng. Engine áp các update nơi như act; các update `trip` không đổi phiên Decision mà phát event `trip {texts}` trước `view`. Harness chuyển chúng cho Trip Understanding (`refine`) rồi `rebase` Decision trên Search Input mới (`docs/AGENT_HARNESS.md` §2). `prefer` (`value` = `<feature>=<value>`, thêm `:avoid` để đẩy xuống) và `filter` (`<feature>=<value>` hoặc `opens_by=HH:MM`) chỉ qua guard khi cặp feature/giá trị có trong ontology (hoặc `HH:MM` hợp lệ); sai thì bỏ update và ghi log. Gu chung ("view đẹp") vẫn là `trip`, không thành `prefer` / `note`; `prefer` chỉ khi user đòi xếp lại danh sách đang xem theo một giá trị. Không gọi model khi: lệnh tên chính xác; toàn câu là phản hồi chung có sẵn ("ít đông", "yên tĩnh", "rẻ hơn", "gần trung tâm" → `feedback` crowded / pricey / far; "chỉ xem quán mở trước 7h" → `filter opens_by`; "bỏ lọc" → `unfilter`; `heuristics.common_wish`); hoặc câu không nêu nơi nào trên màn, không chọn / bỏ, không phải câu hỏi (`general_wish`): khi đó chuyển thẳng thành update `trip` cho Trip Understanding. Còn lại một lượt gọi model với prompt chỉ gồm nơi user nêu tên, nơi đã chọn và vài nơi đầu mỗi tab (`Engine._prompt_places`). Hỏi về một nơi ("quán này mở mấy giờ", tối đa 3 nơi user nêu tên): prompt có `DATA` = thẻ `corpus.retrieval.card` của nơi đó trong snapshot đang dùng (khóa ngắn, không cắt feature); agent chỉ trả lời từ `DATA` trong ≤ 60 từ, trường không có thì nói "chưa có thông tin", và số trong `DATA` được phép nhắc lại (`guard._bad_say`). Câu trả lời sau khi dựng lại danh sách nêu đúng số nơi ở tiêu đề trang (tổng các tab).
 
-Act trên một địa điểm: `select`, `drop` (kèm `reason`: `far | crowded | pricey | dislike | visited`), `lock`, `unlock`, `swap`, `relax`, `wishlist`; ngoài ra `prefer`, `feedback`, `answer`, `undo`, `confirm`. `scope.replan_scope(act)` trả bước sớm nhất phải chạy lại theo bảng §14; `scope.input_scope(old, new)` làm điều đó khi người dùng sửa bản hiểu nhu cầu.
+Act trên một địa điểm: `select`, `drop` (kèm `reason`: `far | crowded | pricey | dislike | visited`), `lock`, `unlock`, `swap`, `relax`, `wishlist`, `like`; ngoài ra `prefer`, `filter`, `unfilter`, `feedback`, `answer`, `undo`, `confirm`. `scope.replan_scope(act)` trả bước sớm nhất phải chạy lại theo bảng §14; `scope.input_scope(old, new)` làm điều đó khi người dùng sửa bản hiểu nhu cầu.
 
 Module:
 
@@ -523,6 +540,7 @@ src/decision/
   rank.py                    ⑤ điểm kèm từng thành phần (§8)
   wishes.py                  mong muốn của Trip → điểm wish (§8)
   diversify.py               ⑥ gom nơi gần trùng + MMR (§9)
+  filters.py                 bộ lọc phiên: ẩn khỏi tab, không đổi điểm (§9.4)
   window.py                  trang của mỗi tab và thay đổi của nó sau khi dựng lại (§9.4)
   compare.py cards.py        ⑦ so sánh chỉ trên bằng chứng; thẻ ứng viên (§10, §11)
   curation.py                ⑧ act thuần sinh State mới + Session Profile nó dạy (§12)
@@ -532,6 +550,7 @@ src/decision/
   output.py                  ⑩ Decision Output (§15)
   scope.py                   chạy lại từ bước nào (§14)
   agent.py guard.py policy.py  một call mỗi lượt chữ; guard; policy từ khóa khi agent lỗi
+  assistant.py tool_schemas.py  trợ lý Lựa chọn trên lõi chung `agents.assistant`: tool hành động, ngữ cảnh, guard lời (§19)
   engine.py session.py server.py  phiên có phiên bản, HTTP + SSE, cổng 8767
   evaluate.py                đo offline (§17)
 ```
@@ -539,3 +558,26 @@ src/decision/
 Test: `python -m pytest -q tests/decision`; gọi model thật: `python -m pytest -m live tests/decision/test_decision_live.py`.
 
 Web: `web/src/user/pd/` (`types.ts`, `api.ts`, `decision.tsx` — `DecisionProvider` + `useDecision()`), màn `screens/Explore.tsx`, `PlaceDetail.tsx`, `Compare.tsx` và `ui/SelectedBar.tsx` (khả thi + lịch ngầm), `ui/Assistant.tsx` (lượt chat). `Engine.draft` trả Decision Output nháp không lưu, cho lịch ngầm của harness. Chức năng từng màn: `docs/Role_Web_Functional_Design.md` §2.5–2.9.
+
+## 19. Trợ lý Lựa chọn (lõi chung với Tìm hiểu)
+
+Chủ dự án 2026-10-29: chatbot Lựa chọn thông minh như Tìm hiểu và dùng chung lõi `src/agents/assistant/` (vòng tool `run_loop`, đăng ký tool, `window` lịch sử, `CURRENT CONTEXT`). Spec: `docs/superpowers/specs/2026-10-29-assistant-tools-design.md` §5.9.
+
+```mermaid
+flowchart LR
+  T[Câu gõ] --> H{heuristics}
+  H -- lệnh / phản hồi chung / ý chuyến --> A[act tất định, không gọi model]
+  H -- còn lại --> L[run_loop: terra]
+  L -- tool đọc --> R[Trip TurnTools qua reader]
+  L -- tool hành động --> W[State làm việc + effect]
+  W --> C[commit MỘT phiên bản]
+  L --> S[say một lần: replace]
+```
+
+- **Thứ tự không đổi:** `exact_command`, `common_wish`, `general_wish` chạy trước và không gọi model. Câu còn lại vào `Engine._assist` khi `assistant.enabled` (config/decision.yaml) và có `Engine.assistant`; không bật thì đường `agent.py` cũ vẫn chạy. Terra trả MỘT tool call mỗi response nên vòng không dùng giới hạn 2 call của Tìm hiểu (`assistant = False` trên `DecisionTurn`, `assistant.max_steps` = 4): câu có hai ý được làm mỗi ý một call. Model lỗi trước khi làm gì: `policy.py` như cũ; lỗi sau khi tool đã đổi State thì giữ các act đã làm.
+- **Tool hành động** (`tool_schemas.py`, docstring là lời model đọc; `place` = alias P#, id hoặc tên): `select`, `drop`, `lock`, `visited`, `like`, `more_like`, `rerank` (wishes theo ontology + feedback far / crowded / pricey), `filter` / `unfilter`, `why_not`, `compare` (2–3 nơi), `trip` (đẩy sang Trip Understanding, event `trip`), `swap_suggest` (không đổi State), `undo` (đứng một mình). Mỗi tool đổi State phải có `quote` nằm trong câu người dùng; `select` / `lock` còn cần người dùng nêu tên hoặc chỉ ("quán này", "quán đầu", "thứ hai"). Nơi chỉ nhận từ màn, kết quả tool hoặc tên người dùng vừa gõ (`DecisionTurn.place`).
+- **Act tất định:** mỗi tool kiểm act bằng `Engine._apply(strict=True)` trên State làm việc (cùng luật `curation.apply`), rồi `Engine.effect` chạy pipeline trên bản sao (memo riêng, phiên không đổi) và trả cho model "nơi vào / ra top mỗi tab", "thêm / bớt shortlist", tổng phút. Model không viết điểm; `why_not` bị cắt `score` / `parts`. Cuối lượt engine ghi **một** phiên bản, nên một lần hoàn tác lấy lại cả lượt.
+- **Tool đọc dùng chung** (`get_place`, `place_evidence`, `local_tips`, `distance`, `weather`, `place_photos`, …): chạy trên một `TurnTools` thật của Trip, lấy từ `Engine.trip_reader(trip_session, text)` = `trip.Tools.read_turn` (harness gắn). Không có phiên Trip thì không đưa tool đọc (fail-closed). Ẩn `photo_identify`, `photo_similar`, `link_resolve`, `more_like_shown` (Lựa chọn chưa có ô gửi ảnh / link). Thẻ không hiện trong chat Lựa chọn: kết quả đọc chỉ nuôi câu trả lời.
+- **Không chặn, không đẩy:** prompt tĩnh cấm cảnh báo hay khuyên chọn; tool nhận mọi lựa chọn hợp lệ; bước nào bị từ chối (không nêu tên, quote lạ, nơi lạ) chỉ trả `error` cho model hỏi lại.
+- **Lời trả lời:** gửi một lần dạng `{"replace": say}`. `guard._bad_say` kiểm số và tên nơi (cho phép số / nơi trong kết quả tool, màn hình, lời người dùng); sai thì gửi lại một lần (`[note]` role `user`), vẫn sai thì dùng câu cố định (`DONE` / `NONE`). Lịch sử: `say` được ghi vào log phiên và nạp lại qua `agents.assistant.window`.
+- **Đo:** `python -m decision evaluate` không đổi (không đi qua trợ lý); bench Lựa chọn: `python -m decision bench [--live] [--model cx/gpt-6.1-terra] [--family f] [--limit n] [--trip]` (`src/decision/bench.py`, ca ở `config/bench_decision_assistant.yaml`: phiên Decision thật trên snapshot, `{p1}` = tên nơi đầu shortlist; không cờ = chỉ nạp ca; `--trip` dựng thêm Trip engine cho tool đọc dùng chung). Cổng: p50 ≤ 7,5 s, p90 ≤ 11 s, 0 số không nguồn, 0 câu chặn / răn người dùng, tool đúng ≥ 90 % mỗi nhóm.

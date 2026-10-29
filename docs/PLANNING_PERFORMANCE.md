@@ -45,14 +45,14 @@ Các số sau lấy từ `/tmp/tripguardian_long_trip_after.json`, probe đượ
 |---|---:|---:|---:|---|
 | Tổng hợp, rỗng | 14 | 0 | 0,004 giây | `ok = true`; không vi phạm; 14 ngày rỗng |
 | Tổng hợp, thưa | 14 | 2 | 0,044 giây | `ok = true`; đặt đủ 2; không trùng; không vi phạm |
-| Tổng hợp, cân bằng | 14 | 56 | 0,199 giây | `ok = true`; đặt đủ 56; không trùng; không vi phạm; có `days_fallback` |
-| Tổng hợp, dày | 14 | 98 | 0,809 giây | Đặt đủ 98; không trùng; `ok = false` vì `day_window`; có `days_fallback` |
+| Tổng hợp, cân bằng | 14 | 56 | 0,199 giây | `ok = true`; đặt đủ 56; không trùng; không vi phạm |
+| Tổng hợp, dày | 14 | 98 | 0,809 giây | Đặt đủ 98; không trùng; `ok = false` vì `day_window` |
 | Corpus, thưa | 14 | 2 | 0,116 giây | `ok = true`; 12 ngày rỗng; độ phủ `sparse`; 2 trải nghiệm trong mục tiêu 55; khoảng 10.034 phút rảnh ước tính |
 | Corpus, cân bằng | 14 | 56 | 1,189 giây | `ok = true`; không vi phạm; độ phủ `enough`; 56 trải nghiệm trong mục tiêu 55; khoảng 1.996 phút rảnh ước tính |
 
 Với dữ liệu corpus cân bằng, phân bổ theo ngày là `[1, 4, 5, 5, 5, 4, 4, 4, 4, 5, 3, 5, 4, 3]`. Cả hai tuần đều có nơi, và không có vi phạm constraint trong kết quả được probe ghi. Số 1,189 giây là thời gian dựng Planning cho fixture đó; không bao gồm việc người dùng tương tác thêm, gọi Agent, hoặc dịch vụ mạng thật.
 
-Kịch bản tổng hợp 98 nơi cố ý tải xấp xỉ bảy nơi mỗi ngày. Planner vẫn giữ toàn bộ 98 nơi, nhưng validator báo lịch vượt cửa sổ ngày. Đây là kết quả fail-closed đúng thiết kế, không phải mất điểm âm thầm hay bằng chứng rằng mọi chuyến 14 ngày đều dựng được. `days_fallback` xuất hiện ở các fixture cân bằng/dày khi số cụm vượt ngưỡng tìm chính xác; khi đó cách chia ngày tham lam được dùng và cảnh báo được giữ lại.
+Kịch bản tổng hợp 98 nơi cố ý tải xấp xỉ bảy nơi mỗi ngày. Planner vẫn giữ toàn bộ 98 nơi, nhưng validator báo lịch vượt cửa sổ ngày. Đây là kết quả fail-closed đúng thiết kế, không phải mất điểm âm thầm hay bằng chứng rằng mọi chuyến 14 ngày đều dựng được. Số đo ở bảng trên lấy từ đường chia ngày cũ (DP trên cụm); đường đó đã được `layout.assign` thay (2026-10-29), xem `docs/PLANNING.md` §Giới hạn đã biết cho số đo mới.
 
 Probe ghi riêng các thời gian Decision trước khi vào Planning: corpus thưa có `create_s = 0,730`, `select_s = 0,983`; corpus cân bằng có `create_s = 0,536`, `select_s = 14,494`. Đây không phải thời gian Planning; thời gian Planning tương ứng là 0,116 và 1,189 giây. Không cộng ba con số thành độ trễ người dùng nếu chưa bao gồm trạng thái UI, Agent và mọi dịch vụ live.
 

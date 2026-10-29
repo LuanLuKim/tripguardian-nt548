@@ -83,13 +83,15 @@ accounts ──►  db
 companion──►  db, accounts, decision, corpus.serving, corpus.ontology, live
 notify   ──►  db, companion, corpus.serving, corpus.ontology, live
 analytics──►  db                       (job `cluster` thêm corpus.llm)
-harness  ──►  trip, decision, planning, agents, accounts, companion, notify, db
+booking  ──►  live, corpus.serving
+journey  ──►  live, booking
+harness  ──►  trip, decision, planning, agents, accounts, companion, notify, db, booking, journey
 ```
 
 Agent của module dùng runtime public `agents`; `harness` gọi `Tools` public của module, router chọn module theo stage. Hành trình, capability và persistence: `docs/AGENT_HARNESS.md`.
 
 Journey pin public corpus binding qua ba module; restore/copy giữ release và reader version,
-không theo pointer mới. Budget giữ amount/scope/provenance trước quy đổi; unknown và activity
+không theo pointer mới. Phiên bản dữ liệu đã pin mà bị dọn khỏi đĩa → fail-closed (không phục vụ dữ liệu khác thay thế), API trả 409 `{"error": "stale_data_version", ...}`; code chưa có thao tác revalidate / pin lại, người dùng tạo lại chuyến. Budget giữ amount/scope/provenance trước quy đổi; unknown và activity
 giữ qua handoff. Retrieval chỉ rank trong scope; bằng chứng đọc riêng từ feature đang phục vụ.
 Contract chi tiết ở tài liệu module và `docs/CORPUS.md` §Chuẩn hóa và release offline.
 
@@ -121,6 +123,8 @@ Mọi ngưỡng nằm trong `config/`, không trong code:
 | `agents.yaml` | agents | giới hạn call và queue của runtime trong tiến trình |
 | `security.yaml` | agents + harness + trip | heuristic/Judge chat, giới hạn request và giải mã ảnh; `docs/AGENT_HARNESS.md` §5 |
 | `decision.yaml` | decision | trọng số xếp hạng, cỡ shortlist, ngưỡng sàng |
+| `booking.yaml` | booking | tham số affiliate theo nhà cung cấp, tuổi tối đa của giá phòng; `docs/BOOKING.md` |
+| `journey.yaml` | journey | ngưỡng chọn phương án đi từ nhà tới chỗ ở; `docs/BOOKING.md` |
 | `planning.yaml` | planning | nhịp độ, cụm, ngày, mục tiêu, độ vững, dự phòng, chỗ ở |
 | `live.yaml` | live | endpoint và TTL từng nguồn live |
 | `climate.yaml`, `holidays.yaml` | live | khí hậu Đà Lạt theo tháng, lễ Việt Nam (nhập tay) |

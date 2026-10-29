@@ -47,6 +47,11 @@ Web: `account.ts` đọc `GET /api/harness/me`; mọi lời gọi `/api/harness/
 |---|---|
 | `GET /api/harness/me` | `{id, email, name, nickname, bio, avatar, role, home_city, usual_mobility, usual_companions, consents, needs_consent, calendar, terms_version}`; mở app cũng kết thúc trạng thái tạm im thông báo |
 | `POST /api/harness/me/consent` | `{version}` = phiên bản hiện tại |
+| `POST /api/harness/me/remember` | `{on: bool}` → `profiles.consents.patterns`: một đồng ý "nhớ cho lần sau" cho cả hồ sơ cá nhân hóa (`docs/TRIP_UNDERSTANDING.md` §17), gồm sở thích, thói quen và nhu cầu sức khỏe / cơ thể / ăn uống người dùng tự nói về mình; nhu cầu chỉ được hỏi lại ở chuyến sau, không tự áp; xem, sửa, tạm dừng, xoá từng mục; chỉ tài khoản |
+| `GET /api/harness/me/profile` | `{enabled, paused, entries[]}`: mọi mục hồ sơ kèm bằng chứng, trạng thái, `used`; chỉ tài khoản |
+| `PATCH /api/harness/me/profile` | `{paused: bool}`: tạm dừng / bật lại cả hồ sơ |
+| `PATCH /api/harness/me/profile/entries/<id>` | `{statement?, paused?}`: sửa câu / tạm dừng một mục; mục của người khác là 404 |
+| `DELETE /api/harness/me/profile/entries/<id>` | xoá thật một mục: phiếu và trích dẫn của nó rời mọi phiên |
 | `PATCH /api/harness/me` | `display_name` ≤ 60, `nickname` (3–24 ký tự `a-z 0-9 . _`, `@` đầu và chữ hoa được chuẩn hóa, duy nhất; trùng → 400 `nickname is taken`), `bio` ≤ 160, `home_city` ≤ 80, `usual_mobility ∈ {motorbike, car, walk}` (`walk` = không dùng xe riêng; hệ thống không đặt xe công nghệ), `usual_companions ∈ {solo, partner, friends, kids, parents}`; `null` / `""` xóa trường |
 | `POST /api/harness/me/avatar` | Body là file ảnh, tối đa 5 MB, JPEG / PNG / WebP mà Pillow mở được; cắt vuông, 256 px, bỏ EXIF, lưu `data/accounts/avatars/<uuid>.webp`; file gốc không giữ |
 | `GET /api/harness/avatars/<key>` | Ảnh WebP; chưa có avatar riêng thì `avatar` là ảnh Google |

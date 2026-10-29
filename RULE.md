@@ -52,6 +52,7 @@
 - Tìm trước, đọc tối thiểu cần thiết.
 - Bắt đầu từ public API → schema → test → implementation.
 - Không quét repo mù quáng.
+- Trước khi kết luận thứ gì hỏng: xem lần chạy thành công gần nhất (log, script, env) và chạy lại đúng đường đó. Probe tự dựng chỉ để khoanh lỗi khi đường thật đã hỏng (F001).
 
 ## 8. Hoàn thành
 - Chạy bước kiểm chứng rẻ nhất mà đủ.

@@ -33,6 +33,7 @@ Phần dùng chung: `src/harness/` (HTTP/SSE, hành trình chung), `src/agents/`
 | `docs/SECURITY.md` | Ranh giới tin cậy, xác thực, phân quyền, chống lạm dụng, bí mật, khoảng trống bảo mật |
 | `docs/COMPANION.md` | Chế độ Đang đi (màn Hôm nay, check-in, gợi ý tại chỗ), xuất Google Calendar có xác nhận, thông báo |
 | `docs/ANALYTICS.md` | Event server / web, server analytics private, chỉ số Admin, Insights |
+| `docs/BOOKING.md` | `Offer` + adapter deeplink (xe khách, máy bay, chỗ ở), phương án đi từ nhà tới chỗ ở, API và `booking_click` |
 | `docs/Role_Web_Functional_Design.md` | Chức năng Web theo vai trò, từng màn, và màn nào nằm ở file nào |
 | `docs/UX_Design_Brief.md` | Brief UI/UX: nguyên tắc, cách hiển thị chất lượng dữ liệu, hệ thị giác |
 | `docs/UI_SPEC_USER_WEB.md` | Đặc tả trang User Web cho designer / Figma |
@@ -113,7 +114,7 @@ Mỗi request giới hạn 15 giây; khóa file tránh chạy chồng. Log ghi g
 | 9router (endpoint của Agent) | theo `AGENT_BASE_URL` | `9router` |
 | SearXNG (`web_search`, chỉ prod) | 8888 | container `tripguardian-searxng` |
 
-Chuyến bay / xe khách cho câu hỏi hậu cần được tra trước mỗi ngày vào cache `data/live/flights/`, `data/live/vexere/` (phạm vi: `config/live.yaml` `transit_prewarm`; ~1.300 lượt tra, chuyến bay mở trình duyệt; một nguồn lỗi 8 lần liền thì dừng nguồn đó). Máy không có Chrome: `run.sh` tự trỏ Playwright vào Chromium trong `.cache/ms-playwright` cho harness và cho lệnh này. Cron trên máy production:
+Xe khách cho câu hỏi hậu cần được tra trước mỗi ngày vào cache `data/live/vexere/` (phạm vi: `config/live.yaml` `transit_prewarm`; một nguồn lỗi 8 lần liền thì dừng nguồn đó). Chuyến bay không dùng cache (`config/live.yaml` `flight_cache: false`): mỗi câu hỏi mở Google Flights trực tiếp, prewarm bỏ qua chuyến bay. Máy không có Chrome: `run.sh` tự trỏ Playwright vào Chromium trong `.cache/ms-playwright` cho harness và cho lệnh này. Cron trên máy production:
 
 ```sh
 15 3 * * * cd <repo> && ./run.sh prewarm >> logs/prewarm_transit.log 2>&1
@@ -147,6 +148,8 @@ python -m corpus gmaps photos && python -m corpus gmaps photo_observe
 python -m corpus tiktok all --city dalat --headed
 python -m corpus aggregate && python -m corpus serving   # serving cũng biên dịch snapshot cho phần online
 python -m corpus snapshot                            # chỉ biên dịch lại snapshot từ data/serving/places.json
+python -m corpus views all --city dalat             # khí hậu, lịch, vùng hạn chế → data/dalat/views/ (docs/CORPUS.md §View toàn cầu)
+python -m corpus pulse --city dalat                  # Nhịp Đà Lạt: bản tin xu hướng từ dữ liệu đã crawl → data/dalat/pulse/ (docs/CORPUS.md §Nhịp Đà Lạt; mỗi 24 giờ: logs/pulse_daily.sh)
 python -m corpus index                               # chỉ mục ngữ nghĩa: vector theo GPU (vectors) rồi gộp vào data/index/ (compile)
 python -m corpus normalize --city dalat              # chuẩn hóa, báo membership/source/schema; không đổi serving pointer
 python -m corpus normalize --rebuild --city dalat    # dựng release staging chỉ từ dữ liệu đã lưu, không model/network

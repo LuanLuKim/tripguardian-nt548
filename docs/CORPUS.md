@@ -43,6 +43,10 @@ Ngoài: mọi dữ liệu người dùng (corpus không lưu và không coi inpu
 | Video TikTok | Trải nghiệm, môi trường, mức vận động cho địa điểm đã có | Tạo địa điểm mới; fact vận hành nếu chỉ có một mình nó |
 | Comment TikTok | Tín hiệu trải nghiệm lặp lại (độ đông, yên tĩnh, đường đi) | Fact; hiển thị một comment đơn lẻ như sự thật |
 | Website / trang chính thức | Giờ, giá, vé, đặt chỗ, quy định, đóng cửa tạm | — |
+| Web (SearXNG) | URL video TikTok không qua ô search (không captcha); câu tìm thật (slug `/discover/`); trang báo / blog làm `Document` (đầu vào của tri thức bản địa) | Chi tiết một nơi (giờ, giá, đặc điểm); tạo hay xác nhận địa điểm; hiển thị nguyên văn trang cho người dùng |
+| Google Search (trình duyệt) | Kết quả Google (vi, VN) khi SearXNG bị chặn: cùng vai trò với Web (URL video, trang đọc) | Như Web |
+| Google Travel (`gtravel`) | Giá một đêm và phòng trống của chỗ ở **đã có trong corpus** cho đúng ngày đi (§Giá phòng theo ngày) | Tạo chỗ ở; danh sách chỗ ở; suy ra giá ngày khác |
+| Trip.com (`tripcom`) | Đối chiếu giá với Google Travel cho các khách sạn nổi bật | Tạo chỗ ở; thay Google Travel |
 
 Video tải về được giữ lại để xem lại nội dung: corpus giữ transcript, timestamp segment, keyframe nhỏ và URL TikTok. File video được giữ cho tới khi đã kiểm (`scripts/free_tiktok_clips.py` xóa sau đó), trừ clip `tiktok clips` chọn cho từng nơi: các clip này phát từ server của mình (`/media/tiktok/<id>/video.mp4`), nơi chưa có clip thì phát qua embed TikTok.
 
@@ -56,9 +60,10 @@ Spec ràng buộc **vai trò**, không ràng buộc model. Mỗi vai trò là m�
 |---|---|---|
 | **Code** | Chuẩn hóa, dedup, rule lọc spam, chấm điểm match, tổng hợp, gate, định tuyến rủi ro | Tất định, có test |
 | **ASR** | Âm thanh → transcript có timestamp | Tiếng Việt, có timestamp |
-| **Extractor** | Mọi việc model khối lượng lớn: `visible_text` + `visual_summary` của keyframe, mention, observation có span, độ liên quan / đối tượng / stance của comment, nhận định từ trang official, kiểm tra span, đề xuất hành động trong vòng lặp tự động (§Vòng lặp tự động) | Nhận ảnh, output có cấu trúc, throughput cao, chi phí thấp hoặc bằng 0; mỗi call vừa một đơn vị tự nhiên (một video, một lô comment, một đoạn trang) |
+| **Extractor** | Mọi việc model khối lượng lớn: `visible_text` + `visual_summary` của keyframe, mention, observation có span, độ liên quan / đối tượng / stance của comment, nhận định từ trang official, `LocalClaim` từ Document web (§Tri thức bản địa), kiểm tra span, đề xuất hành động trong vòng lặp tự động (§Vòng lặp tự động) | Nhận ảnh, output có cấu trúc, throughput cao, chi phí thấp hoặc bằng 0; mỗi call vừa một đơn vị tự nhiên (một video, một lô comment, một đoạn trang) |
 | **Embedder** | Ảnh hoặc chữ → vector (§Chỉ mục ngữ nghĩa): offline cho ảnh và span của corpus, online cho câu / ảnh của user | Tất định với cùng model, chạy GPU local; vector chỉ để xếp hạng và gom cụm, không bao giờ là bằng chứng |
 | **Judge** | Thay người duyệt (§6): gán nhãn từng nhận định của Extractor, phán nơi bị báo đóng cửa, phán hai mục Maps có phải một nơi; kiểm cấp địa điểm của `qc`. **Judge mạnh** cho giá trị cho phép và mọi quyết định đóng cửa / gộp nơi | Khả năng suy luận mạnh nhất có được, **khác họ model với Extractor** (GPT / Claude / Gemini so với Gemma, `docs/LLM_PROVIDER.md`) |
+| **Navigator** | Một call mỗi thành phố: sol đề xuất cần khai thác gì (`aspect`, query, nơi đề cử, kiến thức chung) chỉ từ tên thành phố + `area`, **không** xem kho (§sol dẫn đường) | Suy luận mạnh, kiến thức chung rộng; mặc định cùng đường 9router với Agent, đổi bằng `NAVIGATOR_*` |
 
 Model đang đảm nhận từng vai trò và cách kết nối: `docs/LLM_PROVIDER.md`.
 
@@ -96,7 +101,7 @@ Mọi bước đi qua ledger (input hash × processor version): chỉ việc đ�
 ## CLI
 
 ```
-python -m corpus login <tiktok|gmaps> [--profile <tên>]     # đăng nhập tài khoản phụ, một lần mỗi máy
+python -m corpus login <tiktok|gmaps|gsearch> [--profile <tên>]  # đăng nhập tài khoản phụ (gsearch: giải captcha), một lần mỗi máy
 python -m corpus <gmaps|tiktok> <phase|all> [--city dalat] [--headed] [--limit N]
 python -m corpus judge <dedup|status|audit|all> [--city dalat] [--limit N]  # Judge thay người duyệt (§6)
 python -m corpus build     [--city dalat] [--every N] [--skip <bước>…]  # một lần build tăng dần (dưới đây)
@@ -106,17 +111,33 @@ python -m corpus snapshot  [--city dalat]                   # data/serving/place
 python -m corpus normalize [--city dalat] [--rebuild] [--publish]  # dữ liệu đã lưu → normalization/release offline
 python -m corpus review    [--port 8765]                    # trang review cho người duyệt
 python -m corpus index     [vectors|compile|all] [--kinds photos frames spans]  # chỉ mục ngữ nghĩa (§Chỉ mục ngữ nghĩa)
+python -m corpus web <search|documents|all> [--city dalat] [--limit N]   # SearXNG, thiếu thì Google qua trình duyệt, rồi SerpApi: URL video / slug / Document (data/web/)
+python -m corpus tiktok web_videos [--city dalat] [--limit N]   # video TikTok tìm thấy trên web (data/web/<city>/tiktok_urls.jsonl) → poi → nơi Maps để place_verify xét; logs/tiktok_web_videos_chain.sh <tag> chạy cả chuỗi
+python -m corpus gsearch run (--query "..." … | --from-file <file>) [--pages N] [--city dalat] [--headed] [--profile gmaps_a]  # Google qua trình duyệt, tài khoản Maps (data/gsearch/)
+python -m corpus views <climate|calendar|restricted|all> [--city dalat]      # view toàn cầu (§View toàn cầu), data/<city>/views/
+python -m corpus gmaps resolve [--city dalat] [--limit N]   # nominee sol đề cử → Maps (§sol dẫn đường)
+python -m corpus navigate <plan|compare> [--city dalat] [--map FILE] [--no-latest]   # sol dẫn đường: bản đồ khai thác, so với kho (§sol dẫn đường), data/<city>/navigate/
+python -m corpus local <extract|group> [--city dalat] [--limit N] [--docs FILE] [--parallel 4] [--map FILE]   # Document web → LocalClaim (§Tri thức bản địa), data/<city>/local/
+python -m corpus gtravel price [--city dalat] [--limit N] [--headed]   # giá theo ngày từ Google Travel (data/gtravel/), §Giá phòng theo ngày
+python -m corpus tripcom price [--city dalat] [--limit N]              # đối chiếu Trip.com, HTTP không trình duyệt (data/tripcom/)
+python -m corpus stay_prices [--city dalat]                            # quan sát mới nhất → data/serving/stay_prices/<city>.json
+python -m corpus gflights offers [--city dalat] [--limit N] [--headed] # chuyến bay từ Google Flights (data/gflights/), §Giá chuyến bay
+python -m corpus flight_offers [--city dalat]                          # quan sát mới nhất → data/serving/flight_offers/<city>.json
 ```
 
 | Nguồn | Phase, theo thứ tự |
 |---|---|
-| `gmaps` | `search` → `filter` → `counts` → `list` (tập địa điểm) → `crawl` → `relevant` → `extremes` → `keywords` → `visit` → `qc` → `observe`; ảnh: `photos` → `photo_observe`, `style_observe` (tag phong cách, §Chỉ mục ngữ nghĩa) |
+| `gmaps` | `search` → `filter` → `counts` → `list` (tập địa điểm) → `crawl` → `relevant` → `extremes` → `keywords` → `visit` → `qc` → `observe`; ảnh: `photos` → `photo_observe`, `style_observe` (tag phong cách, §Chỉ mục ngữ nghĩa), `photo_scenes` (nhãn cảnh, người, mờ / tối, trùng gần của ảnh Maps; xem bullet Ảnh Google Maps, §4) |
 | `official` | `pages` → `observe` |
+| `gtravel`, `tripcom` | `price` (rồi `python -m corpus stay_prices`); `logs/lodging_price_loop.sh [city]` lặp mỗi giờ cả ba bước |
+| `gflights` | `offers` (rồi `python -m corpus flight_offers`); `logs/flight_price_loop.sh [city]` lặp mỗi giờ cả hai bước |
+| `web` | `search` → `documents` (HTTP; `search` mở trình duyệt chỉ khi SearXNG bị chặn, qua `gsearch`) |
 | `tiktok` | theo địa điểm: `place_search` → `place_filter` → `place_crawl` → `asr` → `asr_check` → `asr_alt` → `asr_check` → `place_verify` → `place_poi` → `poi_crawl` → `asr` → `asr_check` → `place_verify` → `clips` → `observe`; theo query (ngoài phạm vi hiện tại, code vẫn chạy được): `search` → `list` → `filter` → `crawl` → `comments_crawl` |
+| `tiktok` video từ web | `web_videos` (sau `web search`) → `asr` → `asr_check` → `asr_alt` → `asr_check` → `place_verify` → `place_poi` → `poi_crawl` (`logs/tiktok_poi_loop.sh`) → `asr` → `asr_check` → `place_verify` → `clips`; `logs/tiktok_web_videos_chain.sh <tag> [city]` chạy đúng chuỗi này |
 
-`all` chạy mọi phase của nguồn đó theo thứ tự khai báo. `--headed` mở cửa sổ trình duyệt để tự giải captcha. `--limit N` chỉ cho `observe` / `photos` / `photo_observe` / `style_observe`; `style_observe` nhận thêm `--shard i/n` để chia việc giữa host LAN và UIT (`EXTRACTOR_ON_UIT=1`). `--profile` và `--shard i/n` cho tài khoản TikTok thứ hai trên `place_search` / `place_crawl` / `comments_crawl`.
+`all` chạy mọi phase của nguồn đó theo thứ tự khai báo. `--headed` mở cửa sổ trình duyệt để tự giải captcha. `--limit N` chỉ cho `observe` / `photos` / `photo_observe` / `style_observe`, `web search` (N query chạm mạng mỗi lần chạy) và `web documents` (N trang mỗi lần chạy); `style_observe` nhận thêm `--shard i/n` để chia việc giữa host LAN và UIT (`EXTRACTOR_ON_UIT=1`). `--profile` và `--shard i/n` cho tài khoản TikTok thứ hai trên `place_search` / `place_crawl` / `comments_crawl`.
 
-Phase cần Extractor (`observe`, `asr_check`, `place_verify`, `photo_observe`, `qc`) cần mạng UIT; `judge` và phần kiểm địa điểm của `qc` cần 9router — xem `docs/LLM_PROVIDER.md`. Thứ tự một lần build: observe → `judge all` → `aggregate` → `serving`; `build` chạy đúng chuỗi đó (`src/corpus/build.py`): `gmaps qc` → `gmaps observe` → `gmaps photo_observe` → `tiktok observe` → `official observe` → `judge dedup` → `judge status` → `judge audit` → `aggregate` → `serving`. Mỗi bước bỏ qua phần input không đổi (qc, observe theo input hash; Judge bỏ nhận định đã có nhãn, cặp / nơi đã quyết), nên build sau một đợt crawl chỉ đọc, chấm và tổng hợp phần mới. Bước lỗi (mạng, quota) được báo, build đi tiếp với file đang có; lần build sau làm nốt. `--every N` lặp lại mỗi N phút khi crawl còn chạy; `--skip tiktok` / `--skip "gmaps qc"` bỏ nguồn hoặc bước.
+Phase cần Extractor (`observe`, `asr_check`, `place_verify`, `photo_observe`, `photo_scenes`, `qc`) cần mạng UIT; `judge` và phần kiểm địa điểm của `qc` cần 9router — xem `docs/LLM_PROVIDER.md`. Thứ tự một lần build: observe → `judge all` → `aggregate` → `serving`; `build` chạy đúng chuỗi đó (`src/corpus/build.py`): `gmaps qc` → `gmaps observe` → `gmaps photo_observe` → `tiktok observe` → `official observe` → `judge dedup` → `judge status` → `judge audit` → `aggregate` → `serving`. Mỗi bước bỏ qua phần input không đổi (qc, observe theo input hash; Judge bỏ nhận định đã có nhãn, cặp / nơi đã quyết), nên build sau một đợt crawl chỉ đọc, chấm và tổng hợp phần mới. Bước lỗi (mạng, quota) được báo, build đi tiếp với file đang có; lần build sau làm nốt. `--every N` lặp lại mỗi N phút khi crawl còn chạy; `--skip tiktok` / `--skip "gmaps qc"` bỏ nguồn hoặc bước.
 
 ## Ba loại output
 
@@ -165,8 +186,11 @@ Lưu trữ là **file**: JSON cho các bước offline, LanceDB cho snapshot mà
 | Đường dẫn | Ghi bởi | Nội dung |
 |---|---|---|
 | `data/<source>/` (`gmaps/`, `tiktok/`) | `corpus.crawl` | dữ liệu thô đúng như nguồn trả: `search/`, `filter/`, `counts/`, `list/`, `places/`, `photos/`, `videos/` |
+| `data/web/` | `corpus.crawl.web` | `cache/`, `engines.jsonl`, `budget.json`; theo thành phố `<city>/search/`, `tiktok_urls.jsonl`, `discover_slugs.jsonl`, `doc_urls.jsonl`, `documents/`, `query_yield.jsonl` |
+| `data/gsearch/<city>/` | `corpus.crawl.gsearch` | `results.jsonl` (một dòng mỗi trang kết quả), `raw/<hash>_p<n>.html`, `throttle.json`, `errors.jsonl` |
 | `data/<source>/observations/` | `corpus.observe` | observation theo format chung, một file mỗi địa điểm |
 | `data/gmaps/photo_observations/` | `corpus.observe` | observation đọc từ ảnh Maps |
+| `data/gmaps/photo_scenes/` | `corpus.observe` | nhãn hiển thị mỗi ảnh Maps: cảnh, có người, mờ / tối, cụm gần trùng (không phải bằng chứng) |
 | `data/intel/places/<fid_dir>.json` + `summary.json` | `corpus.aggregate` | Fact / Signal / Estimate theo địa điểm |
 | `data/serving/places.json` | `corpus.serving` | bản build offline của các bản ghi phục vụ; online không đọc file này |
 | `data/snapshot/<version>/<region>/` | `corpus.snapshot` | bảng LanceDB của một vùng: `places` (một hàng mỗi nơi, cột đã tính sẵn), `features`, `feature_ctx`, `fit_verdicts`, `records` (bản ghi đầy đủ theo id), `intel` (phần Trip cần), `videos`; chỉ nơi `VERIFIED` / `UNCERTAIN` / `OUTDATED`, gồm cả chỗ ở |
@@ -237,10 +261,39 @@ data/
     place_poi/<city>.json                {at, model, prompt_hash, places:{fid:{name, category, address, poi:{id, name, address,
                                          category} | null, candidates:[{…poi, videos, relation, reason}], shared_with:[fid]}}}; chấm lại một ứng viên
                                          khi prompt / địa chỉ POI / địa chỉ Maps đổi
+    web_videos/<city>.jsonl              {at, video_id, url, query, poi, mapped, places:[{fid, name, category, address}], downloaded}: mỗi video
+                                         tìm từ web đã mở một lần; places = nơi place_poi đã nối với poi (mapped) hoặc tối đa 3 nơi Maps trùng cặp
+                                         tên riêng với poi (chỉ là ứng viên, place_verify quyết); poi là khu vực hành chính thì không có nơi;
+                                         video có nơi được tải vào videos/<id>/ như place_crawl; place_filter.places_by_video đọc file này
+    web_videos_throttle.json             số tab hiện tại của phase web_videos (MissWatchThrottle)
     poi_crawl/<fid_dir>.json             {at, fid, name, category, address, poi, listed, videos:[{video_id, url, author_id, desc,
                                          hashtags, created_at, score}]}; ghi sau khi tải xong mọi video đã chọn = nơi đã xong
     clips/<city>.json                    {at, places:{fid:[{video_id, url, author_id, desc, score}]}}; dựng lại từ file mỗi lần
     errors.jsonl                         {at, id, stage, error}
+  web/                                   SearXNG (corpus.crawl.web, cấu hình config/queries.yaml `web:`)
+    cache/                               cache đĩa của client (search_page, read_document), hạn cache_ttl_days
+    budget.json                          {day (UTC), used}: tối đa daily_queries (300) query tới engine mỗi ngày; cache hit
+                                         miễn phí; hết → phase dừng gọn (stop_reason budget), ngày sau chạy tiếp
+    engines.jsonl                        mỗi query thật một dòng {at, query, n, engines:{tên: số kết quả}, unresponsive:
+                                         [[engine, lý do]]} hoặc {at, query, error}
+    <city>/search/<query_hash>.json      {query, hash, group, source, searched_at, cached, results:[{url, title, snippet, engines,
+                                         kind, reason}], unresponsive}; có file = query đã xong (không search lại; xóa để làm mới)
+    <city>/tiktok_urls.jsonl             {url, video_id, author, title, query, found_at}: chỉ video chưa có trong data/tiktok/
+                                         (thư mục videos/ và mọi "video_id" của place_search, poi_crawl, search); nguồn tiktok
+                                         đọc file này, không import
+    <city>/discover_slugs.jsonl          {slug, text, query, url, found_at}: câu tìm thật từ /discover/<slug>, chỉ slug nhắc tên
+                                         thành phố; mỗi slug thành một query site:tiktok.com ở lần chạy sau
+    <city>/doc_urls.jsonl                {url, doc_id, domain, title, snippet, query, found_at}; doc_id = sha1(URL chuẩn)[:16]
+    <city>/documents/<doc_id>.json       Document {doc_id, source_url, domain, title, retrieved_at, lang, kind: web,
+                                         sections:[{heading, text}], chars, cut, query}: chia theo heading, cắt doc_max_chars
+                                         (40.000) và ghi cut; trang < doc_min_chars (300) hoặc lỗi → errors.jsonl, bỏ sau 2 lần
+    <city>/query_yield.jsonl             mỗi query một dòng: results, videos_total, videos_new, docs_new, slugs_new, new,
+                                         blocked_engines, cached; nhóm có new ≥ 2 × trung vị (hot_groups) chạy trước lần sau
+    <city>/errors.jsonl                  {at, id, stage: search | document, error}
+  gsearch/<city>/                        Google qua trình duyệt (corpus.crawl.gsearch)
+    results.jsonl                        mỗi trang mở được một dòng: {at, query, page, url, n, results:[{rank, url,
+                                         title, snippet}], related, has_next, captcha_wait_s, raw}
+    raw/<hash>_p<page>.html              trang như đã tải; throttle.json; errors.jsonl {at, id: query#p<n>, stage, error}
   gmaps/
     search/<city>/<category_slug>.jsonl  append mỗi ô: {at, query, tile:[lat, lng, zoom], end, lodging, items:[{fid, name, url,
                                          category, rating, reviews, lat, lng}]}; chỉ chỗ trong area (Maps lấp danh sách ngắn bằng chỗ ở thành phố khác: bỏ); còn thô: trùng giữa các ô, chỗ ở, chỗ không liên quan; ô đã có
@@ -268,6 +321,10 @@ data/
     errors.jsonl
   review/decisions.jsonl                 {at, kind, id, decision, note}; append, quyết định mới nhất của mỗi mục thắng
 ```
+
+- **Web (SearXNG)** (`python -m corpus web <search|documents|all>`, code `src/corpus/crawl/web/`; Trip dùng cùng client qua `corpus.crawl.web`, cache riêng `data/web_cache`). Query `web search` theo thứ tự: bản đồ khai thác `data/<city>/navigate/mining_map.json` (aspect có `sources` chứa `tiktok` thêm query `site:tiktok.com`), không có thì 69 query hạt giống cố định (`queries.py`); rồi slug `/discover/` chưa tìm (tối đa `slug_queries_per_run`); rồi câu Trip không có dữ liệu (`data/trip/gaps.jsonl`, `kind = no_data`, nhiều lượt hỏi trước, tối đa `gap_queries_per_run`). Link chỉ được xếp theo URL: `tiktok.com/@u/video/<id>` → video; `/discover/<slug>` → câu tìm (bỏ slug không nhắc tên thành phố); bài ảnh, profile, link rút gọn TikTok, mạng xã hội, file và OTA bị bỏ (OTA có `/blog` được giữ); còn lại → trang đọc. Nghỉ `min_interval_s` (2 s) giữa hai query thật. Trang không có kết quả mà có engine `unresponsive` là bị chặn; khi đó SerpApi (Google, key `SerpAPI_API_KEY` trong `.env`) trả lời thay nếu tháng còn quota (`serpapi_monthly` 200, gói free 250 / tháng; đếm ở `data/web/serpapi.json`, kết quả có engine `serpapi`, được cache như trang thường). Thứ tự thật: SearXNG → (bị chặn hoặc dưới 3 kết quả) Google qua trình duyệt `gsearch.search_pages([query], city)`, hai nguồn gộp khi mỏng → SerpApi chỉ khi cả hai không ra kết quả; lỗi bất kỳ của gsearch (không mở được trình duyệt, profile đang bận) tính là engine `google-browser` không đáp, ghi `fallback_error` ở `engines.jsonl`, rồi sang SerpApi; Trip (không truyền city) không bao giờ mở trình duyệt. Chỉ một tab gsearch trên cả máy, không chạy khi crawl Maps đang dùng profile `gmaps_a`. Vẫn bị chặn thì: không cache, không ghi `search/`, `stop_after_blocked` (3) lần liên tiếp thì phase dừng (`engines_blocked`). Đo 50 query Đà Lạt 2026-10-28 (`logs/web_probe_50.py`): 40 query chạm engine rồi Google CSE báo quá tải, brave bị treo, duckduckgo CAPTCHA; 901 kết quả, 282/382 video mới, 335 URL trang, 37 slug, 39/40 trang đọc được.
+- **Google Search qua trình duyệt** (`python -m corpus gsearch run`, code `src/corpus/crawl/gsearch/`): trang kết quả Google (`hl=vi`, `gl=vn`, trang 2 = `start=10`) mở bằng profile tài khoản Google đã đăng nhập của crawl Maps (`open_profile("gmaps_a")`, đổi bằng `--profile`; `CORPUS_PROFILE_STATE=1`, cookie ở `.browser/gmaps_a.json`; kiểm cookie `SID` trước), 1 tab, nghỉ 4–9 s giữa hai trang. Chỉ lấy kết quả tự nhiên trong `#rso` (bỏ quảng cáo, link của Google, URL trùng); "Mọi người cũng hỏi" giữ làm `related`; thiếu snippet thì để trống. Trang 2 chỉ mở khi trang 1 có link trang sau. (query, trang) đã có trong `results.jsonl` dưới 30 ngày thì không mở lại. Trang `/sorry/` ("lưu lượng truy cập bất thường"): tab chờ người giải (`wait_for_person`, không giới hạn; tab ở `chrome://inspect`, cổng `CORPUS_DEBUG_PORT`), rồi đọc tiếp trang vừa mở khóa, không thử lại; headless không có cổng thì dừng (`LoginRequired`). Có đăng nhập thì 2026-10-28 đo 30 query: 0 captcha, 8,9 kết quả và 10,3 s mỗi query (`logs/gsearch_probe_2026-10-28_gmaps.json`). Không dùng chung profile với crawl Maps đang chạy cùng lúc (hai bên cùng ghi file cookie). `corpus.crawl.web` dùng được qua `gsearch.search_pages(queries, city, pages)` → `SearchPage` (engine `google-browser`; query chưa mở được vì captcha → `blocked`). IP server 2026-10-28: query không đăng nhập đều ra `/sorry/` (30/30).
+- **Video TikTok từ web** (`python -m corpus tiktok web_videos`, `src/corpus/crawl/tiktok/web_videos.py`): đọc `data/web/<city>/tiktok_urls.jsonl` như một file (không import `corpus.crawl.web`), bỏ video đã có `data/tiktok/videos/<id>/info.json` hoặc đã có dòng ở `data/tiktok/web_videos/<city>.jsonl`. Mở từng trang video trong một phiên ẩn danh (cùng đường với `poi_crawl`: `open_sessions`, `MissWatchThrottle` 2 → `poi_tabs` (3) tab, `ATTEMPTS` lần khi bị chặn; captcha ở headless dừng cả phase, không thử lại, không giải bằng code). Lấy `poi` từ JSON của trang: poi đã nối bởi `place_poi` → nơi Maps đó; poi khác (không phải khu vực hành chính) → tối đa 3 nơi Maps trùng cặp tên riêng (`poi_crawl.name_keys`); không poi → ghi lại, không có gì để xét. Video có nơi được tải ngay trong phiên (playAddr gắn với phiên) rồi qua `asr → asr_check → place_verify` như video của `place_crawl`. Trang không có item (xóa, riêng tư, hoặc khởi đầu của chặn) vào `errors.jsonl` và hỏi lại lần sau.
 
 - **Review lúc crawl** (`python -m corpus review`, trang cục bộ `127.0.0.1:8765`, code `src/corpus/review/`): hàng đợi dựng lại từ file mỗi lần mở, chỉ gồm mục cần người: `video_filter`, `place_filter` (`no` / `unsure`: giữ / bỏ), `video_comments` (`comments_complete` false hoặc thiếu: crawl lại / chấp nhận), `place_qc` (qc khác `ok`, không cho du khách, lỗi model: chấp nhận / loại; nơi trong `area` mà ngoài địa giới thành phố — Nam Ban, K'rèn, đèo Ngoạn Mục — là nơi bình thường, không bị gắn cờ), `place_reviews` (`reviews_complete` false: crawl lại / chấp nhận). Quyết định là nhãn, không sửa giá trị đã crawl; `filter` (TikTok) và `list` (Maps) áp giữ / bỏ của người lên kết quả model, `crawl` lấy lại mục có `retry` mới hơn `fetched_at`.
 
@@ -329,10 +386,17 @@ Mọi nguồn thành `Observation`; không gì ghi thẳng vào entity.
 - **Trang official** (crawl `python -m corpus official pages`, `src/corpus/crawl/official/pages.py`; đọc `python -m corpus official observe`, `src/corpus/observe/official/`): website trong bản ghi Maps của nơi trong list là trang của chính nơi đó; trang mạng xã hội, đại lý vé / đặt phòng, link rút gọn không phải (`official_site`). Mở trang chủ không đăng nhập và tối đa 4 trang cùng site có link / địa chỉ nói giá vé, bảng giá, giờ, liên hệ, giới thiệu; đọc chữ hiển thị sau sự kiện `load`; trang chủ không tải được → không có file, ghi `data/official/errors.jsonl`, lần sau thử lại; tải lại sau 90 ngày. Ghi `data/official/pages/<fid_dir>.json` {fid, name, website, fetched_at, pages:[{url, title, text, cut}]}. Đọc: bỏ dòng lặp giữa các trang (menu, footer), cắt đoạn ≤ 6.000 ký tự, chỉ gửi đoạn có số tiền / giờ / chữ vé; Extractor (`OFFICIAL_OBSERVE`) trả vé (`adult` | `child` | `other`, số VND), vào cửa miễn phí cho mọi khách, giờ mở cửa (`HH:MM`, ngày áp dụng; giờ nhận khách cuối, giờ tour không phải). Gate: quote nằm trong trang, số tiền / giờ nằm trong quote, vé `other` bỏ; giá chỉ lấy cho nơi thuộc nhóm bán vé vào cửa (`TICKET_GROUPS`: nature, garden_farm, attraction, amusement, museum, religious, camping, other — trang nhà hàng, thuê xe, spa có bảng giá dịch vụ, không phải vé); site dùng chung cho nhiều nơi trong list (một đơn vị vận hành) chỉ giữ quote có từ riêng của tên nơi trong 500 ký tự quanh nó; miễn phí khi trang có vé người lớn là ngoại lệ (trẻ dưới 90 cm), bỏ. Output `data/official/observations/<fid_dir>.json` (`source = official`): observation `entry_fee` (`source_type = official_page`, một tác giả `official:<fid>`, nguồn có thẩm quyền như `gmaps_attribute`, §5) và `place_facts` {`hours` (ngày trang nêu; khoảng giờ chồng nhau = mâu thuẫn → không có giờ), `tickets_vnd` {adult, child}}. Đọc lại khi trang hoặc prompt đổi.
 - **Context** trên mọi observation: `time_of_day`, `day_type`, `weather` (theo lời nguồn, không bao giờ là thời tiết thực tế), mỗi cái là enum hoặc `unknown`. "7h sáng hôm đó đông lắm" → `crowd = high`, `time_of_day = morning`, không phải `crowd = high` cho địa điểm.
 - **Review theo từ khóa** (`python -m corpus gmaps keywords`, `src/corpus/crawl/gmaps/keywords.py`): review hiếm khi tự nói dốc, bậc, đi bộ, đối tượng phù hợp, vé hay đặt chỗ, nên ô "Tìm bài đánh giá" của chính Maps được gõ từng từ của `keyword_sets` (`config/queries.yaml`), mỗi bộ từ chỉ cho nơi thuộc nhóm category của nó: "dốc", "bậc thang", "đi bộ", "đường" và "người già", "lớn tuổi", "trẻ em", "em bé" cho nơi trải nghiệm; "vé" cho nơi bán vé vào cửa; "đặt bàn", "đặt trước" cho nhà hàng, quán cà phê, bar. Chỉ mở nơi Maps có nhiều review hơn số crawl giữ, và chỉ tìm từ chưa tìm (bộ từ mới được thêm vào file cũ); giữ `keyword_reviews_per_word` (20) review đầu mỗi từ; một từ xong khi đủ số hoặc Maps báo hết danh sách ("Không có bài đánh giá nào nhắc đến cụm từ …" khi không có kết quả). Ghi `reviews_keywords.json` {fetched_at, keywords:{từ:{complete, reviews}}}; qc, observe, Judge đọc như các file review khác; review của nó là mẫu `keywords` (§4 mẫu có chủ đích).
-- **Thời gian khách thường ở** (`python -m corpus gmaps visit`, `src/corpus/crawl/gmaps/visit.py`): với nơi có biểu đồ giờ cao điểm, đọc dòng "Mọi người thường dành … ở đây" Maps in dưới biểu đồ (từ thời gian thực của nhiều khách) bằng regex trên chữ của trang, ghi nguyên văn `visit.json` {fetched_at, complete, text}; trang xong khi biểu đồ hiện (tín hiệu kết thúc), không hiện thì thử lại, lần cuối lưu `complete: false`. Observe đổi thành `place_facts.time_spent` {min_minutes, max_minutes} bằng luật ("tối đa X" → X/2–X; "X–Y giờ"; "Z phút").
-- **Thực đơn Google Maps** (crawl `python -m corpus gmaps menu`, `src/corpus/crawl/gmaps/menu.py`; tra cứu `src/corpus/serving/dishes.py`): để trả lời "quán nào có bánh bèo / sữa đậu nành / bánh canh". Với nơi thuộc `gmaps.menu_groups` (restaurant, cafe, dessert, bar), mở tab "Thực đơn" của trang Maps: `highlights` ("Điểm nổi bật", món Maps gắn "Phổ biến"), `sections` (mỗi chip nhóm món → tên món + dòng tiếng Anh; giá chỉ giữ nguyên chữ nếu trang có, không suy), và ảnh menu (carousel chỉ hiện 4 ảnh, nên mở ảnh đầu rồi bấm mũi tên phải tới đủ `menu_photos` = 12, lưu ảnh lớn nhất viewer tải, không tải lại). Nơi không có tab ghi `{"has_menu_tab": false}` để không mở lại. Ghi `menu.json` + `menu/`. Chưa đọc ảnh menu bằng model (món và giá chỉ có trên ảnh): làm sau khi host Gemma rảnh. Serving gắn `menu` {dishes[{name, name_en, section, popular, price}], photos} vào record (`dishes.attach`); `dishes.search(records, "bánh bèo")` khớp theo cụm từ nguyên chữ, bỏ hoa thường; truy vấn có dấu thì so có dấu ("phở" không ra "phô mai"), không dấu thì so không dấu; nhóm đồng nghĩa ở `config/dishes.yaml`. Xếp hạng: món "Phổ biến" của chủ quán > món trong thực đơn > món người review nói đã gọi (`details.order`). Không có chữ nào ghi món = `unknown`, không phải "không bán".
+- **Thời gian khách thường ở** (`python -m corpus gmaps visit`, `src/corpus/crawl/gmaps/visit.py`): với nơi có biểu đồ giờ cao điểm, đọc dòng "Mọi người thường dành … ở đây" Maps in dưới biểu đồ (từ thời gian thực của nhiều khách) bằng regex trên chữ của trang, ghi nguyên văn `visit.json` {fetched_at, complete, text}; trang xong khi biểu đồ hiện (tín hiệu kết thúc), không hiện thì thử lại, lần cuối lưu `complete: false`. Observe đổi thành `place_facts.time_spent` {min_minutes, max_minutes} bằng luật ("tối đa X" → X/2–X; "X–Y giờ"; "Z phút"). Đo 2026-10-28: với nơi Đà Lạt Maps không in dòng này (6 nơi nhiều review nhất, 0 dòng; trước đó 30 nơi, 0 dòng) nên phase chỉ ghi `text: null` — không chạy hàng loạt. Khối biểu đồ `div.C7xf8b` cao 0 nên đợi bằng `state="attached"`; `--profile` / `--shard` như `photos`.
+- **Thực đơn Google Maps** (crawl `python -m corpus gmaps menu`, `src/corpus/crawl/gmaps/menu.py`; tra cứu `src/corpus/serving/dishes.py`): để trả lời "quán nào có bánh bèo / sữa đậu nành / bánh canh". Với nơi thuộc `gmaps.menu_groups` (restaurant, cafe, dessert, bar), mở tab "Thực đơn" của trang Maps: `highlights` ("Điểm nổi bật", món Maps gắn "Phổ biến"), `sections` (mỗi chip nhóm món → tên món + dòng tiếng Anh; giá chỉ giữ nguyên chữ nếu trang có, không suy), và ảnh menu (carousel chỉ hiện 4 ảnh, nên mở ảnh đầu rồi bấm mũi tên phải tới đủ `menu_photos` = 12, lưu ảnh lớn nhất viewer tải, không tải lại). Nơi không có tab ghi `{"has_menu_tab": false}` để không mở lại. Ghi `menu.json` + `menu/`. Chưa đọc ảnh menu bằng model (món và giá chỉ có trên ảnh): làm sau khi host Gemma rảnh. Serving gắn `menu` {dishes[{name, name_en, section, popular, price}], photos} vào record (`dishes.attach`). Tra cứu ở `corpus.serving.dishes`: `index(records)` dựng một lần cho mỗi danh sách (khóa không dấu và có dấu, token → nơi; dựng lại khi `menu` / tên / `details.order` của record đổi), `search(records, "bánh bèo")` đi qua index (≈ 10–40 ms trên 3.172 nơi, trước là ~780 ms) và khớp theo cụm từ nguyên chữ, bỏ hoa thường; truy vấn có dấu thì so có dấu ("phở" không ra "phô mai"), không dấu thì so không dấu; nhóm đồng nghĩa ở `config/dishes.yaml` `same` (chỉ gộp khi hai tên là một món: `cà phê trứng` = `egg coffee`). Bằng chứng, xếp hạng từ cao xuống thấp: món "Phổ biến" của chủ quán (`menu_popular`) > nơi mang tên món (`name`: "Bánh bèo Bà Hường", chỉ nhóm `name_groups` = restaurant, cafe, dessert, bar; khách sạn tên "Bánh Bèo" không tính) > món trong thực đơn (`menu`) > món người review nói đã gọi (`review_order`, chỉ khi `details.order` được phục vụ: hiện precision đo 0,48 dưới gate nên rỗng). Cùng bằng chứng đó phục vụ `find(dish=…)` (`corpus.retrieval`) và `find_dishes` của Trip. Không có chữ nào ghi món = `unknown`, không phải "không bán" (`dishes.report(records, queries)` in số nơi ăn uống chưa có danh sách món). Đo 2026-10-28 (3.172 nơi serving, 1.017 nơi ăn uống, 899 có danh sách món): 15 món Đà Lạt thường gặp (`config/dishes.yaml` `probe`) đều ra nơi, từ 12 (bánh bèo) đến 168 (atiso). Món hiếm ra ít vì chỉ ít thực đơn ghi (bê thui 1, cao lầu 1, bánh canh cua 1), không phải vì lọc. Ảnh menu đọc bằng Extractor thử trên 30 ảnh của các nơi chỉ có ảnh: 28/30 trả danh sách, nhưng cùng một ảnh đọc hai lần ra tên khác nhau ("Coffe Dia Phương" / "Cà phê, thuốc lào") và không có đoạn trích để kiểm, nên chưa vào serving.
 - **Ảnh Google Maps** (crawl `python -m corpus gmaps photos`, `src/corpus/crawl/gmaps/photos.py`; đọc `python -m corpus gmaps photo_observe`, `src/corpus/observe/gmaps/photos.py`): mỗi nơi trong list mở thư viện ảnh, tab "Mới nhất" (chỉ vài tháng gần đây) rồi "Tất cả" (thứ tự liên quan, có ảnh nhiều năm trước) tới đủ `photos_per_place` (12; điểm tham quan thuộc `photo_groups` — nature, garden_farm, attraction, amusement, camping, religious, museum — lấy `photos_per_sight` 30, vì bậc thang, lối đi thấy trong ảnh nhiều hơn trong review; nơi đã lưu dừng ở trần cũ, không phải hết gallery, được lấy lại với số mới, `photos.json` ghi `wanted`); mỗi ảnh mở ra để đọc người đăng (contrib id → `author_hash`, cùng hash với review nên một người một phiếu cho cả chữ lẫn ảnh) và tháng chụp ("Ảnh chụp vào: thg 9 2026", không có thì tháng đăng); bỏ ảnh cũ hơn 3 năm (`too_old`), tối đa 3 ảnh một người (`same_author`), metadata phải đọc giống nhau hai lần liên tiếp (header cập nhật từng phần); ảnh chủ quán gắn cờ `owner` (tên người đăng = tên nơi); tải ở 768 px qua tab trình duyệt (request trực tiếp tới máy chủ ảnh bị timeout), ghi `photos/` + `photos.json` (`tabs`, `complete`, `skipped`). Đọc: Extractor (`PHOTO_OBSERVE`) 4 ảnh một call, chỉ được báo `PHOTO_VALUES` (bậc thang dài / dốc phải leo, đường vào đất đá, rất đông, trong nhà / ngoài trời nhìn từ khu khách ngồi, view, biển mây, hoa, thiên nhiên, chỗ ngồi ngoài trời, decor, cắm trại, thú): không bao giờ `absent`, chất lượng, giá hay đối tượng phù hợp; một ảnh một giá trị mỗi feature (hai giá trị → bỏ, `mixed_values`); feature `check: span` đọc lại trên đúng ảnh (`PHOTO_VERIFY`). `source_type = gmaps_photo` (loại `photo`), `observed_at` = tháng chụp, ảnh chủ quán chung một tác giả `gmaps:owner:<fid>`; ghi `data/gmaps/photo_observations/<fid_dir>.json`, `aggregate` đọc cả thư mục này. Headless Chrome phải mang user agent Chrome thường: với "HeadlessChrome" Google trả Maps "chế độ bị hạn chế" (không review, ảnh, giờ) dù đã đăng nhập; `check_signed_in` dừng khi thấy thông báo này.
+- **Nhãn cảnh ảnh Maps** (`python -m corpus gmaps photo_scenes [--limit N] [--shard i/n]`, code `src/corpus/observe/gmaps/scenes.py`, ngưỡng `config/scenes.yaml`): chỉ để chọn ảnh hiển thị, không phải bằng chứng về nơi. Ghi `data/gmaps/photo_scenes/<fid_dir>.json` cạnh `photos.json` (không sửa file thô), mỗi ảnh: `scene` ∈ {exterior, interior, view, food, drink, menu, room, bathroom, amenity, crowd, other, unknown} và `person` {`value` true / false / null, `confidence`} do Extractor (`SCENE_OBSERVE`, 4 ảnh một call, schema chặt; không chắc → `unknown`, không bao giờ đoán; cảnh `crowd` mà `person = no` tự mâu thuẫn nên người = null), `blur` (phương sai Laplace ở bề rộng 384 px) và `brightness` (độ sáng trung bình 0–255) + `w`, `h` do code đo (không model), `cluster` / `keep`: ảnh cùng nơi có cosine SigLIP2 ≥ `cluster_cos` (0,95, dùng lại `data/gmaps/photo_vectors`) là một cụm gần trùng, ảnh nét nhất giữ lại. Cache theo sha256 của ảnh + hash prompt, nơi đổi `photos.json` / vector / prompt mới chạy lại, chạy lại lệnh thì chỉ ảnh mới gọi model. Chọn ảnh hiển thị (`corpus.serving.scenes`: `for_place`, `pick`, `coverage`; `RetrievalEngine.scene_photos(place_id)`): chỉ ảnh giữ lại của cụm, `person = no` với độ tin không `low` (`unknown` không phải "không có người"), không mờ / tối / cháy sáng theo `pick` trong `config/scenes.yaml`, cảnh không phải unknown / other / crowd / menu; mỗi cảnh một ảnh, các cảnh theo thứ tự của loại nơi (`scene_order`: chỗ ở room → exterior → view…, quán ăn interior → food → exterior…, điểm tham quan view → exterior…). Nơi chưa có nhãn trả `[]`, chỗ gọi giữ ảnh cũ. Đo 2026-10-28 (3172 nơi serving): 33.072 / 33.072 ảnh có nhãn, 628 ảnh gần trùng bị gộp, 22.803 `person = no`, 10.019 `yes`, 250 `unknown`; 1.475 / 3.172 nơi (46,5 %) có ≥ 3 cảnh hiển thị được (mức trung bình ~10 ảnh một nơi là giới hạn, không phải bộ lọc: nơi thiếu cảnh cần crawl thêm ảnh); mẫu 100 ảnh chấm tay: cảnh đúng 96/100, người đúng 96/100, trong 64 ảnh gắn "không người" có 63 đúng.
 - Feature id ngoài ontology được ghi là `proposed_feature`; build vẫn tiếp tục. Judge ánh xạ nó vào một feature id có sẵn (đồng nghĩa) hoặc gom vào nhóm đề xuất mới; code kiểm id có trong ontology. Chỉ nhóm đề xuất mới có ≥ 3 nguồn độc lập mới vào review; ontology chỉ người sửa.
+
+Hai nguồn món bổ sung (bật ở `config/dishes.yaml` `sources`, cần precision Wilson cận dưới ≥ 0,8 trên nhãn tay, không hạ ngưỡng; `dishes.attach` ở `src/corpus/serving/dishes.py`):
+- `menu_photo` (`corpus gmaps menu_read`, `src/corpus/observe/gmaps/menu_read.py`): Extractor đọc mỗi ảnh menu hai lần; chỉ giữ tên món hai lần đọc cùng khớp, giá chỉ giữ khi hai lần bằng nhau và 5k–5M đ (ưu tiên precision hơn recall). Giá thành `menu.price_evidence` (p25–p75, cần ≥ 3 giá). Đo: tên 114/127 = 0,898 (cận dưới 0,833), giá 99/103 (cận dưới 0,904). Lỗi chính: đọc sai dấu, ảnh đọc ra món bịa cả hai lần, giá combo bị tính là giá món.
+- `review_order` (`corpus gmaps dish_check`, `src/corpus/observe/gmaps/dish_check.py`): món người review nói đã gọi, có đoạn trích nguyên văn + Judge kiểm; bỏ từ chung chung và câu ước muốn (`generic`, `wish_prefix`). Đo: 108/118 = 0,915 (cận dưới 0,851). Judge gần như luôn trả "serves" nên bộ lọc yếu; chất lượng nằm ở đoạn trích và danh sách loại.
+- Đường cũ `details.order` thô (precision 0,481) không còn là bằng chứng.
+- Độ phủ (1.017 nơi ăn uống): có món 899 → 929; có bằng chứng giá thực đơn 0 → 765; có giá bất kỳ 894 → 955.
 
 ### 5. Aggregate (chỉ code)
 
@@ -366,7 +430,27 @@ source_type           official | provider | video | comment
 - Chất lượng đo được (§Đo chất lượng): `quality` = thống kê nhãn của giá trị đứng đầu (`review.label_stats()`: precision, cận dưới Wilson, `gate`); `servable` = giá trị được phục vụ một mình: có `authority`, hoặc qua ngưỡng nhãn (≥ 30 nhãn, cận dưới ≥ 0,8), hoặc mọi tác giả của nó đã được kiểm đúng (`checked.all`), hoặc người `accept`. Quyết định `feature_review` (id `<fid>#<feature>`, bản mới nhất, `undo` = không có): `disable` → `status = disabled`, `servable = false`; `accept` → `needs_review = false`; `report` / `refresh` → `needs_review = true`.
 - `estimates` (`aggregate/estimates.py`, bảng `config/category_defaults.yaml`; luôn là Estimate, không bao giờ là fact hay bộ lọc cứng): `category_group` (cụm `match` khớp category Maps theo nguyên từ, cụm dài nhất thắng, hòa thì nhóm đứng trước; category không khớp cụm nào thì đọc tên nơi theo cùng luật; vẫn không thì `other` — `corpus/categories.py`), `visit_minutes` {short, typical, long, source} (`time_spent` của Maps trước, `source = maps_time_spent`; rồi `visit_duration` của review khi ≥ 3 tác giả và `signal`; còn lại mặc định của nhóm), `entry_fee` {min_vnd, typical_vnd, max_vnd, n, source} (số tiền trong quote `entry_fee = paid` nằm cùng mệnh đề với chữ vé / vào cổng / tham quan / ticket, không phải mệnh đề về chụp ảnh, gửi xe, thuê đồ, massage, giá theo kg: "50k", "160.000 đồng"…; mỗi tác giả số lớn nhất vì vé người lớn cao nhất; chỉ lấy quote trong 730 ngày gần nhất khi có ≥ 2 tác giả; không có thì vé Maps US$ × `usd_vnd`), `usable_as_default`, `effort_hint` (`low` chỉ cộng điểm xếp hạng: đo 2026-10-02, dốc có ở 16% nhà hàng và 37% quán cà phê có bằng chứng effort).
 
-**Serving record** (code `src/corpus/serving/`, lệnh `python -m corpus serving` → `data/serving/places.json`; ngưỡng `config/serving.yaml`): bản ghi Place Decision đọc (`PLACE_DECISION.md` §2.2). Nơi có `closure` (tạm hoặc hẳn) hoặc Judge phán `closed` / `changed` (`place_status`, §6) là `DISABLED`, không vào file; chỗ ở (`stay`) trong `area` của một thành phố mà xa tâm hơn `stay_within.km` (`config/cities.yaml`, Đà Lạt 12 km: bỏ Nam Ban, D'Ran) cũng không vào file (`stay_outside_city`); Judge phán `unclear` → bản ghi `UNCERTAIN` (`closure_reported`). Feature theo khía cạnh (`experience`, `environment`, `service`, `effort`, `suitability`): `disabled` / `needs_review` (`unchecked`) → bỏ; `uncertain` → `UNCERTAIN` (`conflict` | `low_agreement`); chưa `servable` → `UNCERTAIN` (`unmeasured_precision`); còn lại `VERIFIED`, quá `freshness_days` (độ đông 365, khác 730) → `OUTDATED`. Mỗi feature giữ value, phân phối, n, `mention_rate`, confidence, bối cảnh, cận dưới precision, ≤ 5 id bằng chứng. `operation`: giờ (fact, kèm `source`; quá 90 ngày → `OUTDATED`; `hours_conflict` → `UNCERTAIN` kèm `conflict`), giá / người (180 ngày), giá vé (`kind = fact` khi lấy từ trang official, còn lại `estimate`) + thời gian tham quan (`kind = estimate`), đặt chỗ, độ đông theo giờ. `usable_as` = mặc định nhóm category, bỏ `experience` khi coverage experience `NONE`. `check(record, feature, forbidden)` = kiểm tra fail-closed của §6.2 Place Decision: `fail` khi giá trị cấm chắc chắn (`VERIFIED` / `OUTDATED`); `pass` khi giá trị khác chắc chắn và không tác giả nào nói giá trị cấm; còn lại (không bằng chứng, `UNCERTAIN`, có người nói ngược) `unknown`. `area` = khu vực (leader clustering: nơi có nhiều láng giềng nhất trong `area_km` làm tâm). `near_duplicate_group`: cùng nhóm category + cùng `usable_as` + Jaccard ≥ 0,6 trên cặp (feature, value) "loại nơi" (experience + environment trừ chất lượng / đông / sạch / đỗ xe / thời tiết / vệ sinh / muỗi) được ≥ 2 tác giả và ≥ 3% người viết nhắc, so với leader của nhóm (nơi nhiều feature nhất), không nối chuỗi. `mmr()` chọn shortlist: λ·điểm − (1−λ)·độ giống lớn nhất với nơi đã chọn.
+**Serving record** (code `src/corpus/serving/`, lệnh `python -m corpus serving` → `data/serving/places.json`; ngưỡng `config/serving.yaml`): bản ghi Place Decision đọc (`PLACE_DECISION.md` §2.2). Nơi có `closure` (tạm hoặc hẳn) hoặc Judge phán `closed` / `changed` (`place_status`, §6) là `DISABLED`, không vào file; chỗ ở (`stay`) trong `area` của một thành phố mà xa tâm hơn `stay_within.km` (`config/cities.yaml`, Đà Lạt 12 km: bỏ Nam Ban, D'Ran) cũng không vào file (`stay_outside_city`); Judge phán `unclear` → bản ghi `UNCERTAIN` (`closure_reported`). Feature theo khía cạnh (`experience`, `environment`, `service`, `effort`, `suitability`): `disabled` / `needs_review` (`unchecked`) → bỏ; `uncertain` → `UNCERTAIN` (`conflict` | `low_agreement`); chưa `servable` → `UNCERTAIN` (`unmeasured_precision`); `entry_fee = free` mà ước tính vé có `typical_vnd` > 0 → `UNCERTAIN` (`conflicts_entry_fee_estimate`, vẫn giữ giá trị `free`); còn lại `VERIFIED`, quá `freshness_days` (độ đông 365, khác 730) → `OUTDATED`. Mỗi feature giữ value, phân phối, n, `mention_rate`, confidence, bối cảnh, cận dưới precision, ≤ 5 id bằng chứng. `operation`: giờ (fact, kèm `source`; quá 90 ngày → `OUTDATED`; `hours_conflict` → `UNCERTAIN` kèm `conflict`), giá / người (180 ngày), giá vé (`kind = fact` khi lấy từ trang official, còn lại `estimate`) + thời gian tham quan (`kind = estimate`), đặt chỗ, độ đông theo giờ. `usable_as` = mặc định nhóm category, bỏ `experience` khi coverage experience `NONE`. `check(record, feature, forbidden)` = kiểm tra fail-closed của §6.2 Place Decision: `fail` khi giá trị cấm chắc chắn (`VERIFIED` / `OUTDATED`); `pass` khi giá trị khác chắc chắn và không tác giả nào nói giá trị cấm; còn lại (không bằng chứng, `UNCERTAIN`, có người nói ngược) `unknown`. `area` = khu vực (leader clustering: nơi có nhiều láng giềng nhất trong `area_km` làm tâm). `near_duplicate_group`: cùng nhóm category + cùng `usable_as` + Jaccard ≥ 0,6 trên cặp (feature, value) "loại nơi" (experience + environment trừ chất lượng / đông / sạch / đỗ xe / thời tiết / vệ sinh / muỗi) được ≥ 2 tác giả và ≥ 3% người viết nhắc, so với leader của nhóm (nơi nhiều feature nhất), không nối chuỗi. `mmr()` chọn shortlist: λ·điểm − (1−λ)·độ giống lớn nhất với nơi đã chọn.
+
+**Uy tín** (`corpus.serving.reputation`, ngưỡng `config/serving.yaml` `reputation`; `python -m corpus serving` gắn vào mọi bản ghi): đo bằng số của chính Maps (`score`, `reviews` trong `data/gmaps/places/<fid>/place.json`, cả quần thể), không phải cỡ mẫu đã crawl. Ghi `identity.rating`, `identity.reviews` và `provenance.reputation` = `{score, rating, reviews, rating_adj, rating_pct, volume_pct, pool}`; thiếu rating hoặc review → `null`, không phải 0.
+
+```mermaid
+flowchart LR
+  R[rating, reviews] --> A["rating_adj = (n·rating + m·TB nhóm) / (n + m)"]
+  A --> Z1[z-score trong nhóm]
+  R --> V["ln(1 + reviews)"] --> Z2[z-score trong nhóm]
+  Z1 --> U1["rating_pct 0..1"]
+  Z2 --> U2["volume_pct 0..1"]
+  U1 --> S["score = 0,35·rating_pct + 0,65·volume_pct"]
+  U2 --> S
+```
+
+- Nhóm so sánh = thành phố × `category_group`; nhóm dưới `min_pool` (100) so với cả thành phố. `m` = `prior_strength` (20): 5,0 sao từ 3 review bị kéo về trung bình nhóm.
+- Hai trục cùng một thước: z-score trong nhóm rồi cùng ép vào 0..1 (`z / (2·z_span) + 0,5`, `z_span` = 3, cắt ở hai đầu). Dùng percentile thì trục số review bão hòa ở đầu trên (3.000 và 500 review chỉ cách nhau vài phần trăm).
+- Trọng số review (0,65) lớn hơn rating (0,35): 4,6 sao / 3.000 review cao hơn 4,7 / 1.000 và 4,9 / 500, và 4,0 / 1.500 vẫn thấp hơn 4,5 / 500. Các thứ tự này có test trên số thật của Đà Lạt (`tests/serving/test_reputation.py`). Đo 2026-10-29, điểm trong nhóm cả thành phố (3.172 nơi): 4,6/3000 = 0,795; 4,7/1000 = 0,727; 4,9/500 = 0,720; 4,8/300 = 0,647; 4,3/1500 = 0,652; 4,5/500 = 0,612; 4,0/1500 = 0,570; 4,0/20 = 0,267; 5,0/3 = 0,219.
+- Snapshot có cột `reputation` (điểm) cho `decision.frame`; Decision dùng ở `PLACE_DECISION.md` §8, Planning ở `PLANNING.md` ⓐ.
+
+**Độ tin của feature** (`corpus.serving.evidence`): dùng chung cho xếp hạng và cột `conf` của snapshot, công thức ở `PLACE_DECISION.md` §8. Ngưỡng trạng thái của serving không phụ thuộc số review: `servable` / `UNCERTAIN` theo `agreement` ≥ 0,6 (tỷ lệ), cổng nhãn và "mọi tác giả đã được kiểm"; chỉ `TREND_MIN` (5 tác giả mỗi nửa), `details.min_authors` (2) và `SILENCE_MIN_MENTIONS` (1) là số tác giả tuyệt đối.
 
 Serving record có đủ cho Place Decision hay không được đo bằng `python -m decision evaluate` (`docs/PLACE_DECISION.md` §17), chạy đúng pipeline thật trên 30 Trip State ẩn của `config/eval_trips.yaml`.
 
@@ -434,6 +518,27 @@ flowchart LR
 **Aggregate** (`aggregate/details.py`). Theo (nơi, kind): bỏ observation Judge gọi `wrong` / `unsure_again`, mẫu có chủ đích với kind không `targeted`, nguồn của chính doanh nghiệp với kind không `owner`. Hai cách nói một việc gộp thành một cụm khi token (bỏ số tiền và từ đệm) trùng ≥ `cluster_jaccard` hoặc tập này chứa tập kia, so với leader, tất định; `fit` gộp theo `who` trước. Mỗi cụm có `n` (số tác giả, một tác giả một phiếu), `authority` (có trang official), `amount_vnd` (trung vị, mỗi tác giả một số), tháng / thứ / buổi đếm theo tác giả, `evidence` ≤ 5 id. `operation` mang thêm `tickets_vnd` và `last_entry` từ official.
 
 **Serving** (`serving/details.py`, khối `details` của bản ghi). Một cụm được phục vụ khi có ≥ `min_authors` tác giả (hoặc một nguồn official); `VERIFIED` khi độ chính xác của kind qua cổng nhãn, `UNCERTAIN` (`unmeasured_precision`) khi chưa đo, không phục vụ khi kind đã có ≥ 30 nhãn mà không qua cổng. Khối: `known_for` (cụm hiếm trong nhóm category: `n × log(số nơi nhóm / (1 + số nơi khác có cụm trùng))`, cụm mọi nơi đều có điểm 0), các danh sách `order`, `avoid`, `activity`, `photo_spot`, `access`, `booking`, `bring`, `situation`, `cost` (vé theo đối tượng, gửi xe, khoản thêm, giá theo xe / nhóm, `total_vnd` {base, with_extras} cho một người, `fact` chỉ khi mọi phần từ official), `timing` (giờ đẹp / nên tránh, tháng chỉ khi ≥ 2 tác giả hoặc khớp `seasons.yaml`, lịch cố định, `last_entry` official thắng review), `fit` theo `who`, `relations` (vắng hơn / đông hơn khi số người viết và tỷ lệ `crowd = high` cùng chiều), `walk_to_night_market_min` (≤ `walk_max_min`, ước tính). `feature(record, "fit.<who>")` trả `details.fit[who]` nên `check(record, "fit.baby", "bad")` chạy như feature thường. Ngưỡng nằm ở `config/serving.yaml` khối `details`.
+
+## Giá phòng theo ngày
+
+Giá ở `list/<city>_stay.json` và `gmaps stay_price` là giá tham khảo theo ngày mặc định của Maps. Giá **đúng ngày đi** đến từ hai nguồn riêng, mỗi nguồn một module và một thư mục (`src/corpus/crawl/gtravel/`, `tripcom/`; helper chung `crawl/common/lodging.py`). Danh sách chỗ ở không crawl lại: chỉ làm tươi giá và phòng trống của chỗ ở đã có.
+
+```mermaid
+flowchart LR
+  C[config lodging_price: bộ ngày] --> G[gtravel price]
+  C --> T[tripcom price]
+  G -->|observations.jsonl| S[stay_prices]
+  T -->|observations.jsonl, unmatched.jsonl| S
+  S --> P[data/serving/stay_prices/city.json]
+  P --> O[online: kiểm ngân sách]
+```
+
+- **Bộ ngày** nằm ở `config/queries.yaml` khối `lodging_price` (quy tắc `weekday`, `count`, `nights`; hiện 4 thứ Bảy × 1 đêm, 2 thứ Sáu × 2 đêm, 2 thứ Ba × 1 đêm; 2 người lớn). Không bao giờ lấy đêm hôm nay.
+- **Google Travel (chính).** Mỗi (chỗ ở, ngày) một trang: URL dựng từ CID của `fid` Maps và tham số `ts` (ngày nhận / trả, số đêm), đã so từng byte với URL Google tự sinh (`gtravel/url.py`), nên không phải gõ ngày. Đọc ô giá ngay trên các tab: đó là **giá một đêm** đã gồm thuế cho đúng ngày (cùng một chỗ: 1 / 2 / 3 đêm → 1,72 / 2,08 / 2,0 triệu mỗi đêm), là giá "từ" thấp nhất Google hiện. `price_total_vnd` = giá đêm × số đêm (suy ra). Trang không có lựa chọn đặt phòng ("Liên hệ với khách sạn này…") → `price: null`, `available: null`: **không có offer ≠ hết phòng**, nên `available` không bao giờ là `false`. Trang hiện ngày khác ngày đã hỏi → không nhận giá. Không đăng nhập, mỗi trang một ngữ cảnh không cookie, ≤ 2 tab; captcha: chạy `--headed` thì chờ người giải, chạy ngầm thì dừng lượt đó (không retry, không giải bằng code).
+- **Trip.com (đối chiếu).** Trang danh sách thành phố nhận `checkin` / `checkout` và render sẵn JSON (`hotelList`); chỉ ~12 khách sạn nổi bật mỗi lần gọi, thứ tự xáo, tham số `keyword` / trang bị bỏ qua, nên mỗi ngày gọi `calls_per_date` lần rồi gộp. Giá lấy là **tổng** có thuế (`Tổng giá: …`), giá đêm = tổng / số đêm. Khớp với chỗ ở trong corpus bằng tên đã gấp (bỏ dấu, bỏ "khách sạn", "hotel", tên thành phố) và khoảng cách; mơ hồ (hai chỗ gần như nhau, hoặc tên này nằm trong tên kia) thì không khớp. Hàng không khớp vào `unmatched.jsonl`, **không bao giờ gắn vào địa điểm**.
+- **Hàng quan sát** (`observations.jsonl`, chỉ ghi thêm): `fid, price_total_vnd, price_night_vnd, currency, available, stay_date, nights, adults, observed_at, source, url, matched_name, match_score`. Kiểm ở ranh giới ghi (`lodging.check`).
+- **Làm tươi.** Mỗi lượt lấy các cặp (chỗ ở, ngày) đến hạn: chưa thấy lần nào trước, rồi cũ nhất; đã có giá thì sau `fresh_h`, không có offer thì sau `no_offer_h`; tối đa `max_per_run` trang mỗi lượt, `top_lodgings` chỗ ở điểm cao nhất. Vòng `logs/lodging_price_loop.sh` chạy mỗi giờ: `gtravel price` → `tripcom price` → `stay_prices`.
+- **Serving** (`corpus.serving.stay_prices`). Quan sát mới nhất mỗi (`fid`, `stay_date`, `nights`) → `data/serving/stay_prices/<city>.json` `{items:[{…, source, cross_check:{tripcom:{…}}}]}`. Google Travel thắng; nguồn khác chỉ trả lời khi Google không thấy offer, và giá các nguồn còn lại đi kèm trong `cross_check`. Cặp không nguồn nào có giá thì không có trong file: unknown vẫn là unknown. `stay_prices.load(city, max_age_h)` trả `{(fid, stay_date, nights): item}`; các API công khai của `live` và `corpus.retrieval` chưa đổi, phần kiểm ngân sách đọc dict này khi được nối.
 
 ## Vòng lặp tự động
 
@@ -513,6 +618,30 @@ release root, manifest/artifact và version; index nạp khi cần. `search_name
 Tìm tên có public typed `NameRecord`/`NameHit` và hàm thuần `search_names`/`name_score`, không
 cần semantic index. Chữ được so theo token có nghĩa, bỏ dấu/case và tên thành phố.
 
+### Agent đọc kho: `card`, `find`, `vocabulary`
+
+Chỉ đọc, không model, trả bản ghi nơi gọn cho Agent của Trip và Decision. Mọi giá trị chép từ serving record; thiếu thì bỏ khóa, không điền mặc định.
+
+- `engine.card(id)` / `card(record)`: khóa dưới đây, khóa rỗng bị bỏ.
+
+| Khóa | Nội dung |
+|---|---|
+| `id` `n` `cat` `g` `addr` | id, tên, category Maps, nhóm, địa chỉ |
+| `h` (+ `h_status`) | giờ gộp theo ca: `{"06:30-21:30": "mon,tue"}`; `h_status` chỉ khi giờ không `VERIFIED`; ngày thiếu = không biết |
+| `fee` | `min typ max src kind`; `conflict: true` khi vé `UNCERTAIN` vì `conflicts_entry_fee_estimate` |
+| `price` `night` | khoảng giá / người, giá / đêm |
+| `visit` + `visit_src` | [ngắn, thường, dài] phút và nguồn con số |
+| `f` / `f?` | `fid=value` của feature `VERIFIED`/`OUTDATED` / của feature `UNCERTAIN` |
+| `known` `order` `avoid` `activity` `photo_spot` `access` `booking` `bring` `situation` | `details`: ≤ 3 mục `VERIFIED`/`OUTDATED` mỗi loại |
+| `<k>?` (`order?`, `best?`…) | cùng loại nhưng mục `UNCERTAIN`; không bao giờ lẫn vào `<k>` |
+| `best` `avoid_t` `months` `months_avoid` | giờ / tháng nên và nên tránh |
+| `dishes` `peak` `trend` `voices` `status` | ≤ 8 món menu, giờ đông, xu hướng sao, số người viết, `status` bản ghi khi không `VERIFIED` |
+
+- `engine.find(criteria, limit=8)` (`Criteria` hoặc dict; sai feature / value / nhóm / ngày / giờ / tháng → `ValueError`) → `FindResult(hits, maybe, unknown, release_id)`. Tiêu chí: `groups`, `must`, `prefer`, `open_at`, `opens_by`, `dish`, `month`, `near`, `text`. Chỉ `groups` chứa `stay` mới trả chỗ ở. `must` fail-closed như §6.2 Place Decision: `VERIFIED`/`OUTDATED` → `hits`; chỉ `UNCERTAIN` → `maybe`; không bằng chứng → đếm vào `unknown`, không trả; giá trị khác → loại. Giờ chỉ tính khi `hours` chắc chắn. `fit.<who>` lọc theo `details.fit`. `prefer`/`month`/`text` chỉ xếp hạng, không loại.
+- `engine.vocabulary()`: nhóm + số nơi, feature + value + nhãn ngắn, companion; để Agent chỉ dùng từ có thật.
+- `engine.warm()`: nạp cột feature và cache giờ / món / tháng; RSS tăng ~214 MB trên Đà Lạt (3172 nơi: ~182 MB parse record + ~33 MB cột).
+- Ngân sách: `find` không `text`, kho nóng, p95 ≤ 30 ms; `card` p95 ≤ 1 ms và ≤ 2000 ký tự. Đo trên release thật bằng `python -m bench retrieval [--release <id>] [--out <dir>]` (ghi `data/bench/retrieval/`; kiểm từng hit trên record và recall so với duyệt toàn bộ); không thuộc §CLI của corpus.
+
 Span release giữ `served=True` cho claim backing value đang phục vụ; `served=False` cho
 claim normalized hợp lệ còn lại. Claim sai nguồn/quote, nhãn `wrong`/`unsure_again` hoặc vector
 không tương thích bị loại khỏi cả hai. `Index.span_rows()` trả metadata có kiểu; `search_spans`
@@ -540,6 +669,153 @@ reader version theo `docs/AGENT_HARNESS.md` §3; release cũ đang được tham
 Process đã chạy cần restart để nhận code/factory mặc định mới; journey đã pin vẫn dùng release cũ.
 
 `web/scripts/export_snapshot.py --view both` xuất `snapshot.json` từ `projection/serving.json` của release (đúng eligible ID, feature qua gate) và `snapshot-admin.json` riêng để Admin vẫn xem inventory/review. Admin đọc file riêng; build production bỏ file Admin. `scripts/pack_data.py` chỉ đóng gói release active và artifact trong manifest, nguồn/media đã lưu; loại normalization, staging, backup, session/account/live data. Không xóa release cũ hoặc dữ liệu gốc khi đóng gói.
+
+## sol dẫn đường
+
+`src/corpus/navigate/` (public `__init__.py`, offline). sol quyết **khai thác gì** cho một thành phố; code kiểm khuôn, rồi so với thứ kho đang giữ. sol không quyết dữ liệu nào đúng.
+
+```mermaid
+flowchart LR
+  C[tên thành phố + area] --> S[sol · vai trò Navigator]
+  S --> G{schema: code kiểm}
+  G --> M[(mining_map.json)]
+  M --> X[compare]
+  K[ontology · query · mùa · món · cảnh · nơi đang có] --> X
+  X --> R[báo cáo + resolve_queue]
+  R --> O[/chủ dự án duyệt/]
+```
+
+- **Mù có chủ ý.** Prompt của `NAVIGATOR_PLAN` (`corpus/llm/tasks.py`) chỉ có tên, `area` của `config/cities.yaml`; không có ontology, query hay nơi nào của kho. Một call mỗi lần chạy, khoảng 2–3 phút ở mức `low` (`Task.ask` thử lại tối đa 4 lần khi JSON sai khuôn, mỗi lần tốn thêm bấy nhiêu).
+- **Bản đồ khai thác** `data/<city>/navigate/mining_map_<ts>.json` và `mining_map.json` (bản mới nhất; `navigate plan --no-latest` chỉ ghi file có dấu thời gian). `web search` đọc `mining_map.json` để lấy query (`aspect.key`, `queries`, `sources` có `tiktok`). Bản rỗng không bao giờ thay bản đang dùng.
+
+| Trường | Ý |
+|---|---|
+| `aspects[].key` | snake_case tiếng Anh, duy nhất, 3–40 ký tự |
+| `name_vi`, `why` | tên người Việt dùng, một câu lý do |
+| `target.kind` / `ref` | `feature` (id sol đoán) · `local_claim` (một kind LocalClaim) · `media` (tên cảnh) · `new_feature` (key mới) |
+| `target.new_feature` | chỉ khi `new_feature`: `{key, type presence\|rating\|category, values (đóng), hint}`; presence = `[present]`, rating = `[good, mixed, poor]`, category = 2–6 giá trị snake_case |
+| `queries` ≤ 8, `sources`, `months` | câu tìm (3–120 ký tự), nguồn ∈ {maps, tiktok, web, official, news}, tháng cần |
+| `nominees` ≤ 15 | `{name, area_hint}` nơi sol đề cử |
+| `rejected[]` | mục sai khuôn bị bỏ, kèm `path` và lý do (key sai/trùng, thiếu `why`, hết query, `new_feature` sai khuôn, quá 40 aspect…) |
+
+- **`general_claims`** (thành `LocalClaim` `origin = model`, §Tri thức bản địa): kiến thức chung sol nêu, mỗi claim `{claim_id, subject_kind city\|area\|dish\|phenomenon, subject, kind, text, when {months, days, hours, weather}, source: "model"}`. `kind` ∈ best_time, crowded_at, avoid, specialty, price_norm, access, if_rain, season, event, notice, tip. Không có `poi`: claim mà `subject` trùng tên nơi sol đề cử, `text` rỗng hoặc dài hơn 300 ký tự, `hours` sai dạng `HH:MM-HH:MM` đều bị bỏ. Trạng thái `confirmed` / `contradicted` / `unverified` do `local group` gắn (§Tri thức bản địa), không phải `navigate`. Đọc qua `navigate.general_claims(city)`.
+- **`compare`** (`python -m corpus navigate compare`) chỉ **đọc** kho: aspect ↔ feature ontology (id trùng, hoặc fold dấu + Jaccard token ≥ 0,5 trên id / mảnh `hint` / `claims`, và phải trùng ít nhất hai từ trừ khi hai bên đều chỉ một từ; báo cáo ghi `match.text` để người duyệt tự xét, vì khớp chữ vẫn có thể sai), rồi ↔ query (`config/queries.yaml`, câu hạt giống của `web`), mùa (`config/seasons.yaml`), nhóm món (`config/dishes.yaml`), tên cảnh (`config/scenes.yaml`). Nhãn: `covered_feature`, `covered_query`, `new`. Mỗi query của sol được đếm đã có / mới. Nominee ↔ tên trong `data/serving/places.json` (`retrieval.search_names` + `name_score`): `held` khi `name_score` ≥ 0,7 và ít nhất nửa số từ của nominee có trong tên nơi (chặn kiểu "Nhà thờ Con Gà" ~ "Ga Đà Lạt"), `maybe` khi `name_score` ≥ 0,4, `missing` còn lại. Ngưỡng ở `config/navigate.yaml`.
+- **Chỉ là đề xuất.** Aspect `new` và feature mới mang `approval: "pending"`; nominee `missing` vào `data/<city>/navigate/resolve_queue.jsonl` (`status: proposed`, `approval: pending`) cho bước resolve Maps. `compare` ghi đúng hai thứ: `compare_<ts>.json` và `resolve_queue.jsonl` trong `data/<city>/navigate/`. Không có đường code nào ghi `config/ontology.yaml`, `config/*.yaml` hay kho; feature mới chỉ vào ontology khi chủ dự án duyệt và sửa tay (bump `version`, `docs/CORPUS.md` §Chi tiết 4). sol đề cử không phải bằng chứng nơi có thật.
+
+### Resolve nominee: `gmaps resolve`
+
+`python -m corpus gmaps resolve --city dalat [--limit N] [--headed]` (code `src/corpus/crawl/gmaps/resolve.py`; phần quyết định, không trình duyệt, ở `src/corpus/navigate/resolve.py`). Nơi do sol đề cử chỉ vào kho khi **Maps** nói đó là đúng một nơi và nơi đó qua các cổng có sẵn; sol không phải bằng chứng.
+
+```mermaid
+flowchart LR
+  Q[resolve_queue.jsonl + nominee maybe của compare mới nhất] --> P[bỏ tên đã có trong resolved.jsonl]
+  P --> S[Maps: 'tên + thành phố', phiên không cookie]
+  S --> D{decide}
+  D -->|một nơi rõ| R[search/city/resolve.jsonl]
+  R --> G[filter · counts · list]
+  D -->|còn lại| L[(resolved.jsonl)]
+  R --> L
+```
+
+- **Đầu vào**: nominee `missing` trong `resolve_queue.jsonl` và nominee `maybe` ở báo cáo `compare_<ts>.json` mới nhất (nơi gần trùng nơi đã có; Maps cho biết có phải cùng một FID). Tên đã có dòng trong `data/<city>/navigate/resolved.jsonl` không tra lại; muốn tra lại một tên thì xóa dòng của nó.
+- **Tìm**: `search.search` (cùng hàm của phase `search`) với `<tên> <tên thành phố>`, khung nhìn ở tâm `area`, đọc tối đa `resolve.limit` (15) kết quả. Không cần profile Google: mỗi lần là một phiên không cookie như `stay_search`; số tab tối đa 2 (`resolve_throttle.json`, tự chỉnh như các phase search).
+- **Khớp một nơi** (`navigate.decide_resolution`): kết quả khớp khi `name_score` ≥ `nominee.held` (0,7) và ít nhất `nominee.covered` (50%) số từ của nominee có trong tên kết quả, cùng ngưỡng với `compare`. Nhiều FID cùng tên bỏ dấu và cách nhau ≤ `same_name_m` (1.000 m) là một nơi (giữ FID nhiều review nhất). Còn ≥ 2 nơi khác nhau mà điểm tên của nơi tốt nhất không hơn nơi kế tiếp ≥ `resolve.margin` (0,25) thì `ambiguous`: chuỗi chi nhánh, tên chung, "X" cạnh "X Coffee" không bị đoán.
+- **Cổng trước khi ghi** (rồi `list` vẫn kiểm lại): trong `area`; có rating; số review ≥ `gmaps.min_reviews` (chỗ ở: `stay.min_reviews`). Thẻ có rating nhưng giấu số review là `pending_count`: vẫn ghi, `counts` đọc số trên trang chi tiết, `list` quyết.
+- **Ghi vào kho**: một bản ghi khuôn `search` (`end: true`, `tile: []`, `query: "resolve: <tên>"`, thêm `nominee`) vào `data/gmaps/search/<city>/resolve.jsonl`. Từ đó `filter` (Extractor đọc tên + category), `counts`, `list` (min_reviews, gộp bản sao, bỏ chỗ ở khỏi danh sách địa điểm / đưa vào `_stay`) xử lý như mọi nơi khác; `resolve` không ghi `list`, `places/`, `serving`.
+- **Sổ** `data/<city>/navigate/resolved.jsonl`, mỗi nominee một dòng `{name, area_hint, aspect, query, status, reason, fid, matched_name, candidates[top 3: fid, name, score], city, at}`:
+
+| status | nghĩa |
+|---|---|
+| `resolved` | một nơi rõ, đủ cổng; đã ghi vào `search/<city>/resolve.jsonl` |
+| `pending_count` | như trên nhưng số review đang ẩn; chờ `counts` |
+| `already_held` | nơi đó đã có trong `list` (giải quyết nominee `maybe`); không ghi lại |
+| `ambiguous` | ≥ 2 nơi khác nhau khớp ngang nhau; chủ dự án xem `candidates` |
+| `unresolved` | Maps không hiện nơi nào khớp tên đủ ngưỡng. **Không có nghĩa nơi đó không tồn tại** |
+| `rejected` | khớp nhưng `reason` ∈ `outside_area`, `no_rating`, `few_reviews` (dưới bar của kho hiện tại) |
+
+- Trang lỗi (timeout, mạng) hoặc Maps trả danh sách rỗng (bị giới hạn chứ không phải nơi vắng) **không** ghi dòng sổ, tên đó được tra lại ở lần sau; lỗi vào `data/gmaps/errors.jsonl` (`stage: resolve`).
+- Số đo in cuối lần chạy: `{total, resolved, pending_count, already_held, ambiguous, unresolved, rejected, looked_up}`. Tỉ lệ resolve = (`resolved` + `pending_count` + `already_held`) / `looked_up`.
+- Chạy thật theo thứ tự: `gmaps resolve` → `gmaps filter` → `gmaps counts` (chỉ khi có `pending_count`, cần profile đã đăng nhập) → `gmaps list` → các phase crawl thường (`crawl`, `relevant`, … ) cho nơi mới. Không chạy chung lúc một runner Maps khác đang dùng cùng IP nếu runner đó đang bị captcha: `resolve` dùng phiên không cookie của chính nó, nhưng Google giới hạn theo IP.
+
+## Tri thức bản địa
+
+`src/corpus/local/` (public `__init__.py`, offline) đọc Document web (`data/web/<city>/documents/`, phase `web documents`) thành `LocalClaim`: điều một nguồn nói về **khi nào, ở đâu, thế nào** ở cấp nơi, khu, món, hiện tượng, thành phố. Tên `LocalClaim` để khỏi trùng claim của `corpus.normalize`. Dữ liệu ở `data/<city>/local/`.
+
+```mermaid
+flowchart LR
+  D[(Document · đoạn ≤ 3.500 ký tự)] --> X[Extractor · LOCAL_CLAIM]
+  X --> E[(extracted/doc_id.json · câu trả lời thô)]
+  E --> G{gate}
+  G -->|trượt| R[bỏ, đếm lý do]
+  G --> A[gom: dedup · domain · conflict · độ tin]
+  S[sol general_claims] --> C{so với claim kept}
+  A --> C
+  A & C --> J[(local_claims.json)] --> T[snapshot: bảng local_claims]
+```
+
+- **`local extract`**: mỗi Document cắt thành đoạn gồm nguyên mục (mục dài cắt theo đoạn văn), mỗi đoạn một call `LOCAL_CLAIM` (Extractor, `corpus/llm/tasks.py`; tắt thinking, field `when` để phẳng vì Gemma tự host lặp khoảng trắng với object lồng; tối đa 12 claim; bỏ giờ mở cửa / địa chỉ / menu của một nơi, quảng cáo, công thức nấu), mặc định 4 call song song. Câu trả lời **thô** cùng chữ của đoạn lưu ở `extracted/<doc_id>.json` theo hash (mục + cỡ đoạn + prompt); chạy lại không gọi model. Call lỗi → `errors.jsonl`, lần sau thử lại.
+- **`local group`** (chỉ code, không model) gate từng mục rồi gom:
+
+| Bước | Luật |
+|---|---|
+| Gate | `quote` (≤ 400 ký tự) là chuỗi con của đoạn; `text` là chuỗi con của `quote`; số tiền, tháng (cả khoảng "tháng A đến tháng B", danh sách "tháng 1, 2 và 3"), loại ngày, giờ `HH:MM-HH:MM`, thời tiết đều có trong `quote`. So khớp sau khi bỏ dấu nhấn markdown, đồng nhất gạch ngang và nháy cong. Quote nêu giờ mở cửa của một nơi ("giờ mở cửa", "mở cửa từ") → bỏ (`venue_hours`: việc của Maps / trang chính thức). Trượt → bỏ, ghi lý do (`quote_not_in_source`, `text_not_in_quote`, `amount_not_in_quote`, `month_not_in_quote`, …) |
+| POI | `subject_kind = poi` phải resolve vào nơi đang phục vụ trong `area` (`retrieval.search_names`, `name_score` ≥ 0,7 và ≥ nửa số từ của tên): có → `subject_id`; không → `poi_unresolved`, ghi `poi_unresolved.jsonl` (`approval: pending`) để resolve Maps, **không** vào snapshot |
+| Gom | cùng `kind` + cùng subject + Jaccard từ của `text` ≥ 0,6 (`season` / `best_time` / `event` của subject không phải thành phố: tháng cách nhau ≤ 1, tính vòng năm, là đủ — "nở tháng 12" và "chớm nở tháng 1"). Cùng subject: nơi theo id; thành phố là một subject; còn lại theo từ đã bỏ dấu, bỏ tên thành phố như một cụm (không bỏ "da" của "dã quỳ"), giống nhau, hoặc tên này chứa tên kia khi tên ngắn có ≥ 2 từ ("hồng" ≠ "đồi cỏ hồng"), hoặc Jaccard ≥ 0,6 |
+| Nguồn độc lập | domain khác nhau (Document không có tác giả); nguồn chính thức = domain `.gov.vn` |
+| Trạng thái | `kept`: ≥ 2 domain hoặc 1 chính thức. `unverified`: 1 nguồn. `conflict`: một claim cùng subject + kind + chủ đề từ domain khác (một trang không mâu thuẫn với chính nó), có ít nhất ngần ấy nguồn (một blog không lật được hai trang), nêu tháng cách ≥ 3 tháng hoặc khoảng giá `price_norm` không giao. Cách 2 tháng: không kết luận |
+| Độ tin | `0,5 ^ (tuổi / nửa đời)`; nửa đời 365 ngày, `notice` và `event` 30 ngày; tuổi tính từ `retrieved_at` mới nhất (trang không có ngày đăng) |
+
+- **Claim của sol** (`navigate.general_claims`, `source = model`; `--map FILE` đọc một bản đồ cụ thể) chỉ so với claim `kept`: cùng `kind` + subject + chủ đề (từ trùng ≥ 60 % bên ngắn hơn; `season` / `best_time` / `event` / `specialty` của subject không phải thành phố: subject là đủ). Tháng cách ≤ 1 → khớp, ≥ 3 → trái, 2 → bỏ qua claim đó; khoảng giá `price_norm` (đọc từ `text` của sol) giao → khớp, không giao → trái; không có số → khớp. Chỉ khớp → `confirmed`; chỉ trái → `contradicted`; không có claim nào hoặc vừa khớp vừa trái → `unverified`. Claim sol không bao giờ có `evidence` riêng, `matched` trỏ tới claim Document.
+- **Output**: `local_claims.json` (`stats`: số mục, qua gate, lý do bỏ, đếm trạng thái; `claims`: Document + sol), `poi_claims.json` (claim về nơi đã resolve; aggregate chưa đọc), `poi_unresolved.jsonl`.
+
+| Trường `LocalClaim` | Ý |
+|---|---|
+| `origin`, `status` | `document` (`kept` / `unverified` / `conflict`) · `model` (`confirmed` / `contradicted` / `unverified`) |
+| `subject_kind`, `subject`, `subject_id` | `poi` (+ id) · `area` · `dish` · `phenomenon` · `city` |
+| `kind`, `text`, `when`, `who` | `kind` như `general_claims` của §sol dẫn đường; `when {months, days, hours, weather}` |
+| `amount_min_vnd`, `amount_max_vnd` | khoảng giá có trong quote, không có → `null` |
+| `domains`, `sources`, `official`, `confidence` | nguồn độc lập và độ tin |
+| `evidence[]` | `{doc_id, source_url, domain, retrieved_at, quote}` |
+| `conflicts_with`, `matched` | id claim trái / claim Document mà claim sol khớp hoặc trái |
+
+- **Công bố**: `compile_snapshot` (lệnh `snapshot`, cuối `serving`, và `releases.rebuild`) đọc `data/<city>/local/local_claims.json` vào bảng `local_claims` của region trùng tên thành phố (bỏ `poi_unresolved`; `fact` = `kept` hoặc `confirmed`). Release ghi file này vào `inputs` (hash). Snapshot cũ không có bảng → `Region.local_claims = []` (chưa biết, không phải "không có").
+- **Đọc**: `corpus.retrieval.local_knowledge(region.local_claims, subject?, kind?, month?, facts_only=False)` — không bao giờ trả `contradicted`; claim không ghi tháng là cả năm; `fact` trước, rồi nhiều nguồn, độ tin cao. Mỗi dòng có `label`: `fact` (`kept`, `confirmed`), `reference` (`unverified`: chat nói là "tham khảo", số chỉ dạng khoảng), `disputed` (`conflict`). Không có đường nào biến claim của sol thành chi tiết một nơi (giờ, giá, có/không đặc điểm).
+- **Cho trợ lý**: `RetrievalEngine.local_claims(subject?, kind?, month?, facts_only=False)` bọc `local_knowledge` trên LocalClaim của snapshot đang mở (rỗng nếu snapshot không có); tool `local_tips` của Trip gọi qua đây, không đọc file. Cùng quy tắc nhãn: `fact` / `reference` / `disputed`, không bao giờ `contradicted`.
+
+## View toàn cầu
+
+`src/corpus/views/` (public `__init__.py`, offline, không model, không trình duyệt) tính ba view từ nguồn công khai cho **mọi** thành phố trong `config/cities.yaml`: `area` lấy từ config, không hard-code. Cài đặt ở `config/views.yaml`; output ở `data/<city>/views/` (`raw/` giữ phản hồi thô, dùng lại, chỉ lưu khi đã dựng được view hợp lệ). Mỗi request chạy tuần tự.
+
+| View | Nguồn | File | Nội dung |
+|---|---|---|---|
+| `ClimateNormal` | Open-Meteo archive 2015–2025 tại tâm `area` | `climate.json` | mỗi tháng: trung vị `tmax_c` / `tmin_c`, `rain_prob` (tỷ lệ ngày mưa ≥ `rain_mm` = 1 mm), `fog_prob`, số ngày, số năm. Dưới `min_years` = 10 năm đủ dữ liệu cho một tháng → lỗi, không xuất. `fog_prob = null` khi nguồn không bao giờ báo sương mù (không coi là 0) |
+| `CalendarDay` | thư viện `holidays` (mã nước `VN`, tên tiếng Việt) + `lunardate` | `calendar.json` | mỗi ngày 2025–2030: `lunar {year, month, day, leap}`, `holiday` (tên hoặc `null`). Tết 2026 = 17/2, 2027 = 6/2, 2028 = 26/1 (test) |
+| `RestrictedArea` | Overpass theo bbox `area` | `restricted.geojson` | `FeatureCollection` đa giác: `landuse=military`, `military=*`, `access=no` (bỏ đường, rào, nhà). Mỗi feature có `bbox`, `properties {osm, kind: military \| no_access, name…}`. Nơi OSM không biết thì vắng mặt: không có vùng ≠ được vào |
+
+Public API: `run(view, city)`, `climate_normals(city)`, `calendar_days(city)`, `restricted_areas(city)`, `restricted_hits(lat, lng, areas)`; view chưa dựng → `None` (chưa biết). Người dùng view: `live` đọc `climate.json` và `calendar.json` trước, YAML tay là lớp ghi đè (`docs/PLANNING.md` §Live Context); Planning đọc `restricted.geojson` ở `conditions.py` (cảnh báo, không loại).
+
+## Nhịp Đà Lạt
+
+`src/corpus/pulse/` (public `__init__.py`) tính **bản tin xu hướng** từ dữ liệu đã crawl, không model, không trình duyệt, không mạng. Offline ghi, online chỉ đọc.
+
+```mermaid
+flowchart LR
+  R[(poi_crawl TikTok · review Maps · poi_claims · local_claims · views)] --> S[signals.py]
+  S --> C[compute.py + config/pulse.yaml]
+  C --> P[(data/city/pulse/ts.json + latest.json)]
+  P --> B[bulletin: web trang chủ]
+  P --> H[hot: nhãn trên thẻ Lựa chọn]
+  P --> T[trends: tool trợ lý Trip]
+```
+
+- Chạy: `python -m corpus pulse --city dalat` (khoảng 40 s), mỗi 24 giờ bằng `logs/pulse_daily.sh [city] [--once]` (không để chạy sẵn; hoặc cron). Giữ `keep_snapshots` file có dấu thời gian, `latest.json` luôn có.
+- Mục (`kind`): `hot` (video TikTok mới ở trang POI, ≥ `min_authors` tác giả khác nhau), `top` (≥ 2 trong 4 nguồn: video mới, review Maps mới, `rating_trend` đang tăng, web nhắc; web không có ngày nên chỉ đếm số site), `event` (ngày lễ của view `CalendarDay` + claim `event` có tháng, trong `horizon_days`), `season` (claim `season` / `best_time` của tháng hiện tại, bỏ claim chỉ nêu tên thành phố, kèm video mới nhất nhắc đúng tên), `new` (review đầu tiên gần đây và corpus giữ gần đủ review), `closed` (Maps ghi đóng cửa vĩnh viễn, nơi có ≥ 30 review). Chỉ nơi có trong `data/serving/places.json` mới vào `hot` / `top` / `new`.
+- Mỗi item: `id`, `kind`, `subject {type, id, name}`, `signals` (số liệu), `dates`, `evidence[]` (id video, link, ngày, số review, domain). Không có bằng chứng thì không có item; claim `conflict` / `contradicted` không phải bằng chứng.
+- Chữ trong bản tin do mẫu câu (`render.py`) dựng từ field; model không viết. Ngày hiện dạng dd/mm tuyệt đối. "Đang vào mùa X", không bao giờ "đang nở". Claim chưa kiểm ghi "tham khảo, n nguồn".
+- Ngưỡng ở `config/pulse.yaml`, đo trên dữ liệu 29/10/2026 (3172 nơi): `hot` 3 tác giả + 3 video trong 30 ngày (TREND_MIN = 5 chỉ còn 1 nơi; 3 còn 14); `top` 10 tác giả review trong 30 ngày (167 nơi) và ≥ 2 nguồn (24 nơi); `new` 29 nơi, review đầu cũ hơn 45 ngày chỉ chính xác theo tháng; `event` 45 ngày (30 ngày không thấy Festival Hoa đầu tháng 12); mùa chỉ tìm video cho tên ≥ 5 ký tự.
+- Public API: `build(city)`, `load(city)` (`None` = job chưa chạy, không phải "không có gì hot"), `bulletin(city)` (có `stale` khi cũ hơn `stale_after_days`), `hot(city)` (`{place_id: {label, newest, videos, authors, window_days, as_of}}`, rỗng khi snapshot cũ hơn `hide_after_days`), `trends(city, kind?, month?, limit)`.
+- Người dùng: harness `GET /api/harness/pulse` → khối "Nhịp Đà Lạt" ở cột phải trang chủ; Decision đưa `hot` vào thẻ chỉ để hiển thị (không vào điểm, thứ hạng hay lọc: Lựa chọn không chặn, không đẩy); tool `trends` của trợ lý Trip (`docs/TRIP_UNDERSTANDING.md` §19).
+- **Chưa làm: crawl định kỳ.** Job chỉ đọc lại dữ liệu đã có nên giữa hai lần crawl nó chỉ tính lại theo ngày. Cần việc định kỳ riêng, mỗi nguồn một module: TikTok video mới ở các trang POI (`poi_crawl` ẩn danh, `logs/tiktok_poi_loop.sh`), review Maps mới (`gmaps crawl` theo tuổi review), tin sự kiện (web `search` / `documents`), rồi `observe` / `aggregate` nếu cần; sau đó mới có số liệu thật cho "mới trong 30 ngày". Ngày của web Documents cũng chưa có (chỉ `retrieved_at`), nên web chưa vào mục theo ngày.
 
 ## Kiểm soát chi phí và hiệu năng
 
@@ -580,6 +856,10 @@ Nếu precision lấy mẫu của một bước rơi dưới ngưỡng, bước 
 
 Adapter retry có backoff; adapter TikTok giới hạn tốc độ và xoay session. Output trượt gate được thử lại một lần kèm lý do lỗi, sau đó bỏ kèm lý do (không bao giờ vá bằng cách đoán). Model không khả dụng thì các bước phụ thuộc tạm dừng; không bỏ qua mục nào. Bước lỗi để entry ledger ở `failed` cho lần chạy sau.
 
+Trình duyệt nghi treo: chạy `logs/crawl_path_check.py` (đi qua `corpus.crawl.open_sessions`, đúng env của `logs/tiktok_poi_loop.sh`: `PLAYWRIGHT_BROWSERS_PATH=$PWD/.cache/ms-playwright CORPUS_BROWSER_CHANNEL=chromium`). Playwright gọi trần không phải đường crawl, nên treo ở đó không nói gì về crawl.
+
+Chrome treo mà tiến trình chính ở trạng thái `D`, `wchan` = `wait_on_page_bit_common`: một trang của file Chromium trên NFS không đọc được (kiểm: `cat <chrome> > /dev/null` đứng ở cùng offset). Cách xử lý: đổi tên thư mục `chromium-1169` ra ngoài `.cache/ms-playwright`, cài lại bằng `PLAYWRIGHT_SKIP_BROWSER_GC=1 PLAYWRIGHT_BROWSERS_PATH=$PWD/.cache/ms-playwright .venv/bin/python -m playwright install chromium` (thiếu `PLAYWRIGHT_SKIP_BROWSER_GC=1` thì Playwright xóa các bản chromium khác trong thư mục đó).
+
 ## Sai lệch cho bản demo
 
 | Sai lệch | Demo | Cách sửa khi thương mại |
@@ -592,4 +872,12 @@ Adapter retry có backoff; adapter TikTok giới hạn tốc độ và xoay sess
 ## Đầu vào cần có
 
 API key của các model đang cấu hình trong `.env`; tài khoản TikTok phụ và tài khoản Google phụ (đăng nhập bằng `python -m corpus login`); trần ngân sách hàng tháng cho Judge; một người duyệt.
+
+## Giá chuyến bay
+
+Nguồn riêng `src/corpus/crawl/gflights/` → `data/gflights/<city>/` (`observations.jsonl`, `runs.jsonl`, `errors.jsonl`). Mỗi (sân bay đi, sân bay đến, ngày) một trang kết quả Google Flights, URL dựng sẵn; mỗi dòng kết quả được mở ra để đọc số hiệu chuyến. Tuyến và số ngày tìm ở `config/queries.yaml` `flight_price:` (hai chiều, từ các sân bay trong `config/airports.yaml`).
+
+- Một quan sát = một lần tìm có ít nhất một chuyến: hãng, số hiệu, giờ đi/đến, số điểm dừng, giá VND, `observed_at`, `url`. Trang không hiện dòng nào (chưa vẽ xong, bị đổi, bị chặn) **không ghi gì**: không có dòng ≠ không có chuyến, nên không bao giờ có `false`.
+- Làm tươi: tuyến chưa thấy trước, rồi cũ nhất; chạy lại sau `fresh_h`; tối đa `max_per_run` trang mỗi lượt. Không đăng nhập, ngữ cảnh không cookie, ≤ 2 tab. Captcha: chạy `--headed` thì chờ người giải; chạy ngầm thì dừng lượt đó (không retry, không giải bằng code).
+- `python -m corpus flight_offers` xuất quan sát mới nhất ra `data/serving/flight_offers/<city>.json` cho online đọc (`booking.google_flights`, `journey`). Vòng `logs/flight_price_loop.sh` chạy mỗi giờ; dừng bằng `touch logs/flight_price_loop.stop`.
 

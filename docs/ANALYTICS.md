@@ -6,7 +6,7 @@ Số liệu Admin từ event thật. Ghi: `src/harness/events.py` (harness), `we
 
 Bảng `events`: `at, user_id, journey_id, source (server | client), name, props, app_version`. Không chứa email, tên, số điện thoại hay chữ người dùng gõ (trừ `q` của ô tìm nơi). Ghi lỗi không làm hỏng request gây ra nó.
 
-**Server** (harness): sau mỗi mutation hành trình, `name = <stage>.<operation>[.<act type>]`, props `revision, latency_ms, first_ms` (tới event SSE đầu), `path` (`agent | fallback | heuristic:exact_command`, từ event nội bộ `trace` của adapter `Tools`), `error` khi mutation thất bại, `compiled` khi Trip vừa ra Search Input, `refined` khi câu gõ ở Chọn nơi đi qua Trip. Lượt Trip thêm `kind, qid, exit (skip | unsure)`. Act thêm `place_id, reason, with_id, group, id, objective, pace`. `planning.confirm` thêm `places, hard_checks, hard_fail, hard_unknown, robustness`. Ngoài ra: `journey.create`, `journey.copy {source}` (lấy về chuyến bạn gửi), `preview.<status>`, `places.search {q, hits}`, `why_not`, `page_more`, `feedback.submit`, `auth.login`, `auth.consent`, `companion.<operation>`, `calendar.connect | apply | disconnect`, `notify.prefs {paused, kinds_off}`. Lần replay theo receipt không ghi lại.
+**Server** (harness): sau mỗi mutation hành trình, `name = <stage>.<operation>[.<act type>]`, props `revision, latency_ms, first_ms` (tới event SSE đầu), `path` (`agent | fallback | heuristic:exact_command`, từ event nội bộ `trace` của adapter `Tools`), `error` khi mutation thất bại, `compiled` khi Trip vừa ra Search Input, `refined` khi câu gõ ở Chọn nơi đi qua Trip. Lượt Trip thêm `kind, qid, exit (skip | unsure)`. Act thêm `place_id, reason, with_id, group, id, objective, pace`. `planning.confirm` thêm `places, hard_checks, hard_fail, hard_unknown, robustness`. Ngoài ra: `journey.create`, `journey.copy {source}` (lấy về chuyến bạn gửi), `preview.<status>`, `places.search {q, hits}`, `why_not`, `page_more`, `feedback.submit`, `auth.login`, `auth.consent`, `companion.<operation>`, `calendar.connect | apply | disconnect`, `notify.prefs {paused, kinds_off}`, `profile.remember {on}`, `profile.edit {fields}`, `profile.delete`, `profile.pause {paused}` (hồ sơ cá nhân hóa, `docs/TRIP_UNDERSTANDING.md` §17). Lần replay theo receipt không ghi lại.
 
 **Client**: `POST /api/harness/events {events: [...]}`, tối đa 50 event / 32 KiB mỗi lô; tên và prop ngoài allowlist bị bỏ. Không phiên thì chỉ giữ `page_view`, `landing_cta`. Web gom lô 10 giây hoặc 20 event, gửi bằng `sendBeacon` khi rời / ẩn tab.
 
@@ -20,6 +20,7 @@ Bảng `events`: `at, user_id, journey_id, source (server | client), name, props
 | `evidence_play` | `place_id, video_id` |
 | `compare_open` | `a, b` |
 | `outbound_click` | `kind (maps | tiktok | booking), place_id` |
+| `booking_click` | `offer_id, provider, kind (coach | flight | stay)` (bấm mở trang đặt điền sẵn của một `Offer`, `docs/BOOKING.md`; `journey_id` ở envelope) |
 | `tab_hidden` | `stage, ms` (thời gian rời tab) |
 | `today_open`, `install_prompt_seen` | — |
 | `suggestion_open` | `place_id, kind` |

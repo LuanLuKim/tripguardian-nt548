@@ -27,4 +27,14 @@ giả định sai về kiến trúc | kiểm chứng không đủ | `UNKNOWN`
 
 ## Các mục
 
-_Chưa có mục nào._
+## F001 — Dò lỗi trên probe tự dựng thay vì đường đã chạy được
+
+**Ngày:** 2026-10-28 · **Nhóm:** `CONTEXT` · **Task:** spec §3 việc 1 "Playwright treo với site lớn"
+**Kỳ vọng:** chạy lại đúng đường crawl đã chạy tốt (`corpus.crawl.open_sessions` với env của `logs/tiktok_poi_loop.sh`), xem có treo không; chỉ khi đường thật hỏng mới dựng probe để khoanh lỗi.
+**Thực tế:** agent viết `logs/pw_probe.py` gọi Playwright trần (không qua `browser.py`, không env của repo), chạy 6 biến thể × 4 site, đợi ~25 phút. Mọi biến thể treo; agent dò tiếp D-Bus, QUIC, mạng.
+**Bằng chứng:** `logs/pw_probe_2026-10-28_nodbus.out` (child timeout 356 s mọi biến thể), trong khi `logs/tiktok_poi_1027.log` ngày 27/10: 709 nơi, 0 timeout.
+**Hậu quả:** tốn thời gian và token; kết luận "crawl hỏng" trong khi crawl thật vẫn chạy; 26 tiến trình Chrome mồ côi.
+**Nguyên nhân gốc:** thiếu ngữ cảnh — không xem log của lần crawl thành công gần nhất trước khi dò.
+**Lẽ ra nên:** đọc log crawl gần nhất và script đã chạy nó, rồi chạy `logs/crawl_path_check.py` (đi qua `corpus.crawl`, cùng env).
+**Rule:** `ADD` — `RULE.md` §7: kiểm đường đã chạy được trước khi kết luận hỏng; lỗi rẻ để tránh, tốn nhiều khi mắc.
+**Tái diễn:** 1 · **Trạng thái:** `PROMOTED_TO_RULE`

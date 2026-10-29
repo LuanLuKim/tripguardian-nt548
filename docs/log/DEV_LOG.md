@@ -9,6 +9,7 @@ Nhật ký thay đổi của **những gì đang có trong code**. Không phải
 ## Mẫu (chép cho mỗi tính năng / module)
 
 ```markdown
+
 ## <id> — <tên>
 
 - file:
@@ -27,6 +28,264 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 ---
 
 ## Các mục
+
+## selfhost-vllm-2026-10-29 — Gateway nhiều upstream Gemma, thử vLLM trên 2080 Ti
+
+- file: `scripts/model_gateway.py`, `scripts/models_ctl.sh`, `scripts/vllm_server.sh`, `scripts/vllm_patch_sm75.py`, `tests/test_model_gateway.py`, `logs/vllm/load_test.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/test_model_gateway.py -q` (6 test); `scripts/models_ctl.sh status`
+
+Hiện tại: gateway nhận nhiều `--gemma-url`, chọn upstream ít request chờ nhất, bỏ qua upstream hỏng `--cooldown` giây (kết nối bị từ chối / 502 / 503 / 504) và thử upstream kế. Gateway đang chạy chưa khởi động lại, vẫn một upstream llama.cpp :30002. `models_ctl.sh` có target `vllm` (không nằm trong `all`) và công thức llama.cpp mặc định Q4_0 GPU 4,7, 8 slot, KV q8_0, `-ts 40,60`. vLLM 0.32.0 dựng trong `.venv-vllm` chạy tới bước cấp KV nhưng hết bộ nhớ trên 2 card 11 GB, nên không dùng; chi tiết và lỗi trong `docs/LLM_PROVIDER.md` §Gemma 4 26B-A4B.
+Trước đó: chưa có.
+
+## services-tool-2026-10-29 — Tool find_services và bến xe nguồn
+
+Hiện tại: `src/trip/agent/services_tool.py` (tool đọc `find_services`, group `services`, đăng ký ở `agent/tools.py`) đọc `corpus.service_places("dalat")`; neo là `near_place` hoặc chỗ ở của chuyến, không neo thì khoảng cách `null`; kết quả không có `_cards`. `corpus/crawl/gmaps/services.py::load` trả thêm `words` (từ khoá tìm ra nơi đó) và `fetched_at`. Prompt Trip liệt kê tool. Bench: `config/bench_assistant_services.yaml` (8 ca). `config/live.yaml`: 10 vùng Vexere có `station` lấy từ thẻ Maps (tài khoản gmaps_d, `logs/station_probe.py`), Hà Nội kiểm lại. Test: `tests/trip/test_services_tool.py`, `tests/booking/test_journey_options.py`.
+Trước đó: chưa có.
+
+## assistant-knowledge-2026-10-29 — Tool tri thức cho trợ lý (evidence, compare, status, dishes, route, journey, climate, stays, cost, tips)
+
+- file: `src/trip/infrastructure/reads.py`, `src/trip/agent/knowledge_tools.py`, `src/harness/trip_live.py` + `__init__.py`/`__main__.py` (tiêm `LiveTools.route` / `journey`), `src/bench/assistant.py` (`engine_for`), `src/corpus/retrieval/engine.py` (`local_claims`), `config/bench_assistant_knowledge.yaml`, `tests/trip/test_reads.py`, `tests/trip/test_knowledge_tools.py`, `tests/harness/test_trip_live.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/trip tests/agents tests/bench tests/harness -q`; `python -m bench assistant --family evidence` (…compare, status, dishes, route, journey, climate, stays, tips, saveact; cần Agent thật); ledger `.superpowers/sdd/2026-10-29-asst-knowledge/progress.md`
+
+### Hiện tại (2026-10-29)
+- hành vi: `docs/TRIP_UNDERSTANDING.md` §19 (Tool đọc mở rộng). Journey tìm tọa độ nơi xuất phát bằng `live.geosearch` (không phải `live.geocode`, vì hàm đó thêm ", Đà Lạt" vào tên). Khoảng trống dữ liệu: spec `docs/superpowers/specs/2026-10-29-assistant-tools-design.md` §5B.
+
+### Trước đó
+- _chưa có_
+
+## assistant-perceive-2026-10-29 — Ảnh và link người dùng gửi thành tool của trợ lý
+
+- file: `src/trip/domain/perceive.py`, `src/trip/infrastructure/{perceive,looks}.py`, `src/trip/agent/perceive_tools.py` (+ `tool_schemas.py`), `src/trip/api/engine.py` (`_sees_photos`, `_image_assistant`, slots `photos` / `links`, bỏ prefetch ở lượt ảnh / link), `src/trip/domain/guard.py` (tên ngắn trong tên dài đã được phép), `src/trip/agent/prompt.py` (mục "Photos and links"), `src/corpus/llm/tasks.py` (`PHOTO_READ`), `config/bench_assistant_perceive.yaml`, `tests/fixtures/perceive/`, `tests/trip/{test_perceive,test_looks_perceive,test_perceiver,test_perceive_engine}.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/trip tests/agents tests/bench -q`; `python -m bench assistant --live --family photo-name|photo-ask|photo-similar|link|shown --model cx/gpt-6.1-terra` (Gemma ảnh trên UIT: `EXTRACTOR_ON_UIT=1 EXTRACTOR_PARALLEL=4 UIT_EXTRACTOR_PARALLEL=4`); ledger `.superpowers/sdd/2026-10-29-asst-perceive/progress.md`
+
+### Hiện tại (2026-10-29)
+- hành vi: `docs/TRIP_UNDERSTANDING.md` §20. Ảnh trong chat thành bản ghi phiên (không lưu ảnh), agent chọn `photo_identify` / `photo_similar` / `place_photos` / `link_resolve` / `more_like_shown`; chỉ gọi tên khi chắc. Lượt có ảnh hoặc link không chạy prefetch (trước đó prefetch ẩn mọi tool và agent đoán tên rồi bị guard thay câu). Đo thật (terra, UIT Gemma): ảnh chụp màn hình 1 nơi đọc 3–13 s, danh sách 13–19 s; `photo-name` 6/7 (nhóm tool 1,0), `photo-similar` 5/5.
+- còn thiếu: clip TikTok trong `place_photos`; prefetch `link_resolve`; ảnh chụp màn hình nhiều thẻ vẫn có thể bị gọi nhầm tên khi Gemma chỉ đọc ra một tên (đã thêm dòng prompt đọc đủ tên); hàng P1 / P2 ở spec §5B.
+
+### Trước đó
+- _ảnh gửi vào chat luôn mở thẻ "có phải nơi này không / các kiểu / dấu hiệu"_ (`Engine._image`, §18), vẫn dùng khi phase khác chat hoặc không có bộ đọc.
+
+## assistant-core-2026-10-29 — Lõi trợ lý chung, guard Clef R1–R8, bench v2
+
+- file: `src/agents/assistant/{registry,turn,context,lc,loop,guard}.py`, `src/trip/agent/{rules,loop,prompt,tools}.py`, `src/trip/api/engine.py` (`_agent_turn`, `_guard_context`, `_refuse`), `src/trip/infrastructure/settings.py` + `config/trip.yaml` (`assistant.guard`, `guard_threshold`), `src/bench/{assistant,__main__}.py`, `config/bench_assistant_{core,guard}.yaml`, `tests/agents/test_assistant_{core,guard}.py`, `tests/trip/test_assistant_guard_turn.py`, `tests/bench/test_assistant_bench.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/trip tests/agents tests/bench -q` (1167 pass); `python -m bench assistant --guard` (cần Clef gateway `:30000`); ledger `.superpowers/sdd/2026-10-29-asst-core/progress.md`
+
+### Hiện tại (2026-10-29)
+- hành vi: `docs/TRIP_UNDERSTANDING.md` §19 (Lõi trợ lý chung). Vòng tool, cache lượt, thẻ trước, cửa sổ lịch sử 24 / bỏ 12 và `last_shown` nằm ở `agents.assistant`; prompt trợ lý là một văn bản tĩnh, mục "Focus" dẫn câu lạc đề về chuyến. Guard Clef R1–R8 chạy song song với terra: R1–R6 chặn lượt (không thẻ, không fact, câu cố định), R7 / R8 không phải từ chối nhưng cũng trả câu cố định (R8 kèm 113 / 115); Clef lỗi = `ok`. Ngưỡng 0,55: 0/45 chặn nhầm, R1–R6 95,3 % trên 102 câu có nhãn. Bench `python -m bench assistant` đọc thêm mọi `config/bench_assistant_<track>.yaml` (ca nhiều lượt / ảnh / link; chỉ số `photo_guesses`, `wrong_blocks`, nhóm tool theo họ ca, `cached_ratio`); cờ `--guard`, `--family`, `--model`. Chưa đo: `cached_tokens` thật (call lạnh đầu tiên không có `cache_read`), bench cuối terra so với sol.
+
+### Trước đó (2026-10-28)
+- _lõi trợ lý nằm trong `src/trip/agent`_ (vòng tool và guard của Trip); xem mục `trip-assistant-speed-2026-10-28`.
+
+## decision-speed-2026-10-30 — Lượt rerank/like của Lựa chọn nhanh hơn
+
+- nguyên nhân (đo bằng cProfile): `Engine.effect` chạy pipeline 1 lần/lệnh gọi tool, nhưng 7,6 / 7,9 s nằm ở `corpus.crawl.common.files.data_dir()` gọi `load_dotenv` (đọc `.env`) cho mỗi thẻ (`cards.pulse_hot`, 269 thẻ). Pipeline thật chỉ ~0,2 s.
+- sửa: `data_dir()` đọc `.env` một lần mỗi process (`_load_env`, lru_cache); `DATA_DIR` vẫn đọc mỗi lần. Kết quả không đổi (test so `effect` với `pipeline.run` thẳng).
+- số đo: `effect` 2,2–2,4 s -> 0,17–0,35 s; live terra, họ rerank p90 7,8 s (trước 10–15 s), họ like p90 5,7 s.
+- file: `src/corpus/crawl/common/files.py`, `tests/decision/test_effect_speed.py`.
+
+## decision-assistant-2026-10-29 — Chatbot Lựa chọn trên lõi trợ lý chung
+
+- file: `src/decision/{assistant,tool_schemas,bench,engine,heuristics,tools,settings,__main__}.py`, `config/bench_decision_assistant.yaml`, `config/decision.yaml` (`assistant:`), `src/trip/api/tools.py` (`Tools.read_turn`), `tests/decision/test_assistant.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/decision tests/agents -q`; `python -m decision evaluate` (không đổi, không qua trợ lý)
+
+### Hiện tại (2026-10-29)
+- hành vi: `docs/PLACE_DECISION.md` §19. Câu gõ mà `heuristics` không đọc đi qua `agents.assistant.run_loop` (terra) với 14 tool hành động của Decision (`select drop lock visited like more_like rerank filter unfilter why_not compare trip swap_suggest undo`) và các tool đọc dùng chung chạy trên `TurnTools` của Trip (`Tools.read_turn`, harness gắn vào `Engine.trip_reader`; không có phiên Trip thì không đưa tool đọc). Mỗi tool kiểm act bằng `Engine._apply(strict=True)` trên State làm việc, trả `effect` (nơi vào / ra top mỗi tab) tính bằng pipeline trên bản sao; cuối lượt ghi một phiên bản (một undo). `quote` phải nằm trong câu; `select` / `lock` cần nêu tên hoặc chỉ. Lời trả lời qua `guard._bad_say` (số / tên nơi chỉ từ màn hình, kết quả tool, lời người dùng), gửi một lần `replace`. Log phiên có thêm `say`, nạp lại làm lịch sử. `enabled: false` hoặc không có `AGENT_*` thì đường agent cũ chạy. "hoàn tác" không còn bị `general_wish` chuyển cho Trip.
+- bench: `python -m decision bench` (`src/decision/bench.py`, 42 ca ở `config/bench_decision_assistant.yaml`, test `tests/decision/test_bench.py`).
+- còn thiếu: thẻ không hiện trong chat Lựa chọn; dòng harness `decision.engine.trip_reader = trip.read_turn` do controller thêm.
+
+### Trước đó (2026-10-28)
+- hành vi: xem mục `decision-chat-ops-2026-10-28` (một call có cấu trúc `TurnPlan` mỗi lượt chữ).
+
+## pulse-2026-10-29 — Nhịp Đà Lạt (A.5) + "đang hot" + tool trends
+
+- file: `src/corpus/pulse/`, `config/pulse.yaml`, `logs/pulse_daily.sh`, `src/corpus/__main__.py` (`pulse`), `src/harness/{dispatch,server}.py` (`/api/harness/pulse`), `src/decision/cards.py` (`hot`), `src/trip/{agent/tool_schemas,agent/tools,agent/prompt,infrastructure/knowledge,api/tools}.py` (`trends`), `web/src/user/home/Pulse.tsx`, `web/src/user/css/pulse.css`, `web/src/user/screens/Discover.tsx`, `web/scripts/shots_pulse.mjs`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/pulse tests/trip/test_trends_tool.py tests/decision/test_hot_label.py`; `python -m corpus pulse --city dalat`; ảnh `frontend_images/pulse-home-*.png`
+
+### Hiện tại (2026-10-29)
+- hành vi: `docs/CORPUS.md` §Nhịp Đà Lạt. Job đọc dữ liệu đã crawl (không crawl mới), ghi `data/dalat/pulse/`; bản tin trên trang chủ; nhãn `hot` trên thẻ Decision chỉ hiển thị; tool `trends` cho trợ lý. Crawl định kỳ chưa làm (gap ở CORPUS.md). Production cần khởi động lại harness :8769 mới có route và tool.
+- **Gốc lỗi "Mình chưa có dữ liệu…" (đo 29/10, terra và sol):** `build_messages` gửi CURRENT CONTEXT (state, data của prefetch, lookups) thành tin nhắn `system` thứ hai; qua 9router model không đọc nó (hỏi lại ngày bắt đầu chuyến đã có trong state vẫn "chưa biết"). Đổi thành tin nhắn `user` (cùng tiền tố `CURRENT CONTEXT\n`) thì model trả lời từ dữ liệu. Ảnh hưởng mọi nhóm prefetch (`find_places`, chi tiết, thời tiết, khoảng cách, xu hướng), không riêng xu hướng. Bench trợ lý 30 câu: `nodata_with_cards` (trả lời từ chối "chưa có dữ liệu" không nêu nơi nào, không có số, dưới thẻ nơi đã tìm được; `bench/assistant.py empty_refusal`) là một điều kiện của cổng, bằng 0. Kết quả live terra 29/10 sau sửa: p50 4,3 s, p90 6,1 s, 0 số không có nguồn, clef_full 29/30; 1 lượt còn từ chối (câu TikTok) do thiếu từ khóa `trends`, đã thêm và kiểm lại (5,4 s, trả lời có ngày và nguồn). Nguồn của `trends` trong tool chỉ giữ nhãn và ngày (URL chứa dãy số dài làm đầy 300 số `told_numbers`).
+- `tests/decision/test_equivalence.py::test_equivalence_eval_trips_on_the_real_snapshot` fail cả khi `hot` bị tắt: không do thay đổi này.
+
+### Trước đó
+- _không có_
+
+## profile-silent-2026-10-29 — Hồ sơ dài hạn áp âm thầm, bằng chứng ngầm từ Lựa chọn / Lịch trình
+
+- file: `src/trip/domain/patterns.py`, `src/trip/infrastructure/profile.py`, `src/trip/api/engine.py` (`note_acts`), `src/decision/rank.py`, `src/harness/dispatch.py` (`_learn_from_plan`, `_learn_acts`), `config/decision.yaml` (`prior_weight`), `config/trip.yaml` (`patterns.enabled`)
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/trip tests/decision/test_profile_prior.py tests/accounts tests/harness`; `python -m trip profile-replay`
+
+### Hiện tại (2026-10-29)
+- hành vi: không còn thẻ “Lần trước bạn nói … vẫn vậy chứ?”; mục hồ sơ (kể cả `need`) seed thành soft prior `source = profile` cho mọi người dùng đăng nhập có `remember`, không bao giờ thành fact / hard filter. `patterns.enabled` bật; ghi vẫn cần đồng ý `consents.patterns`.
+- Decision: soft từ hồ sơ nhân `prior_weight` 0,4 và bị bỏ khi chuyến này có soft cùng feature (tín hiệu chuyến này > prior > không có).
+- Bằng chứng ngầm (`how = acted`, nặng 0,5 phiên): `kept_in_plan`, `rated_hop`, `dropped` kèm lý do `dislike` → phiếu `place:`; mục chỉ có bằng chứng `acted` không bao giờ `active`, không đọc là “Thích”. Nhu cầu chọn trên thẻ được nhớ với độ tin `low`.
+
+### Trước đó (2026-10-28)
+- hành vi: nhu cầu lưu từ lời người dùng, hỏi lại bằng thẻ xác nhận; prior hồ sơ cùng trọng số với tín hiệu chuyến này; `patterns.enabled: false`.
+
+## expert-async-2026-10-29 — Local Expert chạy nền sau chốt, ClimateNormal ở kiểm tra tối, link lịch về /app/plan
+
+### Hiện tại (2026-10-29)
+- hành vi: `Tools.apply confirm` không còn gọi Local Expert (chốt không chờ). Worker `notify` (`Notify.check_expert`, mỗi tick) gọi `planning.expert_runner` → `expert.run_expert`: khôi phục phiên Planning của chuyến, chạy `review`, lưu ghi chú `factor: local_expert` (mức 1) vào `EveStore` (`expert_notes`, kèm `expert: {status, tries}`); mỗi `plan_hash` một lần, lỗi thử lại tối đa `expert.retries`. `GET /eve` trả ghi chú gộp nên banner/ghi chú hiện có hiển thị. `expert.enabled: true`. `eve.assess`: mưa lệch xa `ClimateNormal` của tháng mà hai model không cùng xác nhận → tối đa ghi chú; hai model đồng ý vẫn báo động. `companion/calendar.py`: link event Google `/app/plan`.
+- test: `tests/planning/test_planning_expert.py`, `test_planning_eve.py`, `tests/notify/test_worker.py`, `tests/companion/test_calendar.py`.
+- còn thiếu: ghi chú Expert chưa kèm nút sửa (chỉ đọc); chưa có lượt Expert chạy lại khi dự báo đổi.
+
+## planning-local-expert-2026-10-29 — Local Expert (D.2) + đổi lịch tối trước ngày đi bật
+
+### Hiện tại (2026-10-29)
+- hành vi: `src/planning/expert.py` đọc sự kiện, ngày lễ, mùa, LocalClaim `kept` và ghi chú của lịch đã chốt, một lượt Gemma LAN (UIT dự phòng), trả cảnh báo có trích dẫn thật; gợi ý sửa chỉ kèm `actions` khi validator chấp nhận. Cờ `expert.enabled` tắt. `eve_replan.enabled` bật (kịch bản 8/8). `Harness.trip_times` / `eve_act op=times`: đổi giờ đến / đi đẩy `set_day_window` vào phiên Planning.
+- test: `tests/planning/test_planning_expert.py`, `test_planning_eve.py`, `tests/harness/test_companion_routes.py`; số đo `tests/planning/expert_eval.py`.
+- còn thiếu: bật `expert.enabled` sau khi chủ dự án xem; độ trễ khi LAN bận (tối đa 2 × `timeout_s`).
+- bổ sung 2026-10-29 (replan-expert): `planning/placename.py` (tên ngắn sạch cho thẻ), chữ nguyên nhân / phương án viết cho người (nguồn nằm ở `source`), sửa lỗi `repair` lấy nhầm nơi thay thế cho ảnh phương án; `eve.trip_windows` (giờ đến / đi đổi ở Trip → khung ngày, phương án `relay` + `trim`, action `set_day_window` đứng đầu mỗi phương án, notify truyền `outputs.trip`); `closed_now` nhận `DISABLED`; `Store.notes` + `GET /eve` trả `notes` + web hiện; cổng tool vật lý vào `eve.gather`; Local Expert: claim `confirmed` cũng là fact, nơi `anchor` không bị gợi ý bỏ / dời, test `annotate` trên Engine thật. Đo `expert_eval.py` (LAN, song song 8): 4,4–12,3 s mỗi lần chốt khi có fact, 0 s khi không. Ảnh: `frontend_images/eve-banner-real-{level2,level3,notes}.png`.
+- test: `tests/planning/test_planning_eve.py`, `test_planning_placename.py`, `test_planning_expert.py`, `tests/notify`, `tests/harness/test_companion_routes.py`.
+
+
+## planning-final-wave-2026-10-29 — Dòng tiền phòng, restricted_place chỉ nơi trong lịch, gỡ đường cũ, kill nhóm tiến trình
+
+- file: `src/planning/{validate,build,output,engine,overload,days,objectives,timefit,settings}.py`, `config/planning.yaml`; test `tests/planning/test_planning_lodging_budget.py`, `test_planning_overload_parallel.py`, `test_planning_conditions.py`.
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/planning -q` (945 passed); `tests/planning/bench_realistic.py --runs 2` (`logs/planning_realistic/bench_final_wave.txt`, bản đọc `logs/planning_realistic/after/`).
+
+### Hiện tại (2026-10-29)
+- hành vi: (1) `validate.lodging_budget`: mỗi đêm một dòng giá phòng (giá theo ngày nếu khớp, không thì giá tham khảo Maps, kèm loại giá + tuổi), tổng, trần mỗi đêm (= trần lọc chỗ ở), vượt trần chỉ là cảnh báo `lodging_over_budget`, không bỏ nơi, không chặn chốt; trả ở thẻ phương án `lodging_budget` và kế hoạch chốt `cost.lodging_nights`. (2) `restricted_place` chỉ cho nơi đang có trong lịch (`build.restricted_warnings`). (3) `overload._in_children`: tiến trình con dẫn đầu một nhóm tiến trình; hết `_FORK_WAIT_S` thì kill cả nhóm (cháu của `_extend` không còn sót). (4) Gỡ đường cũ: `cluster.py`, `days.assign_days` và hàm liên quan, `objectives.choose`, `timefit.split_competing`, cảnh báo `days_fallback`, các khóa cấu hình `cluster_*`, `fill_ratio`, `max_days`, `max_clusters`, `max_variants`, `objective_order`... (5) Tốc độ `twenty_in_2` (HANDOFF #1/#2): đã thử, không có cận chứng minh được, ghi số đo ở `docs/PLANNING.md` mục Giới hạn.
+- test: như trên.
+- còn thiếu: `twenty_in_2` lịch đầu vẫn 3,7–4,3 s; web chưa hiện `lodging_budget` / `cost.lodging_nights`.
+- đo sau khi gỡ đường cũ (`logs/planning_realistic/bench_t9_after.txt`, bản đọc `logs/planning_realistic/after_20261029/`, máy tải 12–20/40): lịch đầu p50 0,14 · p95 1,87 · max 4,49 (`twenty_in_2`); reorder p95 0,060, drop_place p95 0,053 (hơi trên đích 0,05 khi máy tải; bench 28/10 đo 0,041 / 0,040 lúc rảnh); move 0,070; set_day_window max 0,27; set_lodging max 0,29. `tests/planning` 943 passed.
+
+
+## trip-assistant-speed-2026-10-28 — Trợ lý Đà Lạt đạt cổng tốc độ (vòng r4–r6)
+
+- file: `config/trip.yaml` (`assistant`), `src/trip/infrastructure/settings.py` (`Assistant`), `src/trip/agent/{prefetch,tools,loop,prompt}.py`, `src/trip/api/{engine,tools}.py`, `src/corpus/index/embedder.py`, `src/bench/assistant.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/trip tests/bench/test_assistant_bench.py tests/harness tests/index -q` (1070 pass); `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python -m bench assistant --live` từ gốc repo (cần OSRM `:5000`, 9router `:20128`, ~10 phút); kết quả `data/bench/assistant/*-live.json`.
+
+### Hiện tại (2026-10-29)
+- hành vi: `assistant.enabled: true`; `prefetch_wait_s` 3,0; `covered_tools: write`; `hide_prepared_lookup`, `service_tier: priority`, `ask_words` 40, `reply_style`; tên nơi → id trước khi tra tool; engine khởi động nóng (`warm_assistant`). Bench thật: r5 p50 8,92 / p90 13,43 s (1,47 call/lượt) → r6 máy tải nặng (load ~85) p50 6,8–7,3 / p90 11,4–14,6 s (1,07 call/lượt), máy rảnh p50 5,76 và 5,28 / p90 9,01 và 7,58 s (1,03 call/lượt); cả sáu lần 0 số không có nguồn, 29/30 nhóm. Phần đuôi còn lại do call sol đột biến 12–27 s (upstream); `claim_without_record` vẫn tốn call thứ hai ở câu "Lẩu gà lá é". Persona "vague": 6/7 mục sau 16 lượt, cờ bật hay tắt như nhau (trước 5/7).
+
+### Trước đó (2026-10-28)
+- hành vi: cờ tắt; r4 p50 8,9 / p90 15,1 s; r3 p50 13,2 / p90 16,7 s.
+
+---
+
+## planning-eve-replan-2026-10-28 — Đổi lịch tối trước ngày đi (D.3)
+
+- file: `src/planning/eve.py`, `src/planning/engine.py` (`eve_trial`), `src/harness/dispatch.py` (`eve`, `eve_act`), `src/harness/server.py`, `web/src/user/screens/plan/EveBanner.tsx`, `src/live/weather/hourly.py`, `src/live/osrm/client.py` (`route_steps`), `src/notify/plan.py` (`trip_point`), `src/notify/service.py`, `config/notifications.yaml`, `config/planning.yaml` (`eve_replan`), `web/src/user/UserApp.tsx`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/planning/test_planning_eve.py tests/planning/test_planning_eve_scenarios.py tests/live tests/notify`; `python tests/planning/eve_scenarios.py` (PASS 8/8, `logs/planning_eve/`)
+
+### Hiện tại (2026-10-28)
+- hành vi: `eve.assess` cho mỗi điểm mức 0–3 từ yếu tố × độ nhạy; `eve.repair` thử dời giờ → đổi ngày → `backup_pool` → bỏ (mức 3), mỗi phương án qua `Engine.eve_trial` + đánh giá lại; `eve.check` chỉ hỏi ngày mai khi mức tăng và nguyên nhân chưa bị từ chối; `eve.Store` giữ đề xuất theo `plan_hash`. `eve.gather` / `run_eve` thu yếu tố từ `live` (kể cả nghỉ lễ và khung ngày đổi); job notify `check_eve` 20:00, harness `GET/POST .../eve` (nhận / từ chối / hoàn tác), banner trên `/app/plan` (hai mẫu chờ chọn). Cờ `eve_replan.enabled` tắt (`docs/PLANNING.md` §Đổi lịch tối trước ngày đi). Link thông báo chuyến mở `/app/plan?journey=`; thông báo tối trước chuyến đọc dự báo ở điểm đầu ngày 1 thay vì toạ độ Đà Lạt viết cứng.
+
+### Trước đó
+- _không có_
+
+
+## flights-2026-10-29 — crawl Google Flights, chuyến bay `feasible`
+
+- module `src/corpus/crawl/gflights/`, `src/corpus/serving/flight_offers.py`, adapter `booking.google_flights` đọc file serving, `journey` plane `True` khi có chuyến crawl; `config/queries.yaml` `flight_price:`, `logs/flight_price_loop.sh`; docs `CORPUS.md` §Giá chuyến bay, `BOOKING.md`.
+- chuyến bay crawl có `duration_min`, `fetched_at`, tên sân bay như Google gọi nên chọn được làm `inbound`/`outbound`; plane thử `plane.max_airports` sân bay (Huế → Đà Nẵng), `minutes` cộng `airport_before_min` + `airport_after_min` (`config/journey.yaml`).
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/crawl/gflights tests/booking tests/harness/test_booking_routes.py -q`
+
+## booking-wiring-2026-10-29 — chọn chuyến, nhà, đèo, đánh đổi
+
+- `Offer` thêm `stops`, `duration_min`, `fetched_at`, `transit` (payload `Transit` của Trip); `Leg.via` (đèo, `entry_roads` trong `config/journey.yaml`); `trip.domain.logistics.tradeoffs` + `tradeoffs` trong view Trip; `home_city` → `origin` qua `harness.booking_routes.home_point` và `patterns.seed_profile`.
+- ngưỡng `config/journey.yaml` đối chiếu 14 tuyến OSRM thật và chuyến bay crawl: `motorbike_max_km`, `coach_region_max_km`, `airport_max_km`, `min_crow_km` giữ nguyên; thêm `max_airports`, `airport_before_min`, `airport_after_min` (bảng trong `.superpowers/sdd/2026-10-29-booking-flights/progress.md`).
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/booking tests/trip/test_logistics.py tests/harness/test_booking_routes.py -q`
+
+## booking-journey-2026-10-28 — `booking` deeplink và `journey` (spec B.6)
+
+- file: `src/booking/`, `src/journey/`, `src/harness/booking_routes.py` (+ hai route trong `server.py`, `booking_click` trong `events.py` và `web/src/user/events.ts`), `config/booking.yaml`, `config/journey.yaml`, `docs/BOOKING.md`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/booking tests/harness/test_booking_routes.py -q`
+
+### Hiện tại (2026-10-28)
+- hành vi: `booking.offers(kind, query)` trả `Offer` deeplink cho xe khách (Vexere), máy bay (link Google Flights), chỗ ở (Google Travel, Trip.com từ `stay_prices`); trường link không nói được là `None`. `journey.options` trả car / motorbike / bus / plane với `feasible` ba trạng thái, chặng vẽ bằng OSRM. UI chưa nối; ghi `inbound/outbound` vẫn qua `pick_transit`.
+
+### Trước đó (—)
+- _không có_
+
+## corpus-media-scenes-2026-10-28 — Nhãn cảnh ảnh Maps, bỏ ảnh có người, ảnh theo cảnh trên thẻ Decision
+
+- file: `src/corpus/observe/gmaps/scenes.py`, `src/corpus/serving/scenes.py`, `src/corpus/llm/tasks.py` (`SCENE_OBSERVE`), `src/corpus/retrieval/engine.py` (`scene_photos`), `src/decision/cards.py` (`photos`), `config/scenes.yaml`, `web/src/data/store.ts`, `web/src/user/pd/api.ts`, `web/src/user/lib.ts`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/observe/gmaps/test_gmaps_scenes.py tests/serving/test_scenes.py tests/retrieval/test_card.py tests/decision/test_cards.py -q`; `cd web && npx tsc --noEmit -p .`; chạy thật `EXTRACTOR_ON_UIT=1 python -m corpus gmaps photo_scenes --city dalat` (3160 nơi, 0 lỗi, ~50 phút); ảnh chụp `frontend_images/lua-chon-anh-theo-canh-{luoi,sheet}.png`
+
+### Hiện tại (2026-10-28)
+- hành vi: `gmaps photo_scenes` ghi `data/gmaps/photo_scenes/<fid_dir>.json` (cảnh, có người, mờ / tối, cụm gần trùng); cache theo sha256 ảnh, chạy lại chỉ gọi model cho ảnh mới
+- hành vi: thẻ Decision có `photos` (≤ 4 cảnh, ảnh bìa đứng đầu, không người / không mờ / không trùng); không có nhãn → `[]`, web giữ ảnh cũ; web đưa ảnh này lên trước thư viện ảnh của nơi (thẻ, đĩa xoay, sheet), không đổi bố cục; không điểm hay thứ hạng nào đọc ảnh
+- số đo: 33.072 / 33.072 ảnh có nhãn; 46,5 % nơi có ≥ 3 cảnh (trước đó 0 %, chưa có nhãn); mẫu 100 ảnh chấm tay: cảnh 96 %, người 96 %
+- giới hạn: ảnh người ở mép khung có thể bị bỏ sót (1/64 ảnh "không người" trong mẫu); ngưỡng mờ chỉnh trên 310 ảnh, chưa gặp ảnh mờ thật; ảnh trên thẻ là bản 768 px, chưa có thumbnail WebP cho mọi ảnh (web tự lùi về bản gốc)
+
+### Trước đó
+- _không có_
+
+
+## corpus-web-tiktok-crawl-2026-10-28 — gsearch trong tìm web; phase `tiktok web_videos`
+
+- file: `src/corpus/crawl/web/client.py` (`Web(google=…)`, `Web.from_config(city=…)`), `src/corpus/crawl/web/discover.py`, `src/corpus/crawl/tiktok/web_videos.py`, `src/corpus/crawl/tiktok/place_filter.py` (`places_by_video`), `src/corpus/crawl/tiktok/asr.py` (chờ khi OOM), `src/corpus/__main__.py` (`PHASES["tiktok"]["web_videos"]`), `logs/tiktok_web_videos_chain.sh`, `tests/crawl/web/`, `tests/crawl/tiktok/`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/crawl/tiktok tests/crawl/web tests/crawl/gsearch tests/trip/test_web.py -q`; chạy thật: `logs/tiktok_web_videos_chain.sh <tag> dalat` (ngoài sandbox)
+
+### Hiện tại (2026-10-28)
+- hành vi: tìm web đi SearXNG → Google qua trình duyệt (`gsearch`) khi SearXNG bị chặn hoặc dưới 3 kết quả → SerpApi chỉ khi cả hai trống; Trip không mở trình duyệt
+- hành vi: `python -m corpus tiktok web_videos` mở các video ở `data/web/<city>/tiktok_urls.jsonl` trong phiên ẩn danh (≤ `poi_tabs` tab), lấy `poi`, nối với nơi Maps, tải video có nơi; `place_verify` đọc `data/tiktok/web_videos/<city>.jsonl` qua `places_by_video`
+- số đo: `python -m corpus web all --city dalat` (1689 s ở phần Document): 114 query + 25 làm tiếp, 1697 kết quả, 627 video TikTok, 853 URL trang, 746/814 trang đọc được, brave và duckduckgo bị chặn gần hết, Google CSE phục vụ 118/129 trang
+- số đo: `tiktok web_videos` trên 622 video (1852 s, 3 tab, không captcha): 244 (39%) có poi, 121 trong đó là khu vực hành chính (không nơi), 56 nối với nơi `place_poi`, 29 chỉ có ứng viên theo tên, 85 video được tải, 1 trang không có item, 0 lỗi
+- hành vi: `asr` gặp CUDA hết bộ nhớ (job khác chiếm card) thì chờ 30 s rồi thử lại đúng video đó (tối đa 120 lần), không ghi lỗi vĩnh viễn; `logs/tiktok_web_videos_chain.sh` chia `asr` thành tối đa 4 shard mỗi GPU trống (đo: 39 → 148 video/phút trên GPU 6)
+- giới hạn: `tiktok all` đi qua `web_videos` và dừng nếu thành phố chưa có `data/web/<city>/tiktok_urls.jsonl`
+
+### Trước đó
+- _không có_
+
+## corpus-gsearch-2026-10-28 — Google Search qua trình duyệt; Chromium treo vì trang NFS
+
+- file: `src/corpus/crawl/gsearch/` (`serp.py`, `crawl.py`, `__init__.py`), `src/corpus/__main__.py` (lệnh `gsearch run`), `src/corpus/crawl/common/browser.py` (`LOGIN_URL["gsearch"]`), `tests/crawl/gsearch/`, `logs/gsearch_probe.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/crawl/gsearch -q`; trình duyệt: `logs/crawl_path_check.py` (lệnh ở `docs/CORPUS.md` §Xử lý lỗi)
+
+### Hiện tại (2026-10-28)
+- hành vi: `python -m corpus gsearch run --query … | --from-file … [--pages N]` mở trang kết quả Google bằng profile `gsearch`, lấy kết quả tự nhiên + "Mọi người cũng hỏi", ghi `data/gsearch/<city>/results.jsonl` và trang thô; `/sorry/` chờ người giải, không thử lại; `search_pages()` trả `SearchPage` của `corpus.crawl.web` (engine `google-browser`)
+- hành vi: crawl trình duyệt treo (Maps/TikTok/Travel quá 30 s, `ctx.close()` treo) là do một trang của file `chrome` trên NFS không đọc được; đã cài lại `chromium-1169`, bản cũ ở `.cache/nfs-stuck-20261028/`. Đo 10 lần: 40/40 trang mở, chậm nhất 1,92 s
+- giới hạn: IP server bị Google chặn, mọi query không cookie ra `/sorry/`; parser mới kiểm trên trang dựng tay, chưa có trang kết quả thật
+
+### Trước đó
+- _không có_
+
+## planning-overload-speed-2026-10-28 — Lịch đầu nhanh hơn khi quá tải (spec §D.1)
+
+- file: `src/planning/overload.py` (`_in_children`, `plan_or_directions`, `_extend`), `src/planning/engine.py` (`_unplaced`), `tests/planning/test_planning_overload_parallel.py`, `tests/planning/bench_realistic.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/planning -q`; `.venv/bin/python tests/planning/bench_realistic.py --runs 3` (số đo `logs/planning_realistic/bench_d1_before.txt` / `bench_d1_after.txt`)
+
+### Hiện tại (2026-10-28)
+- hành vi: khi quá tải, `_extend` chạy trong tiến trình fork cùng lúc với ba hướng (trước nó chờ ba hướng xong); hai lần thử rộng nhất của `_extend` chạy song song. Kết quả giống hệt tuần tự (so 22 ca, lịch đầu + 5 thao tác, cùng `PYTHONHASHSEED`). Lịch đầu p95 2,95 s → 1,47 s; `twenty_in_2` max 4,2 s → 3,8 s (chưa dưới 2 s). Bench kiểm thêm max đổi khung ngày < 1 s (đo 0,19 s).
+- hành vi: khay "chưa xếp" (`engine._unplaced`) liệt kê nơi mới chưa xếp theo thứ tự selection thay vì thứ tự set, nên không đổi thứ tự giữa các tiến trình (`PYTHONHASHSEED`).
+- giới hạn: tiến trình con không còn là daemon (để `_extend` fork tiếp); `schedule_calls` không đếm lượt trong tiến trình con.
+
+### Trước đó
+- _không có_
+
+## decision-chat-ops-2026-10-28 — Decision: prefer/filter/like, hỏi về nơi, chỉ số C.3
+
+- file: `src/decision/{guard,session,curation,scope,filters,pipeline,wishes,engine,heuristics,evaluate}.py`, `src/corpus/llm/tasks.py` (`DECISION_OPS`, `DECISION_TURN`), `config/eval_trips.yaml`, `tests/decision/`, `web/src/user/pd/types.ts`, `web/src/user/ui/PlaceCard.tsx`, `web/src/user/screens/Explore.tsx`, `web/src/user/css/explore.css`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/decision`; `python -m decision evaluate`; `cd web && npx tsc -b --noEmit`
+
+### Hiện tại (2026-10-28)
+- hành vi: lượt chữ và act thêm `prefer` (±1 theo giá trị ontology), `filter` / `unfilter` (`State.filters`, ẩn khỏi tab sau khi xếp hạng, không đổi `status`/`score`, nơi chưa rõ giá trị không qua, nơi đã chọn luôn hiện, `opens_by=HH:MM` đọc giờ mở chắc chắn), `like` (`State.likes` → wish "giống X"). View có `filter {active, hidden}` và `likes`. "chỉ xem quán mở trước 7h" và "bỏ lọc" không gọi model.
+- hành vi: hỏi về một nơi: prompt có `DATA` = `corpus.retrieval.card` của tối đa 3 nơi user nêu tên; số trong DATA được phép nhắc lại.
+- hành vi: mỗi mong muốn user đã nói (`dish`, `kind`, `like`) mà có nơi qua sàng lọc luôn có ≥ 1 nơi khớp trong "Hợp nhất" (`wishes.reserve`: lấy chỗ của nơi `top` điểm thấp nhất không phải nơi khớp duy nhất của mong muốn khác, không còn thì `top` dài thêm 1; không đụng nơi đã chọn, ràng buộc cứng hay điểm).
+- hành vi: `decision evaluate` thêm `wish_hit_rate`, `wish_rank_median`, `drop_one_changes`, `wish_penalized`, `rebase_ms`, `text_turn_ms`; 10 chuyến trong `eval_trips.yaml` có `wishes`.
+- hành vi: web: dải "Đang lọc" (chip, "n nơi đang ẩn", "Bỏ lọc"), chip "Mở cửa trước 7h", nút "Thích" trên thẻ nơi.
+- đo (release `r-3526a43af23d55a4915aecca-bb18c207`, 30 chuyến): vi phạm 0, `wish_hit_rate` 1,0 (11 mong muốn), `wish_penalized` 0, `drop_one_changes` 1,0, `rebase` p50/p95 47/96 ms, lượt chữ từ khóa p95 87 ms (lần đầu của tiến trình 578 ms do parse bản ghi giờ mở), pipeline ≤ 164 ms.
+- giới hạn: chưa gọi model thật với prompt mới (`-m live` chưa chạy); chưa có `config/eval_personas.yaml` (repo không có mô tả persona thành trường Search Input).
+
+### Trước đó
+- _không có_
+
+## corpus-global-views-2026-10-28 — View toàn cầu: khí hậu, lịch, vùng hạn chế
+
+- file: `src/corpus/views/{__init__,common,climate,calendar,restricted}.py`, `config/views.yaml`, `src/corpus/__main__.py`, `src/live/{views,holidays,settings}.py`, `src/live/weather/climate.py`, `config/{climate,holidays}.yaml`, `src/planning/conditions.py`, `tests/views/`, `tests/live/test_views_layer.py`, `tests/planning/test_planning_conditions.py`, `tests/planning/test_planning_boundaries.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/views tests/live tests/planning`; dựng thật: `python -m corpus views all --city dalat`
+
+### Hiện tại (2026-10-28)
+- hành vi: `python -m corpus views <climate|calendar|restricted|all>` ghi `data/<city>/views/{climate.json,calendar.json,restricted.geojson}`. Đà Lạt: `ClimateNormal` 12 tháng × 11 năm (2015–2025, Open-Meteo archive); `fog_prob = null` (nguồn không báo sương mù); `CalendarDay` 2025–2030, Tết 17/2/2026, 6/2/2027, 26/1/2028 đúng; `RestrictedArea` 4 vùng quân sự trong bbox (OSM không có vùng `access=no` nào ngoài đường).
+- hành vi: `live` đọc view trước: ngày lễ = view + `holidays.yaml` đè tên / thêm ngày; xác suất mưa ngoài tầm dự báo = `rain_prob_override_by_month` > view > `rain_prob_by_month` (chỉ khi chưa dựng view). View chưa dựng → YAML như cũ. API public của `live` không đổi; thành phố của view = `views_city` (mặc định `dalat`).
+- hành vi: `planning/conditions.py` đọc `restricted.geojson` qua `corpus.views`: nơi nằm trong vùng bị cảnh báo mức `watch` (nhạy cảm, có dự phòng), không bao giờ bị loại. Câu cảnh báo người dùng thấy chưa có (`build.condition_warnings` chỉ nói thông báo cả ngày).
+- hành vi: `rain_prob` từ view (ngày ≥ 1 mm theo ERA5) cao hơn ước lượng tay (tháng 7: 0,94 so với 0,70); chỉnh `climate.rain_mm` trong `config/views.yaml` hoặc đè từng tháng nếu cần.
+
+### Trước đó (2026-10-28)
+- _không có_
 
 ## trip-agent-questions-2026-10-16 — Agent tự viết câu hỏi, app giữ lựa chọn
 
@@ -61,29 +320,17 @@ _không có_
 
 ## corpus-retrieval — Module retrieval công khai cho online
 
-- file: `src/corpus/retrieval/__init__.py`, `src/corpus/retrieval/engine.py`, `src/corpus/index/compile.py` (cột `served`), `src/corpus/index/query.py` (`served_only` param), `tests/index/test_index_query.py`, `tests/retrieval/test_retrieval_boundary.py`
-- cách kiểm chứng: `.venv/bin/python -m pytest tests/index/test_index_query.py tests/retrieval/test_retrieval_boundary.py -q`
+- file: `src/corpus/retrieval/__init__.py`, `src/corpus/retrieval/engine.py`, `src/corpus/index/compile.py` (cột `served`), `src/corpus/index/query.py` (`served_only` param), `tests/index/test_index_query.py`, `tests/retrieval/test_retrieval_boundary.py`, `src/corpus/retrieval/{card,find}.py`, `src/bench/retrieval.py`, `tests/retrieval/{test_card,test_find}.py`, `tests/bench/test_retrieval_bench.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/retrieval tests/bench -q`; `PYTHONPATH=src .venv/bin/python -m bench retrieval`
 
-### Hiện tại (2026-10-15)
+### Hiện tại (2026-10-28)
+- hành vi: thêm `card(record)` / `engine.card(id)`, `engine.find(Criteria | dict)` (must `VERIFIED`/`OUTDATED` → hits, `UNCERTAIN` → maybe, không bằng chứng → `unknown`; chỉ trả `stay` khi `groups` có), `engine.vocabulary()`, `engine.warm()`. `entry_fee = free` mà ước tính vé > 0 thành `UNCERTAIN` (`conflicts_entry_fee_estimate`). Chi tiết: `docs/CORPUS.md` §Agent đọc kho.
+- kiểm chứng: `python -m bench retrieval` trên dữ liệu hiện hành (Đà Lạt, 3172 nơi): 18 ca đều đúng, recall 1.0, `find` p95 ≤ 11 ms, `card` p95 0.07 ms / 1319 ký tự.
+- giới hạn: chưa nối vào tool Trip / Decision; release `r-3526a43af23d55a4915aecca-bb18c207` đã dựng (15 nơi `entry_fee` thành `UNCERTAIN`) nhưng chưa publish; mở release từ ổ NFS lạnh ~30 s, dữ liệu hiện hành ~2,5 s.
+
+### Trước đó (2026-10-15)
 - hành vi: open/from_snapshot pin binding và version thật; tên qua typed public API, semantic/similar bắt buộc scope eligible. Evidence exact served value/status/observation, context chỉ khi có verdict; legacy null không giả lineage. Gate loại claim fail normalization, wrong/unsure_again kể cả unserved. Ontology chỉ boost vector hit có sẵn. Đã nối ba factory và Agent context; xem `corpus-online-contracts` và handoff cho kiểm chứng.
 - giới hạn: vector stay còn mỏng; không có benchmark live hay đảm bảo precision toàn serving, chưa activation.
-
-### Trước đó (2026-10-14)
-- hành vi:
-  - **Cột `served` trong span index:** `compile.py` gate trả span với `served=False` thay vì loại span không đỡ feature đang phục vụ. Lý do `stale_evidence` → `not_backing_served_feature`. Span hỏng (model lệch, nhãn `wrong`, `invalid_source_span`) vẫn loại hoàn toàn.
-  - **`search_spans()` có `served_only`:** mặc định `True` (evidence lookup, chỉ span backing served feature); `False` cho vibe/semantic search, đọc cả 271k+ span mô tả vibe không gắn feature. `SpanHit` có field `served: bool`.
-  - **`corpus.retrieval.RetrievalEngine`** (module mới): wrap `Index` + `Snapshot` + `Ontology` sau typed API. Mở bằng `RetrievalEngine.open(release_id, region)`. Read-only, thread-safe. Mọi kết quả mang `release_id`.
-    - `search_names(q, within, limit)`: tìm theo tên, substring match, scope-safe.
-    - `get_place(place_id)`: serving record từ snapshot region.
-    - `semantic(q|bytes, within, mode, limit)`: hybrid cross-modal (bge-m3 span + SigLIP2 photo) + ontology feature boost + RRF merge. `mode="vibe"` đọc cả span `served=False`; `mode="evidence"` chỉ served. Bytes query (ảnh) chỉ photo space.
-    - `similar(place_id, within, k)`: nơi tương tự (photo centroid).
-    - `evidence(place_id, feature, limit)`: span backing served feature; chỉ `served=True`.
-    - `coverage(place_ids)`: photo/span/style counts + missing lists.
-  - **Ontology matching:** `_match_ontology()` so user query với hint/value trong ontology (không cần model). Feature match → boost additive 0.15 × confidence cho place có feature đó.
-  - **Merge:** Reciprocal Rank Fusion (K=60) ghép span + photo channel; ontology boost additive trên RRF score. Không tạo hit mới từ ontology-only khi không có span/photo match tương ứng (trừ khi feature tồn tại).
-- kiểm chứng: 28/28 test (7 index + 21 retrieval boundary). Boundary kiểm: scope enforcement (không ID ngoài `within`), evidence chỉ `served=True`, semantic score ≠ VERIFIED, `release_id` trên mọi kết quả, ontology matching cho `outdoor_seating` / `photo_friendly`, image query chỉ photo channel, coverage counts.
-- giới hạn: chưa chuyển name search của Trip (`trip/domain/resolve.py:search`) sang `corpus.retrieval` (cần phối hợp Codex); chưa integrate vào Decision/Planning. Vector stay chỉ 3/1.510. `similar()` chưa test cross-modal (chỉ photo centroid). Gemma audit kết quả sửa chuẩn hóa chưa publish.
-
 
 ## trip-reader-root-binding — Snapshot và visual index cùng root
 
@@ -533,3 +780,86 @@ _không có_
 
 ### Trước đó
 - hành vi: chỉ đăng nhập Google; bấm khách khi đã có phiên thì giữ phiên cũ (`started: false`); thanh bước có thêm Đánh giá; snapshot parse trên luồng chính khi vào Lựa chọn; khối không có dữ liệu ghi "Chưa có thông tin"; tab Đánh giá tối đa 3 lời.
+
+## lodging-price — Giá phòng đúng ngày đi (`docs/CORPUS.md` §Giá phòng theo ngày)
+
+- file: `src/corpus/crawl/common/lodging.py` (bộ ngày, gấp tên + khoảng cách, kho quan sát, hàng đợi làm tươi), `src/corpus/crawl/gtravel/{url,parser,crawl}.py`, `src/corpus/crawl/tripcom/{parser,crawl}.py`, `src/corpus/serving/stay_prices.py`, `src/corpus/__main__.py` (`gtravel price`, `tripcom price`, `stay_prices`), `config/queries.yaml` khối `lodging_price`, `logs/lodging_price_loop.sh`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/crawl/gtravel tests/crawl/tripcom tests/crawl/test_lodging_price.py` (parser trên trang thật đã lưu, URL so từng byte với URL Google tự sinh); chạy thật: `python -m corpus gtravel price --city dalat --limit 6`
+
+### Hiện tại (2026-10-28)
+- hành vi: Google Travel (chính) — mỗi (chỗ ở, ngày) một trang `/travel/hotels/entity/<id từ CID của fid>?ts=<ngày>`, đọc giá một đêm có thuế; trang không có offer ghi `price null / available null` (không bao giờ `false`); ngày trên trang khác ngày hỏi thì không nhận giá. Trip.com (đối chiếu) — HTTP trang danh sách, ~12 khách sạn nổi bật mỗi lần, gọi nhiều lần mỗi ngày, khớp bằng tên + khoảng cách (tên không chung từ nào thì không khớp; mơ hồ thì không khớp), hàng không khớp vào `unmatched.jsonl`.
+- hành vi: `stay_prices` gộp quan sát mới nhất mỗi (`fid`, `stay_date`, `nights`) vào `data/serving/stay_prices/<city>.json`, Google thắng, nguồn kia vào `cross_check`; cặp không ai có giá thì vắng mặt. API công khai của `live` / `corpus.retrieval` chưa đổi.
+- hành vi: `logs/lodging_price_loop.sh` mỗi giờ chạy `gtravel price` (≤ 120 trang, cặp chưa thấy / cũ nhất trước, 2 tab), `tripcom price`, `stay_prices`.
+
+### Trước đó
+- _không có_
+
+## corpus-gmaps-coverage-2026-10-28 — Rà phủ phase Maps, chạy phần thiếu (Đà Lạt)
+
+- file: `src/corpus/crawl/gmaps/visit.py` (`--profile`, `--shard`, chờ biểu đồ ở trạng thái `attached`), `src/corpus/__main__.py` (route `visit`), `scripts/gmaps_runner.py` (`GMAPS_PROFILE`, phase `visit`, `GMAPS_PHASES` theo đúng thứ tự gõ), `logs/gmaps_coverage_chain.sh`, `logs/gmaps_coverage_after.sh`, `logs/official_pages_chain.sh`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/crawl/gmaps` (8 test, 3 test mới ở `test_visit_profile.py`); log `logs/gmaps_coverage_*.log`; ledger `.superpowers/sdd/2026-10-28-crawl-gmaps-coverage/progress.md`
+
+### Hiện tại (2026-10-28)
+- hành vi: chỉ một tài khoản Maps còn đăng nhập (`gmaps_b2`; `gmaps_a` của crawl Google search); chạy một runner, 4 tab, headless kèm DevTools 9540. Trước khi chạy: menu 1.015/1.031, photos 1.771/1.779, keywords còn 3 (46 ở danh sách chỗ ở), official pages 221/288 (chỗ ở 0/284), mọi phase đạt ≥ 95% trừ `visit` (0 file).
+- hành vi: `visit` không chạy hàng loạt. Khối giờ đông khách `div.C7xf8b` cao 0 nên chờ "visible" không bao giờ xong (đã sửa, chờ `attached`); với biểu đồ đã hiện, Maps vẫn không in dòng "Mọi người thường dành … ở đây" cho 6 nơi nhiều review nhất (khớp `docs/plans/CORPUS_HANDOFF.md`: 30 nơi, 0 dòng) nên chỉ ghi được `text: null`.
+- hành vi: official pages: chỗ ở 234/284, Đà Lạt 243/288 (còn lại là site chết: DNS / SSL).
+- hành vi: crawl 80 nơi quá sâu (đều > 1.900 review, đang giữ 200 hoặc ít hơn cap 5.000): Maps ngừng tải danh sách quanh 900-1.160 review nên `too_few` (dưới nửa số hiển thị) loại cả ba lần thử, nơi đó giữ bản cũ; xem ledger để biết kết quả cuối.
+
+### Trước đó
+- _không có_
+
+## corpus-navigate — sol dẫn đường (`docs/CORPUS.md` §sol dẫn đường)
+
+- file: `src/corpus/navigate/` (`schema.py`, `plan.py`, `compare.py`, `common.py`, `__init__.py`), `config/navigate.yaml`, vai trò `NAVIGATOR` ở `src/corpus/llm/roles.py` (`Role.fallback` → khóa `AGENT_*`), task `NAVIGATOR_PLAN` ở `src/corpus/llm/tasks.py`, `Task.ask` gửi `reasoning_effort` + `prompt_cache_key` khi vai trò có mức suy nghĩ, CLI `python -m corpus navigate <plan|compare>` ở `src/corpus/__main__.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/navigate -q` (LLM giả); một call thật `python -m corpus navigate plan --city dalat --no-latest`; ledger `.superpowers/sdd/2026-10-28-navigator-p3/progress.md`
+
+### Hiện tại (2026-10-28)
+- hành vi: `plan` hỏi sol một lần chỉ với tên thành phố + `area`, code bỏ mục sai khuôn vào `rejected`, ghi `data/<city>/navigate/mining_map_<ts>.json` (+ `mining_map.json` trừ khi `--no-latest`; bản không có aspect hợp lệ không bao giờ thay bản cũ). `web search` đọc `mining_map.json`.
+- hành vi: `compare` đọc ontology, `config/queries.yaml`, câu hạt giống `web`, mùa, món, cảnh và `data/serving/places.json`; ghi `compare_<ts>.json` + `resolve_queue.jsonl` (nominee chưa có), in bảng tiếng Việt. Phần mới chỉ là đề xuất `approval: pending`, không ghi ontology / config / kho.
+- hành vi: `general_claims` (`source: "model"`, không `poi`) là đầu vào cho `LocalClaim` của P4; trạng thái do P4 gán.
+
+### Trước đó
+- _không có_
+
+## corpus-local — Document web → `LocalClaim` (`docs/CORPUS.md` §Tri thức bản địa)
+
+- file: `src/corpus/local/` (`gate.py`, `extract.py`, `group.py`, `run.py`, `__init__.py`), task `LOCAL_CLAIM` ở `src/corpus/llm/tasks.py`, bảng `local_claims` ở `src/corpus/snapshot/tables.py` + `compile.py` + `read.py`, `src/corpus/retrieval/local.py` (`local_knowledge`), input release ở `src/corpus/releases/run.py`, CLI `local` ở `src/corpus/__main__.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/local -q` (LLM giả); mẫu thật 40 Document Đà Lạt `python -m corpus local extract --docs <file>` rồi `local group --map <mining_map>`; bảng mẫu ở ledger `.superpowers/sdd/2026-10-28-claims-p4/progress.md`
+
+### Hiện tại (2026-10-29)
+- hành vi: `local extract` đọc mỗi Document một lần theo đoạn ≤ 3.500 ký tự (Extractor), lưu câu trả lời thô; `local group` gate (quote ⊆ đoạn, text ⊆ quote, số / tháng / giờ / thời tiết ⊆ quote, bỏ giờ mở cửa của nơi), resolve POI, gom theo domain độc lập (`kept` / `unverified` / `conflict`), gắn `confirmed` / `contradicted` / `unverified` cho `general_claims` của sol; ghi `data/<city>/local/`.
+- hành vi: snapshot có bảng `local_claims` (bỏ `poi_unresolved`); `retrieval.local_knowledge` không trả `contradicted`, gắn `label` fact / reference / disputed. Aggregate chưa đọc `poi_claims.json`.
+- mẫu 40 Document (29/10): 418 mục, 319 qua gate, 11 `kept` (đúng 11/11 khi kiểm tay), claim sol 3 confirmed / 0 contradicted / 23 unverified.
+
+### Trước đó
+- _không có_
+
+## corpus-resolve-p7 — `gmaps resolve`: nominee của sol → Maps → kho (`docs/CORPUS.md` §Resolve nominee)
+
+- file: `src/corpus/crawl/gmaps/resolve.py` (phase, trình duyệt qua `search.search`), `src/corpus/navigate/resolve.py` (`pending`, `decide`, `record`; public `pending_nominees` / `decide_resolution` / `record_resolution`), `src/corpus/__main__.py` (`gmaps resolve`, `--limit`), `config/navigate.yaml` (khối `resolve:`)
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/navigate tests/crawl/gmaps/test_resolve.py tests/views/test_cli.py -q` (searcher giả, không mở trình duyệt); chưa có lần chạy thật; plan `docs/superpowers/plans/2026-10-28-resolve-p7.md`, ledger `.superpowers/sdd/2026-10-28-resolve-p7/progress.md`
+
+### Hiện tại (2026-10-28)
+- hành vi: nominee `missing` (`resolve_queue.jsonl`) và `maybe` (báo cáo compare mới nhất) được tra trên Maps; chỉ một nơi rõ ràng, trong `area`, đủ review mới được ghi (khuôn `search`) vào `data/gmaps/search/<city>/resolve.jsonl` để `filter` → `counts` → `list` kiểm tiếp; mơ hồ / không khớp / ngoài khu / ít review chỉ ghi sổ `data/<city>/navigate/resolved.jsonl`. Không có trạng thái "không tồn tại".
+
+### Trước đó
+- _không có_
+
+## web-user-final-2026-10-29 — Đường tới Đà Lạt, Đi một vòng, dòng chi phí chỗ nghỉ, ảnh cảnh trong chat Trip (`docs/Role_Web_Functional_Design.md` §6)
+
+- file: `web/src/user/booking.ts`, `web/src/user/screens/plan/{WayIn,LodgingCost}.tsx`, `web/src/user/css/{wayin,walk}.css`, `web/src/user/ui/PlaceWalk.tsx`, `web/src/user/ui/PlaceSheet.tsx` (nút ở tab Hình ảnh), `web/src/user/screens/plan/Overview.tsx` (ba chỗ gắn), `web/src/user/screens/Plan.tsx`, `web/src/user/planning/types.ts` (`LodgingBudget`), `src/trip/infrastructure/knowledge.py` (`Knowledge._scene_urls`), `web/scripts/make_thumbs.py` (thêm ảnh theo cảnh), `tests/web/test_landing_3d_structure.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/trip/test_knowledge.py tests/trip/test_assistant_cards.py tests/web/test_landing_3d_structure.py -q`; `cd web && npx tsc --noEmit`; ảnh chụp `frontend_images/duong-toi-da-lat-*.png`, `tuyen-anh-theo-canh-*.png`; ledger `.superpowers/sdd/2026-10-29-web-user/progress.md`
+
+### Hiện tại (2026-10-29)
+- hành vi: tổng quan lịch trình có bốn thẻ cách đi (ô tô, xe máy, xe khách, máy bay) cho chiều đến và chiều về, giờ đường bộ theo OSRM; chuyến chưa kiểm được ghi "Chưa rõ"; nút mua mở trang nhà cung cấp ở tab mới và gửi `booking_click`. Chân trang tổng quan có dòng chi phí chỗ nghỉ riêng (cảnh báo khi vượt phần ngân sách chỗ ở, không chặn). Tab Hình ảnh của một nơi có nút "Đi một vòng" (ảnh theo cảnh, không người). Đĩa xoay trong chat Trip lấy mỗi cảnh một ảnh không người, không mờ khi nơi có nhãn cảnh. Bản test landing bỏ dòng "Khám phá bản đồ Đà Lạt" vì chữ này đã bị bỏ có chủ đích khi landing đổi từ bản đồ hành trình sang thung lũng (commit `4bf03a4`).
+- còn thiếu: spike 3D (E.2 bậc 2), clip trong đi một vòng, đi một vòng cho nơi chỉ có trong chat Trip (bảng "LÀM CUỐI CÙNG" ở HANDOFF); lý do câu `tradeoff` của thẻ và trường chuyến bay mới (`flight_no`) hiện khi track booking-flights ghi vào API.
+
+### Trước đó
+- _không có_
+
+## assistant-bench-2026-10-29 — Sửa ảnh nhiều thẻ, đo covered_tools, bench cuối (đang dở)
+- file: `src/trip/domain/perceive.py` (`shows_several`, `decide_identity(several=)`), `src/trip/infrastructure/looks.py`, `src/corpus/llm/tasks.py` (`PHOTO_READ.places_in_view`), `src/bench/assistant.py` (`BENCH_ASSISTANT_SET`, family `legacy`), `tests/trip/{test_perceive,test_looks_perceive}.py`, `tests/bench/test_assistant_bench.py`
+- hành vi: ảnh chụp màn hình có từ 2 thẻ nơi (hoặc loại danh sách / lưới / carousel) không còn cho ra một tên chắc chắn; chỉ ứng viên để hỏi lại. Live (terra, UIT <= 4): `photo-ask` 7/7, 0 đoán ảnh.
+- đo `covered_tools` (terra, 1 lượt mỗi cấu hình, 30 tin cũ + followup/shown/multi): `write` p50 4,66 s, 1,13 call/lượt, followup 4/6; `all` p50 5,27 s, 1,37 call/lượt, followup 5/6; chênh 1 ca nằm trong nhiễu nên giữ `write`.
+- guard trên Cloudflare Clef: 0 chặn nhầm, nhưng R1-R6 recall 0,837 (CLEF_TIMEOUT_S=2) / 0,907 (10 s), dưới 0,95; 3-4 câu R1/R2/R3 cho xác suất 0,0 (mô hình khác, không phải độ trễ). Chưa đổi ngưỡng.
+- ledger `.superpowers/sdd/2026-10-29-asst-bench/progress.md`; bench cuối terra so với sol chưa chạy (9router tắt).

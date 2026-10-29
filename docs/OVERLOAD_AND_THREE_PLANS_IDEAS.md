@@ -15,7 +15,7 @@
 | Spare capacity | `room()` returns `usable / free / more / filled` ("Đủ cho chuyến đi" at `fill_share` 0.8) | `feasibility.room` |
 | Planning variants | Up to 3 of 5 objectives (`least_travel, low_cost, weather_robust, diverse, preference_fit`), chosen by `choose()`. Each objective = **different day-split weights** (`objective_weights`) + a different score | `variants.py`, `objectives.py` |
 | Membership | Every variant schedules **all** confirmed places (`schedule_trip` uses `sorted(trip.by_place)`). No code path drops a place to make a plan fit | `build.schedule_trip` |
-| Day split | Exact DP over subsets of clusters (≤ 7 days, ≤ 8 clusters), greedy fallback (`days_fallback`). Every cluster must land on a day | `days.assign_days` |
+| Day split | (historical: DP over clusters, `days.assign_days`, removed 2026-10-29) now `layout.assign`: cheapest insertion into day stretches + single moves; leftovers returned | `layout.assign` |
 | Overload at planning time | Kept as-is; `validate()` reports `day_window` etc. A variant that fails is dropped; **no valid variant → `back_to_decision`** with the places and reasons | `variants.build_variants`, `validate.blockers` |
 | Drops by the user | `State.dropped` with reason, restore path, and `rethink_drops: 4` ("go back to Place Decision") | `planning/session.py`, `planning.yaml` |
 | Never silent | Locked / anchor never droppable; `validate` is the only judge | `validate.py` |

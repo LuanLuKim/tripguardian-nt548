@@ -45,7 +45,7 @@ Check-in hôm nay muộn hơn giờ dự kiến ≥ `tight_threshold_min` và ng
 
 ## 6. Google Calendar
 
-Một calendar riêng do app tạo cho mỗi chuyến ("TripGuardian · Đà Lạt dd–dd/MM"), mỗi điểm dừng có giờ một event: giờ đến / rời, địa chỉ, cảnh báo nhắc tên nơi, link `APP_BASE_URL/app/today?stop=<id>`, `reminders: {useDefault: false, overrides: []}`.
+Một calendar riêng do app tạo cho mỗi chuyến ("TripGuardian · Đà Lạt dd–dd/MM"), mỗi điểm dừng có giờ một event: giờ đến / rời, địa chỉ, cảnh báo nhắc tên nơi, link `APP_BASE_URL/app/plan` (sản phẩm dừng ở chốt lịch, không còn màn Today), `reminders: {useDefault: false, overrides: []}`.
 
 | API | Việc |
 |---|---|

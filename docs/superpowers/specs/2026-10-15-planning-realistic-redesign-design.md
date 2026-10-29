@@ -50,7 +50,7 @@ flowchart LR
 | Bỏ khỏi đường tạo phiên | Lý do |
 |---|---|
 | `composer._select` dò tập nơi | thay bằng thứ tự bỏ (§7) |
-| vòng K+1 chỗ ở × 3 mục tiêu (`variants.py`) | chỗ ở bắt buộc chọn ở Lựa chọn trước khi vào Lịch trình; dựng với đúng một chỗ ở |
+| vòng K+1 chỗ ở × 3 mục tiêu (`variants.py`, chỉ còn ở CLI `lodging`; `create` không gọi; `objectives.choose` đã gỡ 2026-10-29) | chỗ ở bắt buộc chọn ở Lựa chọn trước khi vào Lịch trình; dựng với đúng một chỗ ở |
 | `cluster.py` + `days.assign_days` DP | thay bằng chèn rẻ nhất + cải thiện cục bộ (§6) |
 
 `engine.py` gọi lõi qua `layout.build(trip) -> Layout` và `layout.retime(trip, day, order) -> DayTimeline` thay cho `schedule_trip` / `compose`.

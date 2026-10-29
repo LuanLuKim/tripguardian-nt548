@@ -14,7 +14,7 @@ Từ **tập địa điểm đã xác nhận** của Place Decision, dựng 2–
 
 ## Phạm vi
 
-Trong: chia ngày; gom cụm; thứ tự trong ngày; khớp giờ mở cửa; chọn thời gian tham quan theo nhịp độ; thời gian đệm và nghỉ; đề xuất chỗ ở (tra live theo yêu cầu); điểm vào / ra thành phố; kiểm tra cuối; độ vững; kế hoạch dự phòng; 2–3 phương án theo mục tiêu; vòng người dùng sửa / góp ý / chọn; Live Context (thời gian di chuyển, thời tiết, chỗ ở, geocode, mặt trời, lễ).
+Trong: chia ngày; thứ tự trong ngày; khớp giờ mở cửa; chọn thời gian tham quan theo nhịp độ; thời gian đệm và nghỉ; đề xuất chỗ ở (tra live theo yêu cầu); điểm vào / ra thành phố; kiểm tra cuối; độ vững; kế hoạch dự phòng; 2–3 phương án theo mục tiêu; vòng người dùng sửa / góp ý / chọn; Live Context (thời gian di chuyển, thời tiết, chỗ ở, geocode, mặt trời, lễ).
 
 Ngoài: booking và thanh toán; điều hướng turn-by-turn; traffic thời gian thực; giá phòng từ API OTA; nhiều thành phố; cộng tác nhóm; đưa chỗ ở vào Place Intelligence.
 
@@ -44,7 +44,8 @@ src/live/                      Live Context — gọi mạng, đọc-ghi cache; 
   flights/                     chuyến bay một ngày từ Google Flights (không còn trong luồng người dùng)
   buses/                       xe khách một ngày từ Vexere (không còn trong luồng người dùng)
   sun.py                       mọc / lặn, công thức NOAA, tính local
-  holidays.py events.py        config/holidays.yaml, config/events.yaml (nhập tay)
+  holidays.py events.py        holidays: view CalendarDay + config/holidays.yaml (lớp ghi đè); events: config/events.yaml (nhập tay)
+  views.py                     đọc data/<city>/views/*.json (chỉ đọc; thành phố = `views_city` trong config/live.yaml, mặc định dalat)
   advisories.py                config/advisories.yaml (thông báo nhập tay, có nguồn)
 
 src/planning/                  Planning & Validation — rule tất định
@@ -56,13 +57,14 @@ src/planning/                  Planning & Validation — rule tất định
   traits.py                    fact của một nơi mà mục tiêu / độ vững / dự phòng dùng chung
   lodging.py                   ⓐ vùng tìm → nguồn (corpus `stay` hoặc live) → sàng → xếp theo gu → K ứng viên
   logistics.py                 tra cứu trước khi có phiên Planning: geo, chỗ ở theo tên (chỉ corpus)
-  cluster.py days.py route.py  ⓑ gom cụm, chia ngày (DP), thứ tự trong ngày
+  layout.py days.py route.py   ⓑ chia ngày (chèn rẻ nhất + đổi chỗ), số hạng rủi ro của ngày, thứ tự trong ngày
   schedule.py                  ⓒ khớp giờ mở, visit theo pace, đệm, nghỉ
   timefit.py                   độ phù hợp toàn khoảng ghé theo hoạt động, mục đích và ưu tiên buổi
   recommendations.py           gợi ý tùy chọn từ backup_pool, thử xếp và validate trước khi trả
   validate.py                  ⓔ kiểm tra cuối, fail-closed
   robustness.py                ⓕ độ vững 3 mức
   backup.py                    ⓗ dự phòng từ backup_pool
+  eve.py                       đổi lịch tối trước mỗi ngày đi (D.3): mức ảnh hưởng, sửa tối thiểu, chống báo thừa
   objectives.py variants.py    ⓖ điểm theo mục tiêu; dựng 2–3 phương án
   build.py                     ghép một đường: prepare → schedule_trip → with_home
   repair.py scope.py           repair_day; phạm vi chạy lại
@@ -97,15 +99,15 @@ Mọi hàm trả `None` khi không có dữ liệu; không bịa. `src/live` kh�
 
 | Nguồn | Public API | Cách lấy | TTL | Khi lỗi |
 |---|---|---|---|---|
-| `osrm/` | `travel_matrix(points, mode)`, `route_shape(points, mode)` | OSRM local trên OSM Việt Nam; `/table` cho ma trận, `/route` cho hình đường của lịch đã chốt | 7 ngày | rơi về ước lượng thô của Planning (`travel.rough_minutes`: đường chim bay × `road_factor` ÷ `rough_speed_kmh`); plan gắn `travel_source = rough` + cảnh báo; độ vững trần "Khả thi" |
-| `weather/` | `weather(lat, lng, dates)` | Open-Meteo forecast theo ngày (trong tầm 16 ngày): xác suất mưa, lượng mưa mm, gió giật, dông (`weather_code` 95–99). Ngoài tầm → `config/climate.yaml` theo tháng (chỉ xác suất mưa) | 3 giờ / tĩnh | `None` → ngày đó không xét thời tiết, gắn cờ "chưa biết thời tiết"; số nguồn không cho giữ `None` |
+| `osrm/` | `travel_matrix(points, mode)`, `route_shape(points, mode)`, `route_steps(points, mode)` | OSRM local trên OSM Việt Nam; `/table` cho ma trận, `/route` cho hình đường của lịch đã chốt; `route_steps` = tên đường từng chặng (nhận chặng qua đèo) | 7 ngày | rơi về ước lượng thô của Planning (`travel.rough_minutes`: đường chim bay × `road_factor` ÷ `rough_speed_kmh`); plan gắn `travel_source = rough` + cảnh báo; độ vững trần "Khả thi" |
+| `weather/` | `weather(lat, lng, dates)`, `weather_hourly(lat, lng, day)` | `weather_hourly`: theo giờ một ngày, hai model `best_match` + `gfs_seamless` (mưa %, mm, gió giật, dông, sương mù = mã 45/48 hoặc tầm nhìn < 1 km, `disagree` khi hai model lệch ≥ 0,5 hoặc lệch dông; ngoài tầm → `None`). `weather`: Open-Meteo forecast theo ngày (trong tầm 16 ngày): xác suất mưa, lượng mưa mm, gió giật, dông (`weather_code` 95–99). Ngoài tầm → xác suất mưa theo tháng: `rain_prob_override_by_month` trong `config/climate.yaml` (ghi đè tay) > view `ClimateNormal` (`docs/CORPUS.md` §View toàn cầu) > `rain_prob_by_month` (ước lượng tay, chỉ khi chưa dựng view) | 3 giờ / tĩnh | `None` → ngày đó không xét thời tiết, gắn cờ "chưa biết thời tiết"; số nguồn không cho giữ `None` |
 | `lodging/` | `lodging_near(…)`, `lodging_seen()` | crawl mặt "Khách sạn" của Maps theo request; Planning **không** gọi (ứng viên chỗ ở chỉ lấy từ corpus, ⓐ) | 24 giờ | — |
 | `geocode/` | `geocode(text)` | Nominatim, 1 req/s, User-Agent riêng của dự án | 30 ngày | `None` → hỏi lại người dùng |
 | `geocode/` | `geosearch(text, limit=6)` | Photon (OSM, làm cho gõ-tới-đâu-gợi-ý-tới-đó), lỗi → Nominatim | 30 ngày | `Unavailable` → ô tìm hiện "không thấy" |
 | `flights/` | `flights(src, dst, day, fetch=True)` | không còn trong luồng người dùng (không hỏi chuyến bay). Google Flights (`hl=vi`, `curr=VND`) qua `corpus.crawl.open_sessions`; đọc `aria-label` của từng dòng chuyến ("Từ … đồng … của <hãng>. Rời … lúc HH:MM … và đến … lúc HH:MM …") | 26 giờ | `Unavailable` (captcha, trang không có dòng nào, trình duyệt chết); không bao giờ trả chuyến giả |
 | `buses/` | `buses(origin, day, way, fetch=True)` | không còn trong luồng người dùng (không hỏi chuyến xe). Trang tuyến của Vexere; trang render sẵn nên một GET HTTP stdlib là đủ, không cần trình duyệt: chuyến nằm trong `__NEXT_DATA__` `routeReducer.trips` (giờ đón / đến của `route.schedules[0]`, `fareLarge`, điểm đón / trả). `origin` là toạ độ (tỉnh gần nhất trong `config/live.yaml` `vexere_regions`) hoặc tên tỉnh | 26 giờ | `Unavailable` (trang đổi / bị chặn, tỉnh không có trong bảng) |
 | `sun.py` | `sun_times(date, lat, lng)` | công thức NOAA, không mạng, không thêm dependency | — | — |
-| `holidays.py` | `holidays(dates)` | `config/holidays.yaml` (lễ Việt Nam, nhập tay) | — | — |
+| `holidays.py` | `holidays(dates)` | view `CalendarDay` (thư viện `holidays` + âm lịch), `config/holidays.yaml` đè tên và thêm ngày | — | chưa dựng view → chỉ file |
 | `events.py` | `events(dates)` | `config/events.yaml` (lễ hội, Noel, Tết; nhập tay): `crowd` busy / peak, `closure_risk` | — | ngày không liệt kê = chưa biết sự kiện nào, không phải ngày vắng |
 | `advisories.py` | `advisories(dates)` | `config/advisories.yaml` (thông báo thiên tai / đường bị chặn, nhập tay từ thông báo chính thức, bắt buộc có `source`) | — | rỗng = chưa có thông báo trong dữ liệu, **không** phải an toàn |
 
@@ -125,6 +127,7 @@ Một ngày có thể đổi chính kế hoạch: thời tiết xấu hơn mức
 |---|---|---|
 | Thời tiết | `heavy`: dông hoặc mưa ≥ `heavy_rain_mm` hoặc gió giật ≥ `heavy_gust_kmh`; `severe`: mưa ≥ `severe_rain_mm` hoặc gió giật ≥ `severe_gust_kmh` | `heavy` tính như ngày mưa (`wet` ≥ `rain_high`): đệm lớn hơn, nơi ngoài trời bị phạt khi chia ngày, nơi nhạy cảm có dự phòng, mục tiêu `weather_robust`, kịch bản mưa của độ vững. `severe`: nơi `weather_exposed` **không được xếp** vào ngày đó |
 | Thông báo | `advisories.yaml`, phạm vi `city` hoặc vòng tròn `lat, lng, radius_km` | `severe`: nơi trong phạm vi không được xếp (bão chỉ chặn nơi ngoài trời; ngập, sạt lở, cháy, đường bị chặn chặn mọi nơi trong vùng); thấp hơn `severe`: vẫn xếp, có cờ, nơi trong vùng là nhạy cảm (`advisory`) và dự phòng không lấy nơi cùng vùng |
+| Vùng hạn chế | view `RestrictedArea` (`docs/CORPUS.md` §View toàn cầu) qua `corpus.views`, thành phố = `views_city` của `config/live.yaml`; chỉ có khi chuyến có ngày | chỉ cảnh báo, không bao giờ loại (OSM chưa đủ): nơi nằm trong vùng là nhạy cảm (`advisory`, mức `watch`) và dự phòng không lấy nơi cùng vùng; `build.restricted_warnings(ctxs, results)` thêm một câu `restricted_place` cho **mỗi nơi có trong lịch** (có `place_id`, nói loại vùng + tên, "kiểm tra trước khi đi", dữ liệu có thể chưa đủ), một lần cho cả chuyến chứ không lặp theo ngày; nơi chưa xếp hoặc đã bị bỏ thì không có câu (gọi từ thẻ phương án trong `schedule_trip`, từ view của engine cạnh `pin_warnings`, và từ `output.build` cho kế hoạch đã chốt); view chưa dựng = chưa biết, không phải không có vùng |
 | Đông khách | cuối tuần = `busy`; ngày lễ hoặc sự kiện `peak` = `peak`; một nơi "đông" khi `crowd = high` đã xác minh hoặc `crowd_by_time` của chính nó ≥ `crowd_busy_pct` đúng loại ngày (`weekday` / `weekend` / `holiday`) | nơi đông: thời gian tham quan tăng `crowd_visit_pct`, đệm thêm `crowd_buffer_min`; chia ngày phạt `weights.crowd` × mức × (`crowd_avoid_factor` nếu người dùng tránh đông); ngày `peak` làm nơi đó nhạy cảm (`crowd`) và dự phòng không lấy nơi đông; `crowd_tips` nói giờ vắng nhất từ chính số liệu của nơi |
 | Đóng cửa dịp Tết | sự kiện `closure_risk` | cờ mỗi ngày; nơi ăn uống được đệm thêm `closure_buffer_min` và nhạy cảm (`holiday_closure`), dự phòng phải có giờ đã xác minh. Không tự kết luận một quán đóng |
 
@@ -143,34 +146,45 @@ Plan Output (qua `shared_output` và view của Engine) thêm `day_conditions` (
 0. **Chỗ ở của người dùng:** Decision Output có `lodging` (chọn ở tab "Chỗ ở" của Lựa chọn, `docs/PLACE_DECISION.md` §15), hoặc Trip có `lodging_booked = yes` và `lodging` có toạ độ → chỗ ở đó là `base` (mọi ngày đi và về từ đó); phiên mở ra đã có `lodging_point` (`source: user`, kèm `price_vnd` và `place_id` khi là chỗ ở trong corpus), `lodging.status = booked`; không gợi ý. Đổi chỗ ở = quay lại tab "Chỗ ở" của Lựa chọn.
 1. **Vùng tìm:** tâm trọng số của các nơi đã chọn (trọng số = `visit typical`); tách tối đa 2 tâm nếu đường kính cụm > `split_min`.
 2. **Nguồn:** chỉ bản ghi serving nhóm `stay` trong vùng (≤ 2 × `radius_km` quanh một tâm),
-   `source: corpus`. Giá đêm chỉ từ `price_per_night` (giá tham khảo mặc định Maps, `price_at`
-   là ngày đọc); không lấy giá/người làm giá/phòng/đêm. Trần tham khảo = `lodging_share ×
+   `source: corpus`. Giá đêm: nếu `corpus.serving.stay_prices` (qua `stayprice.overlay`) có giá của đúng
+   chỗ ở, đúng ngày nhận phòng (`start_date`) và đúng số đêm, và `observed_at` không quá `stay_price_max_age_h`
+   (`config/planning.yaml`) thì dùng giá đó (`price_kind: dated`, `price_at` = `observed_at`; thẻ thêm
+   `price_age_h`). Không khớp (khác ngày, khác số đêm, quá cũ) thì rơi về `price_per_night` (giá tham khảo
+   mặc định Maps, `price_kind: reference`, `price_at` là ngày đọc); không có cả hai thì `price_vnd` là
+   unknown (`price_kind: null`), không đoán. Trần giá, điểm giá, thẻ và tổng chi phí đều dùng giá đã chọn
+   này; không lấy giá/người làm giá/phòng/đêm. Trần tham khảo = `lodging_share ×
    trip.group_budget(context) ÷ trip.nights(context)` khi quy đổi được tổng nhóm/chuyến.
    Thiếu scope/days/people cần thiết giữ unknown; không suy số phòng/capacity/availability.
    Đây là trần tham khảo, không chứng minh đủ tiền phòng cho cả nhóm vào ngày đi.
+   **Dòng tiền phòng theo đêm** (`validate.lodging_budget`, tách khỏi kiểm ngân sách từng ngày vì không
+   chặn chốt): mỗi đêm một dòng `{night, date, price_vnd, price_kind, price_age_h, over_vnd}` + `total_vnd`,
+   `per_night_cap_vnd` (chính trần ở trên), `over_budget`, `over_vnd`. Trả về trong thẻ phương án
+   (`lodging_budget`) và kế hoạch đã chốt (`cost.lodging_nights`). Vượt trần chỉ là cảnh báo
+   `lodging_over_budget` (nêu giá, trần, số vượt, nguồn giá + tuổi), không bỏ nơi nào, không thành
+   vi phạm. Giá hoặc trần unknown thì `over_budget: null`, không đoán.
 3. **Sàng tất định:** ngoài vùng hoặc dưới `min_reviews` → bỏ. Public `requirements` kiểm
    cả eq/ne, scope accommodation và unknown policy. Physical/suitability/fit unknown luôn
    fail-closed; feature thường dùng exclude/flag, legacy thiếu policy dùng flag. Unknown được
    phép giữ ghi `unverified`; không thành pass có bằng chứng. Chỗ ở corpus người dùng chọn
    vẫn phải qua kiểm requirement, không được bypass bằng trạng thái booked.
 4. **Bể để xếp:** `lodging_pool` chỗ hợp gu nhất (gần hơn thắng khi bằng nhau) để ma trận di chuyển nhỏ.
-5. **Xếp hạng** (sau khi ma trận có các ứng viên): `lodging_score = w_pref·pref_fit + w_loc·loc_fit + w_price·price_fit + w_rating·rating_fit` (`lodging_weights`, gu nặng hơn vị trí). `pref_fit` = tổng soft (`love` +1, `avoid` −1) và người đi cùng (`kids`, `parents` → `elderly`, `partner` → `couples` `=suitable`, +1) mà feature `VERIFIED` của chỗ ở khớp, chia số mong muốn; không có bằng chứng → 0, không bao giờ âm (`docs/PLACE_DECISION.md` §8). `loc_fit = 1 − phút trung bình tới các nơi đã chọn ÷ loc_ref_min` (≥ 0). `price_fit` theo trần giá, không giá → 0. `rating_fit` theo điểm, không có → 0. Giữ `lodging_k`. Mỗi thẻ mang `fit` ("hợp vì": nhãn feature + số đánh giá nhắc), `avg_min`, `unverified`, `price_at`, `address`.
+5. **Xếp hạng** (sau khi ma trận có các ứng viên): `lodging_score = w_pref·pref_fit + w_loc·loc_fit + w_price·price_fit + w_rating·rating_fit` (`lodging_weights`, gu nặng hơn vị trí). `pref_fit` = tổng soft (`love` +1, `avoid` −1) và người đi cùng (`kids`, `parents` → `elderly`, `partner` → `couples` `=suitable`, +1) mà feature `VERIFIED` của chỗ ở khớp, chia số mong muốn; không có bằng chứng → 0, không bao giờ âm (`docs/PLACE_DECISION.md` §8). `loc_fit = 1 − phút trung bình tới các nơi đã chọn ÷ loc_ref_min` (≥ 0). `price_fit` theo trần giá, không giá → 0. `rating_fit` = `provenance.reputation.score` (0..1) của chỗ ở: rating và số review của Maps trên cùng một thang trong nhóm `stay` (`docs/CORPUS.md` Serving record, Uy tín), nên 4,6 sao / 3.000 review hơn 4,9 sao / 500; không có uy tín → rating Maps theo `(rating − 3,5) / 1,5` nếu có, không có → 0. Thẻ hiện rating và số review của Maps (`identity.rating`, `identity.reviews`). Giữ `lodging_k`. Mỗi thẻ mang `fit` ("hợp vì": nhãn feature + số đánh giá nhắc), `avg_min`, `unverified`, `price_at`, `address`.
 6. **Trước khi có phiên:** `Engine.lodging_options(decision)` xếp đúng như trên cho bản nháp Decision Output (chưa chốt) để Lựa chọn hiện danh sách; không tạo phiên, cache theo tập nơi + bối cảnh chuyến. Trip đã có chỗ ở thì danh sách vẫn hiện (đổi được). Danh sách gồm **mọi** chỗ ở trong corpus qua được ràng buộc cứng và trần giá, trả theo trang (`offset`, `limit`, mặc định `lodging_list_k` thẻ; kèm `total`). Đã chọn nơi: tối đa `lodging_list_k` chỗ quanh các nơi đó lên đầu, xếp như trên (có `avg_min`); mọi chỗ còn lại theo sau, xếp theo gu rồi điểm đánh giá, không có `avg_min`. Chưa chọn nơi nào: cả danh sách xếp theo gu rồi điểm đánh giá. Mỗi thẻ có cùng trường với thẻ Place Decision (`category`, `area`, `rating`, `why`, `tradeoffs`, `location {center, km, minutes}`, `confidence`) để web vẽ bằng một `PlaceCard`: `why` = điều người dùng muốn (`fit`) rồi điểm mạnh VERIFIED từ 2 người nhắc (giá trị đầu của `polarity`, hoặc `present` / `suitable` / `good` / `included`; không tính `steep_or_stairs`, `cold`), thêm "Gần <tâm>" khi ≤ `near_min`; `tradeoffs` = mặt xấu VERIFIED (giá trị cuối của `polarity`) và "chưa biết ngân sách" khi chưa có ngân sách; `confidence` theo số người viết (≥ 40 cao, ≥ 10 vừa). Cấu hình `polarity`, `center`, `near_min`, `speed_kmh`, `road_factor` lấy từ `decision.load_settings()` qua `Engine(card_cfg=…)` (`tools.py`).
 7. Không bắt buộc chỗ ở: thiếu thì lịch vẫn xếp (ngày bắt đầu ở nơi đầu tiên, cảnh báo `base_unknown`), Web chỉ nhắc chọn chỗ ở, không chặn.
 
-### ⓑ Gom cụm và chia ngày — `cluster.py`, `days.py`
+### ⓑ Chia ngày — `layout.py`, `days.py`
 
 - Khung ngày: ngày đầu từ `checkin_at`; ngày cuối đến `checkout_at`; ngày giữa `day_start..day_end`.
-- Cụm: `area` của serving record trước, rồi chia / gộp theo **đường kính thực** (ma trận OSRM) với ngưỡng `cluster_max_min`.
-- Gán cụm → ngày: số ngày ≤ `max_days` (7), cụm ≤ `max_clusters` (8) → **DP trên tập con**, tất định. Hàm phí = tổng di chuyển + phí vi phạm giờ mở + lệch số nơi mỗi ngày theo pace + phí "cụm ngoài trời vào ngày mưa xác suất cao". Phí bằng nhau → ngày sớm hơn nhận nơi (một nơi duy nhất nằm ở Ngày 1 nếu Ngày 1 chứa được). Vượt giới hạn → rơi về gán tham lam, gắn cờ.
-- Ghim: anchor giờ cố định ghim ngày + giờ; nơi chỉ mở vài ngày trong chuyến ghim ngày; `locked` cùng ngày người dùng đã chỉ định không đổi.
+- `layout.assign`: mỗi ngày cắt thành các đoạn trống giữa những khối giờ cố định của người dùng; một đoạn chứa số phút còn lại sau bữa và nghỉ. Nơi khó xếp (có giờ trong ngày, ít ngày mở, xa chỗ ở) vào trước, mỗi nơi lấy đoạn và vị trí **thêm ít phút đường nhất** (cộng độ đầy của ngày, ngày lệch khu vực, mưa / đông của ngày theo mục tiêu), rồi đổi chỗ từng nơi giữa các ngày để cải thiện. Nơi thừa vẫn có thể vào khi một ngày nhường hết cho ngày khác hoặc hai ngày đổi nhau. Tất định. Không còn gom cụm và DP trên tập con (`cluster.py`, `assign_days` đã gỡ 2026-10-29).
+- `days.py` chỉ còn các số hạng rủi ro mà `objectives.metrics` đọc: `day_risk`, `exposed_risk`, `repeats`, `pref_risk`.
+- Ghim: anchor giờ cố định ghim ngày + giờ; nơi chỉ mở vài ngày trong chuyến ghim ngày; `locked` cùng ngày người dùng đã chỉ định không đổi. Nơi không vào được ngày nào trả về `leftover`, không bị bỏ ngầm; nơi người dùng bắt buộc đi vẫn được đặt dù không vừa (kiểm tra cuối nói rõ).
 
 ### ⓒ Thứ tự trong ngày — `route.py`
 
 - Mỗi ngày mở và kết ở chỗ ở, kể cả ngày đầu và ngày cuối.
 - n ≤ `exact_n` (7) nơi mỗi ngày → **vét cạn permutation** (≤ 5040), chấm bằng mô phỏng đầy đủ → tối ưu thật. n lớn hơn → nearest-neighbour + 2-opt + or-opt. Cả hai tất định. Mỗi lần tìm thứ tự tái sử dụng giờ mở, cửa sổ ghim và quy tắc giờ ghé của ngày; cache điểm theo nơi/giờ đến/giờ đi và chặng có hướng, mỗi bảng kết quả tối đa `cache_entries`. Cache này kết thúc cùng lần tìm thứ tự, không dùng lại qua thay đổi bối cảnh; validator vẫn kiểm độc lập.
 - Buổi: `pins` (`config/planning.yaml`: `sunset_view`, `cloud_hunting`, `live_music`) + `sun_times` → hoàng hôn / đêm ghim cuối ngày; sương / bình minh ghim đầu ngày. Một nơi có nhiều tính năng theo giờ chỉ cần **một**, không lấy giao: nếu người dùng muốn (soft weight dương) một trong số đó thì chỉ giữ các ghim được muốn (`build.prepare`), còn lại ưu tiên khung nằm trong ngày. Khung mà giờ mở cửa của chính nơi đó không chứa nổi (nhạc 18:00 ở quán đóng 18:30) thì không ghim. Ngày nào vẫn hỏng vì hai nơi cùng muốn một buổi → bỏ ghim của nơi xếp muộn nhất trước, tới khi ngày đạt, kèm cảnh báo `pin_dropped`; nơi đó vẫn được ghé, chỉ không đúng giờ đẹp nhất.
-- Bữa ăn: tối đa ba khung sáng / trưa / tối trong ngày thực tế. Mỗi điểm có activity `eating` chiếm một khung riêng, ưu tiên trưa / tối và phải hợp giờ mở, giờ ghim, ngày đến / đi. Các điểm ăn được tách khỏi cụm để chia sang ngày có khung phù hợp; không còn khung thì báo `meal_window`, không chuyển ngầm thành tham quan. Validator kiểm tra lại độc lập.
+- Bữa ăn: tối đa ba khung sáng / trưa / tối trong ngày thực tế. Mỗi điểm có activity `eating` chiếm một khung riêng, ưu tiên trưa / tối và phải hợp giờ mở, giờ ghim, ngày đến / đi. Các điểm ăn được xếp riêng để chia sang ngày có khung phù hợp; không còn khung thì báo `meal_window`, không chuyển ngầm thành tham quan. Validator kiểm tra lại độc lập.
 - Activity đã chỉ định trong chuyến thắng mặc định của địa điểm. Khi chưa chỉ định, café dùng `coffee`, nhà hàng dùng `eating`; Decision ghi ý định suy ra vào output, không mở câu hỏi meal và không sửa Place Intelligence. `usable_as: meal` không tự biến café thành nhà hàng.
 - Khung chưa có điểm ăn thành `meal_free`, thời lượng lấy từ `meal_durations`. Chừa bữa trước visit dài có thể nuốt hết khung; nếu chuyến tham quan kết sớm vẫn hiện bữa còn lại dưới dạng tùy chọn, trong giới hạn ngày. Không bịa nhà hàng. Web gợi ý ăn ngoài hoặc hỏi chỗ ở có phục vụ bữa đó; dịch vụ và giá chưa xác nhận.
 
@@ -184,7 +198,7 @@ Chấm **toàn khoảng visit** theo hoạt động đang chọn và `context.pu
 
 Mặc định mềm từ config: sáng 08:00–11:00 cho anchor/hoạt động tốn sức; giữa trưa 11:30–14:30 cho coffee/nghỉ; chiều 14:30–17:30 hoặc sáng cho đi dạo/vườn; tối từ 18:00 cho nightlife/bar. Chụp ảnh ngoài trời ưu tiên ánh sáng ban ngày; giờ ăn do `meal_windows` quyết định. Chợ không tự được coi là chợ đêm. Đây là ước lượng có thể cấu hình, không phải nghiên cứu sinh lý hay Fact của địa điểm.
 
-Phạt tính theo phần visit ngoài cửa sổ và phần thời lượng đã rút. Bộ xếp giờ thử đến sớm nhất và đầu cửa sổ ưu tiên, có thể rút tới `short`, giữ giờ mở, bữa ăn, giờ ghim và constraint. Nếu chờ giờ đẹp gây vi phạm hoặc lỡ bữa, thử lịch đến sớm nhất. Phí này tham gia chọn thứ tự và chia ngày; cụm cùng tranh cửa sổ có thể tách để chuyển qua ngày khác. Không tự bỏ nơi đã chọn; thiếu thời gian được báo qua overload.
+Phạt tính theo phần visit ngoài cửa sổ và phần thời lượng đã rút. Bộ xếp giờ thử đến sớm nhất và đầu cửa sổ ưu tiên, có thể rút tới `short`, giữ giờ mở, bữa ăn, giờ ghim và constraint. Nếu chờ giờ đẹp gây vi phạm hoặc lỡ bữa, thử lịch đến sớm nhất. Phí này tham gia chọn thứ tự và chia ngày. Không tự bỏ nơi đã chọn; thiếu thời gian được báo qua overload.
 
 `time_suitability` giải thích giờ ghé, phần phù hợp, nguồn user/heuristic và phút rút. `recommendations` báo khoảng trống hoặc quá tải. Gợi ý địa điểm chỉ lấy ID thật chưa ghé từ `backup_pool`, kế thừa hoạt động của nơi được thay; thử chèn rồi validate toàn lịch, hard constraint và ngân sách. Không có ứng viên phù hợp vẫn có thể gợi ý nghỉ. Chỉ act của user mới thêm nơi; thêm sẽ xếp lại ngày và có undo. Tắt `time_suitability.enabled` tắt cả scoring, phí rút và gợi ý này.
 
@@ -212,7 +226,7 @@ Mỗi phương án (`variants.py`) mang `checklist` và các cảnh báo mới t
 
 Lịch đầy đủ (`DayCtx.require_meals = True`) phải có bữa tương ứng với khung ngày và mỗi visit dài ít nhất `visit.short`. Validator lấy visit từ `items`, kể cả khi `DayResult.order` trống. Cache kiểm ngày xét record của các visit thực tế và thời gian giữa các endpoint travel; đổi giờ mở, thời lượng hoặc chặng không dùng kết quả kiểm cũ.
 
-Nơi **duy nhất** kết luận đạt / không đạt, và kết luận từ chính dòng thời gian cuối cùng. Tám kiểm tra: ngày đi · giờ mở cửa · chồng lấn · thời gian di chuyển · anchor · ngân sách (gồm tiền phòng khi đã biết giá) · hard constraint · địa điểm trùng (cùng **một** nơi xếp hai lần). Hai nơi "gần trùng" (cùng kiểu, `PLACE_DECISION.md` §9.1) mà người dùng vẫn giữ là lựa chọn của họ: chỉ cảnh báo `near_duplicate`, không chặn. Kiểm "đúng giờ đẹp nhất" (hoàng hôn, bình minh, nhạc): nơi nào bộ xếp lịch đã bỏ ghim giờ để vừa ngày (cảnh báo `pin_dropped`) được ghi trong `DayResult.unpinned`, và mọi lần kiểm lại, kể cả lúc xác nhận, tôn trọng đúng quyết định đó, nên kế hoạch đã hiện ra là hợp lệ thì xác nhận được. Thêm một kiểm `hazard` (nơi bị thời tiết rất xấu hay thông báo `severe` loại khỏi ngày, xem §Điều kiện từng ngày). Trả `ok` + danh sách vi phạm, mỗi vi phạm có `physical: bool` và cái giá đã tính của từng cách sửa. Không phương án nào hợp lệ → trả về tầng Place Decision kèm nơi gây lỗi (`docs/PLACE_DECISION.md` §14, dòng "Planning báo không xếp được").
+Nơi **duy nhất** kết luận đạt / không đạt, và kết luận từ chính dòng thời gian cuối cùng. Tám kiểm tra: ngày đi · giờ mở cửa · chồng lấn · thời gian di chuyển · anchor · ngân sách (gồm tiền phòng khi đã biết giá) · hard constraint · địa điểm trùng (cùng **một** nơi xếp hai lần). Hai nơi "gần trùng" (cùng kiểu, `PLACE_DECISION.md` §9.1) mà người dùng vẫn giữ là lựa chọn của họ: chỉ cảnh báo `near_duplicate`, không chặn. Kiểm "đúng giờ đẹp nhất" (hoàng hôn, bình minh, nhạc): nơi nào bộ xếp lịch đã bỏ ghim giờ để vừa ngày (cảnh báo `pin_dropped`) được ghi trong `DayResult.unpinned`, và mọi lần kiểm lại, kể cả lúc xác nhận, tôn trọng đúng quyết định đó, nên kế hoạch đã hiện ra là hợp lệ thì xác nhận được. Cảnh báo `pin_dropped` viết ngắn ("{nơi} không kịp vào đúng giờ đẹp nhất, mình xếp lúc khác trong ngày"); chỉ thêm "Giữ giờ đó thì vướng …" khi lý do thật sự của nơi đó: giờ mở cửa chưa biết (`hours = None`) không bao giờ là lý do (không thể vi phạm điều chưa biết). Thêm một kiểm `hazard` (nơi bị thời tiết rất xấu hay thông báo `severe` loại khỏi ngày, xem §Điều kiện từng ngày). Trả `ok` + danh sách vi phạm, mỗi vi phạm có `physical: bool` và cái giá đã tính của từng cách sửa. Không phương án nào hợp lệ → trả về tầng Place Decision kèm nơi gây lỗi (`docs/PLACE_DECISION.md` §14, dòng "Planning báo không xếp được").
 
 ### ⓕ Độ vững — `robustness.py`
 
@@ -229,7 +243,7 @@ Năm mục tiêu: `least_travel`, `low_cost`, `weather_robust`, `diverse`, `pref
 ```
 for lodging in K+1 ứng viên:          # 6 + phương án không chỗ ở
     for obj in mục tiêu đã chọn:      # ≤ 3
-        p = schedule(days(clusters, lodging, obj), obj)
+        p = schedule(layout(places, lodging, obj), obj)
         if validate(p).ok:
             score[(obj, lodging)] = obj.score(p), robustness(p)
 best mỗi obj → 2–3 phương án; bỏ phương án trùng (cùng chỗ ở + cùng thứ tự mọi ngày)
@@ -237,12 +251,82 @@ best mỗi obj → 2–3 phương án; bỏ phương án trùng (cùng chỗ ở
 
 21 lần dựng lịch mỗi lượt (K+1 chỗ ở × tối đa 3 mục tiêu), dùng chung một ma trận OSRM (toạ độ ứng viên nằm
 trong CÙNG ma trận đó) và cache thứ tự theo ngày (khung giờ, điểm mở/đóng), pace, mặt trời, mưa và tập nơi (activity, pins, visit, short) — đổi chỗ ở chỉ đổi
-điểm mở/đóng ngày, không tính lại cụm hay chia ngày. Mỗi mục tiêu giữ tổ hợp (chỗ ở, lịch) tốt nhất riêng cho nó.
+điểm mở/đóng ngày, không chia lại ngày. Mỗi mục tiêu giữ tổ hợp (chỗ ở, lịch) tốt nhất riêng cho nó.
 Ngân sách: **< 2 s** khi cache nóng, đo trong `evaluate.py`.
 
 ### ⓗ Dự phòng — `backup.py`
 
-Nơi nhạy cảm = ngoài trời + ngày mưa xác suất cao · giờ `UNCERTAIN` / `OUTDATED` · sát giờ đóng · thuộc cụm xa. Thay thế lấy từ `backup_pool` (Decision đã kèm `for` + `reason`): cùng cụm, cùng nhóm, qua được constraint. Không có → nêu rõ "không có phương án thay".
+Nơi nhạy cảm = ngoài trời + ngày mưa xác suất cao · giờ `UNCERTAIN` / `OUTDATED` · sát giờ đóng · ở khu vực xa. Thay thế lấy từ `backup_pool` (Decision đã kèm `for` + `reason`): cùng khu vực, cùng nhóm, qua được constraint. Không có → nêu rõ "không có phương án thay".
+
+## Đổi lịch tối trước ngày đi — `eve.py`
+
+Sau cờ `eve_replan.enabled` (`config/planning.yaml`). Đo trước khi bật: `tests/planning/eve_scenarios.py` (kết quả `logs/planning_eve/`); test `test_planning_eve_scenarios.py` không cho bật cờ khi bộ kịch bản trượt.
+
+```mermaid
+flowchart LR
+  F[yếu tố mới] --> A[assess: mức 0–3 từng điểm]
+  A -->|0–1| N[ghi chú]
+  A -->|2–3, mức tăng, chưa từ chối| R[repair]
+  R --> V[Engine.eve_trial + assess lại]
+  V --> P[đề xuất chờ chọn theo plan_hash]
+```
+
+**Yếu tố** (`Factors`, mỗi nguyên nhân mang `source` + `retrieved_at`): thời tiết theo giờ ở toạ độ từng điểm (`live.weather_hourly`; giờ có số ngoài miền vật lý bị coi là chưa biết, xem cổng tool ở §Local Expert), `Notice` trên chặng qua đèo (bước OSRM có tên bắt đầu bằng `pass_prefixes`) hoặc ở chính điểm, `Event` peak, nơi đóng cửa, khung ngày mới khi giờ đến / đi đổi (`trip_windows`: đến muộn hơn hoặc đi sớm hơn lúc lập lịch, ở Trip hoặc ở màn lịch; đến sớm hơn, đi muộn hơn, giờ không rõ hay đổi sang ngày khác không tạo yếu tố). Nguyên nhân nơi đã bị gắn cờ trong `backups` lúc chốt hạ còn mức 1.
+
+**Độ nhạy** (`sensitivity`, chỉ từ feature): `exposed` / `sheltered` (`weather_exposed`, rồi `setting`), `clear_sky` (`cloud_hunting`, `sunset_view`, `scenic_view`, `fog_blocks_view`), `slope` (`steep_or_stairs`, `rough_road_access`), `crowd` (`crowd = high` hoặc `crowd_by_time` ngày lễ ≥ `crowd_busy_pct`).
+
+| Mức | Khi nào |
+|---|---|
+| 3 | ngoài trời + dông trong khung / mưa ngày ≥ `severe_rain_mm` / gió ≥ `severe_gust_kmh`; `Notice` severe trên chặng đèo hoặc ở điểm; đóng cửa; điểm rơi ngoài khung ngày mới |
+| 2 | trong khung ghé mưa ≥ `rain_prob` **và** ≥ `rain_mm` mm với nơi ngoài trời, cần trời quang, hoặc dốc / bậc; gió ≥ `heavy_gust_kmh` (ngoài trời); sương mù ở nơi cần trời quang; mưa lớn giờ trước khi qua đèo; `Notice` thường trên chặng đèo; `Event` peak × người tránh đông × nơi đông |
+| 1 | mưa nhẹ ở nơi ngoài trời; mưa ở nơi có mái / chưa rõ; lễ hội đông với người không tránh đông |
+
+Thiếu dữ liệu không thành nguyên nhân: dự báo `None` không bao giờ thành báo động. Hai model lệch (`disagree`) → nguyên nhân thời tiết tối đa mức 1.
+
+**Sửa tối thiểu** (`repair`, chỉ mức 2–3), thử theo thứ tự, mỗi loại giữ một phương án đổi ít điểm nhất: dời giờ trong ngày (`reorder`) → đổi chỗ với một điểm chưa bị ảnh hưởng của ngày khác chưa tới (hai `move_place`; nguyên nhân thời tiết thì ngày đích phải có dự báo cho điểm đó) → nơi trong `backup_pool` (có mái trước, `swap`) → bỏ điểm (`drop_place`, chỉ mức 3). Khi nguyên nhân là khung ngày mới, hai loại đứng trước: `relay` (xếp lại đúng các điểm đó trong khung mới) và `trim` (bỏ cùng lúc tập điểm nhỏ nhất không kịp trong khung, validator chấp nhận; tính một lần cho cả ngày). Nơi bắt buộc chỉ được dời, không thay, không bỏ. Mức 2 luôn có "Giữ nguyên" (mặc định); mức 3 không có. Mỗi phương án = lịch thử `Engine.eve_trial` (chỉ nhận bốn action trên, không có `relax` → physical constraint không nới; validator như mọi lần sửa, mọi nơi đã chọn phải còn chỗ) **và** `assess` lại với yếu tố mới: điểm được sửa còn < 2, không điểm nào khác lên ≥ 2. Lỗi bất kỳ → bỏ phương án. Chữ cho người đọc (`text` của nguyên nhân và phương án): tên nơi qua `placename.short_name` (bỏ chữ ngoài Latin, ngoặc rỗng, phần thành phố, câu quảng cáo sau dấu `-` / `|` / `,`; không thêm chữ nào ngoài tên trong corpus), nguồn và giờ tra nằm ở `source` / `retrieved_at`, không nằm trong câu. "Điểm bị đổi" = vào / ra lịch, đổi ngày, đổi thứ tự trong ngày; điểm chỉ lệch giờ theo hàng xóm nằm ở `shifted`.
+
+**Chống báo thừa** (`check`): chỉ hỏi về ngày mai (`notify_days`), chỉ khi mức của một điểm tăng lên 2–3 so với lần kiểm trước của cùng `plan_hash`, và nguyên nhân (`key` = yếu tố:điểm:ngày) chưa bị từ chối; D-2..D-`note_days` và mức 1 chỉ là ghi chú. `Store` lưu `data/planning/eve/<journey>.json`: mức, đề xuất chờ chọn và `notes` (điều đã thấy nhưng không hỏi: mức 1, ngày xa) theo `plan_hash`, nguyên nhân đã từ chối theo journey.
+
+**Thu yếu tố** (`gather`, biên I/O): `live.weather_hourly` theo ô lưới 0,02° mỗi ngày cho mọi điểm và nơi dự phòng; `live.events`, `live.advisories` (→ `notices`), `live.holidays` hoặc sự kiện `closure_risk` (→ `holiday`: ghi chú mức 1 cho nơi có giờ chưa xác minh, không phải đóng cửa); `live.route_steps` chỗ ở → các điểm (→ `passes`); `closed_now` = record đang phục vụ có giờ đã xác minh không phủ khung ghé hoặc trạng thái đóng (`CLOSED`, `PERMANENTLY_CLOSED`, `DISABLED`); ngày lễ chỉ là bằng chứng đóng cửa khi có một trong hai điều đó; giờ đến / đi đổi = `day_window_override` của phiên khác `time_budget` của lịch đã chốt, cộng `trip_windows` so Search Input hiện tại của journey (`outputs.trip`, notify truyền vào) với bối cảnh lúc lập lịch; mỗi phương án (trừ giữ nguyên) mang thêm action `set_day_window` đứng đầu, nên nhận phương án là ghi khung mới vào phiên. Nguồn lỗi → phần đó trống (chưa biết).
+
+**Nối** (chỉ khi cờ bật): job `python -m notify run` gọi `check_eve` từ `eve_at` (20:00, `config/notifications.yaml`), mỗi chuyến mỗi tối một lần khi ngày mai là ngày của chuyến → `planning.eve_runner` → `run_eve` (khôi phục phiên Planning từ snapshot của journey, `gather`, `check`, lưu chờ chọn) → thông báo kiểu `eve_replan` khi có điều cần hỏi, theo giới hạn `notify.decide`. Harness: `GET /api/harness/sessions/<jid>/eve` (chờ chọn + `notes` của lịch hiện tại + có hoàn tác không; web hiện `notes` thành dòng lưu ý, tối đa 4), `POST` `operation`: `accept` (cần `confirmed: true`; các action của phương án rồi một lần chốt, lỗi thì hoàn lại), `decline` (chỉ mức 2; nhớ nguyên nhân), `undo` (về lịch trước phương án vừa nhận). `GET .../eve` luôn 200 `{enabled, pending, notes, undo}`: cờ tắt hoặc chưa chốt lịch thì `enabled: false` / danh sách rỗng, không phải lỗi (các `POST` vẫn 409 khi cờ tắt). Web: banner trên `/app/plan` (`web/src/user/screens/plan/EveBanner.tsx`), không hiện gì khi `pending` và `notes` rỗng.
+
+Thông báo của chuyến mở màn lịch đã chốt `/app/plan?journey=<id>` (`config/notifications.yaml` `links`); thông báo tối trước chuyến đọc dự báo ở điểm đầu của ngày 1, không có thì ở chỗ ở, không có nữa thì không đoán (`notify.plan.trip_point`).
+
+## Local Expert — `expert.py`
+
+Một lượt LLM **sau validator**, trên lịch đã chốt, chạy **nền** trong worker `notify` (`Notify.check_expert` → `expert.run_expert`), **không bao giờ chặn lúc chốt**: `Tools.apply confirm` không gọi nó, thời gian chốt không đổi. Cờ `expert.enabled` trong `config/planning.yaml` **bật** từ 2026-10-29.
+
+```mermaid
+sequenceDiagram
+  participant U as Người dùng
+  participant C as confirm
+  participant W as worker notify (mỗi phút)
+  participant S as data/planning/eve/<journey>.json
+  U->>C: Chốt lịch
+  C-->>U: Lịch (không chờ Expert)
+  W->>W: chuyến chưa kết thúc, chưa có lượt Expert cho plan_hash
+  W->>S: review → expert_notes (factor local_expert, mức 1)
+  U->>S: GET /eve → ghi chú trên màn Lịch trình
+```
+
+Kết quả vào **ghi chú** của màn Lịch trình (cùng chỗ ghi chú mức 1 của kiểm tra tối trước ngày đi; `EveStore.get` gộp `notes` + `expert_notes`, bản của Expert không bị ghi đè bởi các tối kiểm tra). Mỗi `plan_hash` chạy một lần; lỗi thì thử lại tới `expert.retries` lần rồi thôi. Gợi ý sửa không đưa thành lựa chọn ở đây: đổi lịch là việc của kiểm tra tối trước ngày đi.
+
+```mermaid
+flowchart LR
+  P[lịch đã qua validator] --> F[sự kiện · ngày lễ · mùa của nơi · LocalClaim kept · ghi chú]
+  F --> M[Extractor: Gemma LAN, lỗi thì UIT]
+  M --> G{cổng: slot có thật,<br/>mọi trích dẫn có trong prompt}
+  G --> R[gợi ý sửa chạy qua validator]
+  R --> W[cảnh báo trên lịch]
+```
+
+- Model **không phải nguồn**: finding `{slot_ref, message, suggestion, cites}` chỉ giữ khi slot có trong lịch và mọi `cites` là id fact đã đưa vào prompt (claim → `doc_id` có thật). Không trích dẫn được → bỏ.
+- Fact chỉ lấy từ code: sự kiện / ngày lễ (`live`, `CalendarDay`), mùa tốt / tránh của nơi, `LocalClaim` trạng thái `kept` / `confirmed` (chỉ claim về thành phố/khu vực theo ngày, hoặc claim nêu đúng tên một điểm dừng; claim "nếu mưa" chỉ khi ngày đó mưa chắc), thời tiết.
+- Cổng tool (`expert.doubts`): thời tiết ngoài miền vật lý, lệch xa `ClimateNormal` của tháng (`gate.normal_gap`), hai model Open-Meteo lệch → fact gắn "nghi ngờ", model không được dựa vào. Cùng cổng chặn ở `eve.gather`: giờ có số ngoài miền vật lý thành "chưa biết"; độ lệch `ClimateNormal` áp ở `eve.assess`: xác suất mưa lệch ≥ `gate.normal_gap` so với mức thường của tháng (`Factors.normal`) mà **không** có cả hai model cùng xác nhận (`disagree` khác `False`) → nghi ngờ, nguyên nhân tối đa mức 1 (ghi chú, không báo động). Cả hai model đồng ý thì vẫn báo (mưa 85 % giữa mùa khô, hai model khớp → vẫn mức 2). Không có view `ClimateNormal` → không so.
+- Gợi ý `move` / `drop` chỉ được kèm `actions` khi `Engine.eve_trial` (cùng validator) chấp nhận; không tự áp dụng; nơi bắt buộc đi (`anchor`) không bao giờ được gợi ý bỏ / dời.
+- Giới hạn: `timeout_s` mỗi đường (LAN rồi UIT); lỗi / quá giờ / rỗng → lịch trả về nguyên vẹn.
+- Đo 2026-10-29 (`tests/planning/expert_eval.py`, 4 chuyến tổng hợp, Gemma LAN thật, `EXTRACTOR_PARALLEL=8`, host đang chạy chuỗi build; log `logs/planning_expert/`): Noel 5,3 s · dã quỳ ngoài mùa 4,4 s · tháng 7 mưa 12,3 s (3 finding) · ngày yên tĩnh không có fact → không gọi model (0 s). 3/3 chuyến có finding đúng chủ đề, mọi trích dẫn có thật. Các con số này nay nằm trong worker nền, không cộng vào thời gian chốt; mỗi đường chờ tối đa `timeout_s` (LAN rồi UIT).
 
 ## Chỗ ở không làm người dùng chờ
 
@@ -295,6 +379,8 @@ Act dựng state nháp, timeline, validation và view trước khi lưu. `view.m
 Cache chỉ trong RAM, mỗi bảng tối đa `cache_entries`: route, repair, timeline/metrics ngày, kiểm ngày, độ vững, kết quả tổng hợp và gợi ý. Key xét tập nơi/thứ tự, record, activity và tính explicit, visit/pins/relaxed, pace, ngày/khung giờ, ưu tiên giờ, config, di chuyển và live context. Weights chia ngày không làm đổi mô phỏng một ngày có cùng membership. Gợi ý còn xét ngân sách, tập nơi toàn chuyến, backup pool và chặng tới các backup; sửa dữ liệu đó không dùng kết quả cũ. Duplicate giữa ngày và anchor được kiểm mỗi lần tổng hợp.
 
 Bộ nhớ của một chuyến (`Trip.routes`: ngày đã bố trí và thứ tự trong ngày) có giới hạn riêng `route_cache_entries` (4096), vì tìm phương án khi quá tải thử hàng chục tập nơi và lặp lại cùng một ngày. Key thứ tự trong ngày chỉ bỏ qua thứ tự chèn khi ngày không quá `realistic.seeded_exact_n` nơi (vét cạn, hạt giống không đổi kết quả); trên mức đó hạt giống là một phần của key (`build._seed_key`), nên kế hoạch không phụ thuộc kích thước hay lịch sử bộ nhớ. `repair_day` dùng cùng `_SimulationCache` như `order_day`, nên sửa một ngày cho cùng kết quả mô phỏng với lúc dựng ngày đó. `fingerprint` dùng orjson; ontology đọc một lần mỗi tiến trình (`feature_ontology`).
+
+Khi quá tải và `direction_workers` > 1 (`config/planning.yaml`), ba hướng `fit` / `travel` / `cost` và đề xuất kéo dài ngày (`overload._extend`) chạy cùng lúc, mỗi việc một tiến trình fork (`overload._in_children`), đều xuất phát từ lịch chính đã tính. Trong `_extend`, hai lần thử rộng nhất (sớm hơn / muộn hơn `realistic.extend_max_min`) cũng chạy song song. Việc nào lỗi hoặc quá `_FORK_WAIT_S` thì tính lại trong tiến trình chính, và tiến trình con bị bỏ cùng mọi tiến trình cháu của nó (con dẫn đầu một nhóm tiến trình, hết hạn thì kill cả nhóm; `tests/planning/test_planning_overload_parallel.py` kiểm không còn tiến trình sót); kết quả giống hệt khi chạy tuần tự. `schedule_calls` đếm mọi lượt `schedule_trip`, cả trong tiến trình con (bộ đếm chia sẻ bộ nhớ `_Runs.counter`); các con không chung memo nên tổng ≥ khi chạy tuần tự. Tiến trình con bị kill giữa lúc tăng bộ đếm chỉ làm mất lượt đó, không làm treo. `direction_workers: 1` chạy tất cả tuần tự. Khay nơi chưa xếp (`view.unplaced`) liệt kê theo thứ tự người dùng đã chọn, không theo thứ tự `set`, nên không đổi giữa các tiến trình (`PYTHONHASHSEED`); `tests/planning/test_planning_tray_order.py` chạy lại dưới nhiều seed.
 
 Gợi ý tất định `recommendations.recommend` chạy trên snapshot ngoài khóa phiên, tối đa `suggestion_workers` worker đồng thời. `_view` không tìm gợi ý. `view.suggestions` và read `suggestions` trả `{status: pending|ready|unavailable, token, session_id, items}`; `recommendations` giữ danh sách tương ứng để tương thích. Token RAM đổi theo ngữ cảnh và mỗi act/undo/redo; restore đổi generation. Worker lỗi không hỏng lịch, kết quả chỉ hiện khi key khớp. `background=False` tính gợi ý đồng bộ ngoài `_view` cho CLI/test. Đây là gợi ý tùy chọn, khác proposal LLM `Engine.recommend`.
 
@@ -420,8 +506,8 @@ Một chỗ duy nhất cho mọi ngưỡng của Planning:
 | Nhịp độ | `visit_key`, `per_day`, `buffer_min` (+ phụ phí `long_leg_min`, `buffer_extra_long`, `buffer_extra_uncertain`, `buffer_extra_rain`), `rest_min`, `max_consecutive_min` |
 | Bữa ăn, buổi | `meals_per_day`, `meal_min`, `meal_durations`, `meal_windows`, `pins` |
 | Độ phù hợp giờ | `time_suitability`: `enabled`, `periods`, `sun_offsets`, `heuristic_weight`, `penalty_min`, `duration_loss_min`, `overload_weight`, `recommendation_gap_min`, `recommendations_per_gap`, `timing_bonus`, `timing_penalty`, `night_road_penalty`, `tod` |
-| Cụm, ngày, thứ tự | `cluster_max_min`, `cluster_merge_min`, `fill_ratio`, `intra_leg_min`, `max_days`, `max_clusters`, `exact_n`, `improve_passes`, `weights` (`travel`, `overflow`, `count`, `closed`, `crowd`) |
-| Mục tiêu, phương án | `max_variants`, `objective_order`, `objective_weights` (trộn lên `weights` khi chia ngày: `travel`, `exposed`, `repeat`, `pref_risk`) |
+| Ngày, thứ tự | `exact_n`, `improve_passes`, `weights` (`travel`, `overflow`, `count`, `closed`, `crowd`) |
+| Mục tiêu, phương án | `objective_weights` (trộn lên `weights` khi chia ngày: `travel`, `exposed`, `repeat`, `pref_risk`) |
 | Điều kiện ngày | `crowd_busy_pct`, `conditions` (`heavy_rain_mm`, `heavy_gust_kmh`, `severe_rain_mm`, `severe_gust_kmh`, `crowd_visit_pct`, `crowd_buffer_min`, `crowd_avoid_factor`, `closure_buffer_min`) |
 | Độ vững | `rain_high`, `robustness` (kịch bản nhiễu có `tier` small / large, `solid_max_lost`, `feasible_max_lost`) |
 | Dự phòng | `near_close_min`, `far_leg_min`, `backup_radius_min`, `backups_per_place` |
@@ -432,13 +518,13 @@ Một chỗ duy nhất cho mọi ngưỡng của Planning:
 
 TTL từng nguồn live và endpoint OSRM nằm ở `config/live.yaml`, không nằm ở đây: `src/live` không được đọc config của `planning` (phụ thuộc một hướng).
 
-Thêm `config/climate.yaml` (khí hậu Đà Lạt theo tháng), `config/holidays.yaml` (lễ Việt Nam), `config/events.yaml` (lễ hội, Noel, Tết) và `config/advisories.yaml` (thông báo thiên tai; mặc định rỗng). Ba file sau nhập tay và là toàn bộ sự thật: ngày không liệt kê là chưa biết, không phải bình thường.
+Thêm `config/climate.yaml` (ghi đè và ước lượng dự phòng cho khí hậu Đà Lạt theo tháng), `config/holidays.yaml` (lớp tay trên view lịch), `config/events.yaml` (lễ hội, Noel, Tết) và `config/advisories.yaml` (thông báo thiên tai; mặc định rỗng). Hai file `events.yaml`, `advisories.yaml` nhập tay và là toàn bộ sự thật: ngày không liệt kê là chưa biết, không phải bình thường.
 
 ## Test
 
 | Mức | Nội dung |
 |---|---|
-| Unit | `cluster`, `days` (DP), `route` (vét cạn + 2-opt), `schedule` (chờ / đệm / nghỉ), `validate` (mỗi loại vi phạm), `robustness` (mỗi kịch bản), `lodging` (sàng), `objectives` — fixture thuần, không mạng |
+| Unit | `layout`, `days` (số hạng rủi ro), `route` (vét cạn + 2-opt), `schedule` (chờ / đệm / nghỉ), `validate` (mỗi loại vi phạm), `robustness` (mỗi kịch bản), `lodging` (sàng), `objectives` — fixture thuần, không mạng |
 | Fixture live | `travel_matrix`, `weather` lưu lại từ lần chạy thật (như `tests/fixtures/capture.py` của crawl, che tài khoản); test không gọi mạng |
 | Golden | lịch của N chuyến mẫu; đổi thuật toán phải cập nhật golden có chủ ý |
 | Bất biến | `src/live` không ghi `data/intel`; physical không có đường nới; `locked` không bị dời; `confirm` chặn khi chưa `ok`; `travel_source = rough` không được "Vững" |
@@ -463,12 +549,13 @@ Hành vi agent không tất định nên đo bằng mô phỏng nhiều lần v�
 
 ## Giới hạn đã biết
 
-- Tốc độ: chuyến quá tải (20 nơi / 3 ngày) vẫn mất vài giây đến hơn 10 giây để tạo ba hướng; chi phí nằm ở mô phỏng ngày (`_simulate`) của các tập nơi mà `overload._direction` thử và ở `build._unpin`. Chưa có cận chứng minh được để cắt bớt các tập này mà không đổi kết quả.
+- Tốc độ (`tests/planning/bench_realistic.py`, có OSRM, máy tải 13–20/40 lõi, 29/10): lịch đầu p50 0,13–0,17 s · p95 1,5–1,8 s; đổi khung ngày max 0,24 s; đổi chỗ ở max 0,34 s (số 0,85 s cũ đo lúc máy tải ~40/40). Ca dày `twenty_in_2` (19 nơi / 2 ngày) vẫn 3,7–4,3 s: lịch chính 1,5–1,8 s (vòng xếp lại nơi thừa trong `build.schedule_trip` và `build._unpin`: 18 lần `_unpin` ≈ 1,8 s, `route._heuristic` ≈ 2,6 s khi bật cProfile) cộng hướng `fit` 1,1–1,9 s (20 lần `schedule_trip`, mỗi lần 0,01–0,25 s). Đã thử 29/10: dùng chung một `cfg` cho `_route_ctx` để memo `pin_duration_floor` trúng — chỉ 8/185 lần trúng, không lợi, đã hoàn nguyên; trước đó (28/10) thử chạy trước các lần trả lại của `fit` ở 4 tiến trình — chậm hơn khi máy tải, đã gỡ. Nơi thừa bị loại chủ yếu vì vượt sức chứa ngày nhẹ (`within`) nên cận theo thời lượng tối thiểu không cắt được lần thử nào; chưa có cận chứng minh được để bỏ bớt mà không đổi kết quả, nên dừng ở đây (HANDOFF #1, #2 còn mở).
 - Thời gian di chuyển không có traffic thời gian thực; profile xe máy là profile ô tô nhân hệ số.
 - Giá phòng là giá OTA tại thời điểm crawl; homestay ngoài OTA không có giá.
 - Mặt lodging của Maps không liệt kê đủ theo khung bản đồ.
-- Vét cạn chỉ trong giới hạn `max_days` / `max_clusters` / `exact_n`; vượt thì rơi về heuristic và gắn cờ.
+- Vét cạn chỉ trong giới hạn `exact_n`; vượt thì rơi về heuristic và gắn cờ.
 - Chưa có User Profile dài hạn nên `preference_fit` chỉ dùng `soft_weights` của phiên.
+- Đổi lịch tối trước ngày đi: giao diện banner trên `/app/plan` đang có hai mẫu chờ chủ dự án chọn (`EVE_LOOK` trong `Plan.tsx`); chấp nhận một phương án làm mất các đề xuất khác còn chờ của cùng lịch (chúng thuộc `plan_hash` cũ), tối sau kiểm lại. Nghỉ lễ chỉ là ghi chú cho nơi có giờ chưa xác minh; chưa có nguồn đóng cửa ngày lễ theo từng nơi.
 - Giá và tiện nghi của chỗ ở đọc bằng quét văn bản thô trên thẻ Maps (không phải DOM đã dò kỹ): có thể trống hoặc
 sai nếu Maps đổi cách hiển thị; ngày check-in / check-out chưa đặt qua bộ lọc của Maps.
 - Thông báo thiên tai là file nhập tay (`advisories.yaml`); chưa có nguồn tự động nên rỗng không có nghĩa an toàn. Lễ hội phải được nhập từ thông báo chính thức. Ngưỡng thời tiết và hệ số đông khách là ước lượng, chờ chỉnh sau pilot.
@@ -503,3 +590,7 @@ người dùng thật chọn/bỏ), nên số liệu phản ánh "Planning có x
 - Baseline của `evaluate` là nearest-neighbour trên đúng nhóm nơi theo ngày của phương án đã chọn. Thứ tự của
 Planning tối ưu cả giờ mở cửa, chờ và cửa sổ thời gian, không chỉ phút di chuyển, nên trên một số chuyến phút di
 chuyển có thể dài hơn baseline; `avg_saved_vs_baseline_pct` có thể âm và được báo đúng dấu.
+
+## Trợ lý Lịch trình — `assistant.py`
+
+Chat gõ ở màn Lịch trình chạy trên lõi chung `src/agents/assistant` (thiết kế: `docs/superpowers/specs/2026-10-30-planning-assistant-design.md`). Tool đọc/ghi ở `assistant.py` + `tool_schemas.py` (stage `planning`); mọi sửa đổi đi qua `Engine.act` như nút bấm, một lượt = **một phiên bản** (`Engine.collapse`, log `{"type":"batch"}`). Vi phạm **vật lý** hoặc không thể có (`blocking_violations` trong `config/planning.yaml`: `hard`, `departure`, `duplicate`, `anchor`, `overlap`, `travel`, `hazard`) làm act bị hoàn tác ngay và báo lại; các vi phạm còn lại (ngày chạy quá giờ, nơi lệch giờ đẹp, ngoài giờ mở cửa do ngày đầy) **giữ nguyên trên lịch** như nút bấm (spec 2026-10-15 §8: đánh dấu ở đúng dòng, không chặn), tool trả `flagged` để trợ lý nói rõ, và lịch chưa chốt được cho tới khi sửa. Lý do: lịch bench đầy, mọi lệnh chuyển/đổi chỗ đều làm ngày chạy quá giờ nên bản cũ từ chối hết (move/reorder 0,0). Tool đọc địa điểm dùng chung Trip qua `Engine.trip_reader`. Cấu hình `assistant:` trong `config/planning.yaml`. Bench: `python -m planning bench --live` (`config/bench_planning_assistant.yaml`, 31 ca).

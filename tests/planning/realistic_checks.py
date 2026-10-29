@@ -264,7 +264,10 @@ def travel_vs_nn(run):
     def leg(a, b):
         return max(1, round(km(a, b) * 1.4 / 25 * 60))
     out = []
+    reordered = {e["day"] for e in run.case.get("edits") or () if e["type"] == "reorder"}
     for d in run.days:
+        if d["day"] - 1 in reordered:       # the user's own order is theirs (spec section 8): better_order hints at it, this check is about our layout
+            continue
         stops = [i["place_id"] for i in d["items"] if i["kind"] == "visit"]
         pts = {p: (by_id()[p]["identity"]["lat"], by_id()[p]["identity"]["lng"]) for p in stops}
         def tour(order):

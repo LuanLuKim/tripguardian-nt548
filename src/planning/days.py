@@ -1,92 +1,9 @@
-"""Which cluster goes on which day. Dynamic programming over subsets of clusters: exact, so the same input always gives
-the same split. Past max_days / max_clusters it falls back to a greedy split and says so.
+"""The day-level risk terms the objectives read (objectives.metrics): rain on weather-exposed places, repeats of one
+kind on a day, how much of what the user wants most sits on a risky day. Which places go on which day is layout.py's.
 """
 
-from .conditions import crowd_sensitive, hazard
-from .places import windows_on
-from .roles import takes_meal_slot
-from .schedule import DayCtx, pin_window, _meal_slots, meal_fit
-from .traits import exposure, kind_group, visit_minutes
-from .timefit import period_load
-
-
-def _tour(ids: list[str], ctx: DayCtx) -> int:
-    """Nearest-neighbour path minutes from the day's start through ids to its end: a cheap stand-in for route.py."""
-    travel, here, total, left = ctx.travel, ctx.day.start_node, 0, sorted(ids)
-    while left:
-        nxt = min(left, key=lambda x: (travel.leg(here, x)[0] if here else 0, x))
-        total += travel.leg(here, nxt)[0] if here else 0
-        here = nxt
-        left.remove(nxt)
-    if here and ctx.day.end_node:
-        total += travel.leg(here, ctx.day.end_node)[0]
-    return total
-
-
-def load_of(ids: list[str], places: dict, cfg, pace: str, prefs: dict | None = None) -> int:
-    """Minutes a set of places asks of a day before travel between clusters: visits plus moving inside the cluster."""
-    return sum(visit_minutes(places[i], cfg, pace, prefs) + cfg.intra_leg_min for i in ids)
-
-
-def day_load(ids: list[str], places: dict, cfg, pace: str, ctx: DayCtx | None = None) -> int:
-    """load_of plus what a real day also spends: the buffer after each stop and the meals."""
-    if ctx is None:
-        meals = sum(cfg.meal_durations.get(n, cfg.meal_min) for n in list(cfg.meal_windows)[:cfg.meals_per_day])
-    else:
-        _, free = _meal_slots(sorted(ids), ctx)
-        meals = sum(meal_fit(n, ctx, max(ctx.day.start, cfg.meal_windows[n][0])) for n in free
-                    if cfg.meal_windows[n][1] >= ctx.day.start)
-    return load_of(ids, places, cfg, pace, ctx.prefs if ctx else None) + len(ids) * cfg.buffer_min[pace] + meals
-
-
-def _can_start(p, ctx: DayCtx) -> bool:
-    """Whether the place can be visited at all inside this day: open that weekday, long enough within the day's window,
-    and at the time of day its feature needs (a restaurant that opens at 18:00 on a day that ends at 15:00, a
-    live-music bar on a day that ends before dark). A sunrise place can pull a later day's start forward."""
-    if hazard(p, ctx.cond):
-        return False                        # a severe storm or a hazard notice: not a day this place can be visited
-    need = min(p.visit[ctx.cfg.visit_key[ctx.pace]], p.visit["short"])   # a visit may shrink to its short estimate
-    lo, hi = pin_window(p, ctx)
-    floor = lo if 0 < lo < ctx.day.start and ctx.day.index > 0 else ctx.day.start
-    w = windows_on(p.hours, ctx.day.weekday)
-    for o, c in [(0, 1440)] if w is None else w:
-        if max(floor, lo, o) <= min(hi, c - need, ctx.day.end - need):
-            return True
-    return False
-
-
-def blocked(ids: list[str], ctx: DayCtx) -> int:
-    """How many of the places cannot be visited at all inside this day."""
-    return sum(not _can_start(ctx.places[i], ctx) for i in ids)
-
-
-def isolate_constrained(clusters: list[list[str]], ctxs: list[DayCtx]) -> list[list[str]]:
-    """A place that some days can host and others cannot leaves its cluster, so the day assignment can put it on the
-    day it fits instead of dragging its neighbours there (or giving up on all of them)."""
-    out = []
-    for c in clusters:
-        loose = [i for i in c if takes_meal_slot(ctxs[0].places[i])
-                 or 0 < sum(not _can_start(ctxs[0].places[i], cx) for cx in ctxs) < len(ctxs)]
-        rest = [i for i in c if i not in loose]
-        out += ([rest] if rest else []) + [[i] for i in loose]
-    return sorted(out, key=lambda c: c[0])
-
-
-def day_cost(ids: list[str], ctx: DayCtx) -> float:
-    cfg, w = ctx.cfg, ctx.cfg.weights
-    target = cfg.per_day[ctx.pace]
-    if not ids:
-        return w["count"] * target
-    closed = blocked(ids, ctx)
-    claimed, _ = _meal_slots(sorted(ids), ctx)
-    closed += sum(takes_meal_slot(ctx.places[pid]) and pid not in claimed for pid in ids)
-    tour = _tour(ids, ctx)
-    over = max(0, day_load(ids, ctx.places, cfg, ctx.pace, ctx) + tour - (ctx.day.end - ctx.day.start))
-    shorter = 0.001 * len(ids) * (1440 - (ctx.day.end - ctx.day.start))     # equal costs: the longer day takes more
-    return (w["travel"] * tour + w["overflow"] * over + w["count"] * abs(len(ids) - target) + w["closed"] * closed
-            + shorter + w.get("exposed", 0) * exposed_risk(ids, ctx) + w.get("repeat", 0) * repeats(ids, ctx)
-            + w.get("pref_risk", 0) * pref_risk(ids, ctx) + w.get("crowd", 0) * crowd_risk(ids, ctx)
-            + cfg.time_suitability.get("overload_weight", 0) * period_load(ids, ctx))
+from .schedule import DayCtx
+from .traits import exposure, kind_group
 
 
 def day_risk(ctx: DayCtx) -> float:
@@ -102,16 +19,6 @@ def exposed_risk(ids: list[str], ctx: DayCtx) -> float:
     return sum(exposure(ctx.places[i]) == "exposed" for i in ids) * (ctx.wet or 0.0)
 
 
-def crowd_risk(ids: list[str], ctx: DayCtx) -> float:
-    """Places that are busy on this kind of day, by how busy the day is (a holiday counts double); a user who avoids
-    crowds weighs it more. 0 on a normal day or without a signal."""
-    if ctx.cond is None or ctx.cond.crowd == "normal":
-        return 0.0
-    n = sum(crowd_sensitive(ctx.places[i], ctx.cond, ctx.cfg) for i in ids)
-    level = 2 if ctx.cond.crowd == "peak" else 1
-    return n * level * (ctx.cfg.conditions["crowd_avoid_factor"] if ctx.crowd_tol == "avoid" else 1.0)
-
-
 def repeats(ids: list[str], ctx: DayCtx) -> int:
     """Places of a kind already on the day: 0 when every place is a different kind. Unknown kinds do not repeat."""
     kinds = [kind_group(ctx.places[i]) for i in ids]
@@ -123,58 +30,3 @@ def pref_risk(ids: list[str], ctx: DayCtx) -> float:
     """How much of what the user wants most sits on a risky day."""
     prefs = ctx.prefs or {}
     return sum(prefs.get(i, 0.0) for i in ids) * day_risk(ctx)
-
-
-def assign_days(clusters: list[list[str]], ctxs: list[DayCtx]) -> tuple[list[list[str]], str | None]:
-    """-> (place ids of each day, flag). flag is "days_fallback" when the exact search was not used."""
-    cfg, n, d_count = ctxs[0].cfg, len(clusters), len(ctxs)
-    if n == 0:
-        return [[] for _ in ctxs], None
-    if d_count > cfg.max_days or n > cfg.max_clusters:
-        return _greedy(clusters, ctxs), "days_fallback"
-
-    def members(mask: int) -> list[str]:
-        return [i for k in range(n) if mask >> k & 1 for i in clusters[k]]
-
-    inf = float("inf")
-    dp = [[inf] * (1 << n) for _ in range(d_count + 1)]
-    back = [[0] * (1 << n) for _ in range(d_count + 1)]
-    dp[0][0] = 0.0
-    cost: dict = {}
-    for d in range(1, d_count + 1):
-        for mask in range(1 << n):
-            sub = mask
-            while True:
-                prev = dp[d - 1][mask ^ sub]
-                if prev < inf:
-                    if (d, sub) not in cost:     # still equal after day_cost: the earlier day takes the places
-                        ids = members(sub)
-                        cost[(d, sub)] = day_cost(ids, ctxs[d - 1]) + 1e-6 * (d - 1) * len(ids)
-                    c = prev + cost[(d, sub)]
-                    if c < dp[d][mask]:
-                        dp[d][mask], back[d][mask] = c, sub
-                if sub == 0:
-                    break
-                sub = (sub - 1) & mask
-    out, mask = [[] for _ in ctxs], (1 << n) - 1
-    for d in range(d_count, 0, -1):
-        sub = back[d][mask]
-        out[d - 1] = members(sub)
-        mask ^= sub
-    return out, None
-
-
-def _greedy(clusters: list[list[str]], ctxs: list[DayCtx]) -> list[list[str]]:
-    """Biggest cluster first, onto the day where the fewest of its places are blocked, then the least load so far
-    (ties: the earlier day)."""
-    cx = ctxs[0]
-    size = lambda c: load_of(c, cx.places, cx.cfg, cx.pace)
-    out = [[] for _ in ctxs]
-    for c in sorted(clusters, key=lambda c: (-size(c), c[0])):
-        d = min(range(len(ctxs)), key=lambda k: (blocked(c, ctxs[k]) +
-                sum(takes_meal_slot(ctxs[k].places[pid]) and pid not in _meal_slots(sorted(out[k] + c), ctxs[k])[0]
-                    for pid in out[k] + c),
-                load_of(out[k], cx.places, cx.cfg, cx.pace)
-                + cx.cfg.time_suitability.get("overload_weight", 0) * period_load(out[k] + c, ctxs[k]), k))
-        out[d] += c
-    return out

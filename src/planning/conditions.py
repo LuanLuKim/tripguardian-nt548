@@ -1,5 +1,5 @@
 """What the date itself changes (docs/PLANNING.md §Điều kiện từng ngày): weather beyond rain probability, crowds on
-weekends / holidays / festivals, shops closed for Tết, hazard notices.
+weekends / holidays / festivals, shops closed for Tết, hazard notices, restricted areas.
 
 Pure: the facts arrive from src/live (fetch() is the one place that calls it). A day with no signal has no DayCond, so
 everything built on it stays inert. Nothing here invents a figure; an unknown stays unknown and is worded that way.
@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 import live
+from corpus.views import restricted_areas, restricted_hits
 
 from .model import Day, Place
 from .settings import Settings
@@ -33,6 +34,7 @@ class DayCond:
     crowd_reasons: tuple[str, ...] = ()
     closure_risk: str | None = None             # name of the period many shops close in
     advisories: tuple[dict, ...] = ()
+    restricted: tuple[dict, ...] = ()           # RestrictedArea features (corpus.views): military land, no-access areas
 
 
 def weather_level(w: dict | None, cfg: Settings) -> str:
@@ -67,14 +69,25 @@ def build_cond(day: Day, weather: dict | None, signals: dict | None, cfg: Settin
                    rain_mm=w.get("rain_mm") if w else None, gust_kmh=w.get("gust_kmh") if w else None,
                    day_type="holiday" if peak else "weekend" if weekend else "weekday",
                    crowd="peak" if peak else "busy" if (weekend or events) else "normal",
-                   crowd_reasons=tuple(reasons), closure_risk=closing, advisories=tuple(sig.get("advisories") or ()))
+                   crowd_reasons=tuple(reasons), closure_risk=closing, advisories=tuple(sig.get("advisories") or ()),
+                   restricted=tuple(sig.get("restricted") or ()))
 
 
 # ---------- what a condition means for one place ----------
 
+def restricted_in(p: Place, cond: DayCond | None) -> list[dict]:
+    """Properties (`kind`, `name`, `osm`) of each RestrictedArea the place lies in."""
+    return restricted_hits(p.lat, p.lng, list(cond.restricted)) if cond and cond.restricted else []
+
+
 def advisory_hits(p: Place, cond: DayCond | None) -> list[dict]:
-    """Notices whose area covers the place: the city, or a circle around a point."""
+    """Notices whose area covers the place: the city, or a circle around a point; and one `watch` notice per
+    RestrictedArea the place lies in. A restricted area is a warning only (never `severe`, so hazard() never keeps the
+    place out): OSM is incomplete and a place inside may still be open to visitors."""
     out = []
+    for a in restricted_in(p, cond):
+        out.append({"kind": "restricted", "severity": "watch", "source": "OpenStreetMap", "area": "place",
+                    "note": f"Nằm trong khu vực hạn chế ({a['kind']}: {a.get('name') or 'không tên'}); kiểm tra trước khi đi"})
     for a in (cond.advisories if cond else ()):
         area = a["area"]
         if area == "city" or km((p.lat, p.lng), (area["lat"], area["lng"])) <= area["radius_km"]:
@@ -176,7 +189,10 @@ def fetch_live(live_cfg):
             except live.Unavailable:
                 weather = None
         hol, evs, adv = live.holidays(dates), live.events(dates), live.advisories(dates)
-        signals = {d.isoformat(): {"holiday": hol.get(d), "events": evs.get(d, []), "advisories": adv.get(d, [])}
+        city = getattr(live_cfg, "views_city", None)
+        areas = (restricted_areas(city) if city else None) or []   # None (never built) = nothing known
+        signals = {d.isoformat(): {"holiday": hol.get(d), "events": evs.get(d, []), "advisories": adv.get(d, []),
+                                   "restricted": areas}
                    for d in dates}
         return weather, signals
     return conditions

@@ -3,7 +3,6 @@ from dataclasses import replace
 from plan_fixtures import CFG, LODGING, FakeLive, all_days, day_ctx, decision, fake_matrix, fixed_sun, no_geocode, rec
 
 from planning.build import pull_early
-from planning.days import _greedy, day_cost
 from planning.roles import meal_kind, pin_order, takes_meal_slot
 from planning.schedule import pin_window, simulate
 from planning.timefit import windows_for
@@ -50,12 +49,9 @@ def test_a_market_without_evening_hours_or_without_hours_has_no_role():
     assert meal_kind(unknown, CFG) is None
 
 
-def test_a_light_place_is_not_a_closed_meal_in_the_day_split():
+def test_a_light_place_is_a_meal_kind_that_takes_no_meal_slot():
     cx = day_ctx([eat("kem", "dessert", "Kem bơ")] + [rec(f"g{i}", 1, 1) for i in range(5)])
     assert cx.places["kem"].kind == "meal" and not takes_meal_slot(cx.places["kem"])
-    assert day_cost(["g0", "kem"], cx) < cx.cfg.weights["closed"]       # one "closed" place would cost the full weight
-    out = _greedy([["g0", "g1", "g2"], ["kem"], ["g3"], ["g4"]], [cx, replace(cx)])
-    assert out == [["g0", "g1", "g2"], ["kem", "g3", "g4"]]            # the snack goes to the lighter day
 
 
 def test_a_cafe_the_user_chose_for_photos_keeps_the_photo_windows():

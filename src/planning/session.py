@@ -316,6 +316,7 @@ class Session(BaseModel):
     position: int = 0
     log: list[dict] = Field(default_factory=list)
     output: dict | None = None
+    chat: list[dict] = Field(default_factory=list)   # typed turns of the assistant: {text, say}; not part of the replayed log
 
     @property
     def state(self) -> State:

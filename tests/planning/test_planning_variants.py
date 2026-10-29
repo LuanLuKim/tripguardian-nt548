@@ -123,7 +123,7 @@ def test_an_objective_never_leaves_out_a_place_another_split_fits():
                                                                # 5-place centre cluster, and a max_leg_min of 10
                                                                # forbids combining it with the south cluster either
     # A robust baseline isolates objective rejection from overload-profile composition.
-    cfg = replace(CFG, fill_ratio=1.0, meal_durations={'lunch': 60, 'dinner': 60}, meals_per_day=2, meal_windows={k: v for k, v in CFG.meal_windows.items() if k != 'breakfast'})
+    cfg = replace(CFG, meal_durations={'lunch': 60, 'dinner': 60}, meals_per_day=2, meal_windows={k: v for k, v in CFG.meal_windows.items() if k != 'breakfast'})
     out = run(d, recs, weather={"2026-12-13": {"rain_prob": 0.9}}, cfg=cfg)
     codes = [w["code"] for w in out["warnings"]]
     assert [v["id"] for v in out["variants"]] == ["main"]

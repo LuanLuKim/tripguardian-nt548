@@ -198,15 +198,6 @@ def test_duration_policy_preserves_place_specific_evidence():
     assert visit_minutes(places[0], CFG, 'normal') == 120
 
 
-def test_day_load_uses_the_same_coffee_duration_and_only_unclaimed_meals():
-    from planning.days import day_load, load_of
-    cx = day_ctx([rec('coffee', *CENTRE, group='cafe', visit=(45, 75, 150))], pace='slow')
-    result = simulate(['coffee'], cx)
-    visit = next(it.end-it.start for it in result.items if it.kind == 'visit')
-    assert load_of(['coffee'], cx.places, CFG, 'slow') == visit + CFG.intra_leg_min
-    assert day_load(['coffee'], cx.places, CFG, 'slow') == visit + CFG.intra_leg_min + CFG.buffer_min['slow'] + 210
-
-
 def test_three_flexible_restaurants_fill_distinct_meals_in_clock_order():
     records = [rec(pid, *CENTRE, group='restaurant', hours=all_days('07:00', '23:00'))
                for pid in ('a', 'b', 'c')]

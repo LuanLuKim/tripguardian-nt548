@@ -43,7 +43,15 @@ def main(argv: list[str] | None = None) -> int:
     sv = sub.add_parser("serve", help="run the HTTP + SSE server")
     sv.add_argument("--port", type=int, default=8768)
     ev = sub.add_parser("evaluate", help="offline Planning check: 30 hidden trips through Decision and Planning")
-    args = ap.parse_args(argv)
+    sub.add_parser("bench", help="the Lịch trình chatbot on config/bench_planning_assistant.yaml (options: python -m planning bench -h)")
+    args, rest = ap.parse_known_args(argv)
+    if args.cmd == "bench":
+        load_dotenv(ROOT / ".env")
+        from .bench import main as bench
+        bench(rest)
+        return 0
+    if rest:
+        ap.error(f"unrecognized arguments: {' '.join(rest)}")
     if args.cmd == "evaluate":
         from .evaluate import run as run_evaluate
         run_evaluate()

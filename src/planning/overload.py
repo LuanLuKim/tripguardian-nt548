@@ -6,7 +6,9 @@ by it."""
 
 import multiprocessing as mp
 import os
+import signal
 from dataclasses import asdict, replace
+from functools import partial
 
 from .backup import backups
 from .build import Schedule, itinerary, schedule_trip, travel_load
@@ -63,15 +65,29 @@ def _hm(minutes: int) -> str:
 
 
 class _Runs:
-    """schedule_trip once per kept set within one plan_or_directions call: the directions often try the same sets."""
+    """schedule_trip once per kept set within one plan_or_directions call: the directions often try the same sets.
+    The call count lives in shared memory (`counter`), so a forked child adds its schedule_trip calls to the parent's."""
 
-    def __init__(self, trip):
-        self.trip, self.memo, self.calls = trip, {}, 0
+    def __init__(self, trip, counter=None):
+        self.trip, self.memo = trip, {}
+        self.counter = counter if counter is not None else mp.Value("i", 0)
+
+    @property
+    def calls(self) -> int:
+        return self.counter.get_obj().value             # raw read: never waits on a lock a killed child still holds
+
+    def count(self) -> None:
+        lock = self.counter.get_lock()
+        if lock.acquire(timeout=1):                     # a child killed mid-increment must not hang the others
+            try:
+                self.counter.get_obj().value += 1
+            finally:
+                lock.release()
 
     def __call__(self, kept) -> Schedule:
         key = frozenset(kept)
         if key not in self.memo:
-            self.calls += 1
+            self.count()
             self.memo[key] = schedule_trip(self.trip, kept=key)
         return self.memo[key]
 
@@ -186,43 +202,72 @@ def _direction(trip, run: _Runs, direction, protected, values):
     return kept, dropped, sched, why
 
 
-_FORK_WAIT_S = 120          # a forked direction that has not answered by then is searched here instead
+_FORK_WAIT_S = 120          # a forked task that has not answered by then is worked out here instead
 
 
-def _forked(trip, protected, values) -> dict:
-    """{direction: (kept, dropped, sched, why)} searched in one forked process each (the three searches are
-    independent and deterministic: a kept set always lays out the same, so only the memo is not shared). A child that
-    fails or stays silent is simply absent: the caller searches that direction itself."""
-    if trip.cfg.direction_workers < 2 or os.name != "posix" or "fork" not in mp.get_all_start_methods():
+def _in_children(tasks: dict) -> dict:
+    """{name: task()} with each task run in its own forked process at once (fork: the trip and the memo are inherited,
+    only the answers are pickled back; the work is deterministic, so only where it runs changes). A child that fails or
+    stays silent is simply absent: the caller works that task out itself. Children are not daemons: the longer-day
+    child forks its two widest trials (_extend)."""
+    if os.name != "posix" or "fork" not in mp.get_all_start_methods():
         return {}
     ctx, procs = mp.get_context("fork"), {}
-    for direction in DIRECTIONS[:trip.cfg.direction_workers]:
+    for name, task in tasks.items():
         rx, tx = ctx.Pipe(duplex=False)
-        proc = ctx.Process(target=_child, args=(tx, trip, direction, protected, values), daemon=True)
+        proc = ctx.Process(target=_child, args=(tx, task))
         proc.start()
+        if not _IN_CHILD:
+            try:
+                os.setpgid(proc.pid, proc.pid)
+            except OSError:
+                pass                # the child already did it, or already ended
         tx.close()
-        procs[direction] = (proc, rx)
+        procs[name] = (proc, rx)
     got = {}
-    for direction, (proc, rx) in procs.items():
+    for name, (proc, rx) in procs.items():
         try:
             if rx.poll(_FORK_WAIT_S):
                 ok, payload = rx.recv()
                 if ok:
-                    got[direction] = payload
+                    got[name] = payload
         except Exception:
             pass
         finally:
             rx.close()
-            if proc.is_alive():
-                proc.terminate()
-            proc.join(1)
+            _stop(proc)
     return got
 
 
-def _child(tx, trip, direction, protected, values) -> None:
+def _stop(proc) -> None:
+    """End a forked task that is still running together with anything it forked (the longer-day child's two trials):
+    a top-level child leads its own process group, so one kill reaches the whole group; a nested child has no group of
+    its own, only itself is killed."""
     try:
-        tx.send((True, _direction(trip, _Runs(trip), direction, protected, values)))
-    except BaseException as e:      # reported as "searched here instead"
+        if _IN_CHILD:
+            if proc.is_alive():
+                proc.kill()
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)     # before any wait: the pid is still ours, so the group is too
+    except (ProcessLookupError, PermissionError):
+        pass
+    proc.join(1)
+
+
+_IN_CHILD = False           # True in a forked task: its own children stay in the task's process group
+
+
+def _child(tx, task) -> None:
+    global _IN_CHILD
+    if not _IN_CHILD:
+        try:
+            os.setpgid(0, 0)        # the group the parent kills on timeout (the parent sets it too: no race)
+        except OSError:
+            pass
+    _IN_CHILD = True
+    try:
+        tx.send((True, task()))
+    except BaseException as e:      # reported as "worked out here instead"
         tx.send((False, repr(e)))
     finally:
         tx.close()
@@ -275,16 +320,25 @@ def _extend(trip, run: _Runs, main: Schedule) -> dict | None:
     sides = {side: [movable(k, cx, side) for k, cx in enumerate(trip.ctxs)] for side in ("start", "end")}
     tried: dict = {}
 
+    def holds(side, minutes) -> bool:
+        ctxs = [cx if not ok else replace(cx, day=replace(cx.day, start=cx.day.start - minutes)) if side == "start"
+                else replace(cx, day=replace(cx.day, end=min(24 * 60, cx.day.end + minutes)))
+                for ok, cx in zip(sides[side], trip.ctxs)]
+        run.count()
+        return not _over(schedule_trip(replace(trip, ctxs=ctxs)))
+
     def fits(side, minutes):
         if (side, minutes) not in tried:
-            ctxs = [cx if not ok else replace(cx, day=replace(cx.day, start=cx.day.start - minutes)) if side == "start"
-                    else replace(cx, day=replace(cx.day, end=min(24 * 60, cx.day.end + minutes)))
-                    for ok, cx in zip(sides[side], trip.ctxs)]
-            run.calls += 1
-            tried[side, minutes] = not _over(schedule_trip(replace(trip, ctxs=ctxs)))
+            tried[side, minutes] = holds(side, minutes)
         return tried[side, minutes]
 
     top = trip.cfg.realistic["extend_max_min"] // EXTEND_STEP * EXTEND_STEP
+    # Both sides' widest trial is always tried when its minutes could cover the short ones (open_sides below): with
+    # direction_workers > 1 the two run in forked processes at once, each a whole schedule_trip on a frame no memo has.
+    widest = [side for side in ("start", "end") if top and top * sum(sides[side]) >= short]
+    if len(widest) > 1 and trip.cfg.direction_workers > 1:
+        for side, ok in _in_children({side: partial(holds, side, top) for side in widest}).items():
+            tried[side, top] = ok
     # A side that cannot hold every place even moved by the most it may move is not tried step by step (a whole
     # schedule_trip a step): the steps below the most only matter on a side the most fits.
     open_sides = [side for side in ("start", "end") if top and top * sum(sides[side]) >= short and fits(side, top)]
@@ -308,7 +362,13 @@ def plan_or_directions(trip, *, protected=()) -> dict:
     protected = (must_places(trip) | set(protected)) & set(trip.by_place)
     values = selection_utilities(trip)
     out, seen = [], {}
-    searched = _forked(trip, protected, values)
+    # The three directions and the longer-day offer are independent searches from the main schedule: with
+    # direction_workers > 1 each runs in a forked process at once, the longer day does not wait for the directions.
+    tasks = {d: partial(_direction, trip, _Runs(trip, run.counter), d, protected, values)
+             for d in DIRECTIONS[:trip.cfg.direction_workers]} if trip.cfg.direction_workers > 1 else {}
+    if tasks:
+        tasks["extend"] = partial(_extend, trip, run, main)
+    searched = _in_children(tasks) if tasks else {}
     for direction in DIRECTIONS:
         kept, dropped, sched, why = searched.get(direction) or _direction(trip, run, direction, protected, values)
         key = frozenset(kept)
@@ -330,7 +390,7 @@ def plan_or_directions(trip, *, protected=()) -> dict:
                     v["stars"].append(field)
     missing = sum(visit_minutes(trip.by_place[p], trip.cfg, trip.pace) for p in main.leftover) + \
         sum(v.minutes for v in main.violations if v.kind in OVERRUN)
-    extend = _extend(trip, run, main)
+    extend = searched["extend"] if "extend" in searched else _extend(trip, run, main)
     overload = {"missing_min": missing, "places": len(trip.by_place),
                 "directions": [{k: x for k, x in v.items() if not k.startswith("_")} for v in out], "extend": extend}
     ok = any(v["confirmable"] for v in out)

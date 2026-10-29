@@ -123,6 +123,62 @@ def test_a_notice_below_severe_warns_and_makes_the_visit_sensitive_without_forbi
     assert len(south) == 3 and all("advisory" in sensitive(it, cx) for it, cx in south)
 
 
+def military_area():
+    """A square around the three southern places (about 4 km from the centre ones)."""
+    lat, lng = SOUTH
+    ring = [[lng - 0.01, lat - 0.01], [lng + 0.02, lat - 0.01], [lng + 0.02, lat + 0.02], [lng - 0.01, lat + 0.02], [lng - 0.01, lat - 0.01]]
+    return {"type": "Feature", "bbox": [lng - 0.01, lat - 0.01, lng + 0.02, lat + 0.02],
+            "properties": {"osm": "way/1", "kind": "military", "name": "Doanh trại"},
+            "geometry": {"type": "Polygon", "coordinates": [ring]}}
+
+
+def test_a_place_inside_a_restricted_area_is_warned_and_still_scheduled():
+    d, recs = sample_trip()
+    notice = {"restricted": [military_area()]}
+    t = trip(d, recs, None, sig(**{SAT: notice, SUN: notice}))
+    s = schedule_trip(t)
+    assert not s.violations                                  # never excluded, never a violation
+    placed = {it.place_id for r in s.results for it in r.items if it.kind == "visit"}
+    assert {"s1", "s2", "s3"} <= placed
+    south = [(it, cx) for r, cx in zip(s.results, s.ctxs) for it in r.items if it.kind == "visit" and it.place_id.startswith("s")]
+    assert all("advisory" in sensitive(it, cx) for it, cx in south)
+    centre = [(it, cx) for r, cx in zip(s.results, s.ctxs) for it in r.items if it.kind == "visit" and it.place_id.startswith("c")]
+    assert centre and not any("advisory" in sensitive(it, cx) for it, cx in centre)
+
+
+def test_a_restricted_area_never_makes_hazard_true_and_its_notice_says_watch():
+    d, recs = sample_trip()
+    t = trip(d, recs, None, sig(**{SAT: {"restricted": [military_area()]}, SUN: {}}))
+    cond = t.ctxs[0].cond
+    south = next(p for p in t.ctxs[0].places.values() if p.id == "s1")
+    (hit,) = conditions.advisory_hits(south, cond)
+    assert hit["kind"] == "restricted" and hit["severity"] == "watch" and "Doanh trại" in hit["note"]
+    assert hazard(south, cond) is None and conditions.warned(south, cond)
+
+
+def test_a_day_with_no_restricted_area_known_warns_about_nothing():
+    d, recs = sample_trip()
+    t = trip(d, recs, None, sig(**{SAT: {}, SUN: {}}))
+    assert all(not conditions.advisory_hits(p, t.ctxs[0].cond) for p in t.ctxs[0].places.values())
+
+
+def test_fetch_puts_the_cities_restricted_areas_into_every_days_signals(monkeypatch):
+    d, recs = sample_trip()
+    monkeypatch.setattr(live, "weather", lambda lat, lng, dates, cfg: {x: CLEAR for x in dates})
+    monkeypatch.setattr(live, "holidays", lambda dates: {})
+    monkeypatch.setattr(live, "events", lambda dates: {})
+    monkeypatch.setattr(live, "advisories", lambda dates: {})
+    asked = []
+    monkeypatch.setattr(conditions, "restricted_areas", lambda city: asked.append(city) or [military_area()])
+
+    class WithCity(FakeLive):
+        views_city = "dalat"
+    _, signals = fetch_live(WithCity())(d, {r["id"]: r for r in recs})
+    assert asked == ["dalat"] and signals[SAT]["restricted"] == signals[SUN]["restricted"] == [military_area()]
+    _, signals = fetch_live(FakeLive())(d, {r["id"]: r for r in recs})     # no city configured: nothing asked, nothing known
+    assert signals[SAT]["restricted"] == [] and asked == ["dalat"]
+
+
 def test_without_any_signal_nothing_changes():
     d, recs = exposed_trip()
     assert all(cx.cond is None for cx in trip(d, recs, {SAT: {"rain_prob": 0.9}}).ctxs)
@@ -165,10 +221,11 @@ def test_a_user_who_avoids_crowds_weighs_a_crowded_day_more():
     recs[0] = busy_place()
     t = trip(d, recs, None, sig(**{SAT: {}, SUN: {}}))
     from dataclasses import replace
-    from planning.days import crowd_risk
-    avoid = replace(t.ctxs[0], crowd_tol="avoid")
-    assert crowd_risk(["c1"], avoid) == crowd_risk(["c1"], t.ctxs[0]) * CFG.conditions["crowd_avoid_factor"] > 0
-    assert crowd_risk(["c2"], t.ctxs[0]) == 0
+    from planning.layout import _risk
+    cx = replace(t.ctxs[0], cfg=replace(t.ctxs[0].cfg, weights={**t.ctxs[0].cfg.weights, "crowd": 8.0}))
+    avoid = replace(cx, crowd_tol="avoid")
+    assert _risk(cx.places["c1"], avoid) == _risk(cx.places["c1"], cx) * CFG.conditions["crowd_avoid_factor"] > 0
+    assert _risk(cx.places["c2"], cx) == 0
 
 
 def test_crowd_tips_name_the_calm_time_from_the_places_own_figures():
@@ -265,3 +322,35 @@ def test_the_confirmed_plan_keeps_each_days_conditions():
     sid = plain.create(d, None)["id"]
     plain.act(sid, {"type": "pick_variant", "id": next(v["id"] for v in plain.variants(sid) if v.get("status", "available") == "available")})
     assert "day_conditions" not in plain.confirm(sid)
+
+
+def test_a_place_inside_a_restricted_area_gets_its_own_sentence_and_only_that_place():
+    d, recs = sample_trip()
+    notice = {"restricted": [military_area()]}
+    t = trip(d, recs, None, sig(**{SAT: notice, SUN: notice}))
+    assert not any(w["code"] == "restricted_place" for w in t.warnings)       # the plan has not chosen its places yet
+    rows = [w for w in schedule_trip(t).warnings if w["code"] == "restricted_place"]
+    assert {w["place_id"] for w in rows} == {"s1", "s2", "s3"}            # once per place, not once per day
+    s1 = next(w for w in rows if w["place_id"] == "s1")
+    assert "khu vực hạn chế" in s1["text"] and "quân sự" in s1["text"] and "Doanh trại" in s1["text"]
+    assert "kiểm tra" in s1["text"] and "chưa đủ" in s1["text"]          # says the data may be incomplete
+    assert not any(w["code"] == "advisory" for w in t.warnings)           # no day-level advisory is made up
+
+
+def test_no_restricted_area_means_no_place_sentence():
+    d, recs = sample_trip()
+    t = trip(d, recs, None, sig(**{SAT: {"restricted": []}, SUN: {}}))
+    assert not any(w["code"] == "restricted_place" for w in t.warnings)
+
+
+def test_a_restricted_place_the_plan_leaves_out_gets_no_sentence():
+    from dataclasses import replace as _replace
+
+    from planning.build import restricted_warnings
+    d, recs = sample_trip()
+    notice = {"restricted": [military_area()]}
+    s = schedule_trip(trip(d, recs, None, sig(**{SAT: notice, SUN: notice})))
+    assert {w["place_id"] for w in restricted_warnings(s.ctxs, s.results)} == {"s1", "s2", "s3"}
+    kept = [_replace(r, items=[i for i in r.items if i.place_id != "s2"]) for r in s.results]
+    assert {w["place_id"] for w in restricted_warnings(s.ctxs, kept)} == {"s1", "s3"}
+    assert restricted_warnings(s.ctxs, [_replace(r, items=[]) for r in s.results]) == []

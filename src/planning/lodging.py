@@ -11,6 +11,7 @@ from trip import group_budget, nights
 
 from .places import Place
 from .settings import Settings
+from .stayprice import overlay
 from .travel import km
 
 # who travels along -> the suitability a lodging should have (config/ontology.yaml stay_features)
@@ -136,10 +137,14 @@ def from_record(r: dict) -> dict:
     night = r["operation"].get("price_per_night")
     prov = r.get("provenance") or {}
     trend = prov.get("rating_trend") or {}
+    ident = r["identity"]
     price = night["value"] if night else None
-    return {"id": r["id"], "name": r["identity"]["name"], "lat": r["identity"]["lat"], "lng": r["identity"]["lng"],
-            "address": r["identity"].get("address"), "rating": trend.get("recent_mean"),
-            "reviews": prov.get("voices") or 0, "price_vnd": price, "price_at": night["as_of"] if night else None,
+    # Maps' own rating / review count (the whole population); the crawled sample is only the fallback for a record
+    # built before they were carried
+    return {"id": r["id"], "name": ident["name"], "lat": ident["lat"], "lng": ident["lng"],
+            "address": ident.get("address"), "rating": ident.get("rating") or trend.get("recent_mean"),
+            "reviews": ident.get("reviews") or prov.get("voices") or 0,
+            "reputation": (prov.get("reputation") or {}).get("score"), "price_vnd": price, "price_at": night["as_of"] if night else None,
             "source": "corpus", "fetched_at": prov.get("as_of"), "rec": r}
 
 
@@ -184,7 +189,7 @@ def candidates(by_place: dict[str, Place], decision: dict, cfg: Settings, record
         return []
     cap = price_cap(tc, nights(tc), cfg)
     hard_filters = decision["trip_context"].get("hard_filters") or []
-    pool = [c for c in sieve([from_record(r) for r in stays_in(list(records), centres)], hard_filters, cfg.min_reviews)
+    pool = [c for c in overlay(sieve([from_record(r) for r in stays_in(list(records), centres)], hard_filters, cfg.min_reviews), tc, cfg)
             if cap is None or c["price_vnd"] is None or c["price_vnd"] <= cap]
     near = shortlist(pool, centres, len(pool))
     return sorted(near, key=lambda c: -pref_fit(c, decision["trip_context"])[0])[:cfg.lodging_pool]
@@ -199,7 +204,7 @@ def anywhere(decision: dict, cfg: Settings, records: list[dict] = (), limit: int
     hard_filters = decision["trip_context"].get("hard_filters") or []
     stays = [r for r in records if r["identity"].get("category_group") == "stay" and r["identity"].get("lat") is not None
              and r["identity"].get("lng") is not None]
-    pool = [c for c in sieve([from_record(r) for r in stays], hard_filters, cfg.min_reviews)
+    pool = [c for c in overlay(sieve([from_record(r) for r in stays], hard_filters, cfg.min_reviews), tc, cfg)
             if cap is None or c["price_vnd"] is None or c["price_vnd"] <= cap]
     pool = sorted(pool, key=lambda c: (-pref_fit(c, decision["trip_context"])[0], -(c.get("rating") or 0)))
     return pool if limit is None else pool[:cfg.lodging_pool if limit == -1 else limit]
@@ -220,7 +225,12 @@ def rank(cands: list[dict], decision: dict, avg_min: dict, cfg: Settings, labels
         loc = max(0.0, 1 - m / cfg.loc_ref_min) if m is not None else 0.0
         price = c.get("price_vnd")
         price_fit = (1 - 0.5 * price / cap) if price is not None and cap and price <= cap else 0.0
-        rating_fit = min(max((c["rating"] - 3.5) / 1.5, 0.0), 1.0) if c.get("rating") else 0.0
+        # reputation: Maps rating and review volume on one pool scale (corpus.serving.reputation); unknown adds 0.
+        # Without it (a candidate that is not a served record) the rating alone, as before.
+        if c.get("reputation") is not None:
+            rating_fit = c["reputation"]
+        else:
+            rating_fit = min(max((c["rating"] - 3.5) / 1.5, 0.0), 1.0) if c.get("rating") else 0.0
         score = w["pref"] * pref + w["loc"] * loc + w["price"] * price_fit + w["rating"] * rating_fit
         out.append({**c, "fit": why, "avg_min": round(m) if m is not None else None, "score": round(score, 4)})
     out.sort(key=lambda c: (-c["score"], c["avg_min"] if c["avg_min"] is not None else 1e9))

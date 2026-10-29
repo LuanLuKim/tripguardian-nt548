@@ -6,3 +6,4 @@ tools:
   - {name: planning.variants, access: read}
   - {name: planning.diagnostics, access: read}
   - {name: planning.propose, access: read}
+  - {name: planning.turn, access: write}

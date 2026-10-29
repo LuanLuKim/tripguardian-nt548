@@ -466,3 +466,16 @@ def test_main_is_selected_even_when_confirmation_still_requires_lodging():
     view = e.create(d, require_lodging=True)['view']
     assert view['state']['chosen_variant'] == 'main'
     assert view['needs_hotel']
+
+
+def test_view_carries_trust_fields_for_the_ui():
+    d, recs = sample_trip()
+    e = Engine(recs + LODGING, cfg=CFG, live_cfg=FakeLive(), store=Store(None), geocode_fn=no_geocode,
+               matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), background=False)
+    created = e.create(d, None)
+    view = created["view"]
+    assert view["uncertainty"]["estimated"] and "travel_source" in view["uncertainty"]
+    assert "source" in view["provenance"]["travel"] and view["provenance"]["weather"] == []
+    assert isinstance(view["tradeoffs"], list)
+    if view["itinerary"]:
+        assert view["time_budget"]["days"] == len(view["itinerary"]) and view["time_budget"]["total_minutes"] > 0

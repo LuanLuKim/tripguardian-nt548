@@ -14,6 +14,9 @@ from .settings import load as load_settings
 from .variants import build_lodging_variants, build_variants, render_lodging_variants, render_variants
 from .tools import Tools, create_engine
 from .proposal import PlanningProposal, run_proposal
+from .eve import Store as EveStore, eve_runner, run_eve
+from .expert import expert_runner
 
 __all__ = ["Engine", "TripIncomplete", "Settings", "build_lodging_variants", "build_plan", "build_variants", "load_settings",
-          "PlanningProposal", "Tools", "create_engine", "render_lodging_variants", "render_text", "render_variants", "run_proposal", "run_server"]
+          "PlanningProposal", "Tools", "create_engine", "render_lodging_variants", "render_text", "render_variants", "run_proposal", "run_server",
+           "EveStore", "eve_runner", "run_eve", "expert_runner"]

@@ -13,21 +13,6 @@ LABEL = {"least_travel": "Ít di chuyển", "low_cost": "Chi phí thấp", "weat
          "diverse": "Đa dạng trải nghiệm", "preference_fit": "Hợp sở thích"}
 
 
-def choose(trip_context: dict, rains: list, prefs: dict, cfg: Settings) -> list[str]:
-    """At most max_variants objectives, in objective_order, among those the trip calls for. rains: rain probability
-    of each day (None = no forecast); prefs: place id -> preference."""
-    ctx = trip_context["context"]
-    pace = (trip_context.get("pace") or {}).get("level") or "normal"
-    called = {
-        "least_travel": True,
-        "weather_robust": any(r is not None and r >= cfg.rain_high for r in rains),
-        "preference_fit": any(v > 0 for v in prefs.values()),
-        "low_cost": ctx.get("budget_vnd") is not None,
-        "diverse": pace != "slow",
-    }
-    return [o for o in cfg.objective_order if called[o]][: cfg.max_variants]
-
-
 def metrics(ctxs: list, results: list) -> dict:
     """What every objective is scored on, measured on the finished days."""
     m = {"travel_min": 0, "cost_vnd": 0, "cost_unknown": 0, "rain_exposed": 0.0, "exposure_unknown": 0,

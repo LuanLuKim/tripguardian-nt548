@@ -8,7 +8,7 @@ def test_the_shipped_config_loads_with_minutes_not_clock_strings():
     assert cfg.meal_windows["lunch"] == (660, 810)
     assert cfg.pins["live_music"]["from"] == 1080 and cfg.pins["sunset_view"]["anchor"] == "sunset"
     assert cfg.visit_key == {"slow": "long", "normal": "typical", "packed": "short"}
-    assert cfg.exact_n == 7 and cfg.max_days == 7 and cfg.max_clusters == 8
+    assert cfg.exact_n == 7
 
 
 def test_fmt_and_to_min_round_trip():
@@ -18,9 +18,9 @@ def test_fmt_and_to_min_round_trip():
 
 def test_the_p4_keys_load():
     cfg = settings.load(settings.PATH)
-    assert (cfg.rain_high, cfg.buffer_extra_rain, cfg.max_variants) == (0.6, 10, 3)
+    assert (cfg.rain_high, cfg.buffer_extra_rain) == (0.6, 10)
     assert [s["id"] for s in cfg.robustness["scenarios"]] == ["late_15", "visit_20", "travel_25", "late_30", "rain"]
-    assert set(cfg.objective_weights) == set(cfg.objective_order)
+    assert set(cfg.objective_weights) == {"least_travel", "weather_robust", "preference_fit", "low_cost", "diverse"}
 
 
 def test_the_p6_keys_load():

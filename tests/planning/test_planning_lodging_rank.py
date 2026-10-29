@@ -273,3 +273,27 @@ def test_a_lodging_picked_at_lua_chon_replaces_the_one_the_trip_already_had():
     d["lodging"] = {"kind": "address", "id": None, "text": "Chỗ mới", "lat": 11.95, "lng": 108.45, "price_vnd": None}
     assert (booked(d)["text"], booked(d)["lat"]) == ("Chỗ mới", 11.95)  # one lodging for the trip: the pick wins
     assert with_booked_base(d)["trip_context"]["context"]["base"]["text"] == "Chỗ mới"
+
+
+def test_rating_fit_is_the_reputation_not_the_crawled_sample_mean():
+    big, small = stay("big", 1, night=500000), stay("small", 2, night=500000)
+    for r, rep, sample_mean in ((big, 0.8, 4.0), (small, 0.3, 5.0)):  # the sample mean says the opposite
+        r["provenance"]["reputation"] = {"score": rep}
+        r["provenance"]["rating_trend"] = {"recent_mean": sample_mean}
+    ranked = rank([from_record(big), from_record(small)], trip(soft=()), {}, CFG)
+    assert [c["id"] for c in ranked] == ["big", "small"]
+    assert ranked[0]["score"] - ranked[1]["score"] == pytest.approx(CFG.lodging_weights["rating"] * 0.5, abs=1e-3)
+
+
+def test_a_card_shows_maps_rating_and_reviews_when_the_record_carries_them():
+    r = stay("m", 1, voices=40)
+    r["identity"].update(rating=4.6, reviews=3000)
+    c = from_record(r)
+    assert (c["rating"], c["reviews"]) == (4.6, 3000)
+
+
+def test_unknown_reputation_adds_nothing():
+    r = stay("u", 1, night=500000)
+    r["provenance"]["rating_trend"] = None
+    assert from_record(r)["reputation"] is None
+    assert rank([from_record(r)], trip(soft=()), {}, CFG)[0]["score"] >= 0

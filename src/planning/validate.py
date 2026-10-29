@@ -5,15 +5,20 @@ scheduler cannot also hide from the check. Fail-closed: a violation is reported,
 """
 
 from dataclasses import replace
+from datetime import date, datetime, timedelta
 
 from requirements import allowed, hard_result
+from trip import nights as stay_nights
 
 from .conditions import hazard
 from .feature_ontology import ontology
+from .lodging import price_cap
 from .model import DayResult, Violation
 from .roles import takes_meal_slot
 from .schedule import DayCtx, intervals_for, meal_floor, meals_needed, pin_window
 from .cache import day_key, fingerprint, put, travel_key
+from .settings import Settings
+from .stayprice import age_h
 
 
 def _is_physical(feature: str) -> bool:
@@ -140,3 +145,27 @@ def validate(ctxs: list[DayCtx], results: list[DayResult], hard_filters: list, a
     for pid in sorted(anchors - set(visited)):
         out.append(Violation("anchor", None, pid, 0, False, "an anchor is not in the plan"))
     return out
+
+
+def lodging_budget(context: dict, lodging: dict | None, cfg: Settings, now: datetime | None = None) -> dict | None:
+    """The lodging cost line of the budget check, apart from the places' per-day spend: one row per night with the price
+    the plan is using (`price_kind` "dated" = seen for the trip's own stay, "reference" = Maps' list price, None = not
+    known), how old it is, and how far it is over the lodging share of the budget (`per_night_cap_vnd`, the same cap the
+    candidates were filtered with). Over budget is information for the user: it never fails a check or drops a stop.
+    Unknown price or budget -> None fields and `over_budget` None (unknown is not "within"). None when there is no
+    lodging or no night to pay for."""
+    n = stay_nights(context)
+    if not lodging or n <= 0:
+        return None
+    price, kind = lodging.get("price_vnd"), lodging.get("price_kind")
+    age = age_h(lodging.get("price_at"), now) if price is not None else None
+    cap = price_cap(context, n, cfg)
+    try:
+        first = date.fromisoformat(str(context.get("start_date")))
+    except ValueError:
+        first = None
+    over = None if price is None or cap is None else max(price - cap, 0)
+    rows = [{"night": i + 1, "date": (first + timedelta(days=i)).isoformat() if first else None, "price_vnd": price,
+             "price_kind": kind if price is not None else None, "price_age_h": age, "over_vnd": over} for i in range(n)]
+    return {"nights": rows, "total_vnd": price * n if price is not None else None, "per_night_cap_vnd": cap,
+            "over_budget": None if over is None else over > 0, "over_vnd": None if over is None else over * n}

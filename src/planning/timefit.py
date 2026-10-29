@@ -185,13 +185,6 @@ def period_load(ids: list[str], ctx) -> float:
                for windows, (demand, weight) in groups.items())
 
 
-def split_competing(clusters: list[list[str]], ctxs: list) -> list[list[str]]:
-    """Let a day split move neighbouring places apart when all days would overload their preferred windows."""
-    return [part for cluster in clusters for part in
-            ([[pid] for pid in cluster] if len(cluster) > 1 and all(period_load(cluster, cx) > 0 for cx in ctxs)
-             else [cluster])]
-
-
 def describe(ctxs: list, results: list) -> list[dict]:
     return [{"day": cx.day.index + 1, "penalty": round(r.time_penalty, 3), "estimated": True,
              "places": list(r.time_details), "overload_min": round(period_load(list(r.order), cx), 1)}

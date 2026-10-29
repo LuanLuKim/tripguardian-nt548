@@ -7,7 +7,7 @@ the chosen lodging's price). Everything else here is reshaping what build.py / v
 import live
 from trip import nights
 
-from .build import chunk_view, flag_warnings, shared_output
+from .build import chunk_view, flag_warnings, restricted_warnings, shared_output
 from .details import plan_notes
 from .settings import fmt
 
@@ -69,11 +69,13 @@ def build(trip, variants: list[dict], chosen: dict, chosen_results: list, decisi
         "route": [route_of_day(d, r, coords, live_cfg, mobility, route_fn) for d, r in zip(days, chosen_results)],
         "time_budget": time_budget(days, slept),
         "lodging": {"chosen": lodging, "candidates": []},
-        "cost": cost(chosen["metrics"], lodging.get("price_vnd"), slept),
+        "cost": {**cost(chosen["metrics"], lodging.get("price_vnd"), slept), "lodging_nights": chosen.get("lodging_budget")},
         "travel_load": chosen["travel_load"],
         "reasons": shared["reasons"],
         "tradeoffs": shared["tradeoffs"],
-        "warnings": trip.warnings + chosen["warnings"] + flag_warnings(decision) + notes["warnings"],
+        "warnings": (trip.warnings + [w for w in chosen["warnings"] if w.get("code") != "restricted_place"]
+                     + restricted_warnings(list(trip.ctxs)[: len(chosen_results)], chosen_results)
+                     + flag_warnings(decision) + notes["warnings"]),
         "checklist": notes["checklist"],
         "uncertainty": shared["uncertainty"],
         "robustness": chosen["robustness"],

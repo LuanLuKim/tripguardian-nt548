@@ -127,8 +127,11 @@ CASES = [
     case("dessert_not_dinner", ["Chạm cà phê & kem bơ Đà Lạt", "Kem bơ - Chè Huyền", "Ga Đà Lạt"], days=1,
          starts={0: "09:00"}, ends={0: "21:00"}),
     # overload
+    # The 2026-10-30 release read real visit lengths (Đường Hầm Điêu Khắc 120 -> 37 min, XQ Đà Lạt Sử Quán 90 -> 30), so the
+    # original 12 places now fit in 3 days: three more sights keep it a family trip that does not fit, with room to spare.
     case("family_12_in_3", FAR + CENTRE_SIGHTS[:2] + ["Bánh Căn Nhỏ", "Lẩu gà lá é-gà nướng lu 668",
-                                                      "Nem nướng TÂN LONG", "XQ Đà Lạt Sử Quán", "Chạm cà phê & kem bơ Đà Lạt"],
+                                                      "Nem nướng TÂN LONG", "XQ Đà Lạt Sử Quán", "Chạm cà phê & kem bơ Đà Lạt",
+                                                      "Thung lũng Tình Yêu", "Chùa Linh Sơn", "Công Viên Yersin"],
          companions=["kids", "partner"], people=4, expect={"overload": True}),
     case("twenty_in_2", CENTRE_SIGHTS + FOOD + FAR + SWEET + ["Thung lũng Tình Yêu", "Fresh Zoo"], days=2,
          expect={"overload": True}),
@@ -136,12 +139,17 @@ CASES = [
          ends={0: "19:00"}, expect={"overload": True, "extend": True}),
     case("must_go_kept", FAR + CENTRE_SIGHTS, days=1, must=["Săn mây Panorama Cầu Đất"], expect={"overload": True}),
     # missing data and weather
-    case("rainy_month", ["Vườn dâu Chào Đà Lạt", "Thung lũng Tình Yêu", "Ga Đà Lạt", "Bánh Căn Nhỏ"], days=2,
+    # 3 days, not 2: with 2 the four places fit by ~30 min, and a popular-times figure crossing crowd_busy_pct (the
+    # 2026-10-30 release) adds queue minutes that tip it over. The case is about the monthly rain fallback, not a tight day.
+    case("rainy_month", ["Vườn dâu Chào Đà Lạt", "Thung lũng Tình Yêu", "Ga Đà Lạt", "Bánh Căn Nhỏ"], days=3,
          start="2026-08-14"),
     case("no_prices", ["Công Viên Yersin", "Chùa Linh Sơn", "Ga Đà Lạt"], days=1, starts={0: "08:00"}, ends={0: "18:00"}),
     # edits
-    case("reorder_bad", CENTRE_SIGHTS[:4], days=1, starts={0: "08:00"}, ends={0: "20:00"},
-         edits=[{"type": "reorder", "day": 0, "order": ["Chùa Linh Sơn", "Ga Đà Lạt", "Công Viên Yersin", "Chợ đà lạt"]}]),
+    # Homestay Lily is gone from the corpus (the lodging is a nearby substitute), so the four centre sights are all within
+    # ~12 min of each other and no order of them is 15 min worse than the best one. A sight out at Thung lũng Tình Yêu makes a
+    # zig-zag cost ~29 min more than the best order: still a real "bad reorder" whatever lodging is substituted.
+    case("reorder_bad", ["Ga Đà Lạt", "Chợ đà lạt", "Thung lũng Tình Yêu", "Chùa Linh Sơn"], days=1, starts={0: "08:00"}, ends={0: "21:00"},
+         edits=[{"type": "reorder", "day": 0, "order": ["Chùa Linh Sơn", "Ga Đà Lạt", "Thung lũng Tình Yêu", "Chợ đà lạt"]}]),
     case("reorder_fine", CENTRE_SIGHTS[:3], days=1, starts={0: "08:00"}, ends={0: "20:00"},
          edits=[{"type": "reorder", "day": 0, "order": ["Ga Đà Lạt", "Chợ đà lạt", "Công Viên Yersin"]}]),
     case("add_to_full_day", CENTRE_SIGHTS, days=1, starts={0: "08:00"}, ends={0: "17:00"}),

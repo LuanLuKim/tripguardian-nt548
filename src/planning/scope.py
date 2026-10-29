@@ -24,6 +24,8 @@ _SCOPE = {
 
 
 def act_scope(action: dict) -> str:
+    if action.get("type") == "batch":      # a typed turn's acts merged into one version: the widest of them
+        return max((act_scope(a) for a in action["acts"]), key=_ORDER.index, default=NONE)
     return _SCOPE[action.get("type")]
 
 

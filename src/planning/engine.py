@@ -35,6 +35,7 @@ from .ghosts import fill as fill_ghosts
 from .ghosts import pool as ghost_pool
 from .model import Point
 from .objectives import LABEL, add_lodging_cost, metrics, score
+from .stayprice import age_h
 from .overload import LABEL as CARD_LABEL, render_variant
 from .repair import repair_day
 from .robustness import robustness as robustness_of
@@ -43,7 +44,9 @@ from .conditions import crowd_tips, describe
 from .timefit import describe as time_description
 from .recommendations import recommend
 from .agent import AgentError
+from .assistant import PlanTurn, build_messages
 from .guard import TurnPlan, guard
+from agents.assistant import run_loop
 from .proposal import PlanningProposal
 from .policy import DONE, NONE as NO_PLAN_SAY, policy
 from .scope import LODGING_FETCH, LODGING_HOME, NONE, RELAYOUT, VARIANT, act_scope, widest
@@ -101,6 +104,10 @@ def _nights(ctx: dict) -> int:
     return nights(ctx)  # the user's own number ("3 ngày 3 đêm" sleeps 3), else days - 1
 
 
+def _vnd(n: int) -> str:
+    return f"{n:,}".replace(",", ".") + "đ"
+
+
 # Spec §8: edits that insert where it costs least (or drop) and retime the days they touch, no reordering search.
 QUICK_EDITS = frozenset({"move_place", "add_from_backup", "drop_place"})
 
@@ -149,7 +156,8 @@ class Engine:
                 decision_url: str | None = None, http_post=None, background: bool = True,
                 agent: "Agent | None" = None, proposal_agent=None, conditions_fn=None, labels: dict | None = None,
                 card_cfg: dict | None = None, live_dependency_version=None,
-                immutable_records_version: str | None = None, retrieval: RetrievalEngine | None = None):
+                immutable_records_version: str | None = None, retrieval: RetrievalEngine | None = None,
+                assistant=None):
         self.by_id = {r["id"]: r for r in records}
         self.records = records
         self.cfg = cfg or load_settings()
@@ -163,6 +171,9 @@ class Engine:
         self.http_post = http_post or _http_post
         self.background = background
         self.agent = agent
+        self.assistant = assistant              # agents.assistant.Chat: typed text goes through the shared tool loop when it is on
+        self.trip_reader: Callable[[str, str], object] | None = None   # (trip session id, text) -> a Trip TurnTools; the harness sets it
+        self.turn_log: dict[str, list[str]] = {}   # session id -> the last typed turn's log (the harness reads the path from it)
         self.proposal_agent = proposal_agent
         self.retrieval = retrieval
         self.conditions_fn = conditions_fn      # (decision, by_id) -> (weather, signals); None = no live conditions
@@ -174,6 +185,7 @@ class Engine:
         # Only verified immutable release factories may supply a records version.
         self.immutable_records_version = immutable_records_version
         self._base: dict[str, _Base] = {}
+        self._name_keys: list[tuple[str, str]] | None = None
         self._schedules: dict[str, list] = {}
         self._previews: dict[str, tuple[float, _Base]] = {}   # Decision Output hash -> (built at, base)
         self._previews_lock = threading.Lock()
@@ -621,10 +633,11 @@ class Engine:
         if active_variant:
             active_variant['recommendations'] = suggestions['items']
         ghosts = self._ghosts(s, base, active) if active else []
-        from .build import pin_warnings
-        warnings = [w for w in base.warnings if w.get("code") != "pin_dropped"]
+        from .build import pin_warnings, restricted_warnings
+        warnings = [w for w in base.warnings if w.get("code") not in {"pin_dropped", "restricted_place"}]
         if active:
             warnings.extend(pin_warnings(active["ctxs"], active["results"]))
+            warnings.extend(restricted_warnings(active["ctxs"], active["results"]))
         return {"ok": choice["ok"], "variants": [{k: v for k, v in v.items() if not k.startswith("_")} for v in offered],
                "needs_hotel": needs_hotel,
                "overload": choice["overload"],
@@ -646,7 +659,21 @@ class Engine:
                                    **(describe(cx.cond) or {})} for cx in base.trip.ctxs if cx.cond],
                "crowd_tips": crowd_tips(list(self._places_for(s, base).values()), [cx.cond for cx in base.trip.ctxs], self.cfg),
                "duration_range": [self.cfg.duration_profiles["manual_min"], self.cfg.duration_profiles["manual_max"]],
+               **self._trust(s, base, active),
                "state": s.state.model_dump(mode="json")}
+
+    def _trust(self, s: Session, base, active) -> dict:
+        """How far the plan can be trusted and where its facts came from (the same fields build_plan's output carries):
+        estimated quantities, travel / weather sources with their time, the usable time per day, why and what gave."""
+        from .build import trust_output
+        from .output import time_budget
+        out = trust_output(base.trip)
+        out["provenance"]["weather"] = [{"source": src, "fetched_at": at} for src, at in sorted(
+            {(w.get("source"), w.get("fetched_at")) for w in (base.trip.weather or {}).values() if w and w.get("source")},
+            key=lambda t: (t[0], t[1] or ""))]
+        if active:
+            out["time_budget"] = time_budget([cx.day for cx in active["ctxs"]], nights(s.decision["trip_context"]["context"]))
+        return out
 
     def _better_jobs(self, s: Session, active: dict) -> list[tuple]:
         """(cache key, user order, day context, user's day result, day) of each day that still holds the user's own order
@@ -724,7 +751,8 @@ class Engine:
                 for d in dropped}
         if active:
             shown = {pid for r in active["results"] for pid in r.order}
-            missing = (set(self._places_for(s, base)) | set(s.state.plan_dropped)) - shown
+            # selection order, not set order: the tray must not reorder between processes (PYTHONHASHSEED)
+            missing = [p for p in dict.fromkeys([*self._places_for(s, base), *s.state.plan_dropped]) if p not in shown]
             for pid in missing:
                 tray.setdefault(pid, {"place_id": pid, "name": base.trip.by_place[pid].name
                                       if pid in base.trip.by_place else pid, "reason": "no_room"})
@@ -961,7 +989,8 @@ class Engine:
     def _lodging_card(self, c: dict, decision: dict) -> dict:
         """What the lodging list shows of a candidate (docs/Role_Web_Functional_Design.md §6), in the shape of a Place
         Decision card (decision/cards.py) so the web draws it with the same PlaceCard; price_at: the day Maps showed
-        that price a night (a reference, not the trip's dates). Strengths and bad sides are only what the reviewers
+        that price a night (a reference, not the trip's dates) unless `price_kind` is `dated`: then the night price
+        seen for the trip's own stay, `price_age_h` hours ago. Strengths and bad sides are only what the reviewers
         of that lodging confirmed (VERIFIED, at least 2 of them); nothing is said without evidence."""
         names = self.labels.get("feature") or {}
         rec = c["rec"]
@@ -979,7 +1008,8 @@ class Engine:
             tradeoffs.append({"text": f"Chưa biết ngân sách; giá khoảng {c['price_vnd'] // 1000}k/đêm", "sid": None})
         voices = c.get("reviews") or 0
         return {"id": c["id"], "name": c["name"], "price_vnd": c["price_vnd"], "source": c.get("source"),
-                "price_at": c.get("price_at"), "address": c.get("address"),
+                "price_at": c.get("price_at"), "price_kind": c.get("price_kind"),
+                "price_age_h": age_h(c["price_at"]) if c.get("price_kind") == "dated" else None, "address": c.get("address"),
                 "category": rec["identity"].get("category"), "area": rec["identity"].get("area"),
                 "rating": c.get("rating"), "reviews": c.get("reviews"), "avg_min": c.get("avg_min"),
                 "fit": fit, "why": why[:3], "tradeoffs": tradeoffs[:3], "location": loc,
@@ -1066,7 +1096,7 @@ class Engine:
         dropped = {d.place_id for d in s.state.dropped} | \
             (set(s.state.plan_dropped) - set(s.state.restored))
         out = {}
-        for pid in set(base.trip.by_place) | set(s.state.assignment):
+        for pid in dict.fromkeys([*base.trip.by_place, *s.state.assignment]):    # selection order, never set order
             if pid not in dropped:
                 p = self._active_place(s, base, pid)
                 if p is None:
@@ -1306,8 +1336,10 @@ class Engine:
             cand = {"id": home, "name": s.state.lodging_point.get("text"),
                     "price_vnd": s.state.lodging_point.get("price_vnd")}
         if cand:
-            card["lodging"] = {k: cand[k] for k in ("id", "name", "price_vnd")}
+            card["lodging"] = {**{k: cand[k] for k in ("id", "name", "price_vnd")},
+                               **{k: cand.get(k) for k in ("price_kind", "price_at")}}
             slept = _nights(s.decision["trip_context"]["context"])
+            self._lodging_budget_line(card, s.decision["trip_context"]["context"])
             card["metrics"] = add_lodging_cost(card["metrics"], cand["price_vnd"], slept)
             lodging_cost = cand["price_vnd"] * slept if cand["price_vnd"] is not None else None
             card["metrics"]["lodging_cost_vnd"] = lodging_cost
@@ -1315,6 +1347,25 @@ class Engine:
                 card["metrics"]["cost_basis"] = "partial"
             else:
                 card["metrics"]["estimated_cost_vnd"] += lodging_cost
+
+    def _lodging_budget_line(self, card: dict, context: dict) -> None:
+        """The separate lodging cost line (validate.lodging_budget) and, when a night is dearer than the lodging share of
+        the budget, one warning in words. Information only: nothing is dropped or blocked for it."""
+        from .build import _warn
+        from .validate import lodging_budget
+        line = lodging_budget(context, card["lodging"], self.cfg)
+        card["lodging_budget"] = line
+        warnings = [w for w in card.get("warnings") or [] if w.get("code") != "lodging_over_budget"]
+        if line and line["over_budget"]:
+            row = line["nights"][0]
+            basis = {"dated": "giá đã xem cho đúng ngày bạn đi", "reference": "giá tham khảo trên Google Maps"}.get(
+                row["price_kind"], "giá đang dùng") \
+                + (f", xem cách đây {round(row['price_age_h'])} giờ" if row["price_age_h"] is not None and row["price_age_h"] < 48
+                   else f", xem cách đây {round(row['price_age_h'] / 24)} ngày" if row["price_age_h"] is not None else "")
+            warnings.append(_warn("lodging_over_budget", name=card["lodging"].get("name") or "đã chọn",
+                                  price=_vnd(row["price_vnd"]), cap=_vnd(line["per_night_cap_vnd"]),
+                                  over=_vnd(row["over_vnd"]), basis=basis))
+        card["warnings"] = warnings
 
     def _variant_dict(self, base: _Base, s: Session, results: list, ctxs: list) -> dict:
         from .build import Schedule
@@ -1426,6 +1477,8 @@ class Engine:
         t = action.get("type")
         if t == "recommend":
             return self._proposal_trial(base, s2, old_state, prev_results, action["proposal"])[1]
+        if t == "batch":
+            return self._batch_results(base, s2, old_state, prev_results, action["acts"])
         if t == "reoptimize" and "_plan_dropped" not in action:
             action = self._resolve_reoptimize(base, s2, action)
         if t == "set_lodging" and action.get("_point"):
@@ -1605,6 +1658,72 @@ class Engine:
             return {"view": view, "diff": {"scope": scope, "affected_chunks": changed}}
 
     # ---------- internal recommendation ----------
+
+    def eve_trial(self, sid: str, actions: list[dict]) -> dict:
+        """D.3: the plan after `actions` (reorder / move_place / swap / drop_place only), laid out on a copy and
+        checked by the same validator as any edit; nothing is saved. {"itinerary", "confirmable", "violations"}.
+        Raises ActionError when an action does not fit (a locked place, an unknown id)."""
+        if any(a.get("type") not in {"reorder", "move_place", "swap", "drop_place"} for a in actions):
+            raise ActionError("the evening check only reorders, moves, swaps or drops")   # never relax
+        with self.store.lock(sid):
+            s = self._get(sid)
+            base = self._ensure_base(sid)
+            if s.state.chosen_variant is None:
+                raise ActionError("no chosen plan to check")
+            results = self._schedules.get(sid, [None] * len(s.states))[s.position]
+            if results is None:
+                results = self._card_results(base, s.state.chosen_variant)
+            trial_base = copy.deepcopy(base)
+            trial = s.model_copy(deep=True)
+            prior_base = self._base.get(sid)
+            self._base[sid] = trial_base
+            try:
+                for action in actions:
+                    ctx = self._act_ctx(trial, trial_base, results)
+                    old = trial.state
+                    trial.states = trial.states[:trial.position + 1] + [_apply(old, action, ctx)]
+                    trial.position += 1
+                    results = self._compute_results(trial_base, trial, old, results, action)
+                active = self._active_itinerary(trial, trial_base, results)
+                view = self._view(trial, results, active)
+            finally:
+                if prior_base is not None:
+                    self._base[sid] = prior_base
+                else:
+                    self._base.pop(sid, None)
+            unplaced = set(self._places_for(trial, trial_base)) - {pid for r in results for pid in r.order}
+            return {"itinerary": view.get("itinerary") or [], "violations": view.get("violations") or [],
+                    "confirmable": self._view_confirmable(view) and not unplaced}
+
+    def _batch_results(self, base, session, state, previous, acts: list[dict]) -> list:
+        """Replay of a typed turn's merged versions (log action "batch"): each act on the state the one before left, laid
+        out as it was live. `state` is the state before the turn, `session.state` the state after it."""
+        trial = session.model_copy(deep=True)
+        trial.states, trial.position = [state.model_copy(deep=True)], 0
+        results = previous
+        for action in acts:
+            ctx = self._act_ctx(trial, base, results)
+            old = trial.state
+            trial.states[0] = _apply(old, action, ctx)
+            results = self._compute_results(base, trial, old, results, action)
+        return results
+
+    def collapse(self, sid: str, since: int) -> None:
+        """Merge the versions after position `since` into ONE (log action {"type": "batch", "acts": [...]}): a typed turn
+        that made several edits is one step for undo / redo. Nothing is recomputed: the last version's state and layout stay."""
+        with self.store.lock(sid):
+            s = self._get(sid)
+            if s.position - since < 2:
+                return
+            acts = [e["action"] for e in s.log[since:s.position]]
+            last = self._schedules.get(sid, [None] * len(s.states))[s.position]
+            s.states = s.states[:since + 1] + [s.states[s.position]]
+            s.log = s.log[:since] + [{"action": {"type": "batch", "acts": acts}, "at": _now()}]
+            s.position = since + 1
+            s.output = None
+            self._schedules[sid] = (self._schedules.get(sid, [None] * since)[:since + 1] + [last])
+            self._epochs[sid] = self._epochs.get(sid, 0) + 1
+            self.store.save(s)
 
     def _proposal_trial(self, base, session, state, previous, proposal):
         trial = session.model_copy(deep=True)
@@ -1863,9 +1982,94 @@ class Engine:
         """Everything the screen shows that a number in `say` may legitimately come from."""
         return f"{fields['days']} {fields['variants']} {fields['lodging']}"
 
-    def turn(self, sid: str, text: str, emit: Callable[[str, dict], None]) -> None:
+    @property
+    def name_keys(self) -> list[tuple[str, str]]:
+        """(squashed name, id) of every place whose name is long enough to recognise in a reply."""
+        if self._name_keys is None:
+            from trip import squash
+            self._name_keys = [(k, pid) for pid, r in self.by_id.items()
+                               if len((k := squash(r["identity"].get("name") or "")).split()) >= 3]
+        return self._name_keys
+
+    def _assist(self, sid: str, text: str, trip_session: str | None) -> tuple[PlanTurn, str]:
+        """Typed text answered by the shared loop with Planning's tools. -> the turn (acts done, days changed) and the
+        reply; AgentError when the model failed before it did anything (the keyword policy then answers)."""
+        reader = None
+        if self.trip_reader is not None and trip_session:
+            try:
+                reader = self.trip_reader(trip_session, text)
+            except Exception:  # noqa: BLE001 - no trip state: the shared read tools are simply not offered
+                reader = None
+        turn = PlanTurn(self, sid, text, datetime.now(timezone.utc).astimezone().date(), reader)
+        messages = build_messages(turn, self._get(sid).chat)
+        said: list[str] = []
+        try:
+            asyncio.run(run_loop(self.assistant, messages, turn, said.append, self.cfg.assistant.get("max_steps", 4), said.clear))
+        except AgentError:
+            if not (turn.acts or turn.undo):
+                raise
+            turn.log.append("agent_error_after_acts")
+        finally:
+            turn.close()
+        say = "".join(said).strip()
+        if say and (why := turn.bad_say(say)):
+            kept = turn.prune(say)  # only the sentences with a figure or a place nobody said go
+            turn.log.append(f"say {'pruned' if kept else 'replaced'}: {why}")
+            say = kept
+        turn.log = ["assistant", *turn.log, *turn.timings]
+        return turn, say
+
+    def _turn_assisted(self, sid: str, text: str, emit: Callable[[str, dict], None], trip_session: str | None) -> None:
+        # no store lock held here: the tools run on worker threads and take it themselves (it is per thread)
+        s = self._get(sid)
+        since = s.position
+        try:
+            turn, say = self._assist(sid, text, trip_session)
+            log = turn.log
+        except AgentError as e:
+            self._back_to(sid, since)
+            (actions, say), log = policy(text, self._turn_aliases(s, self._ensure_base(sid))), [f"agent_fallback: {e}"]
+            turn = None
+            for action in actions:
+                try:
+                    self.act(sid, action)
+                except ActionError as err:
+                    log.append(f"skip {action}: {err}")
+        scope = NONE
+        if turn is not None and turn.undo:
+            self.act(sid, {"type": "undo"})
+        elif turn is not None and turn.acts:
+            self.collapse(sid, since)
+            scope = act_scope({"type": "batch", "acts": turn.acts})
+        elif turn is None and self._get(sid).position > since:
+            scope = RELAYOUT
+        s = self._get(sid)
+        done = turn is not None and (bool(turn.acts) or turn.undo)
+        say = say or ("Mình đã hoàn tác." if turn is not None and turn.undo else DONE if done or (turn is None and s.position > since) else NO_PLAN_SAY)
+        s.chat = [*s.chat, {"text": text, "say": say}][-40:]
+        self.store.save(s)
+        self.turn_log[sid] = log
+        emit("say", {"replace": say})
+        if turn is not None and (places := turn.cards(say)):
+            emit("places", places)
+        view = self._view(s)
+        days = [{"day": d + 1, "stops": stops} for d, stops in sorted(turn.changed.items())] if turn is not None else []
+        emit("view", {"view": view, "diff": {"scope": scope, "days": days}})
+        emit("done", {})
+
+    def _back_to(self, sid: str, position: int) -> None:
+        """A turn the model failed after some acts: the versions it made are dropped, the plan is as the turn found it."""
+        s = self._get(sid)
+        while s.position > position:
+            self.act(sid, {"type": "undo"})
+
+    def turn(self, sid: str, text: str, emit: Callable[[str, dict], None], trip_session: str | None = None) -> None:
         """One typed message: one agent call (or the keyword policy when it fails), then each produced action goes
-        through the same act() a chip click uses -- so scope, locked-place protection and undo are the chip's own."""
+        through the same act() a chip click uses -- so scope, locked-place protection and undo are the chip's own.
+        With the assistant on, the shared tool loop answers instead and the turn is one plan version."""
+        if self.assistant is not None and self.cfg.assistant.get("enabled"):
+            self._ensure_base(sid)
+            return self._turn_assisted(sid, text, emit, trip_session)
         base = self._ensure_base(sid)
         with self.store.lock(sid):
             s = self._get(sid)

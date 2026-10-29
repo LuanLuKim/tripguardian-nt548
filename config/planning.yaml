@@ -90,15 +90,9 @@ pins:
   cloud_hunting: {anchor: sunrise, from_min: -30, to_min: 60}
   live_music: {anchor: clock, from: "18:00", to: "20:00"}
 
-# Grouping and day assignment.
-cluster_max_min: 25         # complete-link diameter of one cluster, in minutes of real travel
-cluster_merge_min: 8        # clusters of different areas merge only when this close
-fill_ratio: 0.8             # a cluster whose load exceeds this share of a day is split
-intra_leg_min: 10           # minutes charged per place for moving inside a cluster when sizing a day
-max_days: 7
+# Day assignment (layout.py) and the order inside a day.
 chunk_days: 7
 long_trip_exact_n: 5
-max_clusters: 8
 exact_n: 7                  # up to this many stops a day the order is found by trying every permutation
 improve_passes: 5
 weights: {travel: 1.0, overflow: 3.0, count: 15.0, closed: 1000.0, crowd: 8.0}
@@ -133,9 +127,7 @@ robustness:
   solid_max_lost: 0         # every scenario loses at most this many places -> solid
   feasible_max_lost: 0      # every small scenario loses at most this many -> feasible; otherwise fragile
 
-# Objectives (docs/ARCHITECTURE.md §10): tried in this order when the trip calls for them, at most max_variants.
-max_variants: 3
-objective_order: [least_travel, weather_robust, preference_fit, low_cost, diverse]
+# Objectives (docs/ARCHITECTURE.md §10).
 objective_weights:          # merged over `weights` when the days are split for that objective
   least_travel: {travel: 2.0}
   low_cost: {}
@@ -156,6 +148,7 @@ lodging_list_k: 18  # page size of the Lựa chọn lodging list (every served s
 lodging_share: 0.3  # share of budget_vnd spent on lodging, over the whole stay
 min_reviews: 5
 split_min: 20       # minutes of real travel diameter beyond which the search area splits into two centres
+stay_price_max_age_h: 36  # dated night price of the trip's own stay (corpus.serving.stay_prices) is used only if seen within this many hours
 lodging_pool: 18    # served stays (best taste fit first) the travel matrix is built for, before the final rank
 lodging_weights: {pref: 2.0, loc: 0.8, price: 0.5, rating: 0.3}  # taste outweighs location (docs/PLANNING.md ⓐ)
 loc_ref_min: 30     # mean minutes to the chosen places at which a lodging's location adds nothing
@@ -199,3 +192,43 @@ realistic:
   # Retain bounded 4/1 search; the create target <2s remains unmet after pace recovery.
   seeded_exact_n: 4          # a day ordered from the layout's order: every permutation only up to this many stops
   seeded_passes: 1           # and at most this many seeded 2-opt + or-opt sweeps above it
+
+# D.3 evening check before each trip day (docs/PLANNING.md §Đổi lịch tối trước ngày đi). On since 2026-10-29: the synthetic
+# scenario set passes 8/8 (tests/planning/eve_scenarios.py, logs/planning_eve/). Daily severe thresholds: conditions.
+eve_replan:
+  enabled: true
+  rain_prob: 0.6             # rain chance in the visit window at or above this ...
+  rain_mm: 2.5               # ... and at least this much rain in the window: a real shower, not drizzle
+  light_prob: 0.3            # below rain_prob / rain_mm: light rain, a note for an exposed place
+  lead_h: 1                  # a pass leg is driven in the hour(s) before arrival
+  pass_prefixes: ["Đèo"]     # an OSRM step whose road name starts with this is a mountain pass
+  notify_days: 1             # only tomorrow is asked about; D-2 .. D-(note_days) are notes on the plan
+  note_days: 3
+  min_shift_min: 30          # a stop counts as changed when its day changes or its start moves this much
+  max_trials: 40             # trial plans per check (each one through the validator)
+
+# The Lịch trình chatbot on the shared assistant core (src/planning/assistant.py, docs/PLANNING.md §Trợ lý):
+# typed text goes through the tool loop; the turn is ONE plan version. enabled false = the older structured agent / keyword policy.
+assistant:
+  enabled: true
+  max_steps: 4               # model calls a turn may make
+  max_tokens: 900
+  # An assistant edit that leaves one of these (or any physical violation) is taken back; every other new violation stays on the
+  # plan as a flag (the buttons' behaviour, docs/PLANNING.md): the plan is then not confirmable until the user fixes it.
+  blocking_violations: [hard, departure, duplicate, anchor, overlap, travel, hazard]
+
+# D.2 Local Expert: one LLM pass (Extractor role, LAN Gemma; UIT Gemma when that errors) after the validator, on a
+# confirmed plan. Runs in the background notify worker after the confirm (never in front of the user); findings reach
+# the plan screen as eve notes. Failure or timeout = no notes. Eval: logs/planning_expert/.
+expert:
+  enabled: true
+  retries: 3                 # a failed background pass is tried again, this many times in all
+  timeout_s: 10              # per endpoint: LAN first, then UIT
+  max_tokens: 900
+  max_findings: 4
+  wet_prob: 0.5              # a claim 'if it rains' joins the prompt only when a reliable day has this rain chance
+  max_chars: 220             # message / suggestion length
+  gate:                      # tool gate: a weather figure beyond these is "nghi ngờ" and not used as fact
+    max_rain_mm: 500
+    max_gust_kmh: 250
+    normal_gap: 0.6          # forecast rain chance this far from the ClimateNormal of the month

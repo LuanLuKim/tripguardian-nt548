@@ -42,20 +42,12 @@ class Settings:
     meal_min: int
     meal_windows: dict      # name -> (earliest start, latest start) in minutes
     pins: dict
-    cluster_max_min: int
-    cluster_merge_min: int
-    fill_ratio: float
-    intra_leg_min: int
-    max_days: int
-    max_clusters: int
     exact_n: int
     improve_passes: int
     weights: dict
     rain_high: float
     buffer_extra_rain: int
     robustness: dict
-    max_variants: int
-    objective_order: list
     objective_weights: dict
     near_close_min: int
     far_leg_min: int
@@ -93,6 +85,10 @@ class Settings:
                                                    "per_day_max": {"slow": 4, "normal": 5, "packed": 7},
                                                    "search_limit": 120, "transport_vnd_per_min": {}})
     realistic: dict = field(default_factory=dict)
+    stay_price_max_age_h: float = 36.0   # a dated lodging price older than this is not used (corpus.serving.stay_prices)
+    eve_replan: dict = field(default_factory=dict)   # D.3 evening check (docs/PLANNING.md §Đổi lịch tối trước ngày đi)
+    assistant: dict = field(default_factory=lambda: {"enabled": False, "max_steps": 4, "max_tokens": 900})   # the Lịch trình chatbot (docs/PLANNING.md §Trợ lý)
+    expert: dict = field(default_factory=lambda: {"enabled": False})   # D.2 Local Expert (docs/PLANNING.md §Local Expert)
 
 
 @cache

@@ -10,7 +10,7 @@ import live
 from trip import RECOMMENDED_TRIP_DAYS
 
 from . import places as pl
-from .conditions import build_cond, crowd_sensitive, crowd_tips, describe
+from .conditions import build_cond, crowd_sensitive, crowd_tips, describe, restricted_in
 from .frame import end_said, start_said, trip_days
 from .layout import DAWN_REST, allowed, assign, capacity, must_places, pull_early
 from .model import Day, Item
@@ -34,23 +34,25 @@ WARNING_TEXT = {
     "base_unknown": "Chưa biết nơi ở: mỗi ngày bắt đầu và kết thúc ở địa điểm đầu / cuối.",
     "travel_rough": "Thời gian di chuyển là ước lượng thô (không có OSRM), không dùng để kết luận độ vững.",
     "travel_pairs_rough": "{n} chặng không có đường trong OSRM, dùng ước lượng thô.",
-    "days_fallback": "Quá nhiều ngày hoặc cụm để tìm chính xác: chia ngày theo cách tham lam.",
-    "hours_unknown": "{name}: chưa có giờ mở cửa, không kiểm.",
+    "hours_unknown": "{name}: chưa có giờ mở cửa nên mình chưa kiểm được.",
     "meal_missed": "Ngày {day}: quá khung giờ {meal}, chưa xếp bữa.",
     "hours_vary": "{name}: giờ mở cửa khác nhau theo thứ, chưa biết ngày đi nên dùng khung giờ chung các ngày mở.",
     "early_start": "Ngày {day}: bắt đầu sớm lúc {start} để kịp {name}.",
     "event_location_unknown": "Ngày {day}: chưa biết {label} ở đâu, lịch không tính đường tới đó.",
     "dawn_swapped": "Ngày {day}: bạn bắt đầu lúc {start} nên {name} xếp vào giờ hoàng hôn thay cho bình minh.",
-    "pin_dropped": "Ngày {day}: không xếp kịp {name} vào đúng giờ đẹp nhất (hoàng hôn / bình minh / nhạc), vẫn ghé nơi này lúc khác trong ngày.",
+    "pin_dropped": "Ngày {day}: {name} không kịp vào đúng giờ đẹp nhất, mình xếp lúc khác trong ngày.",
     "near_duplicate": "{a} và {b} cùng một kiểu nơi: giữ cả hai cũng được, chỉ là chuyến đi kém đa dạng hơn.",
     "severe_weather": "Ngày {day}: dự báo thời tiết rất xấu ({what}); không xếp nơi ngoài trời vào ngày này.",
     "heavy_weather": "Ngày {day}: dự báo mưa lớn hoặc dông ({what}); nơi ngoài trời dễ hỏng, mỗi nơi có phương án thay.",
     "advisory": "Ngày {day}: có thông báo {kind} mức {severity}: {note} (nguồn: {source}).",
+    "restricted_place": "{name}: nằm trong khu vực hạn chế ({kind}: {area}). Vẫn xếp trong lịch vì dữ liệu OpenStreetMap có thể chưa đủ; kiểm tra trước khi đi.",
     "crowd_day": "Ngày {day}: {why}. Nơi vốn đông sẽ đông hơn, mình để thêm thời gian chờ.",
     "holiday_closure": "Ngày {day}: dịp {name} nhiều quán đóng cửa hoặc đổi giờ; gọi xác nhận trước khi đi.",
+    "lodging_over_budget": "Chỗ ở {name}: {price}/đêm ({basis}), cao hơn phần ngân sách dành cho chỗ ở (~{cap}/đêm) khoảng {over}/đêm. Vẫn giữ trong lịch; bạn cân nhắc hoặc chọn chỗ khác.",
 }
 ADVISORY_KIND = {"storm": "bão / dông", "flood": "ngập lụt", "landslide": "sạt lở", "fire": "cháy", "road_closed": "đường bị chặn",
                  "other": "khác"}
+RESTRICTED_KIND = {"military": "quân sự", "no_access": "cấm vào"}
 SEVERITY_TEXT = {"watch": "theo dõi", "warning": "cảnh báo", "severe": "nghiêm trọng"}
 
 
@@ -73,11 +75,14 @@ def pin_warnings(ctxs, results) -> list[dict]:
         conflicts = dict(result.pin_conflicts)
         for pid in result.unpinned:
             reasons = conflicts.get(pid, ())
+            # unknown opening hours cannot be a conflict: the day-wide finding may come from another place, so it is not told
+            # as this place's reason (the machine fields keep what the scheduler found)
+            told = [r for r in reasons if not (r == "hours" and cx.places[pid].hours is None)]
             reason = next(iter(reasons), None)
             warning = _warn("pin_dropped", day=cx.day.index + 1, name=cx.places[pid].name)
             warning.update(day=cx.day.index + 1, place_id=pid, reason=reason, physical_conflicts=list(reasons))
-            if reason:
-                warning["text"] += " Giữ cửa sổ này sẽ vi phạm " + labels[reason] + "."
+            if told:
+                warning["text"] += " Giữ giờ đó thì vướng " + labels[told[0]] + "."
             out.append(warning)
     return out
 
@@ -285,8 +290,28 @@ def _rest(frame: dict) -> tuple[int, int] | None:
     return (rest["every_min"], rest["rest_min"]) if rest else None
 
 
+def restricted_warnings(ctxs: list, results: list) -> list[dict]:
+    """One sentence per place that is IN the plan and lies inside a restricted area (never excluded: OSM is incomplete).
+    A place the plan leaves out says nothing; a place on several days is said once."""
+    out = []
+    seen: set[tuple[str, str]] = set()
+    for cx, r in zip(ctxs, results):
+        if cx.cond is None:
+            continue
+        for pid in dict.fromkeys(i.place_id for i in r.items if i.kind == "visit"):
+            p = cx.places.get(pid)
+            for a in restricted_in(p, cx.cond) if p else ():
+                key = (p.id, a.get("osm") or a.get("name") or "")
+                if key not in seen:
+                    seen.add(key)
+                    out.append({**_warn("restricted_place", name=p.name, kind=RESTRICTED_KIND.get(a["kind"], a["kind"]),
+                                        area=a.get("name") or "không tên"), "place_id": p.id})
+    return out
+
+
 def condition_warnings(ctxs: list) -> list[dict]:
-    """What each day's conditions mean for the user, in words. A day with nothing notable says nothing."""
+    """What each day's conditions mean for the user, in words. A day with nothing notable says nothing. (A place in a
+    restricted area is said by `restricted_warnings`, once the plan knows which places it keeps.)"""
     out = []
     for cx in ctxs:
         c, n = cx.cond, cx.day.index + 1
@@ -599,6 +624,7 @@ def schedule_trip(trip: Trip, weights: dict | None = None, *, kept=None, allow_s
         warnings += [_warn("dawn_swapped", day=n, start=fmt(cx.day.start), name=trip.by_place[i].name)
                      for i in per_day[k] if i in trip.by_place and dawn_swapped(trip.by_place[i], cx)]
     warnings.extend(pin_warnings(ctxs, results))
+    warnings.extend(restricted_warnings(ctxs, results))
     for cx, r in zip(ctxs, results):
         for note in r.notes:
             code, _, meal = note.partition(":")
@@ -724,15 +750,10 @@ def flag_warnings(decision: dict) -> list[dict]:
     return [{"code": "flag", "text": f} for c in decision["confirmed"] for f in c.get("flags") or []]
 
 
-def shared_output(trip: Trip) -> dict:
-    """The parts of the Plan Output that do not depend on how the trip is laid out."""
+def trust_output(trip: Trip) -> dict:
+    """uncertainty / provenance / reasons / tradeoffs of a trip (what the plan estimated, where its facts came from, why)."""
     decision, travel = trip.decision, trip.travel
-    conds = [cx.cond for cx in trip.ctxs]
-    extra = {"day_conditions": [{"day": cx.day.index + 1, "date": cx.day.date.isoformat() if cx.day.date else None,
-                                 **(describe(cx.cond) or {})} for cx in trip.ctxs],
-             "crowd_tips": crowd_tips(list(trip.by_place.values()), conds, trip.cfg)} if any(conds) else {}
-    return {**extra,
-        "unplaced": [asdict(u) for u in trip.unplaced],
+    return {
         "uncertainty": {"travel_source": travel.source, "rough_pairs": travel.rough_pairs,
                         "estimated": ["travel_minutes", "visit_minutes", "cost"]},
         "provenance": {"travel": {"source": travel.source, "fetched_at": travel.fetched_at},
@@ -742,6 +763,19 @@ def shared_output(trip: Trip) -> dict:
         "tradeoffs": [{"kind": "relaxed", "place_id": c["id"], "features": c["relaxed"]}
                       for c in decision["confirmed"] if c.get("relaxed")]
                      + [{"kind": "unplaced", "place_id": u.id, "reason": u.reason} for u in trip.unplaced],
+    }
+
+
+def shared_output(trip: Trip) -> dict:
+    """The parts of the Plan Output that do not depend on how the trip is laid out."""
+    decision, travel = trip.decision, trip.travel
+    conds = [cx.cond for cx in trip.ctxs]
+    extra = {"day_conditions": [{"day": cx.day.index + 1, "date": cx.day.date.isoformat() if cx.day.date else None,
+                                 **(describe(cx.cond) or {})} for cx in trip.ctxs],
+             "crowd_tips": crowd_tips(list(trip.by_place.values()), conds, trip.cfg)} if any(conds) else {}
+    return {**extra,
+        "unplaced": [asdict(u) for u in trip.unplaced],
+        **trust_output(trip),
         "trip_context": decision["trip_context"],
     }
 

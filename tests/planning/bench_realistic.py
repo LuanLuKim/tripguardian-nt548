@@ -18,6 +18,7 @@ from realistic_cases import CASES, decision, engine, pick, render, run_case  # n
 
 TARGET_P95 = {"create": 2.0, "reorder": 0.05, "drop_place": 0.05, "move_place": 0.1, "set_day_window": 1.0,
               "set_lodging": 1.0}
+TARGET_MAX = {"set_day_window": 1.0}     # spec §D.1: the user waits for every window edit, not just the 95th
 
 
 def settle(eng, sid: str, limit_s: float = 120.0) -> None:
@@ -91,9 +92,10 @@ def main() -> int:
             print(f"{k:<11} n=0    no timed samples  FAIL")
             bad += 1
             continue
-        over = p95(xs) > TARGET_P95[k]
+        over = p95(xs) > TARGET_P95[k] or max(xs) > TARGET_MAX.get(k, math.inf)
         print(f"{k:<14} n={len(xs):<4} p50={statistics.median(xs):.3f}s p95={p95(xs):.3f}s max={max(xs):.3f}s "
-              f"target<{TARGET_P95[k]}s" + ("  FAIL" if over else "")
+              f"target<{TARGET_P95[k]}s" + (f" max<{TARGET_MAX[k]}s" if k in TARGET_MAX else "")
+              + ("  FAIL" if over else "")
               + "  slowest: " + ", ".join(f"{cid} {sec:.2f}s" for sec, cid in sorted(who[k], reverse=True)[:3]))
         bad += over
     for line in refused:

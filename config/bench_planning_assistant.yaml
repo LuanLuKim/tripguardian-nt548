@@ -1,0 +1,44 @@
+# The Lịch trình chatbot's bench cases (src/planning/bench.py docstring; run: python -m planning bench --live --family move).
+# {p1} {p2} = the first two stops of day 1, {p3} = the first stop of day 2, {p4} = the last stop of day 1.
+# tools = names the LAST turn must use. expect = state after the last turn (changed / unchanged / locked n / dropped n / pace).
+# Every case is also checked for: at most ONE plan version per turn, and no physical violation the plan did not have.
+cases:
+  # ---- move a stop to another day / order inside a day
+  - {id: mv-name, family: move, turns: ["Chuyển {p1} sang ngày 2 giúp mình"], tools: [move_place], expect: {changed: true}}
+  - {id: mv-back, family: move, turns: ["Mình muốn {p3} nằm ở ngày 1 thôi"], tools: [move_place], expect: {changed: true}}
+  - {id: mv-point, family: move, turns: ["Dời chỗ cuối của ngày 1 sang ngày 2 nhé"], tools: [move_place], expect: {changed: true}}
+  - {id: ro-order, family: reorder, turns: ["Cho mình đi {p2} trước {p1} trong ngày 1"], tools: [reorder_day], expect: {changed: true}}
+  - {id: ro-last, family: reorder, turns: ["Để {p1} đi cuối ngày 1 nhé"], tools: [reorder_day], expect: {changed: true}}
+  # ---- remove / lock / unlock
+  - {id: rm-name, family: remove, turns: ["Bỏ {p2} đi, mình không thích"], tools: [remove_place], expect: {dropped: 1}}
+  - {id: rm-visited, family: remove, turns: ["{p1} mình đi rồi, bỏ khỏi lịch giúp mình"], tools: [remove_place], expect: {dropped: 1}}
+  - {id: rm-point, family: remove, turns: ["Chỗ cuối ngày 1 xa quá, bỏ đi"], tools: [remove_place], expect: {dropped: 1}}
+  - {id: rm-vague, family: remove, turns: ["Bỏ bớt cho nhẹ lịch đi"], expect: {unchanged: true}}
+  - {id: lk-name, family: lock, turns: ["Giữ {p1} đúng ở ngày 1, đừng dời nó"], tools: [lock_place], expect: {locked: 1}}
+  - {id: lk-then-unlock, family: lock, turns: ["Khóa {p1} lại giúp mình", "Thôi mở khóa {p1} ra"], tools: [unlock_place]}
+  # ---- swap and add (from what the plan offers)
+  - {id: sw-other, family: swap, turns: ["Đổi {p2} lấy chỗ khác tương tự được không"], tools: [spare_places]}
+  - {id: ad-more, family: add, turns: ["Còn chỗ nào thêm vào lịch được không?"], tools: [spare_places]}
+  - {id: ad-dinner, family: add, turns: ["Ngày 1 mình muốn thêm một chỗ ăn tối"], tools: [spare_places]}
+  # ---- pace, time of day, how long
+  - {id: pc-slow, family: time, turns: ["Đi chậm lại giúp mình, mỗi ngày ít chỗ hơn"], tools: [set_pace], expect: {pace: slow}}
+  - {id: tw-start, family: time, turns: ["Ngày 2 mình dậy muộn, bắt đầu từ 9 giờ nhé"], tools: [set_day_window]}
+  - {id: tw-stay, family: time, turns: ["Ở {p1} lâu hơn một chút, khoảng 2 tiếng"], tools: [set_visit_minutes]}
+  - {id: tw-tight, family: time, turns: ["Ngày 1 chỉ cho đi tới 9 giờ sáng thôi, vẫn giữ hết các chỗ"]}
+  # ---- reading the plan
+  - {id: rd-plan, family: read, turns: ["Lịch hiện giờ của mình thế nào?"], tools: [plan], expect: {unchanged: true}}
+  - {id: rd-ok, family: read, turns: ["Lịch này có ổn không, có chỗ nào bất hợp lý không?"], tools: [diagnostics], expect: {unchanged: true}}
+  - {id: rd-why, family: read, turns: ["Tại sao {p1} lại nằm ở ngày 1?"], tools: [why_here], expect: {unchanged: true}}
+  - {id: rd-whatif, family: read, turns: ["Nếu chuyển {p1} sang ngày 2 thì sao?"], tools: [preview_edit], expect: {unchanged: true}}
+  - {id: rd-local, family: read, turns: ["Ngày 2 có gì đặc biệt cần lưu ý không, lễ hay sự kiện gì?"], tools: [local_facts], expect: {unchanged: true}}
+  - {id: rd-options, family: read, turns: ["Còn hướng nào khác cho lịch này không?"], tools: [options], expect: {unchanged: true}}
+  # ---- place data through the shared read tools (needs --trip)
+  - {id: sh-hours, family: shared, trip: true, turns: ["{p1} mở cửa tới mấy giờ?"], tools: [get_place], expect: {unchanged: true}}
+  - {id: sh-far, family: shared, trip: true, turns: ["Từ {p1} sang {p2} đi xe máy mất bao lâu?"], tools: [distance], expect: {unchanged: true}}
+  # ---- several asks, undo, follow-up
+  - {id: mt-two, family: multi, turns: ["Chuyển {p1} sang ngày 2 và khóa {p2} lại"], tools: [move_place, lock_place], expect: {changed: true, locked: 1}}
+  - {id: un-undo, family: undo, turns: ["Bỏ {p2} đi", "Hoàn tác đi"], tools: [undo_turn]}
+  - {id: fu-it, family: followup, turns: ["Khóa {p1} lại", "Còn cái đó có ổn không?"], expect: {locked: 1}}
+  # ---- no block, no push, off topic
+  - {id: nb-far, family: no_block, turns: ["Mình cứ muốn {p3} nằm ở ngày 1 dù hơi xa, chuyển giúp mình"], tools: [move_place]}
+  - {id: nb-offtopic, family: no_block, turns: ["Hôm nay bạn khỏe không?"], expect: {unchanged: true}}

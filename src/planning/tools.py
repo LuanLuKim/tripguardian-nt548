@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 import live
 from agents import ToolError, load_skill, permit_tool
+from agents.assistant import ChatSettings, langchain_chat
 from corpus.serving import SERVED
 from corpus.retrieval import RetrievalEngine
 from corpus.snapshot import shared
@@ -65,9 +66,19 @@ class Tools:
             if payload.get("type") == "confirm":
                 raise ValueError("use the journey confirm operation")
             return self.engine.act(sid, payload)
+        if operation == "turn":
+            permit_tool(self.skill, "planning.turn")
+            text = payload.get("text")
+            # trip_session is added by the harness (never by a client: it checks the client payload is only `text`)
+            if not isinstance(text, str) or not text.strip() or len(text) > 1000 or not set(payload) <= {"text", "trip_session"}:
+                raise ValueError("text must be 1-1000 characters")
+            self.engine.turn(sid, text, emit, trip_session=payload.get("trip_session"))
+            log = self.engine.turn_log.get(sid, [])
+            emit("trace", {"path": "fallback" if any(x.startswith("agent_fallback") for x in log) else "agent"})
+            return self.load(sid)
         if operation == "confirm":
             try:
-                return self.engine.confirm(sid)
+                return self.engine.confirm(sid)      # D.2 Local Expert runs later in the notify worker (expert.run_expert)
             except NotConfirmable as exc:
                 raise ToolError(409, str(exc)) from None
         if operation == "recommend":
@@ -128,6 +139,10 @@ def create_engine(data_root: Path, *, binding: Binding | None = None,
     async def agent(fields):
         return await run_proposal(fields, cfg)
     configured = all(os.environ.get(k) for k in ("AGENT_API_KEY", "AGENT_BASE_URL", "AGENT_MODEL"))
+    # typed text goes through the shared assistant loop (config/planning.yaml assistant)
+    assistant = (langchain_chat(ChatSettings(total_s=cfg.total_s, max_tokens=cfg.assistant.get("max_tokens", 900),
+                                             cache_key="planning_turn"))
+                 if configured and cfg.assistant.get("enabled") else None)
     binding = binding or bind(data_root)
     if retrieval is not None and retrieval.binding != binding:
         raise ValueError("retrieval corpus binding mismatch")
@@ -137,7 +152,7 @@ def create_engine(data_root: Path, *, binding: Binding | None = None,
     records = [r for r in snapshot.region(binding.region).records()
                if r["status"] in SERVED]
     engine = Engine(records, retrieval=retrieval, cfg=cfg, store=Store(None), proposal_agent=agent if configured else None,
-                  immutable_records_version=binding.manifest_sha256,
+                  immutable_records_version=binding.manifest_sha256, assistant=assistant,
                   conditions_fn=fetch_live(live.load_settings()), labels=decision.labels,
                   card_cfg={"polarity": decision.polarity, "center": decision.center, "near_min": decision.near_min,
                             "speed_kmh": decision.speed_kmh, "road_factor": decision.road_factor})

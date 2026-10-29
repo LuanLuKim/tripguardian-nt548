@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "planning"
-ALLOWED_CORPUS = {"corpus.serving", "corpus.ontology", "corpus.llm", "corpus.releases", "corpus.snapshot", "corpus.retrieval"}
+ALLOWED_CORPUS = {"corpus.serving", "corpus.ontology", "corpus.llm", "corpus.releases", "corpus.snapshot", "corpus.retrieval", "corpus.views", "corpus.local"}
 WRITTEN_BY_CORPUS = ("data/intel", "data/serving", "data/gmaps", "data/tiktok", "data/review")
 
 
@@ -51,7 +51,8 @@ def test_the_public_api_is_the_plan_builder_and_its_settings():
     import planning
     assert set(planning.__all__) == {"Engine", "TripIncomplete", "Settings", "build_lodging_variants", "build_plan", "build_variants",
                                      "load_settings", "render_lodging_variants", "render_text", "render_variants",
-                                     "run_server", "PlanningProposal", "Tools", "create_engine", "run_proposal"}
+                                     "run_server", "PlanningProposal", "Tools", "create_engine", "run_proposal",
+                                     "EveStore", "eve_runner", "run_eve", "expert_runner"}
     for name in planning.__all__:
         assert hasattr(planning, name)
 

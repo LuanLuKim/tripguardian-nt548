@@ -85,3 +85,23 @@ def test_extractor_on_uit_switch_moves_only_the_extractor(monkeypatch):
     assert str(client.base_url).startswith("https://uit") and model == "uit-gemma" and roles.EXTRACTOR.parallel() == 38
     monkeypatch.delenv("EXTRACTOR_ON_UIT")
     assert not str(roles.EXTRACTOR.client()[0].base_url).startswith("https://uit")
+
+
+def test_extractor_on_selfhost_switch_and_uit_parallel_override(monkeypatch):
+    from corpus.llm import roles
+    for var in ("EXTRACTOR_ON_UIT", "EXTRACTOR_ON_SELFHOST"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("MODEL_GATEWAY_API_KEY", "g")
+    monkeypatch.setenv("SELFHOST_EXTRACTOR_BASE_URL", "http://gw/v1")
+    monkeypatch.setenv("SELFHOST_EXTRACTOR_MODEL", "self-gemma")
+    monkeypatch.setenv("SELFHOST_EXTRACTOR_PARALLEL", "8")
+    monkeypatch.setenv("EXTRACTOR_ON_SELFHOST", "1")
+    client, model = roles.EXTRACTOR.client()
+    assert str(client.base_url).startswith("http://gw") and model == "self-gemma" and roles.EXTRACTOR.parallel() == 8
+    monkeypatch.delenv("EXTRACTOR_ON_SELFHOST")
+    monkeypatch.setenv("UIT_API_KEY", "k")
+    monkeypatch.setenv("UIT_API_BASE_URL", "https://uit/v1")
+    monkeypatch.setenv("UIT_API_MODEL", "uit-gemma")
+    monkeypatch.setenv("EXTRACTOR_ON_UIT", "1")
+    monkeypatch.setenv("UIT_EXTRACTOR_PARALLEL", "5")
+    assert roles.EXTRACTOR.parallel() == 5

@@ -95,3 +95,35 @@ def test_pretty_printed_answer_is_not_a_loop():
     client = StreamClient([_Stream(list(pretty))])
     out = asyncio.run(tasks.REVIEW_VERIFY.ask(client, "m", name="A", category="c", claim="x", passage="y"))
     assert out["verdict"] == "supports" and client.calls == 1
+
+
+def test_asr_check_retries_warmer_then_without_frames(monkeypatch):
+    from corpus.crawl.tiktok import asr_check
+
+    calls = []
+
+    async def fake_ask(client, model, images=(), temperature=None, **fields):
+        calls.append((temperature, len(images)))
+        if len(calls) < 3:
+            raise tasks.Runaway("loop")
+        return {"ok": 1}
+
+    monkeypatch.setattr(asr_check.ASR_CHECK.__class__, "ask", lambda self, *a, **k: fake_ask(*a, **k))
+    out = asyncio.run(asr_check.ask_check(None, "m", [b"x"], city="c"))
+    assert out == {"ok": 1, "screen_text": []}
+    assert calls == [(None, 1), (asr_check.RETRY_TEMPERATURE, 1), (asr_check.RETRY_TEMPERATURE, 0)]
+
+
+def test_asr_check_gives_up_after_three_failures(monkeypatch):
+    from corpus.crawl.tiktok import asr_check
+
+    async def fake_ask(client, model, images=(), temperature=None, **fields):
+        raise tasks.SchemaError("$: missing screen_text")
+
+    monkeypatch.setattr(asr_check.ASR_CHECK.__class__, "ask", lambda self, *a, **k: fake_ask(*a, **k))
+    try:
+        asyncio.run(asr_check.ask_check(None, "m", [b"x"], city="c"))
+    except tasks.SchemaError:
+        pass
+    else:
+        raise AssertionError("expected SchemaError")

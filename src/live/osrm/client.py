@@ -58,3 +58,22 @@ def route_shape(points: list[Point], mode: str | None, cfg: Settings) -> dict:
     v, f = hit["value"], _factor(mode, cfg)
     return {"coords": [[lat, lng] for lng, lat in v["coords"]], "minutes": max(1, round(v["duration"] * f / 60)),
             "source": hit["source"], "fetched_at": hit["fetched_at"]}
+
+
+def route_steps(points: list[Point], mode: str | None, cfg: Settings) -> dict:
+    """{"legs": [[{"name", "coords": [[lat, lng]]}]], "source", "fetched_at"}: the named roads of each leg between
+    consecutive points, in driving order (a pass shows up by its OSM name, e.g. "Đèo Mimosa")."""
+    if len(points) < 2:
+        raise ValueError("route_steps needs at least two points")
+    payload = {"kind": "steps", "profile": cfg.osrm_profile, "points": _rounded(points)}
+    hit = cache_get("osrm", payload, cfg.ttl_s["osrm"])
+    if hit is None:
+        url = (f"{cfg.osrm_url}/route/v1/{cfg.osrm_profile}/{_coords(points)}"
+               "?overview=false&geometries=geojson&steps=true")
+        doc = get_json(url, cfg.user_agent, cfg.timeout_s)
+        if doc.get("code") != "Ok" or not doc.get("routes"):
+            raise Unavailable(f"osrm steps: code={doc.get('code')!r}")
+        legs = [[{"name": s.get("name") or "", "coords": [[lat, lng] for lng, lat in s["geometry"]["coordinates"]]}
+                 for s in leg.get("steps") or []] for leg in doc["routes"][0].get("legs") or []]
+        hit = cache_put("osrm", payload, legs, "osrm")
+    return {"legs": hit["value"], "source": hit["source"], "fetched_at": hit["fetched_at"]}

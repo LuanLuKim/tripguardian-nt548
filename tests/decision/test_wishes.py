@@ -139,3 +139,33 @@ def test_like_reference_without_a_name_has_no_raw_id_label():  # M5
     rows = [cafe("X"), cafe("Y")]
     ws = build(si(wishes=wishes(like=[{"place_id": "X", "but": [], "quote": "giống X"}])), rows, CFG)
     assert ws[0].label == ""
+
+
+def _w(key, kind, *ids):
+    from decision.wishes import Wish
+    return Wish(key, kind, key, 0.8, {i: 1.0 for i in ids})
+
+
+def test_reserve_gives_an_uncovered_wish_the_lowest_spare_slot():
+    from decision.wishes import reserve
+    score = {"A": 3.0, "B": 2.5, "C": 2.0, "L": 1.0}.get
+    ranked = {"cafe": ["A", "B", "C", "L"]}
+    top = reserve({"A", "B", "C"}, [_w("like:X", "like", "L")], ranked, set(), lambda p: True, score)
+    assert top == {"A", "B", "L"}  # the lowest top place (C) made room
+    top = reserve({"A", "B", "C"}, [_w("like:X", "like", "B", "L"), _w("dish:y", "dish", "C", "L")], ranked, set(),
+                  lambda p: True, score)
+    assert top == {"A", "B", "C"}  # both wishes already have a place
+
+
+def test_reserve_keeps_the_only_place_of_another_wish_and_never_touches_picks_or_unusable_places():
+    from decision.wishes import reserve
+    score = {"A": 3.0, "B": 2.5, "L": 1.0, "P": 0.5, "H": 0.1}.get
+    ranked = {"cafe": ["A", "B", "L", "P", "H"]}
+    wishes = [_w("dish:a", "dish", "B"), _w("like:x", "like", "L")]
+    assert reserve({"A", "B"}, wishes, ranked, set(), lambda p: True, score) == {"B", "L"}  # B is a wish's only place
+    wishes = [_w("dish:a", "dish", "A"), _w("dish:b", "dish", "B"), _w("like:x", "like", "L")]
+    assert reserve({"A", "B"}, wishes, ranked, set(), lambda p: True, score) == {"A", "B", "L"}  # no spare slot: grows
+    assert reserve({"A"}, [_w("like:x", "like", "P", "H")], ranked, {"P"}, lambda p: True, score) == {"A"}  # picked covers it
+    assert reserve({"A"}, [_w("like:x", "like", "H")], ranked, set(), lambda p: p != "H", score) == {"A"}
+    assert reserve({"A"}, [_w("like:x", "like", "ZZ")], ranked, set(), lambda p: True, score) == {"A"}  # not listed
+    assert reserve({"A"}, [_w("vibe:0", "vibe", "L"), _w("group:c", "group", "L")], ranked, set(), lambda p: True, score) == {"A"}

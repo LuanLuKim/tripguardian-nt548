@@ -15,6 +15,7 @@ from datetime import date
 from corpus.crawl import open_sessions
 
 from ..cache import get as cache_get
+from ..cache import now as cache_now
 from ..cache import put as cache_put
 from ..http import Unavailable
 from ..settings import Settings
@@ -92,7 +93,8 @@ def flights(src: str, dst: str, day: date, cfg: Settings, fetch: bool = True,
     only and returns None on a miss; max_age_s (the daily prewarm) treats an entry older than that as a miss. Raises
     Unavailable when the page cannot be read or shows no flight."""
     payload = {"from": src.upper(), "to": dst.upper(), "date": day.isoformat()}
-    hit = cache_get("flights", payload, min(cfg.ttl_s["transit"], max_age_s or cfg.ttl_s["transit"]))
+    ttl = min(cfg.ttl_s["transit"], max_age_s or cfg.ttl_s["transit"])
+    hit = cache_get("flights", payload, ttl) if cfg.flight_cache else None
     if hit is None:
         if not fetch:
             return None
@@ -103,5 +105,8 @@ def flights(src: str, dst: str, day: date, cfg: Settings, fetch: bool = True,
         rows = parse(page_html, day)
         if not rows:
             raise Unavailable(f"google flights: {NO_FLIGHT}")
-        hit = cache_put("flights", payload, rows, "google_flights")
+        if cfg.flight_cache:
+            hit = cache_put("flights", payload, rows, "google_flights")
+        else:
+            hit = {"source": "google_flights", "fetched_at": cache_now(), "value": rows}
     return [{**r, "source": hit["source"], "fetched_at": hit["fetched_at"]} for r in hit["value"]]

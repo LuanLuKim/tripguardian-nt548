@@ -86,3 +86,26 @@ def test_rethink_and_gap_questions():
     assert s.suggest_group == "nature"
     assert pending(State(dropped=[Drop(place_id="A")], last="select"), by_id, si(), {"slack": 200}, 10, {}, CFG) is None
     assert pending(one, by_id, si(), {"slack": None}, 10, {}, CFG) is None
+
+
+def test_filter_unfilter_and_like():
+    s = act(State(), {"type": "filter", "key": "opens_by", "value": "07:00"})
+    s = act(s, {"type": "filter", "key": "kids", "value": "suitable"})
+    s = act(s, {"type": "filter", "key": "kids", "value": "suitable"})
+    assert s.filters == [("opens_by", "07:00"), ("kids", "suitable")] and s.last == "filter"
+    assert act(s, {"type": "unfilter"}).filters == []
+    s = act(s, {"type": "like", "place_id": "A"})
+    s = act(s, {"type": "like", "place_id": "A"})
+    assert s.likes == ["A"]
+
+
+@pytest.mark.parametrize("a", [
+    {"type": "filter", "key": "opens_by", "value": "7h"},
+    {"type": "filter", "key": "opens_by", "value": "24:00"},
+    {"type": "filter", "key": "noise", "value": "purple"},
+    {"type": "filter", "key": "nope", "value": "x"},
+    {"type": "like", "place_id": "nope"},
+])
+def test_bad_filter_or_like_raise(a):
+    with pytest.raises(ActionError):
+        act(State(), a)

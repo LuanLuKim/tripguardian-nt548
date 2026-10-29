@@ -25,8 +25,9 @@ INVENT = "reply.states_unsaid_fact"
 def ask(state: dict, questions: dict, cfg: Settings) -> dict:
     """One Clef request -> {question name: answer}. {} when Clef is not configured, slow or failing: it decides nothing."""
     load_dotenv(ROOT / ".env")
+    base = os.getenv("CLEF_BASE_URL")  # self-hosted gateway (scripts/model_gateway.py /v1/clef-flash); unset = Cloudflare
     token, account = os.getenv("CLOUDFLARE_API_TOKEN"), os.getenv("CLOUDFLARE_ACCOUNT_ID")
-    if not (token and account):
+    if not (base or (token and account)):
         return {}
     try:
         timeout = float(os.getenv("CLEF_TIMEOUT_S", cfg.clef_timeout_s))
@@ -34,12 +35,14 @@ def ask(state: dict, questions: dict, cfg: Settings) -> dict:
         timeout = cfg.clef_timeout_s
     payload = {"model": os.getenv("CLEF_MODEL", "clef-flash"), "state": state, "questions": questions}
     model_id = os.getenv("CLEF_MODEL_ID", "@cf/cloudflare/clef-flash")
-    request = urllib.request.Request(
-        f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model_id}", json.dumps(payload).encode(),
-        {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, method="POST")
+    url = base or f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model_id}"
+    key = os.getenv("CLEF_API_KEY", "") if base else token
+    request = urllib.request.Request(url, json.dumps(payload).encode(),
+                                     {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = json.load(response)["result"]["answers"]
+            body = json.load(response)
+            raw = (body["systemone"] if base else body["result"])["answers"]
             return raw if isinstance(raw, dict) else {a["name"]: a for a in raw}  # by name; older replies were a list
     except (OSError, ValueError, KeyError, TypeError):
         return {}
@@ -54,12 +57,42 @@ def prob(answers: dict, name: str, option: str) -> float:
         return 0.0
 
 
+def yes_prob(answers: dict, name: str, option: str = "A") -> float:
+    """The probability Clef gave `option` of question `name`, whatever it chose (unlike `prob`); 0 when not given."""
+    try:
+        return float(((answers.get(name) or {}).get("probabilities") or {}).get(option, 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def feature_question(features) -> dict:
     """Which features of a place the message asks for. A closed set always picks something: "none" is the way out."""
     return {"type": "choice",
             "instructions": "Tin nhắn của khách nêu mong muốn nào về đặc điểm của một địa điểm? Chọn none nếu chỉ nói thông tin "
                             "chuyến đi (ngày, người, phương tiện, ngân sách) hoặc không đặc điểm nào diễn đạt được.",
             "criteria": {**{f.id: f"{f.id}: {f.hint[:100]}" for f in features}, NONE: "không đặc điểm nào ở trên diễn đạt được"}}
+
+
+def embed(texts: list[str]):
+    """Unit text vectors from the process's shared embedder (bge-m3, the one Trip looks already load)."""
+    from corpus.index import Embedder
+    return Embedder.shared().text(texts)
+
+
+_FEATURE_VECS: dict[tuple, object] = {}
+
+
+def closest(wish: str, features, pool: int) -> list:
+    """The `pool` features nearest `wish` by meaning, best first; all of them when there are no more than `pool`.
+    The self-hosted Clef runs out of GPU memory past ~40 features in one prompt (measured 2026-10-27: 50 fail)."""
+    features = list(features)
+    if len(features) <= pool:
+        return features
+    key = tuple(f.id for f in features)
+    if key not in _FEATURE_VECS:
+        _FEATURE_VECS[key] = embed([f"{f.id}: {f.hint}" for f in features])
+    scores = _FEATURE_VECS[key] @ embed([wish])[0]
+    return [features[i] for i in scores.argsort()[::-1][:pool]]
 
 
 def ranked(answers: dict, ids, at_least: float, top: int) -> tuple[str, ...]:
@@ -93,9 +126,14 @@ class Judge:
         self.cfg = cfg
 
     def features(self, wish: str, features) -> list[str]:
-        """Feature ids that express `wish`, best first (features: the ontology's Feature objects)."""
-        answers = ask({"user_message": wish}, {FEATURE: feature_question(features)}, self.cfg)
-        return list(ranked(answers, {f.id for f in features}, self.cfg.clef_feature_min, 5))
+        """Feature ids that express `wish`, best first (features: the ontology's Feature objects). Clef only sees
+        the clef_feature_pool closest by meaning; without the embedder it ranks nothing."""
+        try:
+            pool = closest(wish, features, self.cfg.clef_feature_pool)
+        except Exception:  # embedder missing or out of memory: decide nothing, like a Clef failure
+            return []
+        answers = ask({"user_message": wish}, {FEATURE: feature_question(pool)}, self.cfg)
+        return list(ranked(answers, {f.id for f in pool}, self.cfg.clef_feature_min, 5))
 
     def unsupported(self, quote: str, claim: str) -> bool:
         """True only when Clef is sure the user's `quote` does not say `claim`, or the quote negates the claim."""

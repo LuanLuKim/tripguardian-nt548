@@ -1,5 +1,6 @@
 """Google Flights: the parser on a saved page, cache before the browser, no made-up flight."""
 
+import dataclasses
 from datetime import date
 from pathlib import Path
 
@@ -60,10 +61,26 @@ def test_a_cached_day_never_opens_the_browser(cfg, monkeypatch):
         return PAGE.read_text(encoding="utf-8")
 
     monkeypatch.setattr(google, "_page", fake_page)
+    cfg = dataclasses.replace(cfg, flight_cache=True)
     assert google.flights("SGN", "DLI", DAY, cfg, fetch=False) is None
     first = google.flights("SGN", "DLI", DAY, cfg)
     assert google.flights("sgn", "dli", DAY, cfg) == first and len(opened) == 1
     assert first[0]["source"] == "google_flights" and first[0]["fetched_at"]
+
+
+def test_with_the_flight_cache_off_every_question_opens_the_browser_and_nothing_is_written(cfg, monkeypatch, data_dir):
+    opened = []
+
+    async def fake_page(link):
+        opened.append(link)
+        return PAGE.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(google, "_page", fake_page)
+    cfg = dataclasses.replace(cfg, flight_cache=False)
+    assert google.flights("SGN", "DLI", DAY, cfg, fetch=False) is None
+    assert google.flights("SGN", "DLI", DAY, cfg)[0]["source"] == "google_flights"
+    google.flights("SGN", "DLI", DAY, cfg)
+    assert len(opened) == 2 and not list(data_dir.rglob("*.json"))
 
 
 @pytest.mark.parametrize("page", ["<html>Our systems have detected unusual traffic</html>", None])

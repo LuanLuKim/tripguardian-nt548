@@ -1,0 +1,49 @@
+# asst-perceive's v2 bench cases (format: src/bench/assistant.py docstring; spec 2026-10-29-assistant-tools-design §5.2).
+# Photos: real screenshots of the app (frontend_images/, web/shots/app/: carousel, place sheet, Đi một vòng, grids), synthetic
+# TikTok / Instagram posts built from person-free corpus photos (tests/fixtures/perceive/), corpus camera photos
+# (data/gmaps/...), one non-place picture (tests/fixtures/perceive/mascot_small.jpg, a cartoon mascot resized under the photo size limit). A case whose file is missing is skipped by the runner.
+# photo_sure true  = the picture writes / shows one place: the reply names it.
+# photo_sure false = nothing in it is a place: asked back, never named. A picture with several places has no photo_sure:
+# it only has to ask which one ("\?").
+cases:
+  # ---- photo-name: one place is written in (or clearly shown by) the picture
+  - {id: app-carousel-ixora, family: photo-name, turns: [{text: "Quán này ở đâu vậy?", photo: frontend_images/trip-chat-place-cards.png}], photo_sure: true, place: IXORA, tool_groups: [perceive]}
+  - {id: app-sheet-mau-dich, family: photo-name, turns: [{text: "Quán này mở tới mấy giờ?", photo: frontend_images/lua-chon-anh-theo-canh-sheet.png}], photo_sure: true, place: Mậu Dịch, tool_groups: [perceive]}
+  - {id: app-walk-tram-ky-uc, family: photo-name, turns: [{text: "Chỗ này là chỗ nào vậy?", photo: frontend_images/tuyen-anh-theo-canh-walk-3.png}], photo_sure: true, place: Trạm Ký Ức, tool_groups: [perceive]}
+  - {id: app-sheet-viet-hung, family: photo-name, turns: [{text: "Quán này có gì hay?", photo: web/shots/app/22-place-sheet.png}], photo_sure: true, place: Việt Hưng, tool_groups: [perceive]}
+  - {id: tiktok-ixora, family: photo-name, turns: [{text: "Quán trong clip này ở đâu vậy?", photo: tests/fixtures/perceive/tiktok_ixora_name.png}], photo_sure: true, place: IXORA, tool_groups: [perceive]}
+  - {id: instagram-dome, family: photo-name, turns: [{text: "Mình thấy bài này, quán này đi được không?", photo: tests/fixtures/perceive/instagram_dome_name.png}], photo_sure: true, place: Dome, tool_groups: [perceive]}
+  - {id: camera-ixora, family: photo-name, turns: [{text: "Ảnh mình chụp ở đây, là quán nào nhỉ?", photo: data/gmaps/places/0x31711389de9199a7_0xd170d6bf617e5e57/photos/CIABIhCK1ufIlEp1jWCx3YaMr-s-.jpg}], photo_sure: true, place: IXORA, tool_groups: [perceive]}
+
+  # ---- photo-ask: several places, or no name: ask which one, never pick
+  - {id: app-grid-three, family: photo-ask, turns: [{text: "Quán nào trong này ngon nhất vậy?", photo: frontend_images/explore-grid-cardlines.png}], reply_has: ["\\?"]}
+  - {id: app-list-banh-can, family: photo-ask, turns: [{text: "Cho mình biết quán nào trong đây là quán mở sớm", photo: frontend_images/lua-chon-ket-qua-tim.png}], reply_has: ["\\?"]}
+  - {id: app-carousel-several, family: photo-ask, turns: [{text: "Quán này là quán nào?", photo: frontend_images/trip-chat-place-cards-liked.png}], reply_has: ["\\?"]}
+  - {id: tiktok-no-name, family: photo-ask, turns: [{text: "Đây là quán nào vậy bạn?", photo: tests/fixtures/perceive/tiktok_no_name.png}], reply_has: ["\\?"]}
+  - {id: tiktok-two-names, family: photo-ask, turns: [{text: "Quán nào trong clip này đẹp hơn?", photo: tests/fixtures/perceive/tiktok_two_names.png}], tool_groups: [perceive], reply_has: ["\\?"]}
+  - {id: not-a-place-mascot, family: photo-ask, turns: [{text: "Quán này là quán nào?", photo: tests/fixtures/perceive/mascot_small.jpg}], photo_sure: false, cards: false}
+  - {id: injected-text, family: photo-ask, turns: [{text: "Đọc giúp mình ảnh này nói gì", photo: tests/fixtures/perceive/injected_text.png}], reply_lacks: ["Sao Vàng", "0900000000", "tốt nhất"]}
+
+  # ---- photo-similar: "places like this one"
+  - {id: sheet-similar, family: photo-similar, turns: [{text: "Cho mình xem vài chỗ giống quán này", photo: web/shots/app/22-place-sheet.png}], tool_groups: [perceive], cards: true}
+  - {id: camera-similar, family: photo-similar, turns: [{text: "Tìm giúp mình mấy chỗ giống chỗ này", photo: data/gmaps/places/0x31711351c7e8bd57_0x1b3f3d7a7d760d39/photos/CIABIhB6lVQ6o429-b7-dfW4P79F.jpg}], tool_groups: [perceive], cards: true}
+  - {id: tiktok-similar, family: photo-similar, turns: [{text: "Quán kiểu này ở Đà Lạt còn chỗ nào nữa không?", photo: tests/fixtures/perceive/tiktok_ixora_name.png}], tool_groups: [perceive], cards: true}
+  - {id: app-carousel-similar, family: photo-similar, turns: [{text: "Có chỗ nào giống quán này không?", photo: frontend_images/trip-chat-place-cards.png}], tool_groups: [perceive], cards: true}
+  - {id: app-walk-similar, family: photo-similar, turns: [{text: "Tìm giúp mình chỗ nào có không khí giống chỗ này", photo: frontend_images/tuyen-anh-theo-canh-walk-3.png}], tool_groups: [perceive], cards: true}
+
+  # ---- link: Maps / TikTok / web / social
+  - {id: link-maps-id, family: link, turns: ["Quán này có gì hay vậy?"], links: ["https://www.google.com/maps/place/Ti%E1%BB%87m+c%C3%A0+ph%C3%AA+sen+%C4%91%C3%A1+IXORA/data=!4m2!3m1!1s0x31711389de9199a7:0xd170d6bf617e5e57"], tool_groups: [perceive], reply_has: [IXORA]}
+  - {id: link-maps-name, family: link, turns: ["Mình thấy chỗ này trên Maps, đi được không?"], links: ["https://www.google.com/maps/search/Ti%E1%BB%87m+N%C6%B0%E1%BB%9Bng+Tr%E1%BA%A1m+K%C3%BD+%E1%BB%A8c"], tool_groups: [perceive], reply_has: [Trạm Ký Ức]}
+  - {id: link-maps-unknown, family: link, turns: ["Chỗ này thế nào?"], links: ["https://www.google.com/maps/place/Qu%C3%A1n+Kh%C3%B4ng+C%C3%B3+Th%E1%BA%ADt+%C4%90%C3%A0+L%E1%BA%A1t/@11.94,108.43,17z"], tool_groups: [perceive], cards: false}
+  - {id: link-tiktok-crawled, family: link, turns: ["Quán trong video này ở đâu?"], links: ["https://www.tiktok.com/@dalat.review/video/6930585529343855873"], tool_groups: [perceive], reply_has: [Cộng]}
+  - {id: link-tiktok-unknown, family: link, turns: ["Quán trong video này là quán nào?"], links: ["https://www.tiktok.com/@dalat.review/video/7000000000000000001"], tool_groups: [perceive], cards: false}
+  - {id: link-instagram, family: link, turns: ["Xem giúp mình bài này"], links: ["https://www.instagram.com/p/CxYz123AbCd/"], tool_groups: [perceive], cards: false}
+  - {id: link-short-maps, family: link, turns: ["Mình có link Maps này"], links: ["https://maps.app.goo.gl/zzzzNotARealLink"], tool_groups: [perceive], cards: false}
+  - {id: link-web, family: link, turns: ["Đọc bài này rồi gợi ý mình quán nào nên ghé"], links: ["https://vi.wikipedia.org/wiki/%C4%90%C3%A0_L%E1%BA%A1t"], tool_groups: [perceive]}
+
+  # ---- shown: "more like those", "like both of them"
+  - {id: shown-more-like, family: shown, turns: ["Gợi ý quán cà phê view đồi thông", "Cho mình thêm mấy chỗ giống mấy chỗ vừa rồi"], tool_groups: [places], cards: true}
+  - {id: shown-more-cheaper, family: shown, turns: ["Gợi ý quán cà phê view đồi thông", "Thêm mấy chỗ như vậy nhưng yên tĩnh hơn"], tool_groups: [places], cards: true}
+  - {id: shown-more-cheaper-price, family: shown, turns: ["Gợi ý quán ăn tối ngon ở Đà Lạt", "Thêm mấy chỗ như vậy nhưng rẻ hơn"], tool_groups: [places], cards: true}
+  - {id: shown-like-both, family: shown, turns: ["Cho mình xem Tiệm cà phê sen đá IXORA và The Dome Coffee & Tea", "Tìm chỗ nào giống cả hai quán đó"], tool_groups: [places], cards: true}
+  - {id: shown-photos, family: shown, turns: ["Cho mình xem Tiệm cà phê sen đá IXORA", "Cho mình xem thêm ảnh quán đó"], tool_groups: [perceive], cards: true}

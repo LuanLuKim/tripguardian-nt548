@@ -7,12 +7,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from corpus.ontology import load as load_ontology
 from trip import contains, squash
 
-Op = Literal["select", "drop", "lock", "travel", "crowd", "price", "trip", "visited"]
+Op = Literal["select", "drop", "lock", "travel", "crowd", "price", "trip", "visited", "prefer", "filter", "unfilter",
+             "like"]
 FEEDBACK = {"travel": "far", "crowd": "crowded", "price": "pricey"}
 REASONS = ("far", "crowded", "pricey", "dislike", "visited")
-PLACE_OPS = {"select", "lock", "drop", "visited"}
+PLACE_OPS = {"select", "lock", "drop", "visited", "like"}
+OPENS_BY = "opens_by"  # the one filter key that is not an ontology feature: "opens at or before HH:MM"
+HHMM = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
 
 
 class Frozen(BaseModel):
@@ -48,6 +52,18 @@ class Guarded:
     actions: list[dict]
     say: str
     log: list[str] = field(default_factory=list)
+
+
+def filter_ok(key, value) -> bool:
+    """A filter the session may hold: opens_by=HH:MM, or an ontology feature with one of its values."""
+    if key == OPENS_BY:
+        return isinstance(value, str) and bool(HHMM.fullmatch(value))
+    return bool(load_ontology().valid(key, value))
+
+
+def _pair(value: str) -> tuple[str, str] | None:
+    key, sep, val = value.partition("=")
+    return (key.strip(), val.strip()) if sep and key.strip() and val.strip() else None
 
 
 def names_in(text: str, name: str) -> bool:
@@ -96,6 +112,23 @@ def guard(plan: TurnPlan, text: str, aliases: dict[str, dict], screen_text: str,
             actions.append({"type": "feedback", "reason": FEEDBACK[u.op]})
         elif u.op == "trip":
             actions.append({"type": "trip", "text": u.quote.strip()})
+        elif u.op == "like":
+            actions.append({"type": "like", "place_id": place["id"]})
+        elif u.op == "unfilter":
+            actions.append({"type": "unfilter"})
+        elif u.op in ("prefer", "filter"):
+            avoid = u.op == "prefer" and u.value.endswith(":avoid")
+            pair = _pair(u.value[:-len(":avoid")] if avoid else u.value)
+            if pair is None:
+                log.append(f"drop {u.op}: value {u.value!r} is not <feature>=<value>")
+            elif u.op == "prefer" and not load_ontology().valid(*pair):
+                log.append(f"drop prefer: {pair[0]}={pair[1]} is not in the ontology")
+            elif u.op == "filter" and not filter_ok(*pair):
+                log.append(f"drop filter: {pair[0]}={pair[1]} is not a filter")
+            elif u.op == "prefer":
+                actions.append({"type": "prefer", "feature": pair[0], "value": pair[1], "weight": -1 if avoid else 1})
+            else:
+                actions.append({"type": "filter", "key": pair[0], "value": pair[1]})
     say = plan.say.strip()
     why = _bad_say(say, f"{text} {screen_text}", aliases, name_keys)
     if why:

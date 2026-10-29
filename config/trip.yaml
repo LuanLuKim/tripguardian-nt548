@@ -6,6 +6,7 @@ first_token_s: 8    # agents runtime contract; the Trip loop only uses total_s
 total_s: 30         # agent: one model call, first token to last
 clef_timeout_s: 1    # Clef (Cloudflare classifier) limit; slower or failing = it decides nothing
 clef_feature_min: 0.5  # search_features, when the keywords find nothing: Clef ranks features, those from this probability are returned
+clef_feature_pool: 20  # Clef ranks only the 20 features closest by meaning (bge-m3); 50+ in one prompt runs the self-hosted Clef out of GPU memory
 clef_verify_min: 0.75 # record_fact (an inferred soft / hard fact): Clef must be this sure the quote does not say the fact to refuse it
 clef_reply_min: 0.9   # Clef must be this sure a reply promises results or states an unsaid fact to replace it
 tool_steps: 6       # maximum model calls in one turn (each may call several tools)
@@ -32,13 +33,15 @@ entry_roads:
 
 # Long-term pattern learning (docs/TRIP_UNDERSTANDING.md §17). Needs a user id on the session; writes only with consent.
 patterns:
-  enabled: false        # off until the update rule is validated with a user survey
+  enabled: true         # on (owner 2026-10-29: silent personalization); writes still need the account consent consents.patterns; thresholds await a user survey
   min_sessions: 3       # sessions with the same explicit choice before it is a pattern
   window: 8             # latest votes on one key that are read
   agreement: 0.75       # share of those votes the winning choice needs
   stale_days: 365       # a pattern whose last vote is older than this is dropped
   max_places: 3         # place patterns offered on the prior card
   dir: data/trip/profiles
+  half_life_days: 180   # an entry's strength halves after this many days without a new vote
+  audit_sample: 20      # active entries the Judge reads per `python -m trip profile-audit`
 
 # Theme cards of Khám phá (web/src/user/tu/themes.ts sends the id): each writes these tastes as they are, no sentence is
 # read. soft: feature=value:love|avoid from config/ontology.yaml; groups: kinds of place (nature | sights | chill | meal).
@@ -154,3 +157,26 @@ drills:
       - {label: "Thiền viện yên tĩnh", axis: place, cues: [chùa trên đồi, sân vườn yên tĩnh, hồ sen], writes: [{field: soft, value: "noise=quiet:love"}]}
       - {label: "Nhà thờ cổ", axis: place, cues: [nhà thờ, tháp chuông, kính màu], writes: [{field: soft, value: "heritage_architecture=present:love"}]}
 gaps_path: data/trip/gaps.jsonl
+# The Đà Lạt assistant in the chat (docs/TRIP_UNDERSTANDING.md §Trợ lý): finds and shows real places from the corpus,
+# Clef prepares the read-only tools before the agent's one call. On since 2026-10-29: `python -m bench assistant --live` passed twice (p50 5.3-5.8 s, p90 7.6-9.0 s).
+assistant:
+  enabled: true
+  prefetch: true
+  clef_threshold: 0.35   # a tool group is prepared from this Clef "yes" probability
+  prefetch_wait_s: 3.0   # wait for prepared data at most this long; later results only fill the turn's cache
+  reply_words: 60        # hard cut of the reply (whole sentences, the last question kept)
+  ask_words: 40          # the length the prompt asks for; below reply_words so the cut rarely bites
+  reply_style: "Answer in the first sentence, no preamble or praise, do not repeat what the cards or data already show (name, photo, hours), at most one short question, no lists."
+  hide_prepared_lookup: true  # find_places is not offered when data holds places (tim_noi) or a named place (chi_tiet)
+  covered_tools: write   # first call when prepared data answers every asked group: all | write (record_fact only) | none; measured 28/10 r6
+  service_tier: priority # sent with every Agent call while enabled; 9router forwards it to the Codex upstream (docs/LLM_PROVIDER.md)
+  max_candidates: 6      # places named in the message offered to Clef
+  data_places: 6         # places of a find_places result the agent reads (its prompt stays small)
+  cards_max: 10          # place cards under a reply: the same ranked list, best first
+  cards_ratio: 0.6       # a card needs at least this share of the best place's score
+  find_pool: 200         # find_places / find_stays ask corpus.retrieval for this many before price_max, sort, exclude, page
+  near_km: 3.0           # near_place radius when the call gives none
+  walk_kmh: 4.5          # a walking time = road km / this speed (an estimate; OSRM times vehicles)
+  max_compare: 4         # places compare_places reads at once; route_time reads up to two more
+  guard: true            # Clef rule guard R1-R8 (spec 2026-10-29 §4), asked in parallel with terra; Clef down or slow = ok
+  guard_threshold: 0.55  # 2026-10-29, real Clef on 102 labelled sentences (45 ok): 0.55 = 0/45 wrong blocks (worst ok scored 0.43 on "thịt rừng hợp pháp?"), 41/43 R1-R6 blocked (95.3%), R7/R8 14/14; 0.5 blocks 42/43 but sits 0.07 from a wrong block; 0.8 only 39/43

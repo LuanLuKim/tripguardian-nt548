@@ -1,0 +1,34 @@
+# The assistant bench (python -m bench assistant): 30 chat messages and the tool groups a person expects them to
+# need (copied from logs/clef_prefetch_bench.py MSGS, measured 2026-10-27, spec §2.4). trends is the Nhịp Đà Lạt
+# tool (keyword group).
+cases:
+  - {text: "Gợi ý quán cà phê có view đồi thông cho mình với", groups: [places]}
+  - {text: "Ăn bánh căn ở đâu ngon?", groups: [places]}
+  - {text: "Lẩu gà lá é quán nào được?", groups: [places]}
+  - {text: "Đồi chè Cầu Đất mở cửa mấy giờ, có mất vé không?", groups: [detail]}
+  - {text: "Thác Datanla vé bao nhiêu?", groups: [detail]}
+  - {text: "Ngày 31/10 Đà Lạt có mưa không?", groups: [weather]}
+  - {text: "Mai trời thế nào, có nên đi săn mây không?", groups: [weather]}
+  - {text: "Từ chợ Đà Lạt lên Langbiang bao xa?", groups: [distance]}
+  - {text: "Đi từ Hồ Tuyền Lâm sang Thác Datanla mất bao lâu?", groups: [distance]}
+  - {text: "Đà Lạt dạo này có gì đang hot không?", groups: [trends]}
+  - {text: "Tháng 11 có hoa gì nở?", groups: []}
+  - {text: "Đặc sản Đà Lạt là gì?", groups: []}
+  - {text: "Mình đi với bố mẹ lớn tuổi, nên chú ý gì?", groups: []}
+  - {text: "Cảm ơn nhé, mình sẽ cân nhắc", groups: []}
+  - {text: "Tối thứ 7 trời có lạnh không, ăn gì cho ấm?", groups: [places, weather]}
+  - {text: "Quán nào có nhạc sống buổi tối, cách chợ bao xa?", groups: [places]}
+  - {text: "Vườn dâu nào cho hái, hôm 30/10 có mưa không?", groups: [places, weather]}
+  - {text: "Tiệm Cà Phê Túi Mơ To có chỗ đậu xe không?", groups: [detail]}
+  - {text: "Gợi ý chỗ ăn chay ngon", groups: [places]}
+  - {text: "Có nơi nào đang nổi trên TikTok mà hợp đi buổi sáng không?", groups: [places, trend]}
+  - {text: "Langbiang mở cửa mấy giờ, từ chợ Đà Lạt đi mất bao lâu?", groups: [detail, distance]}
+  - {text: "Ngày 1/11 đi Thác Datanla được không, có mưa không?", groups: [detail, weather]}
+  - {text: "Tìm quán bánh mì xíu mại, sáng mai trời lạnh không?", groups: [places, weather]}
+  - {text: "Quán cà phê săn mây nào gần Cầu Đất?", groups: [places]}
+  - {text: "Vé vào Đồi chè Cầu Đất bao nhiêu, đi từ Hồ Xuân Hương bao xa?", groups: [detail, distance]}
+  - {text: "Đà Lạt mùa này mặc gì?", groups: []}
+  - {text: "Gợi ý nhà hàng lẩu cho nhóm 6 người", groups: [places]}
+  - {text: "Hồ Tuyền Lâm có chỗ đậu ô tô không?", groups: [detail]}
+  - {text: "Ngày 30/10 nên đi đâu nếu trời mưa?", groups: [places, weather]}
+  - {text: "Quán Lululola có view không, mở tới mấy giờ?", groups: [detail]}

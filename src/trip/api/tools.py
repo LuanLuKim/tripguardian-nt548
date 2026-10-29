@@ -13,11 +13,12 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field
 
 from agents import load_skill, permit_tool
+from corpus import pulse
 from corpus.releases import Binding, bind, resolve_binding
 from corpus.retrieval import RetrievalEngine
 from corpus.snapshot import shared
 
-from ..agent import langchain_chat
+from ..agent import TurnTools, langchain_chat
 from ..domain.card import Question
 from ..domain.compile import UnhandledSignal
 from ..domain import drill
@@ -25,10 +26,12 @@ from ..domain.deck import Deck
 from ..domain.state import TripState
 from ..infrastructure.catalog import Catalog
 from ..infrastructure.clef import Judge
+from ..infrastructure.knowledge import Knowledge, LiveTools
 from ..infrastructure.looks import Looks, photo_cues
+from ..infrastructure.perceive import Perceiver
 from ..infrastructure.profile import USER_ID, ProfileStore
 from ..infrastructure.sessions import Session, SessionStore
-from ..infrastructure.settings import ROOT, Settings, load
+from ..infrastructure.settings import ROOT, Settings, city_center, load
 from ..infrastructure.web import Web
 from .engine import Engine, TurnInput
 
@@ -105,11 +108,39 @@ class Tools:
             emit("trace", {"path": "fallback" if any("agent_error:" in t for t in ran) else "agent"})
         return self.load(sid)
 
+    def read_turn(self, sid: str, text: str) -> TurnTools | None:
+        """A turn object over this session's Trip State for ANOTHER chat (Decision) to run the shared read tools with
+        (get_place, place_evidence, distance, weather, ...): same catalog, knowledge and hard rules as the Trip
+        assistant, nothing written. None when the assistant is off here. The caller closes it. KeyError: no such session."""
+        engine = self.engine
+        if engine.knowledge is None or not engine.cfg.assistant.enabled:
+            return None
+        s = engine.store.get(sid)
+        with s.lock:
+            state = s.state
+        return TurnTools(state, text, state.meta.turn, engine.catalog, engine.today(), [], engine.judge, cards=False,
+                         knowledge=engine.knowledge, assistant=True)
+
     def places(self, query: str) -> list[dict]:
         return self.engine.places(query)
 
     def forget(self, user_id: str) -> bool:
         return self.engine.forget(user_id)
+
+    def profile(self, user_id: str) -> dict:
+        return self.engine.profile(user_id)
+
+    def note_acts(self, user_id: str, sid: str, acts: list[dict]) -> bool:
+        return self.engine.note_acts(user_id, sid, acts)
+
+    def edit_entry(self, user_id: str, eid: str, patch: dict) -> dict:
+        return self.engine.edit_entry(user_id, eid, patch)
+
+    def delete_entry(self, user_id: str, eid: str) -> bool:
+        return self.engine.delete_entry(user_id, eid)
+
+    def pause_profile(self, user_id: str, paused: bool) -> dict:
+        return self.engine.pause_profile(user_id, paused)
 
     def snapshot(self, sid: str) -> dict:
         s = self.engine.store.get(sid)
@@ -143,8 +174,9 @@ def _upgrade(snapshot: dict) -> dict:
 
 
 def create_engine(data_root: Path, *, binding: Binding | None = None,
-                  retrieval: RetrievalEngine | None = None) -> Engine:
-    """Harness owns persistence; the engine keeps its normal typed state in memory."""
+                  retrieval: RetrievalEngine | None = None, live: LiveTools | None = None) -> Engine:
+    """Harness owns persistence; the engine keeps its normal typed state in memory. live: weather and travel time
+    for the assistant (the harness builds them from the live module; Trip never imports it)."""
     load_dotenv(ROOT / ".env")
     cfg = load()
     # The active corpus release, the same one Decision and Planning read (legacy root when none is published).
@@ -160,14 +192,38 @@ def create_engine(data_root: Path, *, binding: Binding | None = None,
     profiles = ProfileStore(ROOT / cfg.patterns.dir, cfg.patterns) if cfg.patterns.enabled else None
     engine = Engine(catalog, cfg, SessionStore(None), langchain_chat(cfg),
                   today=lambda: datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date(), profiles=profiles,
-                  judge=Judge(cfg),
+                  judge=Judge(cfg), knowledge=Knowledge(retrieval, catalog, live, city_center(), cfg.assistant.data_places,
+                                                        cfg.assistant.cards_max, cfg.assistant.cards_ratio,
+                                                        trends=lambda **kw: pulse.trends("dalat", **kw)),
                   **senses(cfg, catalog, data_root=data_root, binding=binding, retrieval=retrieval))
     engine.retrieval = retrieval
     engine.corpus_binding = binding
+    engine.knowledge.looks = engine.looks  # photo vectors for similar_places over several places
+    engine.knowledge.perceiver = Perceiver(engine.knowledge, engine.looks, engine.web)  # photo and link reads
+    engine.warmed.clear()
+    threading.Thread(target=warm_assistant, args=(engine,), name="assistant-warm", daemon=True).start()
     if engine.looks is not None and cfg.drills and not _read_drill_scores(engine):
         # no saved scores for this corpus and config: every topic's photo card is scored now, so a turn only filters it
         threading.Thread(target=_score_drills, args=(engine,), name="drill-warm", daemon=True).start()
     return engine
+
+
+WARM_TEXT = "quán cà phê view đẹp"  # any words: the search loads what every later one reads
+
+
+def warm_assistant(engine: Engine) -> None:
+    """One find at start: the assistant's first find_places would pay for the text encoder, the span vectors and the
+    region caches inside a user's turn (55-118 s measured, 2026-10-28). Runs after looks loaded the encoders, never
+    next to them; engine.warmed is set when done, also when it fails (a real search reports its own error)."""
+    try:
+        if engine.looks is not None:
+            engine.looks.warmed.wait(600)
+        if engine.knowledge is not None:
+            engine.knowledge.find({"text": WARM_TEXT}, TripState())
+    except Exception:  # warming is best effort
+        pass
+    finally:
+        engine.warmed.set()
 
 
 def drill_key(engine: Engine) -> str:

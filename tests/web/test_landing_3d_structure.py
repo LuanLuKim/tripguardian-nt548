@@ -29,7 +29,6 @@ def test_landing_keeps_approved_hero_layout_and_current_guest_entry() -> None:
     assert "Miễn phí" in source
     assert "Không cần tài khoản" in source
     assert "Chỗ nào cũng có thật" in source
-    assert "Khám phá bản đồ Đà Lạt" in source
     assert "await startGuest()" in source
 
 

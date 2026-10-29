@@ -2,11 +2,12 @@
 
 import base64
 import binascii
-import ipaddress
 import re
 import unicodedata
 from typing import Literal
-from urllib.parse import SplitResult, unquote, urlsplit
+from urllib.parse import unquote
+
+from corpus.crawl.web import validate_public_url
 
 Screen = Literal["travel", "off_topic", "attack", "invalid", "review"]
 
@@ -40,27 +41,6 @@ _SHORT = {"co", "khong", "bo qua", "chua chac", "khong biet", "cam on", "xin cha
 def _fold(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text.casefold()).replace("đ", "d")
     return " ".join("".join(c for c in normalized if not unicodedata.combining(c)).split())
-
-
-def validate_public_url(url: str) -> SplitResult:
-    """Check syntax/literal hosts here; DNS is checked and pinned separately at fetch time."""
-    if len(url) > 2048 or any(c.isspace() or unicodedata.category(c) in {"Cc", "Cf"} for c in url):
-        raise ValueError("blocked URL")
-    parsed = urlsplit(url)
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname or parsed.username is not None \
-            or parsed.password is not None or parsed.port not in {None, 80, 443} or "\\" in url:
-        raise ValueError("blocked URL")
-    host = parsed.hostname.rstrip(".").lower()
-    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")) or "." not in host and ":" not in host:
-        raise ValueError("blocked URL")
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        pass
-    else:
-        if not address.is_global or address.is_multicast:
-            raise ValueError("blocked URL")
-    return parsed
 
 
 def screen_input(text: str, context: str = "", max_chars: int = 4000) -> Screen:

@@ -105,6 +105,25 @@ def run_reference(s, records: list[dict], cfg) -> Result:
     for gid, ids in ranked.items():
         k = sum(1 for c in reps if group_of.get(c.id) == gid)
         top.update([p for p in ids if p not in picked and tier.get(p, 1) < 2][:k])
+    # same rule as decision.wishes.reserve, written per wish: a said wish met by a listed place has one in "Hợp nhất"
+    said = [w for w in wl if w.kind in ("dish", "kind", "like") and w.places]
+    on_list = {p for ids in ranked.values() for p in ids}
+    for w in said:
+        if set(w.places) & (top | picked):
+            continue
+        options = sorted((p for p in w.places if p in on_list and p not in picked and tier.get(p, 1) < 2),
+                         key=lambda p: (-cands[p].score, p))
+        if not options:
+            continue
+        sole = set()
+        for x in said:
+            covered = set(x.places) & (top | picked)
+            if len(covered) == 1:
+                sole |= covered
+        spare = sorted(top - sole, key=lambda p: (cands[p].score, p))
+        if spare:
+            top.remove(spare[0])
+        top.add(options[0])
 
     suggested = next((c.id for c in reps if group_of[c.id] == st.suggest_group), None) if st.suggest_group else None
     want = wanted(si, st.profile)
@@ -172,6 +191,8 @@ def run_reference(s, records: list[dict], cfg) -> Result:
         "days": [{"index": d.index, "date": d.date.isoformat() if d.date else None, "weekday": d.weekday} for d in days],
         "unknowns": list(si.unknowns),
         "unmapped": [*si.unmapped, *st.unmapped],
+        "filter": {"active": [], "hidden": 0},  # generated sessions hold no filters or likes; they have their own tests
+        "likes": [],
     }
     return Result(view, cands, {k: [x.id for x in v] for k, v in alts.items()}, group_of, days, shown, ranked, allocation,
                   wl)

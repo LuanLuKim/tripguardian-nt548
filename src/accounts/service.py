@@ -316,6 +316,18 @@ class Accounts:
                          (Jsonb({"terms": stamp, "privacy": stamp}), user_id))
         return self.me(user_id)
 
+    def remember(self, user_id: str, on: bool) -> dict:
+        """The one consent for the long-term profile ("nhớ cho lần sau", consents.patterns): a later trip may add to it.
+        Guests never learn."""
+        if not isinstance(on, bool):
+            raise ValueError("on must be true or false")
+        if self.me(user_id)["guest"]:
+            raise ValueError("guests have no profile")
+        with self.pool.connection() as conn:
+            conn.execute("UPDATE profiles SET consents = consents || %s, updated_at = now() WHERE user_id = %s",
+                         (Jsonb({"patterns": on}), user_id))
+        return self.me(user_id)
+
     def update(self, user_id: str, patch: dict) -> dict:
         """Optional fields; null or "" clears one. Mobility and companions are only a prior for Trip, never facts of a
         trip; nickname and bio are what friends see."""

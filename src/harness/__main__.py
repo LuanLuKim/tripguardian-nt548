@@ -16,12 +16,13 @@ from corpus.releases import Binding, bind
 from corpus.retrieval import RetrievalEngine
 from db import pool
 from notify import Notify
+import live
 from decision import Tools as DecisionTools, create_engine as decision_engine
 from planning import Tools as PlanningTools, create_engine as planning_engine
 from social import Social
 from trip import Tools as TripTools, create_engine as trip_engine
 
-from . import Harness, PgStore, import_files
+from . import Harness, PgStore, import_files, trip_live_tools
 from .events import EventLog
 from .server import run
 
@@ -61,14 +62,20 @@ def main():
     version = app_version(root)
     accounts = Accounts(pool(), GoogleClient.from_env(), data / "accounts" / "avatars", os.environ.get("TOKEN_ENC_KEY"))
     binding = bind(data)
+    live_cfg = live.load_settings()
+    # the Trip assistant's weather and travel time (Trip never imports live)
+    trip_live = trip_live_tools(live_cfg)
 
     def tools_for_binding(pinned: Binding | None):
         # A saved legacy journey keeps the standalone artifacts; it never adopts today's active release.
         selected = pinned if pinned is not None else bind(data, legacy=True)
         retrieval = RetrievalEngine.open(data_root=data, binding=selected)
-        tools = {"trip": TripTools(trip_engine(data, binding=selected, retrieval=retrieval)),
+        tools = {"trip": TripTools(trip_engine(data, binding=selected, retrieval=retrieval, live=trip_live)),
                  "decision": DecisionTools(decision_engine(data, binding=selected, retrieval=retrieval)),
                  "planning": PlanningTools(planning_engine(data, binding=selected, retrieval=retrieval))}
+        # the Lựa chọn assistant reads places through a Trip turn (shared read tools)
+        tools["decision"].engine.trip_reader = tools["trip"].read_turn
+        tools["planning"].engine.trip_reader = tools["trip"].read_turn   # and the Lịch trình assistant
         if pinned is None:
             for tool in tools.values():
                 tool.engine.corpus_binding = None
@@ -78,10 +85,19 @@ def main():
     companion = Companion(pool(), tools["planning"].engine.records)
     harness = Harness(tools["trip"], tools["decision"], tools["planning"], PgStore(pool(), version), EventLog(pool(), version), companion,
         Calendar(pool(), accounts, companion.records, os.environ.get("APP_BASE_URL", "")),
-        Notify(pool(), companion.records), safety=ChatSafety(), corpus_binding=binding, tools_for_binding=tools_for_binding)
+        Notify(pool(), companion.records), safety=ChatSafety(), corpus_binding=binding, tools_for_binding=tools_for_binding,
+        eve_store=_eve_store())
     test_login = os.environ.get("TG_TEST_LOGIN") == "1"  # walk-throughs only; refused when APP_BASE_URL is https
     print(f"Journey harness: http://127.0.0.1:{args.port} (app {version})")
     run(harness, accounts, args.port, os.environ.get("APP_BASE_URL", ""), test_login, Social(pool()), Library(pool()))
+
+
+def _eve_store():
+    """The D.3 evening check's pending changes (data/planning/eve), only while eve_replan.enabled is true."""
+    import planning
+    if not planning.load_settings().eve_replan.get("enabled"):
+        return None
+    return planning.EveStore(Path(__file__).resolve().parents[2] / "data" / "planning" / "eve")
 
 
 if __name__ == "__main__":

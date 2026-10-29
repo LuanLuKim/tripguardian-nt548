@@ -78,26 +78,18 @@ class Catalog:
             self._counts[key] = sum(1 for p in self.places if p.value(feature) == value)
         return self._counts[key]
 
-    def _dish_index(self) -> tuple[list[dict], dict[bool, str]]:
-        """Built once (the places do not change while serving): the records to search, and every dish text joined,
-        folded and with accents kept, so a phrase no menu holds is ruled out without a scan."""
-        cached = self.__dict__.get("_dish_index_cache")
-        if cached is None or len(cached[0]) != len(self.places):
-            records = [{**p.requirement_record(), "id": p.id,
-                        "identity": {**p.requirement_record().get("identity", {}), "name": p.name}}
-                       for p in self.places]
-            texts = [t for r in records for t in
-                     [x for d in (r.get("menu") or {}).get("dishes") or [] for x in (d["name"], d.get("name_en")) if x]
-                     + [o.get("text") for o in (r.get("details") or {}).get("order") or [] if o.get("text")]]
-            cached = records, {a: " | ".join(dishes.key_for(t, a) for t in texts) for a in (True, False)}
-            self.__dict__["_dish_index_cache"] = cached
+    def _dish_records(self) -> list[dict]:
+        """Built once (the places do not change while serving): the records corpus.serving.dishes indexes."""
+        cached = self.__dict__.get("_dish_records_cache")
+        if cached is None or len(cached) != len(self.places):
+            cached = [{**p.requirement_record(), "id": p.id,
+                       "identity": {**p.requirement_record().get("identity", {}), "name": p.name}}
+                      for p in self.places]
+            self.__dict__["_dish_records_cache"] = cached
         return cached
 
     def dishes(self, query: str) -> list[dict]:
-        records, joined = self._dish_index()
-        wanted, accented = dishes.phrases(query)
-        if not any(f" {w} " in f" {joined[accented]} " for w in wanted):
-            return []
+        records = self._dish_records()
         return dishes.search(records, query, limit=len(records))
 
     def kinds(self, query: str) -> list[Candidate]:
@@ -144,7 +136,7 @@ class Catalog:
                         ev.setdefault(ont.features[fid].group, {})[fid] = {
                             "value": sig["top_value"], "status": "VERIFIED", "n": sig["n"],
                             "distribution": sig.get("distribution") or {sig["top_value"]: sig["n"]}}
-            ev = {**ev, **{k: r[k] for k in ("menu", "details") if k in r}}
+            ev = {**ev, **{k: r[k] for k in ("menu", "details", "review_dishes") if k in r}}
             hours = (r.get("operation") or {}).get("hours")
             out.append(Candidate(
                 id=r["place_fid"], name=r["place_name"], category=ident.get("category"),

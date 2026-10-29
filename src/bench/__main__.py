@@ -1,4 +1,4 @@
-"""python -m bench generate | run (docs/plans/BENCH.md)."""
+"""python -m bench generate | run (docs/plans/BENCH.md) | latency | retrieval | assistant."""
 
 import argparse
 import os
@@ -34,7 +34,26 @@ def main() -> int:
     lt = sub.add_parser("latency", help="corpus-backed latency (docs/superpowers/specs/2026-10-13-corpus-snapshot-design.md §7)")
     lt.add_argument("--scale", default="1", help="comma list of region copies, e.g. 1,5,20")
     lt.add_argument("--out", default="", help="directory (default data/bench/latency)")
+    rt = sub.add_parser("retrieval", help="corpus.retrieval card / find speed and correctness on a release")
+    rt.add_argument("--release", default="", help="release id (default: the active release, or the legacy data root)")
+    rt.add_argument("--out", default="", help="directory (default data/bench/retrieval)")
+    at = sub.add_parser("assistant", help="the Trip chat's Đà Lạt assistant on 30 messages (src/bench/assistant.py)")
+    at.add_argument("--live", action="store_true", help="real Agent and Clef: the enable gate")
+    at.add_argument("--clef", action="store_true", help="real Clef, a stub agent: tool groups and prepare time")
+    at.add_argument("--out", default="", help="file (default data/bench/assistant/<ts>-<tier>.json)")
+    at.add_argument("--guard", action="store_true", help="only the labelled rule-guard set against real Clef")
+    at.add_argument("--family", default="", help="only the v2 cases of this family (skips the 30 legacy cases)")
+    at.add_argument("--model", default="", help="Agent model id for this run (sets AGENT_MODEL), e.g. cx/gpt-6.1-terra")
     args = ap.parse_args()
+    if args.cmd == "assistant":
+        from .assistant import guard_main, main as assistant_main
+        if args.guard:
+            return guard_main(Path(args.out) if args.out else None)
+        return assistant_main("live" if args.live else "clef" if args.clef else "offline",
+                              Path(args.out) if args.out else None, args.family, args.model)
+    if args.cmd == "retrieval":
+        from .retrieval import main as retrieval_main
+        return retrieval_main(args.release or None, Path(args.out) if args.out else None)
     if args.cmd == "latency":
         from .latency import main as latency_main
         latency_main([int(x) for x in args.scale.split(",")], Path(args.out) if args.out else None)

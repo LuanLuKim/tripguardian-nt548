@@ -1,7 +1,8 @@
+import json
 import threading
 
 import pytest
-from fixtures import hard, love, si, srec
+from fixtures import feat, hard, love, si, srec
 
 from decision.agent import AgentError
 from decision.curation import ActionError
@@ -337,3 +338,132 @@ def test_a_booked_lodging_needs_no_pick_and_any_state_draft_is_still_given():
     res = e._result(e.store.get(sid))
     res.view["feasibility"].update(status="infeasible", conflicts=[{"check": "hours", "physical": True}])
     assert e.draft(sid) is None and e.draft(sid, any_state=True) is not None
+
+
+# ---------- Task 8: prefer / filter / like / data ----------
+
+def plain_trip(**over):
+    return si(**{"soft_weights": [love("scenic_view")], **over}).model_dump(mode="json")
+
+
+def _hours(start):
+    return {d: [[start, "22:00"]] for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}
+
+
+def filter_engine(agent=None):
+    recs = [srec(f"E{i}", name=f"Quán Cà Phê Sớm {i}", features={"scenic_view": "present"}, hours=_hours("06:00"),
+                 lng=108.44 + i / 1000) for i in range(3)]
+    recs += [srec(f"L{i}", name=f"Quán Cà Phê Muộn {i}", features={"scenic_view": "present"}, hours=_hours("08:00"),
+                  lng=108.45 + i / 1000) for i in range(2)]
+    recs.append(srec("U", name="Quán Cà Phê Chưa Rõ Giờ", features={"scenic_view": "present"}, hours=None, lng=108.46))
+    return Engine(Data(recs), CFG, Store(None), agent)
+
+
+def tab_ids(view):
+    return {c["id"] for g in view["groups"] for c in g["cards"]}
+
+
+def test_filter_hides_but_never_rescores_and_undo_restores():
+    e = filter_engine()
+    sid = e.create(plain_trip())["id"]
+    before = e._result(e.store.get(sid))
+    assert {"E0", "L0", "U"} <= tab_ids(before.view)
+    scores = {p: (before.cands[p].score, before.cands[p].status) for p in before.cands}
+    out = e.act(sid, {"type": "filter", "key": "opens_by", "value": "07:00"})["view"]
+    assert tab_ids(out) == {"E0", "E1", "E2"}
+    assert out["filter"] == {"active": [{"key": "opens_by", "value": "07:00", "label": "Mở cửa lúc 07:00 hoặc sớm hơn"}],
+                             "hidden": 3}
+    after = e._result(e.store.get(sid))
+    assert {p: (after.cands[p].score, after.cands[p].status) for p in after.cands} == scores
+    undone = e.act(sid, {"type": "undo"})["view"]
+    assert undone["filter"] == {"active": [], "hidden": 0} and tab_ids(undone) == tab_ids(before.view)
+    e.act(sid, {"type": "filter", "key": "opens_by", "value": "07:00"})
+    assert e.act(sid, {"type": "unfilter"})["view"]["filter"]["hidden"] == 0
+
+
+def test_filter_by_feature_value_needs_a_firm_value_and_picked_places_stay():
+    recs = [srec("Q", name="Quán Cà Phê Yên", features={"noise": "quiet"}),
+            srec("N", name="Quán Cà Phê Ồn", features={"noise": "loud"}),
+            srec("X", name="Quán Cà Phê Chưa Rõ")]
+    e = Engine(Data(recs), CFG, Store(None))
+    sid = e.create(plain_trip())["id"]
+    e.act(sid, {"type": "select", "place_id": "N"})
+    out = e.act(sid, {"type": "filter", "key": "noise", "value": "quiet"})["view"]
+    assert tab_ids(out) == {"Q", "N"} and out["filter"]["hidden"] == 1  # unknown is not "quiet"; the pick stays
+
+
+def test_why_not_names_the_filter():
+    e = filter_engine()
+    sid = e.create(plain_trip())["id"]
+    e.act(sid, {"type": "filter", "key": "opens_by", "value": "07:00"})
+    assert any("lọc" in r for r in e.why_not(sid, "L0")["reasons"])
+
+
+def like_engine():
+    kind = ("scenic_view", "photo_spot", "cozy_decor", "live_music")
+    look = {f: feat("present" if f != "scenic_view" else "absent", n=5) for f in kind}
+    recs = [srec("REF", name="Quán Cà Phê Gương Mẫu", features=look, usable=("experience",), lng=108.440),
+            srec("TWIN", name="Quán Cà Phê Song Sinh", features=look, usable=("experience",), lng=108.441)]
+    other = {f: feat("present", n=5) for f in ("scenic_view", "hiking", "camping", "animals")}
+    recs += [srec(f"Z{i}", name=f"Quán Cà Phê Khác {i}", features=other, usable=("experience",),
+                  lng=108.442 + i / 1000) for i in range(5)]
+    return Engine(Data(recs), CFG, Store(None))
+
+
+def test_like_lifts_lookalikes_and_removes_nothing():
+    e = like_engine()
+    sid = e.create(plain_trip(soft_weights=[]))["id"]
+    rank = lambda v: [c["id"] for g in v["groups"] if g["id"] == "cafe" for c in g["cards"]]  # noqa: E731
+    before = rank(e.load(sid)["view"])
+    assert before.index("TWIN") > 0
+    after = rank(e.act(sid, {"type": "like", "place_id": "REF"})["view"])
+    assert after.index("TWIN") < before.index("TWIN")
+    assert set(before) == set(after)
+    assert e.act(sid, {"type": "undo"})["view"]["groups"] and rank(e.load(sid)["view"]) == before
+
+
+def test_turn_filter_and_prefer_from_the_agent_become_acts():
+    plan = TurnPlan(say="Mình chỉ hiện quán mở sớm.", updates=(
+        PlanUpdate(op="filter", value="opens_by=07:00", quote="chỉ xem quán mở sớm trước 7h"),
+        PlanUpdate(op="prefer", value="scenic_view=present", quote="thích view")))
+    e = filter_engine(FakeAgent(plan))
+    sid = e.create(plain_trip())["id"]
+    events = []
+    e.turn(sid, "thích view, và nghe này: chỉ xem quán mở sớm trước 7h", lambda ev, d: events.append((ev, d)))
+    st = e.store.get(sid).state
+    assert st.filters == [("opens_by", "07:00")] and st.profile.soft[0].feature == "scenic_view"
+    assert events[-2][1]["view"]["filter"]["hidden"] == 3
+
+
+def test_turn_data_holds_the_card_of_a_named_place_only():
+    plan = TurnPlan(say="Quán mở từ 06:00.", updates=())
+    agent = FakeAgent(plan)
+    e = filter_engine(agent)
+    sid = e.create(plain_trip())["id"]
+    e.turn(sid, "Quán Cà Phê Sớm 1 mở mấy giờ?", lambda ev, d: None)
+    data = json.loads(agent.calls[0]["data"])
+    assert [c["id"] for c in data] == ["E1"] and data[0]["h"]
+    e.turn(sid, "chỗ nào đẹp nhất ạ?", lambda ev, d: None)
+    assert agent.calls[1]["data"] == "none"
+
+
+def test_a_said_like_wish_always_has_a_place_in_hop_nhat():
+    """rough_road_scooter / "giống Donki Land": the look-alike ranks first in its tab but scores below the shortlist."""
+    kind = ("scenic_view", "photo_spot", "cozy_decor", "live_music")
+    look = {f: feat("present" if f != "scenic_view" else "absent", n=5) for f in kind}
+    other = {f: feat("present", n=5) for f in ("scenic_view", "hiking", "camping", "animals")}
+    recs = [srec("REF", name="Khu Cắm Trại Gương Mẫu", group="camping", category="Khu cắm trại", features=look,
+                 usable=("experience",), lng=108.440),
+            srec("TWIN", name="Khu Cắm Trại Song Sinh", group="camping", category="Khu cắm trại", features=look,
+                 usable=("experience",), lng=108.50)]
+    recs += [srec(f"Z{i}", name=f"Quán Cà Phê Khác {i}", features=other, usable=("experience",), lng=108.442 + i / 1000)
+             for i in range(20)]
+    e = Engine(Data(recs), CFG, Store(None))
+    plain = plain_trip()
+    sid = e.create({**plain, "wishes": {"dishes": [], "kinds": [], "like": [{"place_id": "REF", "but": [], "quote": "giống REF"}]}})["id"]
+    view = e.load(sid)["view"]
+    top = {c["id"] for g in view["groups"] for c in g["cards"] if c["top"]}
+    res = e._result(e.store.get(sid))
+    assert "TWIN" in top
+    assert res.cands["TWIN"].status == "main" and "REF" not in top  # nothing relaxed; the reference is not a suggestion of itself
+    assert all(res.cands[p].status == "main" for p in top)

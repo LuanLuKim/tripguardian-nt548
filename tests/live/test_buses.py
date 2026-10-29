@@ -82,3 +82,20 @@ def test_a_failed_fetch_is_unavailable_and_caches_nothing(cfg, monkeypatch, data
     with pytest.raises(Unavailable):
         vexere.buses("Sài Gòn", DAY, "outbound", cfg)
     assert not list(data_dir.rglob("*.json"))
+
+
+def test_configured_regions_are_unique_located_and_cover_the_north(cfg):
+    ids = [r["id"] for r in cfg.vexere_regions]
+    assert len(ids) == len(set(ids))
+    assert all(isinstance(r["lat"], float) and isinstance(r["lng"], float) for r in cfg.vexere_regions)
+    names = {r["name"] for r in cfg.vexere_regions}
+    assert {"Hà Nội", "Nghệ An", "Thanh Hóa", "Hà Tĩnh", "Thừa Thiên Huế", "Đà Nẵng"} <= names
+    assert "Hải Phòng" not in names  # Vexere listed no coach to Đà Lạt for it (probe 2026-10-29): none is guessed
+    for r in cfg.vexere_regions:
+        st = r.get("station")
+        assert st is None or {"name", "lat", "lng"} <= set(st)
+
+
+def test_a_hanoi_origin_takes_the_hanoi_region_url(cfg):
+    assert vexere.region("Hà Nội", cfg)["id"] == 24
+    assert "-124t23991" in vexere.url((21.03, 105.85), DAY, "inbound", cfg)

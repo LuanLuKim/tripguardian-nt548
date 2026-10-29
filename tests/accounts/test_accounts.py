@@ -106,6 +106,19 @@ def test_consent_records_version_and_time(accounts):
     assert not me["needs_consent"] and me["consents"]["terms"]["version"] == TERMS_VERSION
 
 
+def test_remember_writes_the_one_profile_consent_and_keeps_terms(accounts):
+    uid = accounts.user_for(login(accounts)["token"])[0]["id"]
+    accounts.consent(uid, TERMS_VERSION)
+    assert accounts.remember(uid, True)["consents"]["patterns"] is True
+    me = accounts.remember(uid, False)
+    assert me["consents"]["patterns"] is False and me["consents"]["terms"]["version"] == TERMS_VERSION
+    with pytest.raises(ValueError):
+        accounts.remember(uid, "yes")
+    guest = accounts.user_for(accounts.guest())[0]["id"]
+    with pytest.raises(ValueError):
+        accounts.remember(guest, True)
+
+
 def test_profile_fields_are_optional_and_validated(accounts):
     uid = accounts.user_for(login(accounts)["token"])[0]["id"]
     me = accounts.update(uid, {"display_name": " Lan ", "home_city": "Hồ Chí Minh", "usual_mobility": "motorbike",

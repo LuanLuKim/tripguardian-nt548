@@ -55,7 +55,8 @@ def test_browser_sources_reach_corpus_only_through_its_crawl_public_api(rel):
 def test_the_public_api_is_exactly_what_planning_may_use():
     assert set(live.__all__) == {"Settings", "Unavailable", "advisories", "buses", "buses_url", "events", "flights",
                                  "flights_url", "geocode", "geosearch", "holidays", "load_settings",
-                                 "lodging_near", "lodging_seen", "route_shape", "sun_times", "travel_matrix", "weather"}
+                                 "lodging_near", "lodging_seen", "route_shape", "route_steps", "sun_times", "travel_matrix",
+                                 "weather", "weather_hourly"}
     for name in live.__all__:
         assert hasattr(live, name), name
 

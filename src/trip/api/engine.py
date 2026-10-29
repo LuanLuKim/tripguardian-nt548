@@ -7,7 +7,9 @@ option the agent wrote, run the agent loop (agent/loop.py): the agent records fa
 import asyncio
 import binascii
 import json
+import logging
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -19,6 +21,8 @@ from PIL import Image
 from pydantic import ValidationError, model_validator
 
 from ..agent import AgentError, Chat, TurnTools, build_messages, lookups, run_loop
+from agents.assistant import Guarded, last_shown, rule_reply
+from ..agent.tools import DATE_TOOLS
 from ..domain import ask, deck, drill, values
 from ..domain.derive import derive
 from ..domain.deck import Deck
@@ -27,9 +31,15 @@ from ..domain.card import OPENING, Chip, Question, conversation_card
 from ..domain.compile import UnhandledSignal, compile_search_input
 from ..domain.frame import FrameDefaults
 from ..domain.readback import build as build_readback, party_conflict, plan_digest
-from ..domain.guard import asks_settled_care, same_question, prune_say, bad_say, drop_questions, trim_say
-from ..domain.logistics import pick_transit
-from ..domain.patterns import Summary, seed, seed_profile, votes_from_state
+from ..domain.guard import asks_settled_care, same_question, prune_say, bad_say, drop_questions, trim_say, trim_words
+from ..domain.required import planning
+from ..agent.prefetch import candidates, covers, prepare, route
+from ..infrastructure import clef
+from . import blocks
+from ..infrastructure.gaps import record as gap
+from ..domain.logistics import pick_transit, tradeoffs
+from ..domain.patterns import acts_votes, seed, seed_profile, summary
+from ..domain.perceive import links_in, photo_context
 from ..domain.prepass import Prepass, prepass
 from ..domain.questions import (FIELD_LABEL, OFFER_QID, OTHER_CHIP, QUIZ_FIELD, REVIEW_QID, SOFT_LABEL, TO_QUIZ,
                                 apply_chip, care_q, c_effort, companions_q, find_quiz, is_quiz, pending_fields, strictest,
@@ -37,9 +47,9 @@ from ..domain.questions import (FIELD_LABEL, OFFER_QID, OTHER_CHIP, QUIZ_FIELD, 
 from ..domain.readiness import missing
 from ..domain.resolve import URL, anchor_for, search
 from ..domain.coverage import admissible
-from ..domain.state import (MAX_TRIP_DAYS, SCALARS, Draft, Evidence, Frozen, Meta, SoftKey, TripState, Update, Vibe, apply, apply_drafts,
+from ..domain.state import (MAX_TRIP_DAYS, SCALARS, Anchor, Draft, Evidence, Frozen, Meta, SoftKey, TripState, Update, Vibe, apply, apply_drafts,
                             ontology, pending_signals, settle, with_meta)
-from ..domain.text import fold, language
+from ..domain.text import fold, language, squash
 from ..domain.traits import compared_places
 from ..domain.understanding import chip_effects, view as understanding
 from ..infrastructure.catalog import Catalog
@@ -49,6 +59,10 @@ from ..infrastructure.sessions import Session, SessionStore
 from ..infrastructure.settings import ROOT, Settings
 
 Emit = Callable[[str, dict], None]
+INVITE = re.compile(r"lên lịch[^.!?…]*\?")  # the assistant's one invitation to plan the trip (agent/prompt.py ASSISTANT)
+NO_ANSWER = re.compile(r"\bchua co thong tin\b")  # the assistant's words for "the data has no answer" (folded)
+MIN_PREPARE_S = 0.3  # the read tools get at least this long after a slow Clef
+SHOWN_KEEP, TOLD_KEEP = 80, 300  # places and numbers of read-tool results a session remembers (Meta.shown_ids / told_numbers)
 TURN_LOG = ROOT / "logs" / "run" / "trip_turns.log"  # one JSON line per turn: tools called, retry, reply, card (debugging)
 
 
@@ -109,6 +123,8 @@ BAD_PHOTO = "Ảnh này mình không mở được, bạn thử ảnh JPG hoặc
 # Prepass proposals allowed straight into the Trip State: high-precision slots only (dates, counts,
 # money, explicit body signals, effort hard filters, single-meaning soft). Everything else arrives as
 # agent-only suggestions and is recorded via record_fact.
+log = logging.getLogger(__name__)
+PHOTOS_KEPT = 5  # photo records the assistant keeps for one session (memory only)
 FOLLOWUP_LIMIT = 3  # the agent's own questions in a row after which the app asks a required topic itself
 APPLIED_FIELDS = frozenset({"start_date", "month", "month_part", "days", "nights", "people", "budget_vnd",
                             "budget_scope", "signal", "hard", "soft", "arrival_mode", "mobility", "driver", "unmapped"})
@@ -117,7 +133,8 @@ EXACT_FIELDS = frozenset({"start_date", "month", "month_part", "days", "nights",
 
 
 class TurnInput(Frozen):
-    kind: Literal["text", "answer", "edit", "show", "more", "theme", "to_chat", "to_quiz", "image", "deck", "drop", "readback_ok"]
+    kind: Literal["text", "answer", "edit", "show", "more", "theme", "to_chat", "to_quiz", "image", "deck", "drop", "readback_ok",
+                  "like"]
     answers: dict[str, list[str] | str] = {}
     text: str = ""
     qid: str = ""
@@ -149,6 +166,8 @@ def _learned(before: TripState, after: TripState, fields: list[str]) -> bool:
             return st.activities
         if f == "time_preference":
             return st.time_preferences
+        if f == "intent":
+            return st.meta.intent
         return getattr(st, f).value
 
     return any(now(before, f) != now(after, f) for f in set(fields) - {"unmapped"})
@@ -206,15 +225,19 @@ def card(q: Question | None, effects: dict[str, int] | None = None) -> dict | No
 class Engine:
     def __init__(self, catalog: Catalog, cfg: Settings, store: SessionStore, chat: Chat,
                  today: Callable[[], date] = date.today, profiles: ProfileStore | None = None,
-                 judge=None, looks=None, web=None, see=None):
+                 judge=None, looks=None, web=None, see=None, knowledge=None):
         """chat: one model call with tools (agent/loop.py). profiles: stored patterns (config patterns.enabled);
         None = no long-term learning. judge: Clef's yes / no checks on facts, replies and questions (infrastructure.clef.Judge); None = regex guards only.
         looks: corpus.index for looks and photos (infrastructure.looks.Looks); None = no photo cards.
         web: infrastructure.web.Web for the agent's web_search / web_read; None = no web tools.
-        see: photo bytes -> {kind, cues} (Extractor PHOTO_CUES); None = a photo is matched by its pixels only."""
+        see: photo bytes -> {kind, cues} (Extractor PHOTO_CUES); None = a photo is matched by its pixels only.
+        knowledge: infrastructure.knowledge.Knowledge, the assistant's read tools (used when cfg.assistant.enabled)."""
         self.catalog, self.cfg, self.store, self.chat, self.today = catalog, cfg, store, chat, today
         self.profiles, self.judge = profiles, judge
         self.looks, self.web, self.see = looks, web, see
+        self.knowledge = knowledge
+        self.warmed = threading.Event()  # create_engine clears it while the assistant's first search warms (api/tools.py)
+        self.warmed.set()
 
     # ---------- reads ----------
 
@@ -240,15 +263,80 @@ class Engine:
 
     def view(self, s: Session) -> dict:
         return {"id": s.id,
-                "transcript": [{k: t.get(k) for k in ("role", "text", "turn", "kind")} for t in s.transcript
-                               if t["role"] in ("user", "agent")],
+                "transcript": [self._entry(t, s.state) for t in s.transcript if t["role"] in ("user", "agent")],
                 "understanding": understanding(s.state, self.catalog, self.cfg),
                 "card": self._card(s.state, s.card),
+                "tradeoffs": tradeoffs(s.state, self.cfg),
                 "phase": s.state.meta.phase}
+
+    def _entry(self, t: dict, state: TripState) -> dict:
+        """One transcript line for the screen; an assistant card line (kind places) gets its cards built again."""
+        out = {k: t.get(k) for k in ("role", "text", "turn", "kind")}
+        if t.get("kind") == "places":
+            out.update(ids=list(t.get("ids") or ()), why=t.get("why") or "", cards=self._cards(t.get("ids") or (), state))
+        elif t.get("kind") == "block":
+            out["block"] = t.get("block")
+        elif t.get("kind") == "replies":
+            out["options"] = list(t.get("options") or ())
+        return out
+
+    def _named(self, say: str, ids: set[str], most: int = 10) -> list[str]:
+        """The ids of `ids` whose place name the reply says, in the reply's order."""
+        text = f" {squash(say)} "
+        at = {pid: text.find(f" {squash(p.name)} ") for pid in ids if (p := self.catalog.by_id.get(pid)) and squash(p.name)}
+        return sorted((pid for pid, i in at.items() if i >= 0), key=at.get)[:most]
+
+    def _cards(self, ids, state: TripState, scenes: dict[str, str] | None = None) -> list[dict]:
+        """The chat's place cards (infrastructure.knowledge.Knowledge.view); liked = a want anchor of the trip;
+        scenes: place id -> the scene whose photo the card shows first (place_photos)."""
+        if self.knowledge is None:
+            return []
+        liked = {a.place_id for a in state.anchors if a.priority == "want" and a.place_id}
+        return [c for pid in ids if (c := self.knowledge.view(pid, self.today(), pid in liked, (scenes or {}).get(pid)))]
 
     def forget(self, user_id: str) -> bool:
         """Delete everything stored about a user. False when nothing was stored (or learning is off)."""
         return self.profiles.forget(user_id) if self.profiles else False
+
+    def profile(self, user_id: str) -> dict:
+        """Every stored entry for the user to see (docs/TRIP_UNDERSTANDING.md §17); used = it seeds the next trip."""
+        if not self.profiles:
+            return {"enabled": False, "paused": False, "entries": []}
+        paused, found = self.profiles.entries(user_id, self.today(), self.catalog)
+        return {"enabled": True, "paused": paused,
+                "entries": [{**e.model_dump(mode="json"), "used": e.used and not paused} for e in found]}
+
+    def note_acts(self, user_id: str, sid: str, acts: list[dict]) -> bool:
+        """Weak evidence from Decision / Planning for the trip's trip-session `sid` (patterns.acts_votes): written only
+        when that trip's user agreed to remember and is `user_id`. True when something was written."""
+        if not self.profiles:
+            return False
+        try:
+            m = self.store.get(sid).state.meta
+        except KeyError:
+            return False
+        votes = acts_votes(acts)
+        if not (m.remember and m.user_id == user_id and votes):
+            return False
+        self.profiles.note(user_id, sid, self.today(), votes)
+        return True
+
+    def edit_entry(self, user_id: str, eid: str, patch: dict) -> dict:
+        """patch: {statement?, paused?}. KeyError when there is no such entry."""
+        if not isinstance(patch, dict) or not patch or set(patch) - {"statement", "paused"}:
+            raise ValueError("an entry takes statement and / or paused")
+        if not (self.profiles and self.profiles.edit(user_id, eid, patch.get("statement"), patch.get("paused"))):
+            raise KeyError(eid)
+        return next(e for e in self.profile(user_id)["entries"] if e["id"] == eid)
+
+    def delete_entry(self, user_id: str, eid: str) -> bool:
+        return self.profiles.delete(user_id, eid) if self.profiles else False
+
+    def pause_profile(self, user_id: str, paused: bool) -> dict:
+        if not self.profiles:
+            raise KeyError(user_id)
+        self.profiles.pause(user_id, paused)
+        return self.profile(user_id)
 
     def places(self, q: str) -> list[dict]:
         return [{"id": p.id, "name": p.name, "category": p.category} for p in search(q, self.catalog)]
@@ -860,10 +948,36 @@ class Engine:
                           web=self.web if may_ask and not quiet else None, cards=may_ask and not quiet,
                           history=tuple((t["turn"], t["text"]) for t in s.transcript if t["role"] == "user"),
                           gaps=Path(self.cfg.gaps_path),
+                          knowledge=self.knowledge, assistant=self.cfg.assistant.enabled and not quiet,
+                          on_cards=lambda ids, why: send_cards(ids, why),
                           on_trace=lambda t: emit("progress", t),
                           # each fact reaches the summary as soon as the model has written it, not when the turn ends
                           on_state=None if quiet else lambda st: emit(
                               "state", {"understanding": understanding(st, self.catalog, self.cfg)}))
+        if tools.assistant:  # what the user showed or pasted: the perceive tools read these (spec §5.2)
+            tools.photos = s.photos
+            tools.shown_log = last_shown(s.transcript, self._name)
+            tools.slots = {"photos": photo_context(s.photos), "links": links_in(text)}
+        guard = None
+        if tools.assistant and self.cfg.assistant.guard and self.judge is not None and not picked and not answer:
+            # Clef reads the message for rules R1-R8 while the model works (spec 2026-10-29 §4); a hit stops the model
+            # calls, the cards and the facts of this turn. Clef slow or down = ok.
+            guard = Guarded(lambda st, qs: clef.ask(st, qs, self.cfg), text, threshold=self.cfg.assistant.guard_threshold,
+                            **self._guard_context(s, tools))
+            tools.verdict = lambda: guard.verdict().hit
+            tools.blocked = guard.blocked_now
+        def reply_cards(say: str) -> None:
+            # the places a text names, as cards, no model call: the whole ranked list of the search they came from
+            if tools.card_lists or not say:
+                return
+            if named := self._named(say, tools.told_ids | set(s.state.meta.shown_ids)):
+                ranked = next((r for r in tools.rankings if set(named) & set(r)), [])
+                tools.emit_cards(ranked + [p for p in named if p not in ranked])
+
+        def send_cards(ids: list[str], why: str) -> None:
+            # cards go out the moment a read tool answers the model, before its text is final (spec §2: thẻ trước)
+            emit("places", {"ids": ids, "why": why, "cards": self._cards(ids, tools.state, tools.scene_first)})
+        blocks.watch(tools, emit, lambda ids: self._cards(ids, tools.state, tools.scene_first))
         hints = [{"field": p.field, "value": values.jsonable(p.value), "quote": p.quote,
                   **({"written": True} if p.field in EXACT_FIELDS and not p.inferred else {})} for p in pre.proposals]
         hints += [{"ambiguous": q, "may_mean": list(k)} for q, k in pre.ambiguous]
@@ -871,10 +985,40 @@ class Engine:
                   for p in pre.suggestions]
         log = tools.log
         needed = missing(st, self.cfg.required)
+        assistant = tools.assistant
+        prefetched = None
+        # a photo sent now or a link in the message is read by the agent itself (photo_identify, link_resolve): nothing is
+        # prepared from its caption (a caption like "quán này ở đâu?" finds nothing) and no tool is hidden
+        perceiving = bool(tools.slots.get("links")) or any(p.get("turn") == turn for p in s.photos)
+        if assistant and self.cfg.assistant.prefetch and not picked and not perceiving:  # Clef picks the read tools; they run meanwhile
+            pool = ThreadPoolExecutor(1)
+            prefetched = pool.submit(self._prefetch, text, st, tools)
+            pool.shutdown(wait=False)
         found = {} if picked else lookups(text, self.catalog)  # corpus lookups ready before the model reads the message
+        data = None
+        if prefetched is not None:
+            try:
+                data, note = prefetched.result()
+                log.append(note)
+            except Exception as exc:  # preparing is optional: the agent calls the read tools itself
+                log.append(f"prefetch_failed {type(exc).__name__}")
+        if assistant:  # names are matched by prefetch.candidates, and a prepared day needs no date tool
+            tools.hidden = {"search_places"} | (set(DATE_TOOLS) if data and "thoi_tiet" in data else set())
+            if self.cfg.assistant.hide_prepared_lookup and data and (data.get("tim_noi") or data.get("chi_tiet")):
+                tools.hidden.add("find_places")  # the model re-searched what data holds: one 3-8 s call each time
+            mode = self.cfg.assistant.covered_tools
+            if mode in ("write", "none") and tools.route is not None and covers(tools.route, data):
+                # the prepared data answers every asked group: no lookup (each costs a 3-8 s second call)
+                tools.hidden |= {n for n in tools.tool_names() if mode == "none" or n != "record_fact"}
+                log.append(f"covered tools={mode}")
         messages = build_messages(st, text, s.transcript[:-1], prev.text if prev else None, self.today(), hints, compared,
-                                   clarify, dict(needed), stuck, picked=picked, lookups=found)
+                                   clarify, dict(needed), stuck, picked=picked, lookups=found, data=data,
+                                   assistant=assistant, ask_words=self.cfg.assistant.ask_words,
+                                   reply_style=self.cfg.assistant.reply_style, slots=tools.slots,
+                                   name_of=lambda pid: p.name if (p := self.catalog.by_id.get(pid)) else None)
         tools.step("read", "Đọc lựa chọn của bạn" if picked else "Đọc tin nhắn của bạn", "ok")
+        if assistant:
+            tools.reply_hook = reply_cards
         said: list[str] = []
 
         def on_retry() -> None:
@@ -896,6 +1040,8 @@ class Engine:
                 emit("say", {"replace": said[0]})
         finally:
             tools.close()
+        if guard is not None and (hit := guard.verdict()).hit:
+            return self._refuse(s, before, prev, turn, text, hit, tools, started_at, emit)
         if photos is not None:
             try:
                 tools.state = drill.adopt(tools.state, photos.result(timeout=DRILL_WAIT_S))
@@ -914,9 +1060,15 @@ class Engine:
         # An unmapped wish is the agent's to handle (see UNMAPPED in the prompt): its own text stays, checked
         # below like any reply. Only a silent turn keeps the recorded-facts fallback above.
         told = " ".join(tools.refusal_notes.values())
+        if assistant:  # numbers in this turn's read results may be said, and the places they returned named
+            told += " " + " ".join(map(str, sorted(tools.told_numbers)))
         check = lambda x: bad_say(x, heard, tools.state, self.catalog, {c["id"] for c in compared},  # noqa: E731
-                                  reply_language=language(text), told=told)
+                                  reply_language=language(text), told=told, allowed_ids=frozenset(tools.told_ids))
         invented = lambda x: w if (w := check(x)) and w.startswith(INVENTED) else None  # noqa: E731
+        if assistant:  # a place the reply names that no tool returned: counted for the corpus (spec §B.5)
+            for pid in {w.removeprefix("names place ") for x in re.split(r"(?<=[.!?…])\s+", say)
+                        if (w := check(x)) and w.startswith("names place")}:
+                gap(Path(self.cfg.gaps_path), text, "unsourced_place", subject=pid)
         if (why := check(say)) and why.startswith(INVENTED) and (kept := prune_say(say, invented)) and check(kept) is None:
             # only the sentences with a figure or a place nobody said go; the rest of the reply stays
             log.append(f"say pruned: {why}")
@@ -930,7 +1082,10 @@ class Engine:
         if language(text) == "en" and say and language(say) != "en":
             say = "I could not finish understanding that. Please tell me again."
             emit("say", {"replace": say})
-        short = trim_say(say)
+        if assistant and NO_ANSWER.search(fold(say)):  # the data had no answer: counted for the corpus (spec §B.5)
+            first = max(sorted(tools.route.groups), key=lambda g: tools.route.probs.get(g, 0)) if tools.route and tools.route.groups else None
+            gap(Path(self.cfg.gaps_path), text, "no_answer", topic=first)
+        short = trim_words(say, self.cfg.assistant.reply_words) if assistant else trim_say(say)
         if short != say:
             say = short
             emit("say", {"replace": say})
@@ -940,6 +1095,14 @@ class Engine:
             log.append("same_question")
             say = drop_questions(say) or MOVE_ON_SAY
             emit("say", {"replace": say})
+        invited = False
+        if assistant and INVITE.search(say):
+            if s.state.meta.invited:  # planning is offered once a session: the talk goes on without asking again
+                log.append("invite_again")
+                say = drop_questions(say)
+                emit("say", {"replace": say})
+            else:
+                invited = True
         if may_ask and asks_settled_care(say) and "care" not in dict(missing(tools.state, self.cfg.required)):
             # Lưu ý is answered with a safe limit already: how strict it is is not asked again (testers, 2026-10-16)
             log.append("care_asked_again")
@@ -960,12 +1123,33 @@ class Engine:
             emit("say", {"replace": say})
         s.transcript.append({"role": "system", "text": "; ".join(log) or "no tools", "turn": turn,
                              "tools": {"recorded": list(tools.recorded), "refused": dict(tools.refusal_notes),
-                                       "unmapped": list(tools.unmapped)}})
+                                       "unmapped": list(tools.unmapped)},
+                             "timings": list(tools.timings)})  # model call seconds and cached_tokens (the bench reads them)
         if say:
             s.transcript.append({"role": "agent", "text": say, "turn": turn, "kind": "say"})
+        if assistant:
+            reply_cards(say)  # a reply that names places no card has shown yet: they go out now
+            try:
+                if block := blocks.prepared_dish_block(tools, found, lambda ids: self._cards(ids, tools.state, tools.scene_first)):
+                    tools.blocks.append(block)
+                    emit("block", block)
+            except Exception as exc:  # noqa: BLE001 - a block is an extra: the reply must not fail for it
+                log.append(f"dish_block_failed {type(exc).__name__}")
+        for shown in tools.card_lists:  # the assistant's cards (already on the screen) are kept with the reply
+            s.transcript.append({"role": "agent", "text": "", "turn": turn, "kind": "places", **shown})
+        for block in getattr(tools, "blocks", ()):  # dish / services results, kept with the reply like the cards
+            s.transcript.append({"role": "agent", "text": "", "turn": turn, "kind": "block", "block": block})
+        if tools.quick:
+            s.transcript.append({"role": "agent", "text": "", "turn": turn, "kind": "replies", "options": tools.quick})
+            emit("replies", {"options": tools.quick})
         kept = tools.settle_refusals(dict(s.state.meta.refusal_turns))
         tools.state = derive(tools.state, self.catalog, turn)
         s.state = with_meta(tools.state, refusal_turns=tuple(sorted(kept.items())))
+        if assistant:
+            m = s.state.meta
+            s.state = with_meta(s.state, invited=m.invited or invited,
+                                shown_ids=tuple(dict.fromkeys((*m.shown_ids, *sorted(tools.told_ids))))[-SHOWN_KEEP:],
+                                told_numbers=tuple(dict.fromkeys((*m.told_numbers, *sorted(tools.told_numbers))))[-TOLD_KEEP:])
         if may_ask and isinstance(prev, Deck) and VAGUE.search(fold(text)):
             # an open required card answered in words like "chưa chốt" / "bỏ qua" and still not filled: the same as its
             # Bỏ qua (asked again at the read-back before planning), so the talk moves on instead of showing it again
@@ -1032,6 +1216,56 @@ class Engine:
             emit("card", self._card(s.state, s.card))
             return
         self._quiz_next(s, emit)
+
+    def _guard_context(self, s: Session, tools: TurnTools) -> dict:
+        """What Clef reads next to the message: the user's message before, the start of the last answer, place names just shown."""
+        said = [t for t in s.transcript[:-1] if t["role"] == "user" and t.get("kind") == "text"]
+        answered = next((t["text"] for t in reversed(s.transcript[:-1]) if t["role"] == "agent" and t.get("kind") == "say"), "")
+        shown = next((t["ids"] for t in reversed(s.transcript) if t.get("kind") == "places" and t.get("ids")), [])
+        return {"prev_user": said[-1]["text"] if said else "", "prev_reply": answered,
+                "shown": [n for pid in shown if (n := self._name(pid))]}
+
+    def _refuse(self, s: Session, before: TripState, prev, turn: int, text: str, hit, tools: TurnTools, started_at: float,
+                emit: Emit) -> None:
+        """The rule guard stopped the turn: the label's fixed reply, nothing the user said in it is recorded (the state is the
+        one before the turn), no card or question goes out."""
+        say = rule_reply(hit.label, text)
+        emit("say", {"replace": say})
+        s.state = with_meta(before, turn=turn)
+        s.transcript.append({"role": "system", "text": "; ".join([*tools.log, f"rule_guard {hit.label} {hit.prob:.2f}"]),
+                             "turn": turn, "tools": {"recorded": [], "refused": {}, "unmapped": []}})
+        s.transcript.append({"role": "agent", "text": say, "turn": turn, "kind": "say"})
+        s.card = prev if isinstance(prev, Deck) else conversation_card()
+        log_turn(s.id, turn, text, [*tools.log, f"rule_guard {hit.label} {hit.prob:.2f}", f"t_turn {time.monotonic() - started_at:.1f}"],
+                 say, s.card.qid)
+        emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+        emit("card", self._card(s.state, s.card))
+
+    def _like(self, s: Session, inp: TurnInput, emit: Emit) -> None:
+        """Thích on a chat place card (no model call): on = a want anchor of that place, off = that anchor gone.
+        Only a place the assistant showed this session."""
+        pid = inp.target
+        if pid not in s.state.meta.shown_ids or pid not in self.catalog.by_id or inp.value not in ("on", "off"):
+            raise ValueError("like needs a place shown in this chat and value on or off")
+        kept = tuple(a for a in s.state.anchors if not (a.place_id == pid and a.priority == "want"))
+        if inp.value == "on" and not any(a.place_id == pid for a in kept):  # a must-go stays a must-go
+            kept += (Anchor(text=self.catalog.by_id[pid].name, place_id=pid, state="matched", priority="want"),)
+        s.state = settle(s.state.model_copy(update={"anchors": kept}))
+        s.transcript.append({"role": "system", "text": f"like {inp.value} {pid}", "turn": s.state.meta.turn})
+        emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+
+    def _prefetch(self, text: str, st: TripState, tools: TurnTools) -> tuple[dict, str]:
+        """The assistant's prepared data (agent/prefetch.py): candidates -> one Clef request -> the read tools at once,
+        waiting at most cfg.assistant.prefetch_wait_s in all. -> (data, the turn-log line)."""
+        started = time.monotonic()
+        a = self.cfg.assistant
+        cands = candidates(text, self.catalog, a.max_candidates)
+        r = route(text, cands, self.cfg, ask=clef.ask if self.judge is not None else (lambda *_: {}), today=self.today())
+        tools.route = r
+        left = max(MIN_PREPARE_S, a.prefetch_wait_s - (time.monotonic() - started))
+        data = prepare(r, text, st, tools, self.today(), left)
+        return data, (f"prefetch groups={','.join(sorted(r.groups)) or '-'} places={len(r.places)} "
+                      f"clef={r.clef_s:.2f}s wait={time.monotonic() - started:.2f}s")
 
     # ---------- answers the agent does not need to read ----------
 
@@ -1257,11 +1491,11 @@ class Engine:
         m = s.state.meta
         if not (self.profiles and m.remember and m.user_id):
             return
-        votes = votes_from_state(s.state)
-        if not votes:
+        done = summary(s.state, s.id, self.today())
+        if done is None:
             return
         try:
-            self.profiles.record(m.user_id, Summary(sid=s.id, day=self.today(), votes=votes))
+            self.profiles.record(m.user_id, done)
         except OSError as e:
             s.transcript.append({"role": "system", "text": f"profile not saved: {e}", "turn": m.turn})
 
@@ -1282,6 +1516,8 @@ class Engine:
         its reply asks nothing (no deck tab waits either) or it has asked its own questions FOLLOWUP_LIMIT times in a
         row. Never while the user is asking, for a topic they skipped, nor more than twice for one topic."""
         m = s.state.meta
+        if self.cfg.assistant.enabled and self.knowledge is not None and not planning(s.state):
+            return None  # the user explores Đà Lạt: the assistant invites planning once, the app opens no required topic
         asking = asks_in_text(say)
         last = fold(next((t["text"] for t in reversed(s.transcript) if t["role"] == "user"), ""))
         if self._user_asks(s) or (asking and m.followups < FOLLOWUP_LIMIT) or re.search(
@@ -1420,6 +1656,8 @@ class Engine:
         except (ValueError, binascii.Error, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning):
             emit("error", {"message": BAD_PHOTO})
             return
+        if self._sees_photos(s):
+            return self._image_assistant(s, data, inp, emit)
         caption = inp.text.strip()[:200]
         turn = self._open_turn(s, caption or "Ảnh bạn gửi", "image")
         steps: list[dict] = []
@@ -1479,6 +1717,30 @@ class Engine:
             emit("say", {"replace": say})
         emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
         emit("card", self._card(s.state, s.card))
+
+    def _sees_photos(self, s: Session) -> bool:
+        """The assistant reads a photo itself (the agent chooses photo_identify / photo_similar) in chat; every other
+        phase, or an engine without the reader, keeps the card flow."""
+        k = self.knowledge
+        return bool(self.cfg.assistant.enabled and self.looks and k is not None and getattr(k, "perceiver", None)
+                    and hasattr(self.looks, "read_photo") and s.state.meta.phase == "chat")
+
+    def _image_assistant(self, s: Session, data: bytes, inp: TurnInput, emit: Emit) -> None:
+        """A photo in the assistant's chat: read once into a session record (what it shows, the words written in it, the
+        places it matches), then the agent turn runs on the caption with that record in its context. The picture itself
+        is dropped here: only the record stays, in memory, for this session."""
+        caption = inp.text.strip()[:200]
+        turn = s.state.meta.turn + 1
+        photo_id = f"p{turn}"
+        emit("progress", {"steps": [{"id": "read", "label": "Đọc ảnh", "status": "run"}], "sources": []})
+        try:
+            record = self.looks.read_photo(data, None, set(s.state.meta.shown_ids), photo_id, turn)
+        except Exception as exc:  # the reader is down: the agent still hears the caption and asks for the name
+            log.warning("photo read failed: %s", type(exc).__name__)
+            record = {"photo_id": photo_id, "turn": turn, "kind": "", "cues": [], "screenshot": False, "text_in_image": "",
+                      "names_in_image": [], "match": None, "candidates": [], "similar": []}
+        s.photos = [*s.photos, record][-PHOTOS_KEPT:]
+        self._run(s, caption or "Ảnh bạn gửi", emit)
 
     def _card(self, state: TripState, q: Question | Deck | None) -> dict | None:
         if isinstance(q, Deck):

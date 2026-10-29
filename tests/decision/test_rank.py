@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from fixtures import feat, love, si, srec
 
 from decision.model import Cand
@@ -14,16 +16,19 @@ def prof(**kw):
 
 
 def test_conf_scales_with_authors_agreement_and_status():
-    assert conf(feat("present", n=3)) == 1.0
-    assert conf(feat("present", n=1)) == 1 / 3
-    assert conf(feat("present", n=3, status="UNCERTAIN", agreement=0.8)) == 0.4
+    # corpus.serving.evidence: support 0.7 at 3 authors (was 1.0 flat from 3 on), linear below, log-shaped above
+    assert conf(feat("present", n=3)) == pytest.approx(0.7)
+    assert conf(feat("present", n=1)) == pytest.approx(0.7 / 3)
+    assert conf(feat("present", n=3, status="UNCERTAIN", agreement=0.8)) == pytest.approx(0.28)
+    assert conf(feat("present", n=300)) == pytest.approx(1.0)
+    assert conf(feat("present", n=300)) > conf(feat("present", n=30)) > conf(feat("present", n=3))
 
 
 def test_preference_matches_context_and_counts_missing_wanted_features():
     s = si(soft_weights=[love("crowd", "low", context={"time_of_day": "morning"}), love("scenic_view")])
     rec = srec("A", features={"crowd": feat("high", by_context={"time_of_day=morning": {"low": 3, "high": 1}})})
     pref, unc, matches = preference(rec, wants(s, prof()))
-    assert pref == 0.5 and unc == 0.5 and matches[0][:2] == ("crowd", "low")
+    assert pref == pytest.approx(0.5 * conf(feat("high", n=3))) and unc == 0.5 and matches[0][:2] == ("crowd", "low")
 
 
 def test_avoid_weight_is_negative_and_profile_soft_counts():
@@ -124,3 +129,15 @@ def test_no_wishes_means_zero_wish_everywhere():  # A14, E10, Review Focus 3
     cs = [_meal("A"), Cand(srec("C"), "experience")]
     _run(cs, si())
     assert all(c.parts["wish"] == 0.0 and c.wishes == [] for c in cs)
+
+
+def test_reputation_part_is_centred_and_unknown_adds_nothing():
+    hi, lo, none = (Cand(srec(i, voices=10), "experience") for i in "ABC")
+    hi.rec["provenance"]["reputation"] = {"score": 0.9}
+    lo.rec["provenance"]["reputation"] = {"score": 0.2}
+    for c in (hi, lo, none):
+        c.fit = 1.0
+    score([hi, lo, none], si(), prof(), CFG)
+    assert (hi.parts["rep"], lo.parts["rep"], none.parts["rep"]) == (0.4, -0.3, 0.0)
+    assert hi.score > none.score > lo.score
+    assert hi.score - none.score == pytest.approx(CFG.weights["rep"] * 0.4)

@@ -20,7 +20,20 @@ def main():
     load_dotenv(Path(__file__).resolve().parents[2] / ".env")
     import live
     cfg = live.load_settings()
-    Notify(pool(), serving_records(), weather=lambda lat, lng, dates: live.weather(lat, lng, dates, cfg)).run(args.once)
+    records = serving_records()
+    Notify(pool(), records, weather=lambda lat, lng, dates: live.weather(lat, lng, dates, cfg),
+           eve=_eve(records, cfg), expert=_expert(records, cfg)).run(args.once)
+
+
+def _eve(records, live_cfg):
+    """The D.3 evening check; None while config/planning.yaml eve_replan.enabled is false."""
+    import planning
+    return planning.eve_runner(records, live_cfg, Path(__file__).resolve().parents[2] / "data" / "planning" / "eve")
+
+def _expert(records, live_cfg):
+    """The D.2 Local Expert pass after a confirm; None while config/planning.yaml expert.enabled is false."""
+    import planning
+    return planning.expert_runner(records, live_cfg, Path(__file__).resolve().parents[2] / "data" / "planning" / "eve")
 
 
 if __name__ == "__main__":

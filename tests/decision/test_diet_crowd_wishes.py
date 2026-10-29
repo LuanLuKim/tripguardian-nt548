@@ -170,3 +170,20 @@ def test_ontology_is_parsed_once_per_file_version(tmp_path):
     assert ontology.load(copy) is first
     copy.write_text(copy.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     assert ontology.load(copy) is not first
+
+
+@pytest.mark.parametrize("text,value", [("chỉ xem quán mở trước 7h", "07:00"), ("Chỉ lấy quán mở trước 6h30", "06:30"),
+                                        ("mình chỉ xem nơi mở từ 8 giờ thôi", "08:00")])
+def test_opening_filter_is_read_without_the_model(text, value):
+    actions, say = common_wish(text, {})
+    assert actions == [{"type": "filter", "key": "opens_by", "value": value}] and value in say
+
+
+@pytest.mark.parametrize("text", ["bỏ lọc", "xóa bộ lọc đi", "Bỏ bộ lọc"])
+def test_remove_filter_is_read_without_the_model(text):
+    assert common_wish(text, {})[0] == [{"type": "unfilter"}]
+
+
+def test_a_filter_that_names_a_place_or_adds_words_goes_to_the_model():
+    assert common_wish("chỉ xem quán mở trước 7h và có view đẹp", {}) is None
+    assert common_wish("chỉ xem quán mở trước 25h", {}) is None

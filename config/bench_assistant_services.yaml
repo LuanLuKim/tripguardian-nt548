@@ -1,0 +1,11 @@
+# find_services cases (utilities, rental / tour, coach station): the assistant reads them from the crawl, never invents,
+# shows no cards (they are not places to visit). Format: src/bench/assistant.py docstring.
+cases:
+  - {id: svc-atm, family: services, turns: ["Gần chợ Đà Lạt có cây ATM nào không?"], tool_groups: [services], cards: false}
+  - {id: svc-pharmacy, family: services, turns: ["Hiệu thuốc nào gần Hồ Xuân Hương?"], tool_groups: [services], cards: false}
+  - {id: svc-fuel, family: services, turns: ["Cây xăng gần nhất ở đâu, mình sắp hết xăng"], tool_groups: [services], cards: false}
+  - {id: svc-bike-rent, family: services, turns: ["Thuê xe máy ở Đà Lạt chỗ nào, số điện thoại bao nhiêu?"], tool_groups: [services], cards: false}
+  - {id: svc-hospital, family: services, turns: ["Bệnh viện hoặc phòng khám gần trung tâm ở đâu?"], tool_groups: [services], cards: false}
+  - {id: svc-station, family: services, turns: ["Bến xe khách Đà Lạt ở đâu, mình đi từ Sài Gòn lên"], tool_groups: [services], cards: false}
+  - {id: svc-charger, family: services, turns: ["Có trạm sạc xe điện nào gần đây không?"], tool_groups: [services], cards: false}
+  - {id: svc-toilet-then-tour, family: services, turns: ["Nhà vệ sinh công cộng gần chợ có không?", "Còn tour đi săn mây thì đặt ở đâu?"], tool_groups: [services], cards: false}

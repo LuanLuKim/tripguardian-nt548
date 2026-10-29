@@ -76,7 +76,7 @@ def test_first_preview_creates_a_calendar_and_one_event_per_stop_without_reminde
     assert [ch["op"] for ch in p["changes"]] == ["create"] * 3
     ev = p["changes"][0]["after"]
     assert ev["reminders"] == {"useDefault": False, "overrides": []} and ev["start"]["dateTime"].startswith("2026-11-12T14:00")
-    assert "https://app.test/app/today?stop=" in ev["description"]
+    assert "https://app.test/app/plan" in ev["description"]
     out = c.apply("j00000000001", UID, PLAN, p["preview_hash"])
     assert out["applied"] == 3 and out["state"] == "synced" and FakeApi.calendars == [p["calendar"]["summary"]]
     again = c.preview("j00000000001", UID, PLAN)

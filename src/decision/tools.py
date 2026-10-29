@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field
 
 from agents import ToolError, load_skill, permit_tool
+from agents.assistant import ChatSettings, langchain_chat
 from trip import SearchInput
 from corpus.releases import Binding, bind, resolve_binding
 from corpus.retrieval import RetrievalEngine
@@ -146,12 +147,16 @@ def create_engine(data_root: Path, *, binding: Binding | None = None,
     agent = None
     if all(os.environ.get(k) for k in ("AGENT_API_KEY", "AGENT_BASE_URL", "AGENT_MODEL")):
         agent = lambda fields, on_say: run_agent(fields, on_say, cfg)
+    # typed text the heuristics leave goes through the shared assistant loop (config/decision.yaml assistant)
+    assistant = (langchain_chat(ChatSettings(total_s=cfg.total_s, max_tokens=cfg.assistant.get("max_tokens", 800),
+                                             cache_key="decision_turn"))
+                 if agent is not None and cfg.assistant.get("enabled") else None)
     binding = binding or bind(data_root)
     if retrieval is not None and retrieval.binding != binding:
         raise ValueError("retrieval corpus binding mismatch")
     root = resolve_binding(data_root, binding)
     engine = Engine(Data.load(binding.region, data_root=root, snapshot_version=binding.snapshot_version or ""),
-                    cfg, Store(None), agent,
+                    cfg, Store(None), agent, assistant=assistant,
                     retrieval=retrieval if retrieval is not None else RetrievalEngine.from_snapshot(shared(root / "snapshot", version=binding.snapshot_version or ""),
                                                             binding.region, binding=binding))
     engine.corpus_binding = binding

@@ -23,13 +23,16 @@ from accounts import AVATAR_MAX_BYTES, AuthError, safe_next
 from agents import ToolError
 from companion import CalendarError, NotConnected
 
+from . import booking_routes
 from .contracts import Request, TripNotReady
+from .contracts import StaleDataVersion
 from .dispatch import Conflict, LIVE
 from .router import RouteError, route
 from .protection import ProtectedHTTPServer, ProtectionSettings, RateGate, settings as protection_settings
 
 BASE = "/api/harness/sessions"
 PROFILE = re.compile(r"/api/harness/profile/([A-Za-z0-9_-]{8,64})")
+ENTRY = re.compile(r"/api/harness/me/profile/entries/([0-9a-f]{12})")  # one profile entry (Trip §17)
 AVATAR = re.compile(r"/api/harness/avatars/([0-9a-f]{32})")
 SESSION = re.compile(BASE + r"/([0-9a-f]{12})")
 REQUEST = re.compile(BASE + r"/([0-9a-f]{12})/request")
@@ -40,6 +43,7 @@ FEEDBACK = re.compile(BASE + r"/([0-9a-f]{12})/feedback")
 TODAY = re.compile(BASE + r"/([0-9a-f]{12})/today")
 SUGGEST = re.compile(BASE + r"/([0-9a-f]{12})/companion/suggest")
 COMPANION = re.compile(BASE + r"/([0-9a-f]{12})/companion")
+EVE = re.compile(BASE + r"/([0-9a-f]{12})/eve")
 NOTE_OPEN = re.compile(r"/api/harness/notifications/([0-9a-f-]{36})/open")
 FRIEND = re.compile(r"/api/harness/friends/([0-9a-f]{32})")
 ACCEPT = re.compile(r"/api/harness/friends/([0-9a-f]{32})/accept")
@@ -57,7 +61,14 @@ PURGE_EVERY_S = 3600
 LEAVERS_EVERY_S = 15  # how often guests whose page closed are looked for
 MEMBERS_ONLY = {"/api/harness/me/notification-prefs", "/api/harness/notifications", "/api/harness/push/key",
                 "/api/harness/calendar/preview", "/api/harness/me/avatar", "/api/harness/calendar/apply",
-                "/api/harness/calendar/disconnect", "/api/harness/push/subscribe", "/api/harness/push/unsubscribe"}
+                "/api/harness/calendar/disconnect", "/api/harness/push/subscribe", "/api/harness/push/unsubscribe",
+                "/api/harness/me/profile", "/api/harness/me/remember"}
+
+
+def _stale_body(exc: StaleDataVersion) -> dict:
+    """409 body for a journey pinned to a pruned corpus version: the UI shows "dữ liệu cũ, tạo lại chuyến", not a retry."""
+    return {"error": "stale_data_version", "message": "Chuyến này dùng phiên bản dữ liệu đã được dọn đi, bạn tạo lại chuyến nhé.",
+            "detail": str(exc), "artifact": exc.name, "version": exc.version}
 
 
 class StalePreview(Exception):
@@ -244,6 +255,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return self._json(404, {"error": "no such session"})
             except TripNotReady as exc:
                 return self._json(409, {"error": "trip_incomplete", "missing": exc.missing, "readback": exc.readback})
+            except StaleDataVersion as exc:
+                return self._json(409, _stale_body(exc))
             except (Conflict, RouteError) as exc:
                 return self._json(409, {"error": str(exc)})
             except ToolError as exc:
@@ -358,7 +371,7 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return self._auth_get(path, query)
             owner = user["id"]
             if user["guest"] and (path in MEMBERS_ONLY or TODAY.fullmatch(path) or SUGGEST.fullmatch(path)
-                                  or SOCIAL.fullmatch(path)):
+                                  or SOCIAL.fullmatch(path) or EVE.fullmatch(path)):
                 return self._members_only()
             if path == "/api/harness/me":
                 if harness.notify is not None:
@@ -366,6 +379,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return self._call(lambda: accounts.me(owner))
             if path == "/api/harness/me/notification-prefs" and harness.notify is not None:
                 return self._call(lambda: harness.notify.prefs(owner))
+            if path == "/api/harness/me/profile":
+                return self._call(lambda: harness.profile(owner))
             if path == "/api/harness/notifications" and harness.notify is not None:
                 return self._call(lambda: harness.notify.inbox(owner))
             if path == "/api/harness/push/key" and harness.notify is not None:
@@ -380,6 +395,12 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return self._call(lambda: harness.places(query.get("q", ""), owner))
             if path == "/api/harness/geo":
                 return self._call(lambda: harness.geo(query.get("q", "")))
+            if path == "/api/harness/pulse":
+                return self._call(harness.pulse)
+            if path == "/api/harness/booking/offers":
+                return self._call(lambda: booking_routes.offers(query))
+            if path == "/api/harness/journey":
+                return self._call(lambda: booking_routes.journey_options(query))
             if path == "/api/harness/lodging/suggest":
                 return self._call(lambda: harness.lodging_suggest(query.get("q", ""), int(query["top"]) if query.get("top", "").isdigit() and len(query["top"]) < 3 else 0))
             if path == "/api/harness/trips":
@@ -407,6 +428,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 if day is not None and not day.isdigit():
                     return self._json(400, {"error": "day must be a number"})
                 return self._call(lambda: harness.today(m[1], owner, int(day) if day else None))
+            if m := EVE.fullmatch(path):
+                return self._call(lambda: harness.eve(m[1], owner))
             if m := SUGGEST.fullmatch(path):
                 return self._call(lambda: harness.suggest(m[1], query.get("place", ""), owner, query.get("similar") == "1"))
             if m := SESSION.fullmatch(path):
@@ -485,7 +508,7 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
             if owner is None:
                 return self._json(401, {"error": "sign in first"})
             if user["guest"] and (path in MEMBERS_ONLY or COMPANION.fullmatch(path) or NOTE_OPEN.fullmatch(path)
-                                  or SOCIAL.fullmatch(path)):
+                                  or SOCIAL.fullmatch(path) or EVE.fullmatch(path)):
                 return self._members_only()
             if path == "/api/harness/me/avatar":
                 try:
@@ -507,6 +530,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                         return self._call(lambda: harness.create(body.get("experience"), body.get("start_with"), owner,
                                                                  False, owner, {}))
                     prior = {k: me.get(k) for k in ("usual_mobility", "usual_companions") if me.get(k)}
+                    if home := booking_routes.home_point(me.get("home_city")):
+                        prior["home"] = home
                     return self._call(lambda: harness.create(body.get("experience"), body.get("start_with"), owner,
                                                              me["consents"].get("patterns") is True, owner, prior))
                 if path == "/api/harness/me/consent":
@@ -515,6 +540,14 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                         harness._event("auth.consent", owner, None, version=body.get("version"))
                         return out
                     return self._call(consent)
+                if path == "/api/harness/me/remember":  # "nhớ cho lần sau": the one consent for the profile
+                    def remember():
+                        if not isinstance(body.get("on"), bool):
+                            raise ValueError("on must be true or false")
+                        out = accounts.remember(owner, body["on"])
+                        harness._event("profile.remember", owner, None, on=body["on"])
+                        return out
+                    return self._call(remember)
                 if path == "/api/harness/reports":
                     return self._call(lambda: harness.report(body))
                 if path == "/api/harness/me/library" and library is not None:
@@ -561,6 +594,9 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 if cm := COMPANION.fullmatch(path):
                     op = body.pop("operation", None)
                     return self._call(lambda: harness.companion_act(cm[1], op, body, owner))
+                if em := EVE.fullmatch(path):
+                    op = body.pop("operation", None)
+                    return self._call(lambda: harness.eve_act(em[1], op, body, owner))
                 m = REQUEST.fullmatch(path)
                 if not m:
                     return self._json(404, {"error": "not found"})
@@ -578,6 +614,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                         route(session.stage, req)
             except KeyError:
                 return self._json(404, {"error": "no such session"})
+            except StaleDataVersion as exc:
+                return self._json(409, _stale_body(exc))
             except (RouteError, Conflict) as exc:
                 return self._json(409, {"error": str(exc)})
             self._stream_headers()
@@ -599,6 +637,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 data = {"status": status, "message": message}
                 if isinstance(exc, TripNotReady):
                     data.update(error="trip_incomplete", missing=exc.missing, readback=exc.readback)
+                if isinstance(exc, StaleDataVersion):
+                    data.update(_stale_body(exc))
                 self._event({"request_id": req.request_id, "stage": req.stage, "revision": req.expected_revision,
                     "event": "error", "data": data})
 
@@ -607,8 +647,19 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
             if not begun:
                 return
             path, _, user = begun
-            if user and user["guest"] and path in ("/api/harness/me", "/api/harness/me/notification-prefs"):
+            if user and user["guest"] and (path in ("/api/harness/me", "/api/harness/me/notification-prefs",
+                                                    "/api/harness/me/profile") or ENTRY.fullmatch(path)):
                 return self._members_only()
+            if user and (path == "/api/harness/me/profile" or ENTRY.fullmatch(path)):
+                try:
+                    body = self._body()
+                    if path == "/api/harness/me/profile" and (set(body) != {"paused"} or not isinstance(body["paused"], bool)):
+                        raise ValueError("the profile takes paused: true or false")
+                except ValueError as exc:
+                    return self._json(400, {"error": str(exc)})
+                if m := ENTRY.fullmatch(path):
+                    return self._call(lambda: harness.edit_profile_entry(user["id"], m[1], body))
+                return self._call(lambda: harness.pause_profile(user["id"], body["paused"]))
             if user and path in ("/api/harness/me", "/api/harness/me/notification-prefs"):
                 try:
                     body = self._body()
@@ -653,6 +704,10 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 if user["guest"]:
                     return self._members_only()
                 return self._call(lambda: social.remove(user["id"], m[1]))
+            if user and (m := ENTRY.fullmatch(path)):
+                if user["guest"]:
+                    return self._members_only()
+                return self._call(lambda: {"deleted": harness.delete_profile_entry(user["id"], m[1])})
             if user and (m := PROFILE.fullmatch(path)):
                 if m[1] != user["id"]:
                     return self._json(404, {"error": "not found"})

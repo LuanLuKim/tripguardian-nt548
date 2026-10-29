@@ -261,6 +261,12 @@ def test_logistics_lookups_need_no_journey(client):
     assert call(client, "GET", "/api/harness/transit?mode=plane&from=SGN&to=DLI&date=2026-11-12")[0] == 404  # no coach / flight flow
 
 
+def test_pulse_bulletin_is_a_read_for_any_session(client):
+    code, body = call(client, "GET", "/api/harness/pulse")
+    assert code == 200 and body["city"] == "dalat" and isinstance(body["sections"], list)
+    assert call(client, "GET", "/api/harness/pulse", token=None)[0] == 401
+
+
 def test_every_harness_route_needs_a_session(client):
     for method, path in (("GET", "/api/harness/me"), ("GET", "/api/harness/trips"), ("GET", "/api/harness/places?q=a"),
                          ("POST", "/api/harness/sessions"), ("PATCH", "/api/harness/me"), ("DELETE", "/api/harness/me")):
@@ -545,3 +551,23 @@ def test_a_guest_page_reports_it_is_closing_or_alive_from_its_own_origin_only(cl
     assert post_auth(client, "/api/auth/guest/leave", {}, token="tok-g")[0] == 200 and accounts.left == ["tok-g"]
     assert post_auth(client, "/api/auth/guest/alive", {}, token="tok-g")[0] == 200 and accounts.left == ["tok-g"]
     assert post_auth(client, "/api/auth/guest/leave", {}, token="tok-g", origin=None)[0] == 403 and accounts.left == ["tok-g"]
+
+
+def test_trip_pinned_to_a_pruned_snapshot_is_a_typed_409_not_a_500(client, server_parts, tmp_path):
+    """QA B7: a journey pinned to a snapshot version that was pruned stays fail-closed, but the answer is typed."""
+    from corpus.releases import Binding, resolve_binding
+    harness, _, _ = server_parts
+    _, view = call(client, "POST", "/api/harness/sessions", {})
+    pinned = Binding(region="dalat", snapshot_version="20261013T201524")
+    harness.store.save(harness.store.get(view["id"]).model_copy(update={"corpus_binding": pinned}))
+    harness.tools_for_binding = lambda binding: resolve_binding(tmp_path, binding)  # raises: the version is not on disk
+    code, body = call(client, "GET", f"/api/harness/sessions/{view['id']}")
+    assert code == 409 and body["error"] == "stale_data_version"
+    assert "20261013T201524" in body["detail"] and body["message"]
+    # a streamed request reports it as the error event
+    path = f"/api/harness/sessions/{view['id']}/request"
+    req = {"request_id": "r-stale", "stage": "trip", "operation": "turn", "expected_revision": 0, "payload": {"kind": "show"}}
+    client.request("POST", path, json.dumps(req), headers(Accept="text/event-stream"))
+    events = [json.loads(line[6:]) for line in client.getresponse().read().decode().splitlines() if line.startswith("data: ")]
+    assert events[-1]["event"] == "error" and events[-1]["data"]["status"] == 409
+    assert events[-1]["data"]["error"] == "stale_data_version"

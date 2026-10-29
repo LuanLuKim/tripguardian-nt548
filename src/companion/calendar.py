@@ -80,7 +80,7 @@ class Calendar:
     def _event(self, stop: dict, warnings: list[dict]) -> dict:
         rec = self.records.get(stop["place_id"]) or {}
         lines = [w["text"] for w in warnings if stop["name"] and stop["name"] in w.get("text", "")]
-        lines.append(f"{self.base_url}/app/today?stop={stop['id']}")
+        lines.append(f"{self.base_url}/app/plan")
         return {"summary": stop["name"] or (rec.get("identity") or {}).get("name") or "Điểm dừng",
                 "location": (rec.get("identity") or {}).get("address") or "",
                 "description": "\n".join(lines),

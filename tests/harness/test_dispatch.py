@@ -415,3 +415,18 @@ def test_one_journey_that_cannot_be_restored_never_empties_the_history_list():
         raise ValueError("old snapshot")
     tools["trip"].restore = old_snapshot
     assert {t["id"] for t in h.trips(U1)} == ids  # still listed: title and places come from the saved copy
+
+
+def test_planning_turn_is_routed_and_gets_the_journeys_trip_session_but_never_a_client_one():
+    from harness import Request
+    h, tools = make()
+    seen = []
+    plain = tools["planning"].apply
+    tools["planning"].apply = lambda sid, op, payload, emit: (seen.append((op, dict(payload))), plain(sid, "act", {}, emit))[1]
+    v = decision(h)
+    v = run(h, v, "advance", "to-planning")
+    out = run(h, v, "turn", "plan-chat", {"text": "chuyển chỗ đầu sang ngày 2"})
+    assert seen == [("turn", {"text": "chuyển chỗ đầu sang ngày 2", "trip_session": v["sessions"]["trip"]})]
+    assert out["stage"] == "planning"
+    with pytest.raises(ValueError):
+        run(h, out, "turn", "plan-chat-2", {"text": "x y", "trip_session": "0123456789ab"})

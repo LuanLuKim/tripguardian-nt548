@@ -9,8 +9,12 @@ from pathlib import Path
 
 from corpus.retrieval import RetrievalEngine
 
+from ..domain.perceive import MAX_TEXT, clean_names, clean_text, decide_identity, shows_several
+from ..domain.resolve import score as name_score
 from ..domain.state import VibeKind
 from .catalog import Catalog
+
+SIMILAR_KEPT = 60  # nearest places a photo record keeps (ids and scores, no pixels)
 
 
 class Looks:
@@ -188,6 +192,68 @@ class Looks:
         scope = self._scope(within)
         return [p.place_id for p in self._ix.similar_places(pid, k, scope) if p.place_id in scope]
 
+    def similar_to(self, ids: list[str], within: set[str] | None = None, k: int = 40) -> list[tuple[str, float]]:
+        """Places that look like the average of 1-4 places (their photo vectors), best first, without those places or
+        their near-duplicate groups. [] without the index or when none of them has a photo vector."""
+        import numpy as np
+        ids = [i for i in dict.fromkeys(ids) if i in self.catalog.by_id][:4]
+        if not ids or not self.ready():
+            return []
+        ix = self._ix
+        vecs = [v for i in ids if (v := ix.place_vec(i)) is not None]
+        if not vecs:
+            return []
+        centre = np.mean(vecs, axis=0)
+        centre = centre / max(float(np.linalg.norm(centre)), 1e-8)
+        groups = {g for i in ids if (g := ix.places.get(i, {}).get("near_duplicate_group"))}
+        out = []
+        for pid in self._scope(within) - set(ids):
+            if pid not in ix.places or (groups and ix.places[pid].get("near_duplicate_group") in groups):
+                continue
+            if (pv := ix.place_vec(pid)) is not None:
+                out.append((pid, float(pv @ centre)))
+        return sorted(out, key=lambda x: (-x[1], x[0]))[:k]
+
+    def named(self, names: list[str]) -> list[tuple[str, float]]:
+        """Places whose catalog name the given names resemble: (id, name score) best first, one entry per place."""
+        best: dict[str, float] = {}
+        for name in names:
+            for c in self.catalog.places:
+                if (s := name_score(name, c.name)) > 0.2:
+                    best[c.id] = max(best.get(c.id, 0.0), s)
+        return sorted(best.items(), key=lambda x: (-x[1], x[0]))[:6]
+
+    def read_photo(self, data: bytes, within: set[str] | None, shown: set[str], photo_id: str, turn: int,
+                   read=None) -> dict:
+        """One user photo -> the record the assistant keeps for the session: what the reader saw and wrote in it, the
+        corpus places the pixels match, and who it shows ONLY when sure (domain.perceive.decide_identity). The photo
+        itself is never kept: the record is text and ids, and the vector is dropped here. A reader that fails leaves a
+        pixel-only record (kind and text empty)."""
+        from concurrent.futures import ThreadPoolExecutor
+        read = read or photo_read
+        with ThreadPoolExecutor(2) as ex:
+            reading = ex.submit(read, data)
+            matching = ex.submit(self.by_photo, data, within)
+            try:
+                got = reading.result()
+            except Exception:  # the reader is down: the pixels still match
+                got = {}
+            _, places, shows = matching.result()
+        got = got if isinstance(got, dict) else {}
+        names = clean_names(got.get("names"))
+        pixel = [(p.place_id, float(p.score)) for p in places]
+        who = decide_identity(shows=shows, pixel=pixel, named=self.named(names), screenshot=bool(got.get("screenshot")),
+                              shown=shown, several=shows_several(got.get("kind"), got.get("places_in_view")))
+        cands = [{"id": pid, "name": self.name(pid)} for pid in who.candidates]
+        return {"photo_id": photo_id, "turn": turn, "kind": clean_text(got.get("kind"), 60),
+                "cues": [c for c in (clean_text(c, 60) for c in (got.get("cues") or [])[:6]) if c],
+                "screenshot": bool(got.get("screenshot")), "text_in_image": clean_text(got.get("text"), MAX_TEXT),
+                "names_in_image": names,
+                "match": {"id": who.place_id, "name": self.name(who.place_id), "source": who.source, "sure": True}
+                if who.sure else None,
+                "candidates": [] if who.sure else cands,
+                "similar": [[pid, round(s, 4)] for pid, s in pixel[:SIMILAR_KEPT]]}
+
     def best_photo(self, pid: str) -> str | None:
         return self._ix.best_photo(pid) if self.ready() and pid in self.catalog.by_id else None
 
@@ -206,6 +272,24 @@ def photo_cues(data: bytes) -> dict:
         client, model = PHOTO_CUES.role.client()
         try:
             return await PHOTO_CUES.ask(client.with_options(timeout=40, max_retries=0), model, images=[data])
+        finally:
+            await client.close()
+
+    out = asyncio.run(go())
+    return out if isinstance(out, dict) else {}
+
+
+def photo_read(data: bytes) -> dict:
+    """A user's image -> {kind, cues, screenshot, text, names}: the Extractor's reading of what it shows and the words
+    written in it (corpus.llm PHOTO_READ). The words are untrusted data. Nothing is stored; a failure is an empty reading."""
+    import asyncio
+
+    from corpus.llm import PHOTO_READ
+
+    async def go():
+        client, model = PHOTO_READ.role.client()
+        try:
+            return await PHOTO_READ.ask(client.with_options(timeout=40, max_retries=0), model, images=[data])
         finally:
             await client.close()
 

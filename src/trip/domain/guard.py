@@ -112,6 +112,11 @@ def record_fact(state: TripState, field: str, op: str, value: str, quote: str, h
     if evidence_turn is None:
         return state, (f"refused: quote {quote!r} is not in the user's message; copy the user's exact words, or do not "
                        f"record {field!r} again this turn if this message does not say it")
+    if field == "intent":  # the assistant: is the user exploring Đà Lạt or planning this trip (only their own words)
+        if how != "said" or op == "remove" or value not in ("explore", "plan"):
+            return state, "refused: intent is set to explore or plan, how said, from the user's own words"
+        from .state import with_meta
+        return with_meta(state, intent=value), ""
     if op != "remove" and field not in ("hard", "soft") and value.strip().casefold() in {"", "unknown", "none", "null", "n/a"}:
         if not (field == "care" and value.strip().casefold() == "none"):
             return state, "warning: placeholder value was not recorded"
@@ -277,25 +282,52 @@ def state_text(state: TripState) -> str:
 
 
 def bad_say(say: str, heard: str, state: TripState, catalog: Catalog, compared: set[str],
-            reply_language: str | None = None, told: str = "") -> str | None:
-    """Why `say` may not be shown: a number the user never said, or a place the user never named.
-    told: what the tools told the agent this turn (a refusal's limits, "out of range (1, 20)"): its numbers may be said."""
+            reply_language: str | None = None, told: str = "", allowed_ids: frozenset[str] = frozenset()) -> str | None:
+    """Why `say` may not be shown: a number nobody told, or a place neither the user nor a read tool named.
+    told: what the tools told the agent this turn (a refusal's limits, "out of range (1, 20)"): its numbers may be said.
+    allowed_ids: places the read tools returned this turn; with state.meta.shown_ids (earlier turns) they may be named,
+    and state.meta.told_numbers (numbers in those results) may be said."""
     if say.strip() and language(say) != (reply_language or language(heard)):
         return "reply is in the wrong language"
     internal = {f for f in SCALARS if "_" in f} | {"signal", "companions_other", "drive_day_min"}
     if any(re.search(r"(?<!\w)" + re.escape(f) + r"(?!\w)", say, re.I) for f in internal):
         return "contains internal field identifiers"
     said = {int(n) for n in re.findall(r"\d+", f"{heard} {state_text(state)} {told}")}  # the user's, the trip's, the tools'
+    said |= set(state.meta.told_numbers)
 
     extra = [n for n in re.findall(r"\d+", say) if int(n) not in said]
     if extra:
         return f"numbers {extra} the user did not say"
     named = {a.place_id for a in state.anchors if a.place_id} | compared  # the user named these
+    named |= allowed_ids | set(state.meta.shown_ids)  # a read tool returned these
     s, words = f" {squash(say)} ", f" {squash(heard)} "  # a name the user said may be said back ("gần chợ Đà Lạt")
+    for key, pid in sorted(catalog.name_keys, key=lambda x: -len(x[0])):  # an allowed name hides the shorter names inside it
+        if pid in named and f" {key} " in s:
+            s = s.replace(f" {key} ", " # ")
     for key, pid in catalog.name_keys:
         if pid not in named and not set(key.split()) <= GENERIC and f" {key} " in s and f" {key} " not in words:
             return f"names place {pid}"
     return None
+
+
+def trim_words(say: str, words: int) -> str:
+    """The assistant's reply: whole sentences while they fit in `words` words (at least the first, cut at a word),
+    markdown emphasis dropped. The final question is kept when it fits."""
+    text = re.sub(r"\*\*|__", "", say).strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?…])\s+", text) if s.strip()]
+    if not sentences:
+        return ""
+    if len(sentences[0].split()) > words:
+        return " ".join(sentences[0].split()[:words]).rstrip(" ,;:") + "…"
+    question = sentences[-1] if sentences[-1].endswith("?") and len(sentences) > 1 else None
+    room = words - (len(question.split()) if question else 0)
+    kept, n = [], 0
+    for s in sentences[:-1] if question else sentences:
+        if n + len(s.split()) > room:
+            break
+        kept.append(s)
+        n += len(s.split())
+    return " ".join(kept + ([question] if question and kept else [])) or sentences[0]
 
 
 def prune_say(say: str, bad) -> str:

@@ -1,0 +1,242 @@
+"""Clef prepares the assistant's read tools before the agent's one call (spec 2026-10-26 §B.3, measured §2.4).
+
+Code finds the places a message may name; one Clef request says which tool groups the message needs and which of
+those places it means; keyword rules only add groups. The chosen read tools then run at once through TurnTools, so
+their results are in the turn's cache when the agent calls them again.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor, wait
+from dataclasses import dataclass, field
+from datetime import date
+
+from ..domain.dates import FULL_DATE, day_month, relative_dates
+from ..domain.state import TripState
+from ..domain.text import fold
+from ..infrastructure import clef
+from ..infrastructure.catalog import Catalog
+from ..infrastructure.settings import Settings
+
+# One yes / no question per tool group (wording measured in logs/clef_prefetch_bench.py GROUPS2)
+GROUPS = {
+    "places": "Để trả lời, có cần TÌM một danh sách địa điểm (quán, món ăn ở đâu, nơi chơi) không? Tin nhắn có thể hỏi "
+              "nhiều ý; chỉ cần một ý cần tìm nơi là có.",
+    "detail": "Tin nhắn có hỏi giờ mở cửa, giá, vé, chỗ đậu xe, view hay đặc điểm của một địa điểm CÓ TÊN không? Tin "
+              "nhắn có thể hỏi nhiều ý.",
+    "weather": "Tin nhắn có hỏi thời tiết, mưa, lạnh của một ngày cụ thể (hôm nay, mai, thứ mấy, ngày X) không? Tin "
+               "nhắn có thể hỏi nhiều ý.",
+    "distance": "Tin nhắn có hỏi khoảng cách, đi mất bao lâu, bao xa giữa hai nơi không? Tin nhắn có thể hỏi nhiều ý.",
+}
+# Keyword rules that only add a group Clef missed (on the accented, lowercased message)
+DETAIL_WORDS = re.compile(r"mấy giờ|mở cửa|giờ mở|vé|giá|bao nhiêu tiền|đậu xe|đỗ xe|gửi xe|view|có gì")
+WEATHER_WORDS = re.compile(r"mưa|trời|thời tiết|lạnh|nắng")
+LIST_WORDS = re.compile(r"nào|gợi ý|tìm|ở đâu|chỗ nào|quán gì|ăn gì|đi đâu")
+ASKS_LIST = re.compile(r"nào|gợi ý|tìm|ở đâu")
+CENTER_WORDS = re.compile(r"\bchợ\b|trung tâm")
+# trends (Nhịp Đà Lạt) is asked by words alone: no extra Clef question, no cost; one kind when the words name one
+TREND_WORDS = re.compile(r"đang hot|\bhot\b|xu hướng|dạo này|gần đây|sự kiện|lễ hội|festival|vào mùa|đang mùa|mùa hoa|mùa gì|"
+                         r"mới mở|mới khai trương|nhiều người nhắc|được nhắc|đang được|đang nổi|nổi trên|tiktok|đóng cửa")
+TREND_KINDS = (("event", re.compile(r"sự kiện|lễ hội|festival")), ("season", re.compile(r"vào mùa|đang mùa|mùa hoa|mùa gì")),
+               ("new", re.compile(r"mới mở|mới khai trương")), ("closed", re.compile(r"đóng cửa")))
+CENTER = "center"  # Knowledge.distance's name for the city centre (config/cities.yaml center)
+# words too common in place names to tell one place from another (kept with their accents)
+GENERIC = set("quán cà phê cafe coffee coffe đà lạt dalat nhà hàng restaurant homestay hotel khách sạn the vườn garden "
+              "khu du lịch kdl của tiệm shop house farm and of tại hồ đồi chợ thác đi đỉnh núi villa".split())
+MIN_WORD = 3  # a distinctive word has at least this many characters
+
+
+def vnorm(s: str) -> str:
+    """Lower case, accents kept ("lên" is not "len"), punctuation to spaces."""
+    return " ".join(re.sub(r"[^\w]", " ", unicodedata.normalize("NFC", (s or "").lower())).split())
+
+
+def _aliases(catalog: Catalog) -> list[tuple[str, frozenset[str], int, object]]:
+    """(name, distinctive words, voices, place) of every place, built once per catalog."""
+    if "_vnames" not in catalog.__dict__:
+        out = []
+        for p in catalog.places:
+            name = vnorm(p.name)
+            words = frozenset(w for w in name.split() if w not in GENERIC and len(w) >= MIN_WORD)
+            voices = ((p.evidence_record or {}).get("provenance") or {}).get("voices") or p.weight or 0
+            out.append((name, words, voices, p))
+        catalog.__dict__["_vnames"] = out
+    return catalog.__dict__["_vnames"]
+
+
+def candidates(text: str, catalog: Catalog, k: int = 6) -> list[tuple[str, str]]:
+    """(id, name) of the places the message may name: a whole name inside the message first, then names whose
+    distinctive words are all in it; longer, then more reviewed first. A lodging only by its whole name."""
+    m = vnorm(text)
+    padded, words = f" {m} ", set(m.split())
+    hits = []
+    for name, distinct, voices, p in _aliases(catalog):
+        if f" {name} " in padded:
+            hits.append((2, len(name), voices, p))
+        elif distinct and distinct <= words and p.category_group != "stay":
+            hits.append((1, len(" ".join(distinct)), voices, p))
+    hits.sort(key=lambda h: (-h[0], -h[1], -h[2]))
+    out, seen = [], set()
+    for *_, p in hits:
+        if p.id not in seen:
+            seen.add(p.id)
+            out.append((p.id, p.name))
+    return out[:k]
+
+
+def place_id(ref: str, catalog: Catalog, prefer: set[str] = frozenset()) -> str | None:
+    """The corpus id a place reference of the model means: an id as it is; "center" for "chợ Đà Lạt / trung tâm";
+    a name ("lululola", "Hồ Tuyền Lâm") when it names ONE place (a place this turn's data already holds wins).
+    None when it names no place or several: never a guess."""
+    if ref == CENTER or ref in catalog.by_id:
+        return ref
+    r = vnorm(ref)
+    if not r:
+        return None
+    if CENTER_WORDS.search(r) and set(r.split()) <= GENERIC | {"trung", "tâm"}:
+        return CENTER
+    exact = [p.id for name, _, _, p in _aliases(catalog) if name == r]
+    if len(exact) == 1:
+        return exact[0]
+    hits = [pid for pid, _ in candidates(ref, catalog, 6)] if not exact else exact
+    preferred = [pid for pid in hits if pid in prefer]
+    if len(preferred) == 1:
+        return preferred[0]
+    return hits[0] if len(hits) == 1 else None
+
+
+@dataclass
+class Route:
+    groups: set[str]
+    places: list[str]  # ids the message means, in its order; "center" for "chợ / trung tâm"
+    probs: dict[str, float] = field(default_factory=dict)
+    clef_s: float = 0.0
+
+
+def route(text: str, cands: list[tuple[str, str]], cfg: Settings, ask=clef.ask, today: date | None = None) -> Route:
+    """One Clef request: which tool groups the message needs, which candidate places it names. A group counts from
+    cfg.assistant.clef_threshold; keyword rules then only add. Clef off or failing ({}) = the keyword rules alone."""
+    questions = {g: {"type": "choice", "instructions": f"Tin nhắn của khách du lịch Đà Lạt. {q}",
+                     "criteria": {"A": "có", "B": "không"}} for g, q in GROUPS.items()}
+    if cands:
+        options = {**{f"P{i}": name for i, (_, name) in enumerate(cands)}, "NONE": "không nhắc tới nơi nào trong danh sách"}
+        questions["place1"] = {"type": "choice", "criteria": options,
+                               "instructions": "Địa điểm thứ nhất (hoặc duy nhất) tin nhắn nhắc tới là nơi nào?"}
+        questions["place2"] = {"type": "choice", "criteria": options,
+                               "instructions": "Nếu tin nhắn nhắc tới HAI nơi (ví dụ đi từ A đến B), nơi thứ hai là nơi "
+                                               "nào? Không có thì NONE."}
+    started = time.monotonic()
+    answers = ask({"user_message": text, "today": (today or date.today()).isoformat()}, questions, cfg) or {}
+    clef_s = time.monotonic() - started
+    probs = {g: clef.yes_prob(answers, g) for g in GROUPS}
+    groups = {g for g, p in probs.items() if p >= cfg.assistant.clef_threshold}
+    places: list[str] = []
+    for q in ("place1", "place2"):
+        choice = str((answers.get(q) or {}).get("choice") or "")
+        if re.fullmatch(r"P\d+", choice) and int(choice[1:]) < len(cands) and cands[int(choice[1:])][0] not in places:
+            places.append(cands[int(choice[1:])][0])
+    m = vnorm(text)
+    if places and DETAIL_WORDS.search(m):
+        groups.add("detail")
+    if WEATHER_WORDS.search(m):
+        groups.add("weather")
+    if LIST_WORDS.search(m) and not (places and not ASKS_LIST.search(m)):
+        groups.add("places")
+    if "detail" in groups and places and not LIST_WORDS.search(m):
+        groups.discard("places")  # a question about one named place needs no list
+    if TREND_WORDS.search(m):
+        groups.add("trends")
+    if "distance" in groups and len(places) < 2 and CENTER_WORDS.search(m) and CENTER not in places:
+        places.append(CENTER)
+    return Route(groups, places, probs, clef_s)
+
+
+def covers(route: Route, data: dict | None) -> bool:
+    """The prepared data answers every group the message needs: places found, every named place's details, the
+    weather, the travel time, none of them an error. Nothing asked of the data (no group) is not covered."""
+    data = data or {}
+    ok = lambda rows: bool(rows) and all(isinstance(x, dict) and "error" not in x for x in rows)  # noqa: E731
+    need = {
+        "places": lambda: ok(data.get("tim_noi")),
+        "detail": lambda: bool(named := [p for p in route.places if p != CENTER]) and ok(data.get("chi_tiet"))
+        and set(named) <= {x.get("id") for x in data["chi_tiet"]},
+        "weather": lambda: ok(data.get("thoi_tiet")),
+        "distance": lambda: ok([data["khoang_cach"]] if "khoang_cach" in data else []),
+        "trends": lambda: bool((data.get("xu_huong") or {}).get("items")) and "error" not in data["xu_huong"],
+    }
+    return bool(route.groups) and all(g in need and need[g]() for g in route.groups)
+
+
+def places_query(text: str) -> str:
+    """The part of the message that asks for places: clauses about the weather are left out."""
+    parts = [c.strip() for c in re.split(r"[,.;?]| và ", text) if c.strip() and not WEATHER_WORDS.search(vnorm(c))]
+    return " ".join(parts) or text
+
+
+def asked_day(text: str, today: date) -> date | None:
+    """The day the message asks about: "31/10", "mai", "thứ 7"; None when it names none."""
+    low = fold(text)
+    if m := FULL_DATE.search(low):
+        try:
+            return day_month(int(m[1]), int(m[2]), today, int(m[3]) if m[3] else None)
+        except ValueError:
+            return None
+    return next((r.value for r in relative_dates(low, unicodedata.normalize("NFC", text).lower(), today)
+                 if r.field == "start_date"), None)
+
+
+def prepare(route: Route, text: str, state: TripState, tools, today: date, wait_s: float) -> dict:
+    """Run the read tools the route needs at once through `tools` (TurnTools), wait at most `wait_s`, and return what
+    is ready as the agent's data: {"tim_noi", "chi_tiet", "thoi_tiet", "khoang_cach", "xu_huong"} (only keys with data). A tool
+    still running is left out here and lands in the turn's cache when it ends. The trip's start day's weather is
+    always prepared when it is known."""
+    named = [p for p in route.places if p != CENTER]
+    jobs: list[tuple[str, str, dict]] = []
+    if "places" in route.groups:
+        jobs.append(("tim_noi", "find_places", {"criteria": {"text": places_query(text)}}))
+    if "detail" in route.groups:
+        jobs += [("chi_tiet", "get_place", {"id": pid}) for pid in named]
+    days = []
+    if "weather" in route.groups and (day := asked_day(text, today)) is not None:
+        days.append(day)
+    if state.start_date.known and state.start_date.value not in days:
+        days.append(state.start_date.value)
+    elif "weather" in route.groups and not days:
+        days.append(today)
+    jobs += [("thoi_tiet", "weather", {"date": d.isoformat()}) for d in days]
+    if "distance" in route.groups and len(route.places) >= 2:
+        jobs.append(("khoang_cach", "distance", {"a": route.places[0], "b": route.places[1]}))
+    if "trends" in route.groups:
+        kinds = [k for k, rx in TREND_KINDS if rx.search(vnorm(text))]
+        jobs.append(("xu_huong", "trends", {"kind": kinds[0]} if len(kinds) == 1 else {}))
+    if not jobs:
+        return {}
+    pool = ThreadPoolExecutor(max_workers=min(8, len(jobs)), thread_name_prefix="prefetch")
+    futures = [(key, pool.submit(tools.run, name, args)) for key, name, args in jobs]
+    wait([f for _, f in futures], timeout=wait_s)
+    pool.shutdown(wait=False)  # a tool still running finishes into tools.cache
+    data: dict = {}
+    for key, f in futures:
+        if not f.done() or f.exception() is not None:
+            continue
+        result = f.result()
+        if key == "tim_noi":  # copies: km below must not change the cached result
+            data[key] = [dict(x) for x in result.get("places") or []] if "error" not in result else [result]
+        elif key == "chi_tiet":
+            data.setdefault(key, []).append(result.get("place") or result)
+        elif key == "thoi_tiet":
+            data.setdefault(key, []).append(result)
+        else:
+            data[key] = result
+    if "tim_noi" in data and "distance" in route.groups and route.places and tools.knowledge is not None:
+        origin = route.places[-1]  # "quán nào … cách chợ bao xa": the straight-line km from the place named last
+        for x in data["tim_noi"]:
+            if "id" in x:
+                d = tools.knowledge.km_line(origin, x["id"])
+                if d is not None:
+                    x["km_line"] = d
+                    tools._remember(d)  # the reply may say it
+    return data

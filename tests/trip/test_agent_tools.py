@@ -276,3 +276,41 @@ def test_an_unmapped_wish_is_linked_to_the_refused_field_it_replaces_and_dropped
     assert t.run("record_fact", {"field": "companions", "op": "add", "value": "friends",
                                  "quote": "bạn bè", "how": "said"}) == {"ok": True}
     assert [(u.phrase, u.replaces) for u in t.state.unmapped] == [("5 triệu một người", None)]
+
+
+def test_flag_off_keeps_tool_list(turn_tools):
+    off = turn_tools(assistant=False).tool_names()
+    assert "find_places" not in off and "get_place" not in off and "weather" not in off
+    assert {"find_places", "get_place", "similar_places", "weather", "distance"} <= set(turn_tools(assistant=True).tool_names())
+
+
+def test_find_places_remembers_ids_and_numbers(turn_tools):
+    t = turn_tools(assistant=True)
+    out = t.run("find_places", {"criteria": {"groups": ["cafe"]}})
+    assert out["places"] and {p["id"] for p in out["places"]} <= t.told_ids
+    assert 90 in t.told_numbers  # voices of the first hit
+    calls = len(t.log)
+    assert t.run("find_places", {"criteria": {"groups": ["cafe"]}}) == out  # second call hits the cache
+    assert t.log[calls:] == ["find_places cached"]
+
+
+def test_find_places_bad_criteria_is_an_error_result(turn_tools):
+    assert "unknown criteria" in turn_tools().run("find_places", {"criteria": {"color": "red"}})["error"]
+
+
+# ---------- a place the model names in words maps to its corpus id (round 5: no error round for "lululola") ----------
+
+def test_a_place_named_in_words_maps_to_its_id(turn_tools):
+    t = turn_tools()
+    out = t.run("get_place", {"id": "Đồi Chè Cầu Đất Farm"})
+    assert out["place"]["id"] == "0xd:0x1" and "0xd:0x1" in t.told_ids
+    assert t.run("get_place", {"id": "0xd:0x1"}) == out and t.log[-1] == "get_place cached"  # one cache entry
+    assert t.run("distance", {"a": "chợ Đà Lạt", "b": "Cà Phê Đồi Thông Xanh"})["minutes"] == 25
+
+
+def test_an_unknown_or_unclear_name_is_a_clear_error(turn_tools):
+    t = turn_tools()
+    out = t.run("get_place", {"id": "Quán Không Có Thật"})
+    assert "no place" in out["error"] and "no data" in out["error"]
+    out = t.run("distance", {"a": "center", "b": "đồi chè"})  # names two places: no guess
+    assert "error" in out and "minutes" not in out

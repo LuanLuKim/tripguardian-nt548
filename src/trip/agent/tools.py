@@ -5,6 +5,8 @@ import logging
 import re
 import time
 from agents import screen_input
+from agents.assistant import REGISTRY, Tool, TurnCore
+from agents.assistant.lc import langchain_tools
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
@@ -21,7 +23,10 @@ from ..domain.text import contains, fold, squash
 from ..domain.vibes import SCOPES, clean_cues
 from ..infrastructure.catalog import Catalog
 from ..infrastructure.settings import Settings
-from .tool_schemas import MODELS, WEB_TOOLS, AddDays, DateOf, WeekdayDate
+from .prefetch import place_id
+from .rules import WISH_FIELDS, TripRules
+from .tool_schemas import ASSISTANT_TOOLS, MODELS, READ_TOOLS, WEB_TOOLS, AddDays, DateOf, Distance, FindPlaces, \
+    GetPlace, QuickReplies, ShowPlaces, SimilarPlaces, Trends, Weather, WeekdayDate
 
 log = logging.getLogger(__name__)
 
@@ -64,13 +69,19 @@ class ToolExecutor:
         raise ValueError("unknown tool")
 
 
-class TurnTools:
+class TurnTools(TripRules, TurnCore):
     """One turn's tools. `state` is the turn's working Trip State. ask_user proposes questions for code to check and assemble into a deck."""
 
     def __init__(self, state: TripState, text: str, turn: int, catalog: Catalog, today: date,
                  compared: list[dict] | None = None, judge=None, web=None, on_trace=None, cards: bool = True, history: tuple[tuple[int, str], ...] = (), gaps: Path | None = None,
-                 on_state=None):
+                 on_state=None, knowledge=None, assistant: bool = False, on_cards=None):
+        assistant = assistant and knowledge is not None
+        super().__init__("trip", {f for f, on in (("assistant", assistant), ("cards", cards), ("web", web is not None)) if on},
+                         known_ids=lambda pid: pid in catalog.by_id, on_cards=on_cards)
         self.gaps = Path(gaps) if gaps is not None else Path(Settings.gaps_path)
+        self.photos: list[dict] = []  # the session's photo records (infrastructure.looks.Looks.read_photo), set by the engine
+        self.shown_log: list[dict] = []  # last_shown of the transcript (agents.assistant.last_shown), set by the engine
+        self.scene_first: dict[str, str] = {}  # place id -> the scene its card shows first (place_photos)
         self.history = history
         self.state, self.text, self.turn, self.catalog, self.today = state, text, turn, catalog, today
         self.compared, self.judge = compared or [], judge  # judge: infrastructure.clef.Judge or None
@@ -91,14 +102,17 @@ class TurnTools:
         self.written: set[tuple] = set()  # (field, op, value) written this turn: a repeat is not written twice
         self.refused: set[str] = set()  # fields whose last record_fact was refused and not yet corrected
         self.refusal_notes: dict[str, str] = {}  # field -> why its last record_fact was refused (for the next turn)
-        self.log: list[str] = []
-        self.timings: list[str] = []  # how long each model call took (the turn log, not the agent)
-        self.started = time.monotonic()
-        self.marked: set[str] = set()
         self.settled = False  # the last record_fact carried a reply and every fact stood: the turn may end on it
         self.pool = ThreadPoolExecutor(max_workers=8) if judge else None
         self.checks: dict[tuple, Future] = {}  # Clef's checks sent when a reply arrived, read when its tool runs
         self.replies: list[Future] = []        # Clef's check of each text the model wrote
+        # the assistant (config/trip.yaml assistant.enabled): read tools over infrastructure.knowledge.Knowledge
+        self.knowledge, self.assistant = knowledge, assistant
+        self.reply_hook = None  # the engine's: called with each text the model writes, before it is final (cards first)
+        self.route = None  # agent/prefetch.Route of this turn, when the assistant prepared it
+        self.shown_places: list[dict] = []  # show_places calls this turn: {ids, why}; the engine adds the cards
+        self.quick: list[str] = []  # quick_replies of this turn
+        self.rankings: list[list[str]] = []  # each find_places' ranked ids (Knowledge.find): the cards of a reply
 
     def prefetch(self, calls, content: str) -> None:
         """Send every Clef check this model reply needs at the same moment, so they cost one round trip together and
@@ -127,12 +141,6 @@ class TurnTools:
     def preview_reset(self) -> None:
         """A new model call starts: its facts are previewed from the state as it now is."""
         self.shown, self.preview_state = [], None
-
-    def mark(self, what: str) -> None:
-        """The first time `what` happens this turn, logged as seconds since the turn started (where a slow turn waits)."""
-        if what not in self.marked:
-            self.marked.add(what)
-            self.timings.append(f"{what} {time.monotonic() - self.started:.1f}")
 
     def preview(self, arguments: str | None) -> None:
         """While the model is still writing its record_fact call (the reply comes after the facts), each finished
@@ -199,14 +207,6 @@ class TurnTools:
         f = self.checks.get(key)
         return f.result() if f else fallback()
 
-    def tool_names(self) -> list[str]:
-        """The tools this turn offers: ask only with cards, the web tools only with web search. The list stays the
-        same from turn to turn on one screen (it heads the prompt, so a change would lose the prompt cache): a tool
-        that does not fit the state now refuses when called."""
-        return ([n for n in MODELS if n not in WEB_TOOLS and n not in RECORDED_LOOKUPS
-                 and (n not in ("ask", "ask_user", "ask_required") or self.cards)]
-                + ([n for n in MODELS if n in WEB_TOOLS] if self.web is not None else []))
-
     def step(self, sid: str, label: str, status: str) -> None:
         """Add or update one step of the progress line and send the whole line."""
         for st in self.trace:
@@ -225,6 +225,18 @@ class TurnTools:
         """-> the result the agent reads next. Never raises: a bad call is an error result."""
         if name not in self.tool_names():
             return {"error": f"unknown tool {name!r}"}
+        tool = self.tool(name)
+        read = tool is not None and tool.kind == "read"
+        if read:
+            args, unknown = self.map_places(tool, args)
+            if unknown:
+                self.log.append(f"{name}:error [{unknown[:160]}]")
+                return {"error": unknown}
+            key = self.read_key(name, args)
+            if tool.cache and key in self.cache:  # prepared before the model call, or the model asked the same again
+                self.log.append(f"{name} cached")
+                self.cache_hits += 1
+                return self.cache[key]
         if name == "record_fact" and "facts" in args:
             # every fact of a message in one call: each runs the single-fact path (checks, log, progress line)
             facts = [f.model_dump(exclude_none=True) if hasattr(f, "model_dump") else f for f in args["facts"] or ()]
@@ -243,7 +255,7 @@ class TurnTools:
             self.settled = bool(args.get("say")) and not unworded and not any("error" in r for r in results)
             return out
         try:
-            result = getattr(self, f"_{name}")(args)
+            result = tool.run(self, args) if tool is not None else getattr(self, f"_{name}")(args)
         except KeyError as e:
             result = {"error": f"{name} needs the argument {str(e.args[0])!r}; send it with the value the user wrote"}
         except (ValueError, ValidationError, TypeError) as e:
@@ -258,8 +270,24 @@ class TurnTools:
         status = ":error" if "error" in result else ":unmapped" if args.get("field") == "unmapped" else ""
         why = f" [{str(result['error'])[:160]}]" if "error" in result else ""  # the reason, for the turn log
         self.log.append(name + detail + status + why)
+        if read:
+            self.remember(result)
+            if tool.cache:
+                self.cache[key] = result
         self._trace_call(name, args, "error" not in result)
         return result
+
+    def on_reply(self, text: str) -> None:
+        if self.reply_hook is not None:
+            self.reply_hook(text)
+
+    def resolve_place(self, ref: str) -> str | None:
+        """A place the model wrote by name ("lululola") as its id (agent/prefetch.place_id), so it reads the prepared
+        result instead of an error and a second model call. A name that fits no place, or several, is None (no guess)."""
+        return place_id(ref, self.catalog, self.told_ids)
+
+    def _remember(self, result) -> None:
+        self.remember(result)
 
     def _trace_call(self, name: str, args: dict, ok: bool, status: str | None = None) -> None:
         """What the call did, as one line of the turn's progress the user sees (the web shows it like a thinking block).
@@ -288,6 +316,16 @@ class TurnTools:
             sid, text = f"feat:{said('text') or said('query')}", f"Đối chiếu “{said('text') or said('query')}” với đặc điểm các nơi"
         elif name in ("find_dishes", "find_kinds"):
             sid, text = f"{name}:{said('text')}", f"Tìm {'quán có món' if name == 'find_dishes' else 'loại nơi'} “{said('text')}”"
+        elif name == "find_places":
+            sid, text = f"find:{json.dumps(args.get('criteria'), sort_keys=True, ensure_ascii=False)[:80]}", "Tìm nơi trong dữ liệu"
+        elif name in ("get_place", "similar_places"):
+            place = self.catalog.by_id.get(str(args.get("id")))
+            what = place.name[:40] if place else "một nơi"
+            sid, text = f"{name}:{args.get('id')}", f"Xem chi tiết {what}" if name == "get_place" else f"Tìm nơi giống {what}"
+        elif name == "weather":
+            sid, text = f"weather:{said('date')}", f"Xem thời tiết {said('date')}"
+        elif name == "distance":
+            sid, text = f"distance:{said('a')}:{said('b')}", "Tính đường đi"
         elif name == "ask_user":
             sid, text = "ask", "Chọn câu hỏi giúp hiểu rõ hơn"
         elif name == "ask_required":
@@ -357,6 +395,8 @@ class TurnTools:
         if a["field"] in ("dish", "kind"):  # a wanted dish / kind of place: the corpus lookup runs inside this call
             return (self._find_dishes if a["field"] == "dish" else self._find_kinds)(
                 {"text": str(a["value"]), "quote": a["quote"]})
+        if a["field"] == "intent" and not self.assistant:
+            raise ValueError("intent is not a field of this screen")
         a = self._start_date(self._moment(a))
         if a["field"] == "unmapped" and a["op"] != "remove" and a.get("gap") == "no_data":
             self._wish_quote(str(a["value"]), a["quote"])
@@ -415,6 +455,10 @@ class TurnTools:
             raise ValueError("one card per turn: you already asked")
         if topic not in dict(missing(self.state)) or topic in self.state.meta.declined:
             raise ValueError(f"{topic} is not in still_needed: ask another topic or nothing")
+        if self.assistant:
+            from ..domain.required import planning
+            if not planning(self.state):
+                raise ValueError("the user is exploring; answer and invite planning once instead")
         question = " ".join(str(a.get("question") or "").split())
         if not question:
             raise ValueError("write the question in your own words: one sentence tied to what the user just said")
@@ -541,6 +585,64 @@ class TurnTools:
     def _search_places(self, a: dict) -> dict:
         return self.lookup.run("search_places", a, self.text)
 
+    # ---------- the assistant's read tools (infrastructure.knowledge) ----------
+
+    def _find_places(self, a: dict) -> dict:
+        criteria = FindPlaces.model_validate(a).criteria
+        criteria = knowledge_tools.resolve_find_places(self, criteria)
+        out = self.knowledge.find(criteria, self.state)
+        ranked = out.pop("ranked", [])
+        self.rankings.append(ranked)
+        out["_cards"] = ranked  # the cards only (private: the agent reads the top places, TurnCore.model_called sends them)
+        if not out["places"]:  # the corpus has nothing for this ask: counted for offline (spec §B.5)
+            from ..infrastructure.gaps import record
+            record(self.gaps, json.dumps(criteria, ensure_ascii=False, sort_keys=True), "zero_hits", topic="places")
+        return out
+
+    def _get_place(self, a: dict) -> dict:
+        pid = GetPlace.model_validate(a).id
+        card = self.knowledge.place(pid)
+        if card is None:
+            raise ValueError(f"unknown place id {pid!r}: use an id a read tool returned")
+        return {"place": card}
+
+    def _similar_places(self, a: dict) -> dict:
+        inp = SimilarPlaces.model_validate(a)
+        ids = [self.known_place(ref) for ref in inp.ids]
+        return {"places": self.knowledge.similar(ids, self.state, criteria=inp.criteria)}
+
+    def known_place(self, ref: str) -> str:
+        """A place reference the model wrote (an id or a name) as a corpus id; ValueError when it names none or several."""
+        pid = ref.strip() if ref.strip() in self.catalog.by_id else self.resolve_place(ref.strip())
+        if pid is None:
+            raise ValueError(f"no place {ref!r} in the corpus (or more than one fits): there is no data for it; "
+                             "say so, do not guess")
+        return pid
+
+    def _weather(self, a: dict) -> dict:
+        return self.knowledge.weather(date.fromisoformat(Weather.model_validate(a).date))
+
+    def _distance(self, a: dict) -> dict:
+        inp = Distance.model_validate(a)
+        return self.knowledge.distance(inp.a, inp.b, inp.mode)
+
+    def _trends(self, a: dict) -> dict:
+        inp = Trends.model_validate(a)
+        return self.knowledge.trends(self.state, inp.kind, inp.month)
+
+    def _show_places(self, a: dict) -> dict:
+        inp = ShowPlaces.model_validate(a)
+        seen = self.told_ids | set(self.state.meta.shown_ids)
+        if unseen := [pid for pid in inp.ids if pid not in seen]:
+            raise ValueError(f"show only ids a read tool returned this session; not {unseen}")
+        self.shown_places.append({"ids": list(dict.fromkeys(inp.ids)), "why": inp.why.strip()})
+        self.emit_cards(inp.ids, inp.why.strip())  # the ones a read tool has not shown yet go out now
+        return {"ok": True, "note": "the cards show under your reply; write the reply now"}
+
+    def _quick_replies(self, a: dict) -> dict:
+        self.quick = QuickReplies.model_validate(a).options
+        return {"ok": True, "note": "the buttons show under your reply"}
+
     def _add_days(self, a: dict) -> dict:
         inp = AddDays.model_validate(a)
         d = self.today + timedelta(days=inp.days)
@@ -618,10 +720,9 @@ def keyword_features(query: str) -> list[dict]:
              "use": f"{f.id}={f.values[0]}:love  (or :avoid)"} for _, _, f in sorted(scored)[:5]]
 
 
-# Facts about tastes, not about the trip's frame or safety: when only these are refused and the reply is written, the
-# turn ends without a second model call (agent/loop.py); dates, who goes, transport, budget, limits are always fixed
-WISH_FIELDS = frozenset({"soft", "purpose", "liked_groups", "novelty", "crowd_tolerance", "time_preference", "like",
-                         "dish", "kind", "unmapped"})
+PLACE_ARGS = {"get_place": ("id",), "distance": ("a", "b")}  # place refs in read tools
+# Date tools: hidden while the assistant has the asked day's weather prepared (agent/prefetch.py)
+DATE_TOOLS = frozenset({"resolve_relative_date", "add_days", "weekday_date", "date_of"})
 
 
 # Lookups record_fact runs itself (field dish / kind): not offered as tools, so a dish costs no extra model call
@@ -657,21 +758,50 @@ def lookups(text: str, catalog: Catalog) -> dict:
     return {"dishes": dishes[:4], "kinds": kinds[:4]}
 
 
-def lc_tools(turn: TurnTools) -> list[BaseTool]:
-    """This turn's tools as LangChain tools. Each takes its input model as the schema, so a call with an unknown key
-    or a wrong type is refused before it runs; the rules themselves stay in TurnTools.run."""
-    def make(name: str) -> BaseTool:
-        model = MODELS[name]
-        description = " ".join(model.__doc__.split())
+lc_tools = langchain_tools  # the loop's name for it
 
-        def run_tool(**args) -> str:
-            args = {k: v for k, v in args.items() if v is not None}  # an optional field left out is absent, not None
-            try:
-                return json.dumps(turn.run(name, args), ensure_ascii=False)
-            except Exception as e:  # a bug in a tool must not kill the turn: the model reads it and goes on
-                log.exception("tool %s crashed", name)
-                turn.log.append(f"tool_crash {name} {type(e).__name__}")
-                return json.dumps({"error": f"internal error in {name}; try another way or reply without it"},
-                                  ensure_ascii=False)
-        return tool(name, args_schema=model, description=description)(run_tool)
-    return [make(n) for n in turn.tool_names()]
+
+# ---------- the registry (agents.assistant): every Trip tool, in the order the prompt lists them ----------
+
+READ_GROUP = {"find_places": "places", "similar_places": "places", "get_place": "detail", "weather": "weather",
+              "distance": "distance", "trends": "trends"}
+
+
+def _result_cards(name: str):
+    """The place ids a read tool's result shows as cards, for the tools that do not send `_cards` themselves."""
+    if name == "get_place":
+        return lambda _, r: [r["place"]["id"]] if isinstance(r.get("place"), dict) and r["place"].get("id") else []
+    if name == "similar_places":
+        return lambda _, r: [p["id"] for p in r.get("places") or () if isinstance(p, dict) and p.get("id")]
+    if name == "trends":
+        return lambda _, r: [it["id"] for it in r.get("items") or () if isinstance(it, dict) and it.get("id")]
+    return None
+
+
+def register_trip_tools() -> None:
+    """Add every tool of MODELS that no module registered itself (a tool a track adds with @read_tool / @action_tool
+    is already there and is left alone)."""
+    def legacy(name: str):
+        return lambda turn, args: getattr(turn, f"_{name}")(args)
+
+    groups = ((lambda n: n not in WEB_TOOLS and n not in ASSISTANT_TOOLS), (lambda n: n in WEB_TOOLS),
+              (lambda n: n in ASSISTANT_TOOLS))
+    for pick in groups:
+        for name, model in MODELS.items():
+            if not pick(name) or name in REGISTRY:
+                continue
+            read = name in READ_TOOLS
+            requires = ("cards" if name in ("ask", "ask_user", "ask_required") else "web" if name in WEB_TOOLS
+                        else "assistant" if name in ASSISTANT_TOOLS else None)
+            REGISTRY.add(Tool(name, model, legacy(name), "read" if read else "action", None if read else "trip",
+                              READ_GROUP.get(name), cache=read, cards=_result_cards(name) if read else None,
+                              place_args=PLACE_ARGS.get(name, ()), requires=requires, offered=name not in RECORDED_LOOKUPS))
+
+
+from . import knowledge_tools  # noqa: E402,F401  (registers the wider read tools and save_place / hide_place before the legacy ones)
+from . import services_tool  # noqa: E402,F401  registers find_services (utilities, rental, tour, coach station)
+
+register_trip_tools()
+
+
+from . import perceive_tools  # noqa: E402,F401  registers photo_identify, photo_similar, place_photos, link_resolve, more_like_shown

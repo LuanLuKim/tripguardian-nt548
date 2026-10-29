@@ -1,0 +1,63 @@
+# asst-knowledge's v2 bench cases (format: src/bench/assistant.py docstring). tool_groups = Tool.group of the tools the
+# last turn ran. save/hide are action tools without a group: they are checked by the reply (reply_has) alone.
+cases:
+  # ---- evidence: what reviews / videos / the place itself say (place_evidence)
+  - {id: ev-reviews, family: evidence, turns: ["Gợi ý quán cà phê view đồi thông", "Khách review quán đầu tiên thế nào?"], tool_groups: [detail]}
+  - {id: ev-why, family: evidence, turns: ["Gợi ý quán lẩu cho nhóm 6 người", "Vì sao quán thứ hai được khen?"], tool_groups: [detail]}
+  - {id: ev-name, family: evidence, turns: ["Người ta nói gì về Thác Datanla?"], tool_groups: [detail]}
+  - {id: ev-complaint, family: evidence, turns: ["Có ai chê Langbiang không, chê chuyện gì?"], tool_groups: [detail]}
+  - {id: ev-video, family: evidence, turns: ["Quán cà phê săn mây ở Cầu Đất có video nào nói về nó không?"], tool_groups: [detail]}
+  # ---- compare: two or three places side by side
+  - {id: cmp-two, family: compare, turns: ["Gợi ý hai quán cà phê view đồi thông", "Quán nào hợp hơn nếu đi buổi sáng, so giúp mình"], tool_groups: [compare]}
+  - {id: cmp-named, family: compare, turns: ["So Thác Datanla với Thác Prenn giúp mình"], tool_groups: [compare]}
+  - {id: cmp-price, family: compare, turns: ["Gợi ý quán lẩu cho nhóm 6 người", "Hai quán đầu quán nào rẻ hơn?"], tool_groups: [compare]}
+  - {id: cmp-three, family: compare, turns: ["So Langbiang, Thác Datanla và Hồ Tuyền Lâm về độ mệt khi đi"], tool_groups: [compare]}
+  - {id: cmp-pick, family: compare, turns: ["Gợi ý hai quán cà phê view đồi thông", "Chọn giúp mình một quán trong hai quán đó"], tool_groups: [compare]}
+  # ---- status: open now, closed, changed (place_status)
+  - {id: st-open, family: status, turns: ["Gợi ý quán cà phê view đồi thông", "Quán đầu tiên có còn hoạt động không?"], tool_groups: [detail]}
+  - {id: st-closed, family: status, turns: ["Thác Datanla còn mở cửa không, có bị đóng hay sửa không?"], tool_groups: [detail]}
+  - {id: st-hours, family: status, turns: ["Langbiang mở cửa tới mấy giờ?"], tool_groups: [detail]}
+  - {id: st-new, family: status, turns: ["Gợi ý quán bánh căn", "Quán thứ hai còn đúng giờ trên Maps không?"], tool_groups: [detail]}
+  - {id: st-moved, family: status, turns: ["Quán Cà phê Tùng có dọn đi đâu chưa?"], tool_groups: [detail]}
+  # ---- dishes: a dish typed by the user must find places
+  - {id: dish-banhcan, family: dishes, turns: ["Quán nào có bánh căn ngon?"], tool_groups: [places], cards: true}
+  - {id: dish-lau, family: dishes, turns: ["Chỗ nào có lẩu gà lá é?"], tool_groups: [places], cards: true}
+  - {id: dish-nem, family: dishes, turns: ["Mình muốn ăn nem nướng, đi đâu?"], tool_groups: [places], cards: true}
+  - {id: dish-menu, family: dishes, turns: ["Quán nào có món bò né trong menu?"], tool_groups: [places]}
+  - {id: dish-rare, family: dishes, turns: ["Quán nào bán món sushi cá hồi?"], tool_groups: [places]}
+  # ---- route: distance by mode, travel time through several stops
+  - {id: rt-walk, family: route, turns: ["Từ Hồ Xuân Hương đi bộ tới chợ Đà Lạt mất bao lâu?"], tool_groups: [distance]}
+  - {id: rt-moto, family: route, turns: ["Từ chợ Đà Lạt chạy xe máy tới Thác Datanla mất bao lâu?"], tool_groups: [distance]}
+  - {id: rt-car, family: route, turns: ["Đi ô tô từ Hồ Xuân Hương lên Langbiang bao nhiêu phút?"], tool_groups: [distance]}
+  - {id: rt-chain, family: route, turns: ["Đi chợ Đà Lạt, rồi Hồ Xuân Hương, rồi Thác Datanla thì tổng thời gian di chuyển bao lâu?"], tool_groups: [distance]}
+  - {id: rt-follow, family: route, turns: ["Gợi ý quán cà phê view đồi thông", "Từ quán đầu tiên đi xe máy tới chợ mất bao lâu?"], tool_groups: [distance]}
+  # ---- journey: how to reach the city
+  - {id: jr-cheapest, family: journey, turns: ["Từ Hà Nội lên Đà Lạt đi gì rẻ nhất?"], tool_groups: [journey]}
+  - {id: jr-fast, family: journey, turns: ["Từ Sài Gòn lên Đà Lạt cách nào nhanh nhất?"], tool_groups: [journey]}
+  - {id: jr-flight, family: journey, turns: ["Từ Hà Nội có chuyến bay thẳng tới Đà Lạt không, giá bao nhiêu?"], tool_groups: [journey], reply_lacks: ["VN\\d{3,4}.*(chắc chắn|còn vé)"]}
+  - {id: jr-coach, family: journey, turns: ["Từ Nha Trang lên Đà Lạt có xe khách không?"], tool_groups: [journey]}
+  - {id: jr-bike, family: journey, turns: ["Đi xe máy từ Sài Gòn lên Đà Lạt mất mấy tiếng?"], tool_groups: [journey]}
+  # ---- climate / calendar: normals, holidays, events, crowds
+  - {id: cl-month, family: climate, turns: ["Tháng 12 Đà Lạt có lạnh không?"], tool_groups: [climate]}
+  - {id: cl-rain, family: climate, turns: ["Tháng 8 Đà Lạt mưa nhiều không?"], tool_groups: [climate]}
+  - {id: cl-fog, family: climate, turns: ["Tháng nào Đà Lạt hay có sương mù nhất?"], tool_groups: [climate]}
+  - {id: ca-holiday, family: climate, turns: ["Dịp lễ 30/4 Đà Lạt có đông không?"], tool_groups: [calendar]}
+  - {id: ca-event, family: climate, turns: ["Cuối tháng 12 Đà Lạt có lễ hội gì không?"], tool_groups: [calendar]}
+  # ---- stays and cost
+  - {id: sy-budget, family: stays, turns: ["Khách sạn gần chợ dưới 800k một đêm"], tool_groups: [stays], cards: true}
+  - {id: sy-view, family: stays, turns: ["Homestay có view đồi thông cho 2 người"], tool_groups: [stays], cards: true}
+  - {id: sy-price-date, family: stays, turns: ["Đêm 12/11 khách sạn nào còn phòng giá bao nhiêu?"], tool_groups: [stays]}
+  - {id: co-two, family: stays, turns: ["Đi Thác Datanla với Langbiang hết bao nhiêu tiền cho 2 người?"], tool_groups: [cost]}
+  - {id: co-unknown, family: stays, turns: ["Gợi ý quán cà phê view đồi thông", "Ăn ở quán đầu tiên hết khoảng bao nhiêu?"], tool_groups: [cost]}
+  # ---- tips and area notices
+  - {id: tp-local, family: tips, turns: ["Người địa phương có mẹo gì khi đi Langbiang không?"], tool_groups: [tips]}
+  - {id: tp-queue, family: tips, turns: ["Thác Datanla nên đi giờ nào để đỡ đông?"], tool_groups: [tips]}
+  - {id: tp-scam, family: tips, turns: ["Khu chợ Đà Lạt có chiêu lừa du khách nào cần tránh không?"], tool_groups: [tips]}
+  - {id: tp-area, family: tips, turns: ["Khu Hồ Xuân Hương có gì cần lưu ý không, có đang sửa chữa không?"], tool_groups: [tips]}
+  - {id: tp-road, family: tips, turns: ["Đèo lên Đà Lạt có đang sạt lở hay cấm xe không?"], tool_groups: [tips]}
+  # ---- save / hide: actions that change the trip only when the user asks
+  - {id: sv-save, family: saveact, turns: ["Gợi ý quán cà phê view đồi thông", "Lưu quán đầu tiên lại cho mình"], reply_has: ["lưu|đã thêm|giữ"]}
+  - {id: sv-save-name, family: saveact, turns: ["Lưu Thác Datanla vào danh sách của mình"], reply_has: ["lưu|đã thêm|giữ"]}
+  - {id: sv-hide, family: saveact, turns: ["Gợi ý quán cà phê view đồi thông", "Ẩn quán đầu tiên đi, mình không thích"], reply_has: ["ẩn|bỏ|không (hiện|gợi ý)"]}
+  - {id: sv-hide-all, family: saveact, turns: ["Gợi ý quán lẩu cho nhóm 6 người", "Đừng gợi ý lại quán thứ hai nữa"], reply_has: ["ẩn|bỏ|không (hiện|gợi ý)"]}
+  - {id: sv-unknown, family: saveact, turns: ["Lưu quán Không Có Thật Số Một giúp mình"], reply_has: ["chưa|không"], cards: false}

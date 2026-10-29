@@ -104,8 +104,8 @@ def test_r7_the_agent_is_told_the_language_to_answer_in(catalog, cfg, tmp_path):
     e = Engine(catalog, cfg, SessionStore(Path(tmp_path)), chat, today=lambda: TODAY)
     sid = e.create("first", "nothing")["id"]
     e.turn(sid, TurnInput(kind="text", text="We are 2 couples, 3 days in Dalat, we love coffee"), lambda *_: None)
-    system = chat.seen[0][0][0]["content"]
-    assert "English" in system
+    context = next(m["content"] for m in chat.seen[0][0] if m["content"].startswith("CURRENT CONTEXT"))
+    assert '"language": "English"' in context  # in the context, not the system prompt: that one is the same for everyone
 
 
 # ---------- R8: at most two sentences, 250 characters (bench: 22/102 replies were longer) ----------

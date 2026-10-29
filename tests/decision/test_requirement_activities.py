@@ -4,7 +4,7 @@ from fixtures import feat, hard, love, si, srec
 
 from decision import hard_check, run_pipeline
 from decision.model import Cand
-from decision.rank import preference_fit
+from decision.rank import conf, preference_fit
 from decision.screen import screen
 from decision.settings import default
 from decision.trip_days import trip_days
@@ -59,7 +59,7 @@ def test_unknown_flag_is_preserved_but_explicit_failure_is_never_admitted():
 def test_explicit_scope_also_controls_ranking_denominator():
     museum = srec("museum", group="museum", features={"scenic_view": "present"})
     weights = [love("scenic_view"), {**love("noise", "quiet"), "scope": "accommodation"}]
-    assert preference_fit(museum, weights)[0] == 1
+    assert preference_fit(museum, weights)[0] == pytest.approx(conf(feat("present")))  # one applicable want, fully met
 
 
 def test_requirement_boundary_rejects_unknown_features_and_invalid_scope():
@@ -72,7 +72,7 @@ def test_requirement_boundary_rejects_unknown_features_and_invalid_scope():
 def test_wine_preference_ranks_a_verified_offering_without_forcing_consumption():
     winery = srec("winery", group="tour", category="Winery", usable=("experience",),
                   features={"wine_tasting_available": "present"})
-    assert preference_fit(winery, [love("wine_tasting_available")])[0] == 1
+    assert preference_fit(winery, [love("wine_tasting_available")])[0] == pytest.approx(conf(feat("present")))
     abstain = {"feature": "activity", "value": "alcohol_consumption", "op": "ne", "unknown_policy": "exclude"}
     assert hard_check(winery, abstain) == "pass"
     assert preference_fit(winery, [love("wine_tasting_available")], "sightseeing")[0] == 0

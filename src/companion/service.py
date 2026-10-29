@@ -220,4 +220,4 @@ class Companion:
             trip = self._trip(conn, journey_id)
             stop = self._stop(conn, trip["id"], stop_id)
             conn.execute("UPDATE trip_stops SET rating = %s WHERE id = %s", (value, stop["id"]))
-        return {"stop_id": stop_id, "rating": value}
+        return {"stop_id": stop_id, "rating": value, "place_id": stop["place_id"]}

@@ -21,6 +21,34 @@ class PatternSettings:
     stale_days: int = 365     # a pattern whose last vote is older than this is dropped
     max_places: int = 3       # place patterns offered on the prior card
     dir: str = "data/trip/profiles"
+    half_life_days: int = 180  # an entry's strength halves after this many days without a new vote
+    audit_sample: int = 20     # active entries the Judge reads per profile-audit run
+
+
+@dataclass(frozen=True)
+class Assistant:
+    """The Đà Lạt assistant in the Trip chat (docs/TRIP_UNDERSTANDING.md §Trợ lý). Off until its bench passes."""
+    enabled: bool = False
+    prefetch: bool = True        # Clef picks the read-only tools and code runs them before the agent's one call
+    clef_threshold: float = 0.35  # a tool group is prepared when Clef gives "yes" at least this probability
+    prefetch_wait_s: float = 1.2  # the agent waits this long for prepared data; later results only fill the cache
+    reply_words: int = 60        # the agent's reply is cut to this many words (hard cap)
+    ask_words: int = 40          # the length the prompt asks for; below reply_words so the cut rarely bites
+    reply_style: str = ""        # one line of style the prompt adds (no preamble, no repeating the cards, ...)
+    hide_prepared_lookup: bool = False  # find_places is not offered when prepared data already holds places / a named place
+    service_tier: str = ""       # sent as `service_tier` with every Agent call while enabled (9router forwards "priority")
+    covered_tools: str = "all"   # the first call when prepared data answers every asked group: "all" tools as before,
+    # "write" = record_fact only (no lookup), "none" = no tool (agent/prefetch.covers)
+    max_candidates: int = 6      # places named in the message offered to Clef
+    data_places: int = 6         # places of a find_places result the agent reads (short card keys)
+    cards_max: int = 10          # place cards under a reply, from the same ranked list
+    cards_ratio: float = 0.6     # a card needs at least this share of the best place's score
+    find_pool: int = 200         # places find_places asks corpus.retrieval for when it sorts / filters further (price_max, sort, exclude, page)
+    near_km: float = 3.0         # radius of find_places near_place when the call gives none
+    walk_kmh: float = 4.5        # walking speed that turns a road length into minutes (an estimate; OSRM times vehicles)
+    guard: bool = True           # the Clef rule guard (agents.assistant.guard): R1-R8 labels, asked in parallel with the model
+    guard_threshold: float = 0.55  # a rule label counts from this Clef probability (calibrated on config/bench_assistant_guard.yaml)
+    max_compare: int = 4         # places compare_places / route_time read at once (route_time allows two more)
 
 
 @dataclass(frozen=True)
@@ -38,6 +66,7 @@ class Settings:
     total_s: float = 30.0
     clef_timeout_s: float = 1.0
     clef_feature_min: float = 0.5  # a feature Clef ranks for a wish counts from this probability
+    clef_feature_pool: int = 20  # features Clef ranks at once: the closest by meaning (more runs it out of GPU memory)
     clef_verify_min: float = 0.75  # D-gate (chat): sure the quote does not say the fact: a low fact is refused
     clef_clarity_min: float = 0.75  # quiz other-gate: sure a free-typed answer is clear for the field: fill it, else to chatbot
     clef_reply_min: float = 0.9    # sure a reply promises results or states an unsaid fact: it is replaced
@@ -52,6 +81,7 @@ class Settings:
     entry_roads: tuple = ()  # ({from_deg, to_deg, text}, …): the road into the city by the bearing toward the origin
     airports: tuple = ()  # ({iata, name, lat, lng}, …) with direct flights to the city (config/airports.yaml)
     patterns: PatternSettings = field(default_factory=PatternSettings)
+    assistant: Assistant = field(default_factory=Assistant)
     themes: dict = field(default_factory=dict)  # theme id -> {title, say, soft: [...], groups: [...]} (Khám phá cards)
     drills: dict = field(default_factory=dict)  # drill topic -> {header, question, variants: [...]} (photo cards, domain/drill.py)
     drill_scores_path: str = "data/trip/drill_scores.json"  # photo-card scores saved by `python -m trip drills`
@@ -70,7 +100,15 @@ class Settings:
 def load(path: Path = ROOT / "config" / "trip.yaml") -> Settings:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     patterns = PatternSettings(**(raw.pop("patterns", None) or {}))
+    assistant = Assistant(**(raw.pop("assistant", None) or {}))
     roads = tuple(raw.pop("entry_roads", None) or ())
     airports = yaml.safe_load((path.parent / "airports.yaml").read_text(encoding="utf-8")) if (path.parent / "airports.yaml").exists() else {}
     raw["required"] = tuple(raw.get("required") or Settings.required)
-    return Settings(**raw, entry_roads=roads, airports=tuple(airports.get("airports") or ()), patterns=patterns)
+    return Settings(**raw, entry_roads=roads, airports=tuple(airports.get("airports") or ()), patterns=patterns,
+                    assistant=assistant)
+
+
+def city_center(city: str = "dalat", path: Path = ROOT / "config" / "cities.yaml") -> tuple[str, float, float]:
+    """(name, lat, lng) of the city's declared centre (config/cities.yaml `center`): "chợ / trung tâm" in a message."""
+    center = yaml.safe_load(path.read_text(encoding="utf-8"))[city]["center"]
+    return center["name"], float(center["lat"]), float(center["lng"])

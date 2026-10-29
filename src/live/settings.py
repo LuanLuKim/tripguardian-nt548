@@ -29,7 +29,10 @@ class Settings:
     tz_offset_h: float
     vexere_dalat: int = 0  # Vexere area id of the city (buses)
     vexere_regions: tuple = ()  # ({id, name, lat, lng}, …) provinces with coaches to the city
+    vexere_city_station: dict | None = None  # {name, lat, lng}: where coaches arrive / leave in the city (journey legs)
     transit_prewarm: dict | None = None  # {flight_days, bus_days, pause_s}: scripts/prewarm_transit.py
+    flight_cache: bool = True  # False: flights are read live and never written to data/live/flights/
+    views_city: str = "dalat"  # whose data/<city>/views/ (climate, calendar) the fixed-date sources read first
 
 
 @cache

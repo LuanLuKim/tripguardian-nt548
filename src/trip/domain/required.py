@@ -5,6 +5,12 @@ from .readiness import TITLE, missing
 from .state import Draft, TripState
 
 
+def planning(state: TripState) -> bool:
+    """The user wants this trip planned (said so, or gave its dates or days): the assistant may ask required topics.
+    While they only explore Đà Lạt, it answers and invites planning once instead."""
+    return state.meta.intent == "plan" or state.start_date.known or state.days.known
+
+
 def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
     def answered(f):
         return f.known and f.source == "user"

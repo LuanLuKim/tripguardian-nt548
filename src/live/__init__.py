@@ -13,12 +13,12 @@ from .flights import flights, flights_url
 from .geocode import geocode, geosearch
 from .holidays import holidays
 from .http import Unavailable
-from .osrm import route_shape, travel_matrix
+from .osrm import route_shape, route_steps, travel_matrix
 from .settings import Settings
 from .settings import load as load_settings
 from .lodging import lodging_near, lodging_seen
 from .sun import sun_times
-from .weather import weather
+from .weather import weather, weather_hourly
 
 __all__ = ["Settings", "Unavailable", "advisories", "buses", "buses_url", "events", "flights", "flights_url", "geocode", "geosearch", "holidays", "load_settings", "lodging_near", "lodging_seen", "route_shape",
-           "sun_times", "travel_matrix", "weather"]
+           "route_steps", "sun_times", "travel_matrix", "weather", "weather_hourly"]

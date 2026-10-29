@@ -9,6 +9,7 @@ per_day: {before: 1, during: 3}   # cap per calendar day, before the trip / on t
 pause_after_ignored: 3            # this many sent and never opened in a row -> one "paused" note, then silence
 tick_s: 60
 weather_every_h: 3
+eve_at: "20:00"                  # the evening check before each trip day (only when planning eve_replan is on)
 rain_alert: 0.6                   # rain probability that makes an outdoor stop worth a note
 open_window_h: 2                  # an action within this long after opening counts as useful (bandit reward)
 bandit_min_sends: 200             # variants are chosen by results only once each has this many sends
@@ -49,6 +50,10 @@ kinds:
     valid_h: 4
     variants:
       - {id: a, title: "Hôm nay có thể mưa", body: "Hôm nay khả năng mưa {p}% ☔ {place} ở ngoài trời, mình có phương án khác trong lịch, xem thử?"}
+  eve_replan:                   # D.3: tomorrow's plan has a stop worth changing (docs/PLANNING.md §Đổi lịch tối trước ngày đi)
+    valid_h: 3
+    variants:
+      - {id: a, title: "Có thay đổi cho ngày mai", body: "{place}: {reason}. Mình có phương án khác, xem rồi chọn nhé, giữ nguyên cũng được."}
   post_trip:
     valid_h: 24
     variants:
@@ -59,13 +64,15 @@ kinds:
       - {id: a, title: "Mình tạm im nhé", body: "Có vẻ giờ chưa phải lúc. Mình tạm im nhé, cần gì thì mình vẫn ở trong app 🌿"}
 
 # Where each kind opens (deep link; ?n=<id> is added). A notification only leads somewhere, it never changes the plan.
+# Trip notes open the confirmed itinerary (/app/plan): the product ends at confirm, there is no "today" screen.
 links:
   plan_unfinished: /app/explore
-  book_ahead: /app/today
-  eve_of_trip: /app/today
-  day_brief: /app/today
-  checkin_hint: /app/today
-  golden_hour: /app/today
-  weather_change: /app/today
+  book_ahead: /app/plan
+  eve_of_trip: /app/plan
+  day_brief: /app/plan
+  checkin_hint: /app/plan
+  golden_hour: /app/plan
+  weather_change: /app/plan
+  eve_replan: /app/plan
   post_trip: /app/done
   paused: /app/profile

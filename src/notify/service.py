@@ -34,11 +34,17 @@ def web_push(sub: dict, payload: dict) -> None:
 
 class Notify:
     def __init__(self, pool, records: list[dict] | dict, cfg: dict | None = None, push=web_push, weather=None,
-                 now=None):
-        """push(sub, payload) sends one web push; weather(lat, lng, dates) -> {date: {"rain_prob", "source"}}."""
+                 now=None, eve=None, expert=None):
+        """push(sub, payload) sends one web push; weather(lat, lng, dates) -> {date: {"rain_prob", "source"}};
+        eve(journey, snapshot, plan, plan_hash, today, trip=None) -> {"notify", "ask"} is the D.3 evening check (None = off;
+        trip: the journey's current Search Input, where a changed arrival / departure shows up).
+        expert(journey, snapshot, plan, plan_hash) -> int | None runs the D.2 Local Expert for a confirmed plan once, in the
+        background (None = off); its findings reach the plan screen as notes, never in front of the user's confirm."""
         self.pool, self.cfg, self.push = pool, cfg or P.load_settings(), push
         self.records = records if isinstance(records, dict) else {r["id"]: r for r in records}
         self.weather = weather
+        self.eve = eve
+        self.expert = expert
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._last_weather: datetime | None = None
         self.rng = random.Random()
@@ -214,16 +220,79 @@ class Notify:
                 made += 1
         return made
 
+    def check_expert(self) -> int:
+        """Every confirmed trip that has not ended: the Local Expert reviews its plan once (the runner remembers which plan
+        hash it did). One bad trip is skipped, not retried here; returns how many plans got notes."""
+        if self.expert is None:
+            return 0
+        today, made = self.now().astimezone(P.TZ).date(), 0
+        with self.pool.connection() as conn:
+            trips = conn.execute("SELECT t.*, j.envelope AS envelope FROM trips t JOIN journeys j ON j.id = t.journey_id "
+                                 "WHERE t.user_id IS NOT NULL AND t.end_date >= %s", (today,)).fetchall()
+        for trip in trips:
+            env = trip["envelope"] or {}
+            snap, plan = (env.get("snapshots") or {}).get("planning"), (env.get("outputs") or {}).get("planning")
+            if not (snap and plan):
+                continue
+            try:
+                made += bool(self.expert(trip["journey_id"], snap, plan, trip["plan_hash"]))
+            except Exception as exc:
+                print(f"expert pass failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return made
+
+    def check_eve(self) -> int:
+        """From eve_at on, once per trip and evening while tomorrow is a trip day: run the evening check; a note
+        only when it asks something. A marker (status cancelled) keeps the check to one run per evening."""
+        if self.eve is None:
+            return 0
+        now, made = self.now(), 0
+        local = now.astimezone(P.TZ)
+        if local.time() < P._clock(self.cfg["eve_at"]):
+            return 0
+        today, tomorrow = local.date(), local.date() + timedelta(days=1)
+        with self.pool.connection() as conn:
+            trips = conn.execute("SELECT t.*, j.envelope AS envelope FROM trips t JOIN journeys j ON j.id = t.journey_id "
+                                 "WHERE t.user_id IS NOT NULL AND t.start_date <= %s AND t.end_date >= %s",
+                                 (tomorrow, tomorrow)).fetchall()
+        for trip in trips:
+            key = f"eve_replan:{tomorrow.isoformat()}"
+            with self.pool.connection() as conn:
+                if conn.execute("SELECT 1 FROM notifications WHERE trip_id = %s AND payload->>'key' = %s",
+                                (trip["id"], key)).fetchone():
+                    continue
+            env = trip["envelope"] or {}
+            snap, plan = (env.get("snapshots") or {}).get("planning"), (env.get("outputs") or {}).get("planning")
+            out = None
+            if snap and plan:
+                try:
+                    out = self.eve(trip["journey_id"], snap, plan, trip["plan_hash"], today.isoformat(),
+                                   trip=(env.get("outputs") or {}).get("trip"))   # Trip-side arrival / departure edits
+                except Exception as exc:  # one bad trip must not stop the others; it is not retried tonight
+                    print(f"eve check failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            ask = (out or {}).get("ask") or []
+            note = {"kind": "eve_replan", "key": key, "scheduled_at": now,
+                    "valid_until": now + timedelta(hours=self.cfg["kinds"]["eve_replan"]["valid_h"]),
+                    "data": {"place": ask[0]["name"], "reason": ask[0]["cause"]["text"]} if ask else {}}
+            with self.pool.connection() as conn:
+                self._insert(conn, trip["user_id"], trip["id"], note, trip["plan_hash"],
+                             status="scheduled" if (out or {}).get("notify") and ask else "cancelled")
+            made += bool((out or {}).get("notify") and ask)
+        return made
+
     # --- worker: sending ------------------------------------------------------------------------------------------
 
     def _fill(self, conn, note: dict) -> dict:
         data = dict(note["payload"].get("data") or {})
         if data.pop("weather", None) and note["trip_id"]:  # eve of trip: the forecast is read when it is sent
-            trip = conn.execute("SELECT start_date FROM trips WHERE id = %s", (note["trip_id"],)).fetchone()
+            trip = conn.execute("SELECT t.start_date, j.envelope->'outputs'->'planning' AS plan FROM trips t "
+                                "JOIN journeys j ON j.id = t.journey_id WHERE t.id = %s", (note["trip_id"],)).fetchone()
             prob = None
-            if self.weather and trip and trip["start_date"]:
+            stops = conn.execute("SELECT day, seq, place_id FROM trip_stops WHERE trip_id = %s",
+                                 (note["trip_id"],)).fetchall() if trip else []
+            point = P.trip_point(stops, (trip and trip["plan"]) or {}, self.records, 1)
+            if self.weather and trip and trip["start_date"] and point:
                 try:
-                    day = self.weather(11.9404, 108.4583, [trip["start_date"].isoformat()]).get(trip["start_date"].isoformat()) or {}
+                    day = self.weather(*point, [trip["start_date"].isoformat()]).get(trip["start_date"].isoformat()) or {}
                     prob = day.get("rain_prob") if day.get("source") == "open-meteo" else None
                 except Exception as exc:
                     print(f"weather for eve_of_trip failed: {exc}", file=sys.stderr)
@@ -331,6 +400,8 @@ class Notify:
         if self._last_weather is None or self.now() - self._last_weather >= timedelta(hours=self.cfg["weather_every_h"]):
             out["weather"] = self.check_weather()
             self._last_weather = self.now()
+        out["eve"] = self.check_eve()
+        out["expert"] = self.check_expert()
         out.update(self.send_due())
         return out
 

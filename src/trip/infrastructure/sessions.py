@@ -20,6 +20,7 @@ class Session:
     state: TripState
     card: Question | Deck | None = None
     transcript: list[dict] = field(default_factory=list)
+    photos: list[dict] = field(default_factory=list, repr=False)  # what the assistant read in the photos sent (never saved to disk)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
 

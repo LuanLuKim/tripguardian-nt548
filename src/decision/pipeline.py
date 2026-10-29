@@ -16,6 +16,7 @@ from .chunks import assign_chunks, coverage, describe_chunks
 from .curation import pending
 from .diversify import pick, sizes, tab
 from .feasibility import evaluate
+from .filters import label as filter_label, passing
 from .geo import km, point
 from .fit import centers, fit
 from .model import Cand
@@ -23,7 +24,7 @@ from .rank import score
 from .screen import screen
 from .trip_days import trip_days
 from .window import change, pages, window
-from .wishes import SAID
+from .wishes import SAID, reserve
 
 MISSING_NAME = "Địa điểm chưa có trong dữ liệu"
 
@@ -60,6 +61,7 @@ class Result:
     card_of: Callable[[str], dict] | None = None  # place id -> its card as the view shows it (a ranked or unverified id)
     unverified: list[str] | None = None  # every unverified place, best first (the view carries the first few)
     far: dict[str, tuple[int, str]] | None = None  # hidden as too far: place id -> (minutes, center name)
+    hidden: frozenset[str] = frozenset()  # hidden by the session's filters (their score and status are untouched)
 
 
 def stub(pid: str) -> dict:
@@ -151,6 +153,11 @@ class Cands(Mapping):
 def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
     si, st = s.search_input, s.state
     si = si.model_copy(update={'activities': {**si.activities, **st.activities}})
+    if st.likes:  # "kiếm thêm kiểu này": each liked place is a "giống X" wish, like the ones Trip Understanding read
+        w = si.wishes.model_dump()
+        had = {x["place_id"] for x in w["like"]}
+        w["like"] = [*w["like"], *({"place_id": p, "but": [], "quote": ""} for p in st.likes if p not in had)]
+        si = si.model_copy(update={"wishes": type(si.wishes).model_validate(w)})
     days = trip_days(si.context, cfg)
     known_days = si.context.days is not None
     wish = set(st.wishlist)
@@ -231,10 +238,17 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
                     key=lambda c: (tier.get(c.id, 1), crowded(c.id), -c.score, c.id)):
         ranked.setdefault(group_of.get(c.id, "sights"), []).append(c.id)
     picked = {c.id for c in chosen}
+    hidden: set[str] = set()
+    if st.filters:  # a filter hides; picks stay; nothing is rescored (the ranking above is final)
+        ok = passing(region, st.filters, days, [i for ids in ranked.values() for i in ids if i not in picked])
+        hidden = {i for ids in ranked.values() for i in ids if i not in picked and i not in ok}
+        ranked = {g: [i for i in ids if i not in hidden] for g, ids in ranked.items()}
     top = set()
     for gid, ids in ranked.items():
         k = sum(1 for c in reps if group_of.get(c.id) == gid)
         top.update([p for p in ids if p not in picked and tier.get(p, 1) < 2][:k])  # never a place the diet does not fit
+    # a wish the user said that some listed place meets always has one in "Hợp nhất" (docs/PLACE_DECISION.md §9.3)
+    top = reserve(top, t.wishes, ranked, picked, lambda p: tier.get(p, 1) < 2, lambda p: t.score[region.index[p]])
 
     suggested = next((c.id for c in reps if group_of[c.id] == st.suggest_group), None) if st.suggest_group else None
     want = wanted(si, st.profile)
@@ -323,9 +337,12 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
         "days": [{"index": d.index, "date": d.date.isoformat() if d.date else None, "weekday": d.weekday} for d in days],
         "unknowns": list(si.unknowns),
         "unmapped": [*si.unmapped, *st.unmapped],
+        "filter": {"active": [{"key": k, "value": v, "label": filter_label(k, v, cfg)} for k, v in st.filters],
+                   "hidden": len(hidden)},
+        "likes": list(st.likes),
     }
     return Result(view, cands, {k: [x.id for x in v] for k, v in alts.items()}, group_of, days, shown, ranked, allocation,
-                  t.wishes, lambda pid: mk(cands[pid]), unverified, far)
+                  t.wishes, lambda pid: mk(cands[pid]), unverified, far, frozenset(hidden))
 
 
 def _unmet(res: Result, pid: str, group: str) -> list[str]:
@@ -357,6 +374,8 @@ def why_not(res: Result, pid: str, si, cfg) -> dict:
         reasons.append("Bạn đã bỏ nơi này")
     elif any(w["id"] == pid for w in v["wishlist"]):
         reasons.append("Bạn để nơi này trong danh sách mong muốn")
+    elif pid in res.hidden:
+        reasons.append("Nơi này đang ẩn vì bộ lọc của bạn (bỏ lọc để xem lại)")
     elif (g := next((g for g, ids in res.ranked.items() if pid in ids), None)) is not None:
         ids = res.ranked[g]
         k = ids.index(pid)

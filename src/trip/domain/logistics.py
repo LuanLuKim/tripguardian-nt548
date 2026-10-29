@@ -81,3 +81,41 @@ def pick_transit(state: TripState, way: str, t: Transit, cfg: Settings, turn: in
     else:
         state = apply(state, put("exit_point", Base(text=t.from_point)))
     return settle(state)
+
+
+# ---------- trade-off sentences (docs/BOOKING.md §Đánh đổi) ----------
+
+LONG_RIDE_MIN = 240  # a road or coach leg this long is a long sit for a small child
+
+
+def _night(t: Transit | None) -> bool:
+    """A coach or flight leaving late evening / before dawn, or arriving on another day than it left."""
+    if t is None:
+        return False
+    hour = int(t.depart_at[11:13])
+    return hour >= 21 or hour < 5 or t.arrive_at[:10] != t.depart_at[:10]
+
+
+def tradeoffs(state: TripState, cfg: Settings, ride_min: int | None = None) -> list[dict]:
+    """Short sentences [{"code", "text"}] about what the chosen way in costs THIS party, each grounded in a fact the
+    trip holds (a signal, a companion, the way in, the road's pass); none for a fact that is unknown, nothing guessed.
+    ride_min: the road leg's minutes when the caller has them (journey), else the coach's own length."""
+    out: list[dict] = []
+    mode = state.arrival_mode.value
+    t = state.inbound.value
+    road = entry_road(state.origin.value, cfg) if state.origin.value else None
+    sick = any(s.kind == "motion_sick" for s in state.signals)
+    small = any(s.kind == "kids" for s in state.signals) or bool({"kids", "baby"} & set(state.companions.value or ()))
+    if t is not None and ride_min is None:
+        ride_min = int((datetime.fromisoformat(t.arrive_at) - datetime.fromisoformat(t.depart_at)).total_seconds() // 60)
+    if sick and mode in ("self", "bus") and road is not None:
+        out.append({"code": "pass_motion_sick", "text": f"Đường vào Đà Lạt qua {road.text} nhiều cua và dốc, bạn hay say xe nên cần "
+                                                        f"nghỉ giữa đèo; đi máy bay hoặc xe đi ban ngày sẽ nhẹ hơn."})
+    if small and mode in ("self", "bus") and ride_min is not None and ride_min >= LONG_RIDE_MIN:
+        out.append({"code": "small_kids_long_ride", "text": f"Chặng đường khoảng {round(ride_min / 60)} giờ, với trẻ nhỏ nên "
+                                                          f"dừng nghỉ giữa đường hoặc cân nhắc đi máy bay."})
+    if mode == "bus" and _night(t):
+        out.append({"code": "overnight_bus", "text": "Xe chạy đêm: bạn ngủ trên xe và đến sáng sớm, ngày đầu có thể mệt, "
+                                                      "chưa nhận phòng được ngay."
+                                                      + (" Có trẻ nhỏ nên càng khó ngủ." if small else "")})
+    return out

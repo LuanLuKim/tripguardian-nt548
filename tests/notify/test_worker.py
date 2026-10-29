@@ -80,7 +80,7 @@ def test_sending_respects_the_cap_and_keeps_an_inbox_copy(world):
     clock["now"] = datetime(2026, 11, 9, 10, 1, tzinfo=TZ)
     assert n.send_due() == {"sent": 1, "skipped": 0, "later": 0}
     assert push.sent[0][1]["body"].startswith(("Psst… Lẩu Gà", "Lẩu Gà thường"))
-    assert "/app/today?journey=j00000000009&n=" in push.sent[0][1]["url"]
+    assert "/app/plan?journey=j00000000009&n=" in push.sent[0][1]["url"]
     inbox = n.inbox(UID)
     assert len(inbox) == 1 and not inbox[0]["opened"]
 
@@ -149,3 +149,64 @@ def test_a_trip_with_nothing_left_to_send_is_not_planned_every_minute(world):
     assert n.schedule() == 0
     with n.pool.connection() as conn:
         assert conn.execute("SELECT count(*) AS c FROM notifications").fetchone()["c"] == 1  # one marker only
+
+
+def test_the_eve_note_reads_the_forecast_at_the_trips_own_first_stop(world):
+    n, push, clock = world
+    asked = []
+    n.weather = lambda lat, lng, dates: asked.append((lat, lng, dates)) or {dates[0]: {"rain_prob": 0.7, "source": "open-meteo"}}
+    n.schedule()
+    clock["now"] = datetime(2026, 11, 11, 20, 1, tzinfo=TZ)
+    n.send_due()
+    assert asked == [(11.94, 108.44, ["2026-11-12"])]   # Đồi Mây, the first stop of day 1, not a hard-coded city point
+    eve = rows(n, "kind = 'eve_of_trip'")[0]
+    assert eve["status"] == "sent" and "70%" in eve["payload"]["body"]
+
+
+def test_the_evening_check_runs_once_per_evening_and_notes_only_what_it_asks(world):
+    n, push, clock = world
+    calls = []
+    asked = {"notify": True, "ask": [{"name": "Đồi Mây", "cause": {"text": "dự báo mưa 85% lúc 15–18h"}}]}
+    n.eve = lambda j, snap, plan, h, today, trip=None: calls.append((j, today)) or asked
+    with n.pool.connection() as conn:
+        conn.execute("UPDATE journeys SET envelope = %s WHERE id = 'j00000000009'",
+                     (Jsonb({"outputs": {"planning": PLAN}, "snapshots": {"planning": {"id": "abc"}}}),))
+    clock["now"] = datetime(2026, 11, 11, 19, 30, tzinfo=TZ)
+    assert n.check_eve() == 0 and calls == []                 # before eve_at
+    clock["now"] = datetime(2026, 11, 11, 20, 5, tzinfo=TZ)
+    assert n.check_eve() == 1 and calls == [("j00000000009", "2026-11-11")]
+    assert n.check_eve() == 0 and len(calls) == 1             # once per evening
+    note = rows(n, "kind = 'eve_replan'")[0]
+    assert note["payload"]["key"] == "eve_replan:2026-11-12" and note["status"] == "scheduled"
+    n.send_due()
+    sent = [p for _, p in push.sent if "ngày mai" in p["title"]]
+    assert sent and "/app/plan?journey=j00000000009" in sent[0]["url"] and "Đồi Mây" in sent[0]["body"]
+    clock["now"] = datetime(2026, 11, 12, 20, 5, tzinfo=TZ)    # tomorrow is day 2: asked, nothing to say
+    n.eve = lambda *a, **k: {"notify": False, "ask": []}
+    assert n.check_eve() == 0
+    assert rows(n, "payload->>'key' = 'eve_replan:2026-11-13'")[0]["status"] == "cancelled"
+
+
+def test_no_evening_check_without_the_flag(world):
+    n, _, clock = world
+    clock["now"] = datetime(2026, 11, 11, 20, 5, tzinfo=TZ)
+    assert n.eve is None and n.check_eve() == 0
+
+
+def test_the_expert_runs_in_the_background_for_a_confirmed_trip_and_is_off_without_the_flag(world):
+    n, _, clock = world
+    calls = []
+    assert n.expert is None and n.check_expert() == 0
+    n.expert = lambda j, snap, plan, h: calls.append(j) or 2
+    with n.pool.connection() as conn:
+        conn.execute("UPDATE journeys SET envelope = %s WHERE id = 'j00000000009'",
+                     (Jsonb({"outputs": {"planning": PLAN}, "snapshots": {"planning": {"id": "abc"}}}),))
+    assert n.check_expert() == 1 and calls == ["j00000000009"]
+    n.expert = lambda *a: None                       # the runner says this plan was already reviewed
+    assert n.check_expert() == 0
+    n.expert = lambda *a: (_ for _ in ()).throw(RuntimeError("model down"))
+    assert n.check_expert() == 0                     # one bad trip never stops the worker
+    clock["now"] = datetime(2026, 12, 1, 9, 0, tzinfo=TZ)   # the trip is over
+    calls.clear()
+    n.expert = lambda j, *a: calls.append(j) or 1
+    assert n.check_expert() == 0 and calls == []

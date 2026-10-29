@@ -285,6 +285,11 @@ class Meta(Frozen):
     other_text: str | None = None  # that unclear answer, in the user's words
     followups: int = 0  # turns in a row that ended on the agent's own question (text or ask_user), not a required one
     nudged: tuple[str, ...] = ()  # required topics the app itself opened because the agent asked none (each at most twice)
+    shown_ids: tuple[str, ...] = ()  # places the read tools returned this session (latest 80): the agent may name them
+    told_numbers: tuple[int, ...] = ()  # numbers in the read tools' results this session (latest 300): the agent may say them
+    intent: Literal["explore", "plan"] | None = None  # the user is exploring Đà Lạt, or wants this trip planned
+    invited: bool = False  # the assistant has asked once whether to plan the trip
+    hidden_ids: tuple[str, ...] = ()  # places the user asked not to see again in this trip (hide_place): no read tool returns them
 
 
 class Draft(Frozen):
@@ -625,8 +630,15 @@ def apply(state: TripState, u: Update) -> TripState:
     raise ValueError(f"unknown field {f!r}")
 
 
+def from_stored_need(f) -> bool:
+    return f.source == "profile" and any((e.tool or "").startswith("profile:need:") for e in f.evidence)
+
+
 def _drop_clashing_priors(state: TripState) -> TripState:
-    """The current trip wins over a stored taste: with an effort limit, a profile-sourced push toward effort goes."""
+    """The current trip wins over a stored taste: with an effort limit, a profile-sourced push toward effort goes; the
+    user saying there is nothing to take care of this trip drops the priors of stored needs."""
+    if state.care.value == "none" and state.care.source == "user" and any(from_stored_need(f) for f in state.soft.values()):
+        state = state.model_copy(update={"soft": {k: f for k, f in state.soft.items() if not from_stored_need(f)}})
     feats = {h.feature for h in state.hard}
     if not (feats & EFFORT_FEATURES or any(s.kind in EFFORT_SIGNALS for s in state.signals)):
         return state

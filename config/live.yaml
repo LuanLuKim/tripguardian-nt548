@@ -43,34 +43,51 @@ tz_offset_h: 7
 # __NEXT_DATA__ props.initialState.routeReducer.trips (20 per page). Only provinces with coaches to Đà Lạt are listed;
 # an origin uses the nearest one. Plain HTTP is enough (no browser). Province names are the 63 before the 2025 merger, as Vexere still uses them.
 vexere_dalat: 2399
+# Where coaches arrive / leave in the city: Google Maps card "Bến xe Liên tỉnh Đà Lạt" (2.827 reviews), crawled 2026-10-29
+# (data/gmaps/search/dalat_svc/ben-xe.jsonl). journey adds the transfer legs from / to it for regions that have a `station`.
+vexere_city_station: {name: "Bến xe Liên tỉnh Đà Lạt", lat: 11.9269457, lng: 108.445773}
 vexere_regions:
-  - {id: 29, name: "Sài Gòn", lat: 10.7684, lng: 106.6851}
-  - {id: 19, name: "Đồng Nai", lat: 11.0806, lng: 107.1642}
+  - {id: 29, name: "Sài Gòn", lat: 10.7684, lng: 106.6851, station: {name: "Bến xe Miền Đông Mới", lat: 10.880404, lng: 106.8148641}}
+  - {id: 19, name: "Đồng Nai", lat: 11.0806, lng: 107.1642, station: {name: "Bến xe Đồng Nai", lat: 10.9352801, lng: 106.8670679}}
   - {id: 36, name: "Lâm Đồng", lat: 11.7666, lng: 107.9974}
-  - {id: 32, name: "Khánh Hòa", lat: 12.3187, lng: 109.0692}
-  - {id: 15, name: "Đà Nẵng", lat: 16.0925, lng: 108.1124}
-  - {id: 16, name: "Đắk Lắk", lat: 12.789, lng: 108.2397}
+  - {id: 32, name: "Khánh Hòa", lat: 12.3187, lng: 109.0692, station: {name: "Bến xe phía Bắc Nha Trang", lat: 12.2885428, lng: 109.190607}}
+  - {id: 15, name: "Đà Nẵng", lat: 16.0925, lng: 108.1124, station: {name: "Bến xe Trung tâm Đà Nẵng", lat: 16.0565364, lng: 108.1725454}}
+  - {id: 16, name: "Đắk Lắk", lat: 12.789, lng: 108.2397, station: {name: "Bến xe phía Bắc Buôn Ma Thuột", lat: 12.7007616, lng: 108.0741171}}
   - {id: 47, name: "Quảng Nam", lat: 15.6753, lng: 108.3345}
-  - {id: 21, name: "Gia Lai", lat: 13.7988, lng: 108.1618}
+  - {id: 21, name: "Gia Lai", lat: 13.7988, lng: 108.1618, station: {name: "Bến xe Đức Long Gia Lai", lat: 13.965208, lng: 108.0213837}}
   - {id: 9, name: "Bình Dương", lat: 11.1827, lng: 106.6468}
-  - {id: 8, name: "Bình Định", lat: 14.1531, lng: 109.1087}
+  - {id: 8, name: "Bình Định", lat: 14.1531, lng: 109.1087, station: {name: "Bến xe khách trung tâm Quy Nhơn", lat: 13.7532823, lng: 109.2089335}}
   - {id: 11, name: "Bình Thuận", lat: 11.0905, lng: 108.0721}
-  - {id: 13, name: "Cần Thơ", lat: 10.123, lng: 105.5352}
+  - {id: 13, name: "Cần Thơ", lat: 10.123, lng: 105.5352, station: {name: "Bến xe Trung tâm Cần Thơ", lat: 10.0060824, lng: 105.7721358}}
   - {id: 17, name: "Đắk Nông", lat: 12.2808, lng: 107.6593}
-  - {id: 48, name: "Quảng Ngãi", lat: 14.9826, lng: 108.6891}
+  - {id: 48, name: "Quảng Ngãi", lat: 14.9826, lng: 108.6891, station: {name: "Bến xe Quảng Ngãi", lat: 15.1077487, lng: 108.8201125}}
   - {id: 1, name: "An Giang", lat: 10.5729, lng: 105.177}
-  - {id: 2, name: "Bà Rịa-Vũng Tàu", lat: 10.6066, lng: 107.2513}
+  - {id: 2, name: "Bà Rịa-Vũng Tàu", lat: 10.6066, lng: 107.2513, station: {name: "Bến xe Vũng Tàu", lat: 10.3505997, lng: 107.0866597}}
   - {id: 20, name: "Đồng Tháp", lat: 10.5538, lng: 105.5655}
   - {id: 33, name: "Kiên Giang", lat: 9.9015, lng: 104.4795}
   - {id: 45, name: "Phú Yên", lat: 13.2003, lng: 109.0664}
   - {id: 50, name: "Quảng Trị", lat: 16.7316, lng: 106.9518}
   - {id: 58, name: "Tiền Giang", lat: 10.3908, lng: 106.311}
-  - {id: 57, name: "Thừa Thiên Huế", lat: 16.3543, lng: 107.7382}
+  - {id: 57, name: "Thừa Thiên Huế", lat: 16.3543, lng: 107.7382, station: {name: "Bến xe phía Nam Huế", lat: 16.45023, lng: 107.60555}}
   - {id: 46, name: "Quảng Bình", lat: 17.4726, lng: 106.5819}
   - {id: 10, name: "Bình Phước", lat: 11.7995, lng: 106.9191}
   - {id: 12, name: "Cà Mau", lat: 8.9715, lng: 104.9708}
-  - {id: 43, name: "Ninh Thuận", lat: 11.7375, lng: 108.8927}
+  - {id: 43, name: "Ninh Thuận", lat: 11.7375, lng: 108.8927, station: {name: "Bến xe Ninh Thuận", lat: 11.585841, lng: 108.9859716}}
   - {id: 61, name: "Vĩnh Long", lat: 10.1068, lng: 105.9862}
+  # North and centre, added 2026-10-29 after probing ids 1-64 for 7 days ahead (logs/vexere_probe.out); an id that
+  # answered 0 trips (Hải Phòng 27, Nam Định/Thái Bình and the other northern ids) is NOT listed: no coach is guessed,
+  # a Hải Phòng origin falls to Hà Nội (24, ~100 km, over coach_region_max_km 60 => "no coach region" in journey).
+  # Stations: name + lat/lng of the Google Maps card (search on account gmaps_d 2026-10-29, logs/station_probe.out), picked by
+  # the pickup points Vexere's own trips name (Sài Gòn: Miền Đông Mới; Nha Trang: phía Bắc). Đồng Nai, Gia Lai, Bà Rịa-Vũng Tàu, Ninh Thuận added 2026-10-30 (logs/station_probe2.out), the bến xe Vexere itself names as pickup. Others have none yet.
+  # `station` = where the coach leaves / arrives (journey adds the transfer legs to it); lat/lng stay the region point.
+  - {id: 24, name: "Hà Nội", lat: 21.0285, lng: 105.8542, station: {name: "Bến xe Nước Ngầm", lat: 20.9654452, lng: 105.8423284}}
+  - {id: 23, name: "Hà Nam", lat: 20.5411, lng: 105.9139}
+  - {id: 41, name: "Nghệ An", lat: 18.6796, lng: 105.6813, station: {name: "Bến xe Bắc Vinh", lat: 18.7295252, lng: 105.6598721}}
+  - {id: 25, name: "Hà Tĩnh", lat: 18.3428, lng: 105.9057}
+  - {id: 56, name: "Thanh Hóa", lat: 19.8067, lng: 105.7852, station: {name: "Bến xe phía Nam Thanh Hóa", lat: 19.7791938, lng: 105.7754898}}
+  - {id: 51, name: "Sóc Trăng", lat: 9.6037, lng: 105.9739}
+  - {id: 28, name: "Hậu Giang", lat: 9.7845, lng: 105.4701}
+  - {id: 5, name: "Bạc Liêu", lat: 9.2941, lng: 105.7278}
 
 # scripts/prewarm_transit.py (cron, once a day): fills the flights / vexere caches so a trip's coach or flight shows
 # without waiting. Flights: every airport in config/airports.yaml <-> its dest; coaches: every vexere_regions entry.
@@ -79,3 +96,6 @@ transit_prewarm:
   bus_days: 14
   pause_s: 0.5  # after each fetch, per thread
   workers: {flights: 6, buses: 12}  # threads per source; a flight thread runs its own Chromium
+
+# false: flight answers are never cached (every question opens Google Flights) and prewarm skips flights.
+flight_cache: true  # owner 2026-10-30: cache flights; prewarm refreshes them every morning (cron 03:15)

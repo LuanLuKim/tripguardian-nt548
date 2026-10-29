@@ -88,7 +88,8 @@ def test_picked_text_reads_the_options_the_user_chose(catalog, cfg):
 
 
 def test_the_agent_call_asks_for_low_reasoning_with_a_cache_key_and_its_own_http_client(monkeypatch):
-    from trip.agent import loop as loop_mod
+    from agents.assistant import loop as loop_mod
+    from trip.agent import langchain_chat
     seen = {}
 
     class FakeLLM:
@@ -109,7 +110,7 @@ def test_the_agent_call_asks_for_low_reasoning_with_a_cache_key_and_its_own_http
     monkeypatch.setattr(loop_mod, "AGENT", type("Role", (), {
         "client": staticmethod(lambda: (FakeClient(), "cx/gpt-6.1-sol")), "reasoning": staticmethod(lambda: "low"),
         "cache_key": staticmethod(lambda task: {"prompt_cache_key": f"tripguardian-{task}"})}))
-    asyncio.run(loop_mod.langchain_chat(Settings())([{"role": "user", "content": "x"}], [], lambda _: None))
+    asyncio.run(langchain_chat(Settings())([{"role": "user", "content": "x"}], [], lambda _: None))
     assert seen["reasoning_effort"] == "low" and seen["extra_body"] == {"prompt_cache_key": "tripguardian-trip_turn"}
     assert seen["http_async_client"].is_closed  # made for this call, closed with it
 

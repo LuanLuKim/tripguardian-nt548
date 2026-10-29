@@ -1,0 +1,37 @@
+# Journey settings (docs/BOOKING.md §Đường tới chỗ ở). Thresholds the code uses to decide which way of getting to the
+# city is worth showing; they are product choices, tune them here. Airports come from config/airports.yaml.
+version: 1
+
+# Where the road ends while no lodging is chosen yet.
+city_centre: {lat: 11.9404, lng: 108.4583}
+
+# Riding a motorbike is offered only up to this road distance (the pass makes longer rides unreasonable).
+motorbike_max_km: 350
+
+# A coach is offered only from a Vexere region (config/live.yaml vexere_regions) at most this far from the start.
+coach_region_max_km: 60
+
+# A flight is worth showing only if the start is at most airport_max_km (straight line) from an airport that flies to
+# the city, and the city is at least min_crow_km away in a straight line.
+# max_airports: the nearest airports within airport_max_km that are tried; the quickest door to door with a crawled
+# flight wins. Why 2: Huế (HUI has only 1-stop flights, 300 min in the air) is 80 km from Đà Nẵng (DAD, direct 65 min);
+# Hải Phòng reaches both HPH and HAN. A third airport within 120 km never occurs in config/airports.yaml.
+# airport_before_min / airport_after_min: check-in and baggage that Option.minutes adds to road + air time (Vietnam
+# Airlines and Vietjet ask domestic passengers at the airport 90 min before departure; 20 min for bags and the exit).
+plane:
+  airport_max_km: 120
+  min_crow_km: 150
+  max_airports: 2
+  airport_before_min: 90
+  airport_after_min: 20
+
+# The pass a road trip comes in by (docs/BOOKING.md). A drive leg is labelled with the pass whose point lies within
+# entry_snap_km of the road OSRM drew (the label names the road taken, it does not steer it). The points are where OSRM's roads from Sài Gòn / Nha Trang /
+# Phan Rang / Buôn Ma Thuột cross 10 km (straight line) from the centre (calibration 2026-10-29); the names are the
+# passes of config/trip.yaml entry_roads.
+entry_snap_km: 8
+entry_roads:
+  - {text: "Đèo Prenn", lat: 11.8332, lng: 108.4504}
+  - {text: "Đèo Khánh Lê", lat: 12.0296, lng: 108.5002}
+  - {text: "Đèo Ngoạn Mục", lat: 11.8941, lng: 108.5382}
+  - {text: "Đèo Tà Nung", lat: 11.9858, lng: 108.3731}

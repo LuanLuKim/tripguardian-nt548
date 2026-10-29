@@ -10,10 +10,12 @@ from datetime import datetime, timezone
 
 from trip import SearchInput, TurnInput
 from planning import TripIncomplete
-from corpus.releases import Binding
+from companion import plan_hash, stops_of
+from corpus import pulse as corpus_pulse
+from corpus.releases import Binding, PinnedVersionMissing
 
-from .contracts import Conflict, Emit, Journey, JourneyView, ModuleTools, Request, Stage, TripNotReady
-from .router import route, route_companion
+from .contracts import Conflict, Emit, Journey, JourneyView, ModuleTools, Request, Stage, StaleDataVersion, TripNotReady
+from .router import RouteError, route, route_companion
 from .session import Store
 from .chat_guard import admit
 
@@ -35,7 +37,7 @@ def _page(query: dict) -> tuple[int, int | None]:
     return int(offset), int(limit) if limit is not None else None
 
 
-LIVE = ("say", "preview", "progress", "state", "card", "deck_issues", "readback")
+LIVE = ("say", "preview", "progress", "state", "card", "deck_issues", "readback", "places", "block", "replies")
 
 
 def _fingerprint(request: Request) -> str:
@@ -65,7 +67,7 @@ def chat_title(transcript: list) -> str | None:
 class Harness:
     def __init__(self, trip_tools: ModuleTools, decision_tools: ModuleTools, planning_tools: ModuleTools, store: Store,
                  events=None, companion=None, calendar=None, notify=None, safety=None,
-                 corpus_binding: Binding | None = None, tools_for_binding=None):
+                 corpus_binding: Binding | None = None, tools_for_binding=None, eve_store=None):
         """events: harness.events.EventLog (usage events in Postgres); companion: companion.Companion (Đang đi).
         None turns either off (CLI, most tests)."""
         self.tools = {"trip": trip_tools, "decision": decision_tools, "planning": planning_tools}
@@ -74,6 +76,7 @@ class Harness:
         self.companion = companion
         self.calendar = calendar
         self.notify = notify
+        self.eve_store = eve_store      # planning.EveStore of the D.3 evening check; None = off
         self.safety = safety
         self.corpus_binding = corpus_binding
         self.tools_for_binding = tools_for_binding
@@ -91,7 +94,10 @@ class Harness:
             if key not in self._corpus_tools:
                 if self.tools_for_binding is None:
                     raise Conflict("corpus binding unavailable; restore the pinned release before continuing")
-                self._corpus_tools[key] = self.tools_for_binding(session.corpus_binding)
+                try:
+                    self._corpus_tools[key] = self.tools_for_binding(session.corpus_binding)
+                except PinnedVersionMissing as exc:  # fail-closed, but typed: the API answers 409, not 500
+                    raise StaleDataVersion(exc.name, exc.version) from exc
             return self._corpus_tools[key][stage]
 
     @staticmethod
@@ -315,11 +321,35 @@ class Harness:
         """Search-as-you-type for a starting point; Planning owns Live Context (docs/PLANNING.md §Live Context)."""
         return self.tools["planning"].geo(q)
 
+    def pulse(self) -> dict:
+        """Nhịp Đà Lạt (docs/CORPUS.md §Nhịp): the bulletin of the newest daily snapshot; no sections when the job never ran."""
+        return corpus_pulse.bulletin("dalat") or {"city": "dalat", "generated_at": None, "day": None, "stale": True, "sections": []}
+
     def lodging_suggest(self, q: str, top: int = 0) -> list[dict]:
         return self.tools["planning"].lodging_suggest(q, top)
 
     def forget_profile(self, user_id: str) -> bool:
         return self.tools["trip"].forget(user_id)
+
+    def profile(self, user_id: str) -> dict:
+        """The account's profile entries (docs/TRIP_UNDERSTANDING.md §17): Trip owns them."""
+        return self.tools["trip"].profile(user_id)
+
+    def edit_profile_entry(self, user_id: str, eid: str, patch: dict) -> dict:
+        out = self.tools["trip"].edit_entry(user_id, eid, patch)
+        self._event("profile.edit", user_id, None, fields=",".join(sorted(patch)))
+        return out
+
+    def delete_profile_entry(self, user_id: str, eid: str) -> bool:
+        if not self.tools["trip"].delete_entry(user_id, eid):
+            raise KeyError(eid)
+        self._event("profile.delete", user_id, None)
+        return True
+
+    def pause_profile(self, user_id: str, paused: bool) -> dict:
+        out = self.tools["trip"].pause_profile(user_id, paused)
+        self._event("profile.pause", user_id, None, paused=paused)
+        return out
 
     def adopt(self, from_id: str, to_id: str) -> int:
         """A guest signed in with Google: their journeys now belong to the account. Returns how many moved."""
@@ -347,6 +377,8 @@ class Harness:
             raise
         if not trace.get("replayed") and name == "planning.confirm" and self.companion is not None:
             self._sync_trip(jid)
+        if not trace.get("replayed") and name == "planning.confirm":
+            self._learn_from_plan(jid)
         if not trace.get("replayed"):
             props = self.events.act_props(request.payload) if self.events and request.operation == "act" else {}
             if request.stage == "trip" and request.operation == "turn":
@@ -370,6 +402,27 @@ class Harness:
             self.companion.sync(jid, session.user_id, session.outputs["planning"])
         except Exception as exc:
             print(f"trip not synced for {jid}: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+    def _learn_acts(self, jid: str, acts: list[dict]) -> None:
+        """Weak profile evidence (trip.note_acts decides by consent); a failure only loses the learning."""
+        try:
+            session = self.store.get(jid)
+            if session.user_id and session.sessions.get("trip") and acts:
+                self.tools["trip"].note_acts(session.user_id, session.sessions["trip"], acts)
+        except Exception as exc:
+            print(f"profile not updated for {jid}: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+    def _learn_from_plan(self, jid: str) -> None:
+        """A confirmed plan: its places were kept in it; places the user dropped saying "dislike" are against."""
+        try:
+            session = self.store.get(jid)
+            dropped = ((session.snapshots.get("decision") or {}).get("state") or {}).get("dropped") or []
+            acts = [{"kind": "dropped", "place_id": d.get("place_id"), "reason": d.get("reason")} for d in dropped]
+            acts += [{"kind": "kept_in_plan", "place_id": s["place_id"]} for s in stops_of(session.outputs["planning"])]
+        except Exception as exc:
+            print(f"profile not updated for {jid}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return
+        self._learn_acts(jid, acts)
 
     def _confirmed(self, jid: str, owner: str | None, operation: str = "checkin") -> Journey:
         if self.companion is None:
@@ -421,6 +474,7 @@ class Harness:
             out = self.companion.skip(jid, payload.get("stop_id"), payload.get("reason"))
         elif operation == "rate":
             out = self.companion.rate(jid, payload.get("stop_id"), payload.get("value"))
+            self._learn_acts(jid, [{"kind": "rated_hop", "place_id": out.get("place_id"), "value": out.get("rating")}])
         else:
             if payload.get("confirmed") is not True:
                 raise ValueError(f"{operation} changes the plan: show the change, then send confirmed: true")
@@ -461,6 +515,11 @@ class Harness:
     def _replan(self, jid: str, action: dict, owner: str | None) -> None:
         """Planning act + confirm as two journey requests; when the confirm fails the act is undone and confirmed
         again, so the journey keeps a confirmed plan."""
+        self._replan_many(jid, [action], owner)
+
+    def _replan_many(self, jid: str, actions: list[dict], owner: str | None, back: dict | None = None) -> None:
+        """Several Planning acts, then one confirm. On any failure the acts already sent are reversed (`back`,
+        default undo) and the plan confirmed again before the error is raised."""
         def send(operation, payload=None):
             view = self.load(jid, None, owner)
             if view["stage"] != "planning":
@@ -468,13 +527,131 @@ class Harness:
             return self.request(jid, Request(request_id=f"companion-{uuid.uuid4().hex}", stage="planning",
                                              operation=operation, expected_revision=view["revision"],
                                              payload=payload or {}), None, owner)
-        send("act", action)
+        done = 0
         try:
+            for action in actions:
+                send("act", action)
+                done += 1
             send("confirm")
         except Exception:
-            send("act", {"type": "undo"})
-            send("confirm")
+            for _ in range(done):
+                send("act", back or {"type": "undo"})
+            if done:
+                send("confirm")
             raise
+
+    # --- D.3 evening check: pending changes for tomorrow on the confirmed plan --------------------------------------
+
+    def _eve_session(self, jid: str, owner: str | None) -> tuple[Journey, str]:
+        if self.eve_store is None:
+            raise Conflict("the evening check is off")
+        with self.store.lock(jid):
+            session = self._get(jid, owner)
+        if "planning" not in session.outputs:
+            raise RouteError("the evening check needs a confirmed plan")
+        return session, plan_hash(stops_of(session.outputs["planning"]))
+
+    def eve(self, jid: str, owner: str | None = None) -> dict:
+        """What the evening check left for this confirmed plan:
+        {"enabled": bool, "pending": [...], "notes": [...], "undo": bool}. Notes are what it saw but does not ask about
+        (level 1, later days): shown on the plan, nothing to choose. A read, so "off" (no store) and "no confirmed plan
+        yet" are normal empty answers, not errors (QA 2026-10-30 B12); the acts below still refuse."""
+        empty = {"enabled": self.eve_store is not None, "pending": [], "notes": [], "undo": False}
+        if self.eve_store is None:
+            self._get(jid, owner)  # an unknown journey is still a 404
+            return empty
+        try:
+            _, digest = self._eve_session(jid, owner)
+        except RouteError:
+            return empty
+        kept = self.eve_store.get(jid, digest)
+        return {**empty, "pending": kept["pending"], "notes": kept.get("notes", []),
+                "undo": self.eve_store.last_accept(jid, digest) is not None}
+
+    def eve_act(self, jid: str, operation: str, payload: dict, owner: str | None = None) -> dict:
+        """accept {date, place_id, option_id, confirmed: true}: the option's acts, then confirm (a new plan);
+        decline {date, place_id}: keep the plan, never ask again for that cause (level 2 only); undo: back to the
+        plan before the last accepted option."""
+        session, digest = self._eve_session(jid, owner)
+        if operation == "times":
+            return self.trip_times(jid, payload, owner)
+        if operation == "undo":
+            rec = self.eve_store.last_accept(jid, digest)
+            if rec is None:
+                raise Conflict("nothing to undo")
+            self._replan_many(jid, [{"type": "undo"}] * rec["n"], owner, back={"type": "redo"})
+            self.eve_store.accepted(jid, None)
+            self._event("eve.undo", session.user_id, jid)
+            return self.eve(jid, owner)
+        if operation not in ("accept", "decline"):
+            raise ValueError(f"the evening check does not accept {operation}")
+        item = next((p for p in self.eve_store.get(jid, digest)["pending"]
+                     if p.get("date") == payload.get("date") and p.get("place_id") == payload.get("place_id")), None)
+        if item is None:
+            raise ValueError("no such pending change for this plan")
+        option = next((o for o in item["options"] if o["id"] == payload.get("option_id")), None) \
+            if operation == "accept" else None
+        if operation == "accept" and option is None:
+            raise ValueError("that option is not offered")
+        if operation == "decline" or option["kind"] == "keep":
+            if item["level"] >= 3:
+                raise ValueError("this stop cannot go as planned: choose one of the options")
+            self.eve_store.decline(jid, item["cause"]["key"])
+            self._event("eve.decline", session.user_id, jid, place_id=item["place_id"])
+            return self.eve(jid, owner)
+        if payload.get("confirmed") is not True:
+            raise ValueError("accept changes the plan: show the change, then send confirmed: true")
+        self._replan_many(jid, option["actions"], owner)
+        new = plan_hash(stops_of(self.store.get(jid).outputs["planning"]))
+        self.eve_store.accepted(jid, {"plan_hash": new, "n": len(option["actions"]), "option_id": option["id"],
+                                      "date": item["date"], "place_id": item["place_id"]})
+        self._event("eve.accept", session.user_id, jid, place_id=item["place_id"], kind=option["kind"])
+        return self.eve(jid, owner)
+
+    def trip_times(self, jid: str, payload: dict, owner: str | None = None) -> dict:
+        """Trip -> Planning event: the trip's arrival (first day starts) and / or departure (last day ends) changed
+        after the confirm. Each becomes a Planning set_day_window on that day; the confirmed plan stays confirmed (no
+        replan, no confirm), the Planning session now holds the new window, and the next evening check (D.3, `window`
+        factor) offers the user the options. {"arrive": "HH:MM"?, "leave": "HH:MM"?}"""
+        from planning.settings import to_min
+        times = {k: payload.get(k) for k in ("arrive", "leave") if payload.get(k) is not None}
+        if not times:
+            raise ValueError("send arrive and / or leave as HH:MM")
+        for value in times.values():
+            try:
+                ok = 0 <= to_min(value) < 24 * 60
+            except (ValueError, AttributeError, TypeError):
+                ok = False
+            if not ok:
+                raise ValueError(f"bad time {value!r}")
+        with self.store.lock(jid):
+            session = self._get(jid, owner)
+            plan = session.outputs.get("planning")
+            if plan is None or "planning" not in session.sessions:
+                raise RouteError("the arrival / departure of a confirmed plan can only change on a confirmed plan")
+            per_day = (plan.get("time_budget") or {}).get("per_day") or []
+            if not per_day:
+                raise Conflict("the confirmed plan has no day windows")
+            last = len(per_day) - 1
+            acts = []
+            if "arrive" in times:
+                acts.append({"type": "set_day_window", "day": 0, "start": times["arrive"], "end": per_day[0]["to"]})
+            if "leave" in times:
+                start = times["arrive"] if last == 0 and "arrive" in times else per_day[last]["from"]
+                acts.append({"type": "set_day_window", "day": last, "start": start, "end": times["leave"]})
+            before = session.model_copy(deep=True)
+            planning = self._module(session, "planning")
+            try:
+                for act in acts:
+                    planning.apply(session.sessions["planning"], "act", act, lambda *a: None)
+                session.revision += 1
+                session.snapshots["planning"] = planning.snapshot(session.sessions["planning"])
+                self.store.save(session)
+            except Exception:
+                planning.restore(before.snapshots["planning"])
+                raise
+        self._event("trip.times", session.user_id, jid, arrive=times.get("arrive"), leave=times.get("leave"))
+        return self.eve(jid, owner)
 
     def _request(self, jid: str, request: Request, emit: Emit | None, owner: str | None, trace: dict) -> dict:
         with self.store.lock(jid):
@@ -547,7 +724,13 @@ class Harness:
                         session.outputs.pop("trip", None)
                     result = self._module(session, session.stage).load(session.sessions[session.stage])
                 else:
-                    result = self._module(session, stage).apply(session.sessions[stage], request.operation, request.payload, capture)
+                    payload = request.payload
+                    if stage == "planning" and request.operation == "turn":
+                        if set(payload) != {"text"}:
+                            raise ValueError("planning.turn accepts only text")
+                        # the Lịch trình assistant reads place data through this journey's Trip session
+                        payload = {**payload, **({"trip_session": session.sessions["trip"]} if "trip" in session.sessions else {})}
+                    result = self._module(session, stage).apply(session.sessions[stage], request.operation, payload, capture)
                     if stage == "decision" and request.operation == "turn":
                         texts = [t for e in events if e["event"] == "trip" for t in e["data"]["texts"]]
                         events[:] = [e for e in events if e["event"] != "trip"]  # internal: the web never sees it

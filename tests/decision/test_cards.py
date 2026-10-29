@@ -112,3 +112,36 @@ def test_fallback_says_the_largest_score_part():  # D4
     assert card(known, si(), CFG)["why"] == [{"text": "240 người đã viết về nơi này", "sid": None}]
     close = cand(srec("B", voices=240), minutes=30, center="chỗ ở", parts={"ctx": 0.9, "pop": 0.1})
     assert card(close, si(), CFG)["why"] == [{"text": "Cách chỗ ở ≈30 phút (ước tính)", "sid": None}]
+
+
+def _label(tmp_path, pid, photos):
+    import json
+
+    from PIL import Image
+    d = tmp_path / "gmaps" / "places" / pid.replace(":", "_")
+    (d / "photos").mkdir(parents=True)
+    rows = []
+    for name, scene, kw in photos:
+        Image.new("RGB", (40, 30), "white").save(d / "photos" / f"{name}.jpg")
+        rows.append({"photo_id": name, "file": f"photos/{name}.jpg", "scene": scene, "keep": True, "owner": False,
+                     "blur": kw.get("blur", 900.0), "brightness": 120.0, "person": {"value": kw.get("person", False), "confidence": "high"}})
+    out = tmp_path / "gmaps" / "photo_scenes"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"{pid.replace(':', '_')}.json").write_text(json.dumps({"place_fid": pid, "photos": rows}), encoding="utf-8")
+
+
+def test_card_photos_are_scene_photos_without_people_and_blur_in_the_order_of_the_kind(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    rec = srec("0xa:0xb", group="cafe")
+    _label(tmp_path, "0xa:0xb", [("f", "food", {}), ("i", "interior", {}), ("e", "exterior", {}), ("v", "view", {}),
+                                  ("d", "drink", {}), ("p", "interior", {"person": True, "blur": 3000.0}),
+                                  ("b", "amenity", {"blur": 10.0})])
+    got = card(cand(rec), si(), CFG)["photos"]
+    assert [p["scene"] for p in got] == ["interior", "food", "exterior", "drink"]  # cafe order, 4 scenes, no person, no blur
+    assert got[0] == {"scene": "interior", "src": "/media/gmaps/0xa_0xb/photos/i.jpg", "credit": "Google Maps", "kind": "gmaps",
+                      "w": 40, "h": 30}
+
+
+def test_card_without_labels_has_no_photos_so_the_web_keeps_its_own(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    assert card(cand(srec("0xc:0xd")), si(), CFG)["photos"] == []

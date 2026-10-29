@@ -52,6 +52,9 @@ def records(seed: int, n: int = 60) -> list[dict]:
                  voices=rng.randint(0, 200), dup=rng.choice([None, None, 1, 2]), lat=lat,
                  lng=108.4 + rng.random() / 10, area=rng.choice(["area-1", "area-2", "area-3", None]), details=details)
         out.append(r)
+    rep_rng = random.Random(seed * 7919 + 1)  # own stream: the records and sessions above stay what they were
+    for r in out:
+        r["provenance"]["reputation"] = rep_rng.choice([None, {"score": round(rep_rng.random(), 4)}])
     return out
 
 

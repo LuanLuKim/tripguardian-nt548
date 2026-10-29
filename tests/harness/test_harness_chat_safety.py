@@ -108,12 +108,13 @@ def test_unicode_escaped_instructions_are_screened_after_json_decoding():
     assert tools["trip"].calls == 0
 
 
-def test_public_planning_does_not_accept_chat():
+def test_planning_chat_goes_through_chat_admission_before_the_module():
     from harness import Request
-    from harness.router import RouteError
     h, tools = make()
     v = run(h, decision(h), "advance", "planning")
-    h.safety = lambda *args: pytest.fail("disallowed operation reached chat admission")
-    with pytest.raises(RouteError):
-        h.request(v["id"], Request(request_id="chat", stage="planning", operation="turn",
-                                 expected_revision=v["revision"], payload={"text": "solve my homework"}))
+    asked = []
+    h.safety = lambda text, context: (asked.append(text), "Xin lỗi, mình chỉ hỗ trợ câu hỏi du lịch an toàn và hợp pháp.")[1]
+    before = tools["planning"].calls
+    out = h.request(v["id"], Request(request_id="chat", stage="planning", operation="turn",
+                                     expected_revision=v["revision"], payload={"text": "đổi chỗ đầu sang ngày hai"}))
+    assert asked == ["đổi chỗ đầu sang ngày hai"] and tools["planning"].calls == before and out["stage"] == "planning"

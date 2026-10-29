@@ -135,6 +135,22 @@ def trip_notes(trip: dict, stops: list[dict], plan: dict, records: dict[str, dic
     return out
 
 
+def trip_point(stops: list[dict], plan: dict, records: dict[str, dict], day: int) -> tuple[float, float] | None:
+    """Where a forecast for trip day `day` (1-based) is read: its first stop with coordinates, else the chosen
+    lodging; None when the trip has neither (no forecast then, never a made-up city point)."""
+    for s in sorted((s for s in stops if s["day"] == day), key=lambda s: s["seq"]):
+        ident = (records.get(s["place_id"]) or {}).get("identity") or {}
+        if ident.get("lat") is not None and ident.get("lng") is not None:
+            return ident["lat"], ident["lng"]
+    stay = ((plan.get("lodging") or {}).get("chosen") or {})
+    ident = (records.get(stay.get("id")) or {}).get("identity") or {}
+    if ident.get("lat") is not None and ident.get("lng") is not None:
+        return ident["lat"], ident["lng"]
+    if stay.get("lat") is not None and stay.get("lng") is not None:
+        return stay["lat"], stay["lng"]
+    return None
+
+
 def rain_phrase(prob: float | None) -> tuple[str | None, str | None]:
     """(rain phrase, what to pack) from a forecast; (None, None) without one."""
     if prob is None:

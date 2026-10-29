@@ -1,5 +1,5 @@
 from trip.domain.guard import bad_say, drop_questions, record_fact
-from trip.domain.state import TripState
+from trip.domain.state import TripState, with_meta
 
 TEXT = "Mình đi 3 ngày, thích chỗ yên tĩnh"
 
@@ -145,3 +145,30 @@ def test_a_group_the_message_names_is_taken_when_the_quote_names_it(catalog):
     assert not st.companions.known and note.startswith("refused") and "unmapped" in note
     st, note = record_fact(TripState(), "companions", "add", "friends", "kiểu bạn bè", "said", text, 1, catalog)
     assert note == "" and st.companions.value == frozenset({"friends"})
+
+
+def test_bad_say_allows_place_from_tool_results(catalog):
+    place = next(p for p in catalog.places if p.name == "Vườn Phẳng Lặng Xanh")  # a name with no digits
+    pid, name = place.id, place.name
+    st = TripState()
+    assert bad_say(f"Bạn thử {name} nhé", "gợi ý quán", st, catalog, set()) == f"names place {pid}"
+    assert bad_say(f"Bạn thử {name} nhé", "gợi ý quán", st, catalog, set(), allowed_ids=frozenset({pid})) is None
+    assert bad_say(f"Bạn thử {name} nhé", "gợi ý quán", with_meta(st, shown_ids=(pid,)), catalog, set()) is None
+
+
+def test_bad_say_allows_numbers_told_this_session(catalog):
+    st = with_meta(TripState(), told_numbers=(100000,))
+    assert bad_say("Vé khoảng 100000 đồng", "vé bao nhiêu", st, catalog, set()) is None
+    assert bad_say("Vé khoảng 90000 đồng", "vé bao nhiêu", st, catalog, set()).startswith("numbers")
+
+
+def test_a_shorter_place_name_inside_a_longer_allowed_name_is_not_a_second_place():
+    from trip_fixtures import served
+    from trip.infrastructure.catalog import Catalog
+    long_, short = "0xa:0x1", "0xb:0x1"
+    records = [served(long_, "Tiệm Nướng Trạm Ký Ức", {}), served(short, "Trạm Ký Ức", {})]
+    cat = Catalog.from_records([], 1, evidence={r["id"]: r for r in records})
+    say = "Đó là Tiệm Nướng Trạm Ký Ức nhé."
+    assert bad_say(say, "ảnh", TripState(), cat, set(), allowed_ids=frozenset({long_})) is None
+    # the other place is still caught when it is said on its own
+    assert bad_say("Đó là Trạm Ký Ức nhé.", "ảnh", TripState(), cat, set(), allowed_ids=frozenset({long_})) == f"names place {short}"

@@ -1,3 +1,5 @@
+import pytest
+
 from decision.guard import PlanUpdate, TurnPlan, guard, names_in
 from decision.policy import policy
 
@@ -74,3 +76,37 @@ def test_select_by_a_two_word_tail_shared_by_several_places_is_refused():
     assert g.actions == []
     ok = guard(plan(("select", "P1", "", "thêm Tình Yêu Đà Lạt")), "thêm Tình Yêu Đà Lạt", aliases, "", [keys[0]])
     assert ok.actions == [{"type": "select", "place_id": "A"}]
+
+
+def test_guard_prefer_and_filter():
+    text = "ưu tiên yên tĩnh, chỉ xem quán mở trước 7h"
+    g = guard(plan(("prefer", "", "noise=quiet", "ưu tiên yên tĩnh"), ("filter", "", "opens_by=07:00", "chỉ xem quán mở trước 7h")),
+              text, ALIASES, "", KEYS)
+    assert {"type": "prefer", "feature": "noise", "value": "quiet", "weight": 1} in g.actions
+    assert {"type": "filter", "key": "opens_by", "value": "07:00"} in g.actions and g.log == []
+
+
+def test_guard_prefer_avoid_unfilter_and_like():
+    text = "tránh chỗ ồn, bỏ lọc, kiếm quán giống Lan Viên"
+    g = guard(plan(("prefer", "", "noise=loud:avoid", "tránh chỗ ồn"), ("unfilter", "", "", "bỏ lọc"),
+                   ("like", "P2", "", "giống Lan Viên"), ("filter", "", "kids=suitable", "bỏ lọc")),
+              text, ALIASES, "", KEYS)
+    assert g.actions == [{"type": "prefer", "feature": "noise", "value": "loud", "weight": -1},
+                         {"type": "unfilter"}, {"type": "like", "place_id": "B"},
+                         {"type": "filter", "key": "kids", "value": "suitable"}]
+
+
+@pytest.mark.parametrize("op,value", [("prefer", "noise=purple"), ("prefer", "nofeature=x"), ("prefer", "noise"),
+                                      ("filter", "opens_by=25:99"), ("filter", "opens_by=7h"), ("filter", "noise=purple"),
+                                      ("filter", "kids")])
+def test_guard_drops_values_outside_the_ontology(op, value):
+    g = guard(plan((op, "", value, "xin chào")), "xin chào", ALIASES, "", KEYS)
+    assert g.actions == [] and len(g.log) == 1
+
+
+def test_like_needs_a_known_place_and_say_may_use_numbers_of_the_data():
+    g = guard(plan(("like", "", "", "giống Lan Viên")), "giống Lan Viên", ALIASES, "", KEYS)
+    assert g.actions == [] and "needs a place" in g.log[0]
+    data = '{"h": {"06:30-21:30": "mon"}}'
+    assert guard(plan(say="Quán mở lúc 06:30."), "mấy giờ mở", ALIASES, data, KEYS).say == "Quán mở lúc 06:30."
+    assert guard(plan(say="Quán mở lúc 05:45."), "mấy giờ mở", ALIASES, data, KEYS).say == ""

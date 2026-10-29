@@ -231,7 +231,8 @@ def test_the_persisted_history_drops_a_sent_back_reply_and_its_note(catalog):
 
 def test_langchain_chat_returns_the_merged_message_with_raw_arguments(monkeypatch):
     from langchain_core.messages import AIMessageChunk
-    from trip.agent import loop as loop_mod
+    from agents.assistant import loop as loop_mod
+    from trip.agent import langchain_chat
 
     pieces = [AIMessageChunk(content="Đi mấy ", tool_call_chunks=[]),
               AIMessageChunk(content="ngày?", tool_call_chunks=[{"name": "record_fact", "args": '{"field": "da', "id": "c1", "index": 0}]),
@@ -256,7 +257,50 @@ def test_langchain_chat_returns_the_merged_message_with_raw_arguments(monkeypatc
     monkeypatch.setattr(loop_mod, "AGENT", type("Role", (), {"client": staticmethod(lambda: (FakeClient(), "m")),
                                                              "reasoning": staticmethod(lambda: None)}))
     said = []
-    out = asyncio.run(loop_mod.langchain_chat(Settings())([{"role": "user", "content": "x"}], [], said.append))
+    out = asyncio.run(langchain_chat(Settings())([{"role": "user", "content": "x"}], [], said.append))
     assert "".join(said) == "Đi mấy ngày?" and out.text == "Đi mấy ngày?"
     assert [(t["id"], t["name"], t["args"]) for t in out.tool_call_chunks] == [
         ("c1", "record_fact", '{"field": "days"}'), ("c2", "record_fact", "{not json")]
+
+
+def _llm_kwargs(monkeypatch, cfg, effort):
+    """The keyword arguments langchain_chat gives ChatOpenAI for one call."""
+    from langchain_core.messages import AIMessageChunk
+    from agents.assistant import loop as loop_mod
+    from trip.agent import langchain_chat
+    seen = {}
+
+    class FakeLLM:
+        async def astream(self, msgs):
+            yield AIMessageChunk(content="ok", tool_call_chunks=[])
+
+    class FakeClient:
+        base_url, api_key = "http://x", "k"
+
+        async def close(self):
+            pass
+
+    def fake(**kw):
+        seen.update(kw)
+        return FakeLLM()
+    monkeypatch.setattr(loop_mod, "ChatOpenAI", fake)
+    monkeypatch.setattr(loop_mod, "AGENT", type("Role", (), {
+        "client": staticmethod(lambda: (FakeClient(), "m")), "reasoning": staticmethod(lambda: effort),
+        "cache_key": staticmethod(lambda task: {"prompt_cache_key": "k-" + task} if effort else {})}))
+    asyncio.run(langchain_chat(cfg)([{"role": "user", "content": "x"}], [], lambda _: None))
+    return seen
+
+
+def test_service_tier_goes_in_the_request_only_while_the_assistant_is_on(monkeypatch):
+    from dataclasses import replace
+    from trip.infrastructure.settings import Assistant
+    on = replace(Settings(), assistant=Assistant(enabled=True, service_tier="priority"))
+    kw = _llm_kwargs(monkeypatch, on, "low")
+    assert kw["reasoning_effort"] == "low" and kw["extra_body"] == {"prompt_cache_key": "k-trip_turn", "service_tier": "priority"}
+    kw = _llm_kwargs(monkeypatch, on, None)  # a model without reasoning still gets the tier
+    assert "reasoning_effort" not in kw and kw["extra_body"] == {"service_tier": "priority"}
+    off = replace(Settings(), assistant=Assistant(enabled=False, service_tier="priority"))
+    assert _llm_kwargs(monkeypatch, off, "low")["extra_body"] == {"prompt_cache_key": "k-trip_turn"}  # flag off: as before
+    assert "extra_body" not in _llm_kwargs(monkeypatch, off, None)
+    blank = replace(Settings(), assistant=Assistant(enabled=True, service_tier=""))
+    assert _llm_kwargs(monkeypatch, blank, "low")["extra_body"] == {"prompt_cache_key": "k-trip_turn"}

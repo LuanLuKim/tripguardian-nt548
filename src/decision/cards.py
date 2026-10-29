@@ -1,12 +1,24 @@
 """Candidate cards (docs/PLACE_DECISION.md §11) from templates: every line comes from a serving record field or a
 rule result, so a card cannot say what the data does not hold."""
 
-from corpus import load_ontology
-from corpus.serving import dishes, feature
+import os
+from functools import lru_cache
+
+from corpus import data_root, load_ontology, pulse
+from corpus.serving import dishes, feature, scenes
 from requirements import activity_for, applicable, scope_allows
 
 from .model import FIRM, Cand, cost_total, known_for, value
 from .wishes import SAID
+
+PULSE_CITY = "dalat"  # Place Decision serves one city today (config center); the pulse folder is that city's
+
+
+def pulse_hot() -> dict:
+    """{place id: {label, newest, videos, authors, window_days, as_of}} of the places the pulse calls "đang hot"; {} when
+    the job never ran or its snapshot is old. Display only: no score, rank or filter reads it (never block or nudge)."""
+    return pulse.hot(PULSE_CITY)
+
 
 WARNING = {"hours_unknown": "Chưa có giờ mở cửa",
            "hours_outdated": "Giờ mở cửa có thể đã đổi, kiểm tra lại trước chuyến",
@@ -40,9 +52,10 @@ def price_text(rec: dict) -> str | None:
     return f"{lo // 1000}k/người" if hi == lo else f"{lo // 1000}k–{hi // 1000}k/người"
 
 
+PHOTO_SCENES = 4  # cover + gallery: distinct scenes shown per card
 PURPOSE_TEXT = {"relax": "thư giãn", "food_culture": "ăn uống, văn hóa", "nature": "thiên nhiên",
                 "explore": "khám phá", "photo": "chụp ảnh"}
-SOURCE_TEXT = {"menu_popular": " · theo menu", "menu": " · theo menu", "review_order": " · theo review"}
+SOURCE_TEXT = {"menu_popular": " · theo menu", "menu": " · theo menu", "name": " · theo tên quán", "review_order": " · theo review"}
 
 
 def wish_text(hit: tuple, rec: dict, cfg, sources: dict | None = None) -> str:
@@ -64,6 +77,32 @@ def wish_text(hit: tuple, rec: dict, cfg, sources: dict | None = None) -> str:
     if kind == "group":
         return f"Vì bạn thích {cfg.labels['group'][label].lower()}"
     return f"Hợp chuyến {PURPOSE_TEXT.get(label, label)} ✎"
+
+
+@lru_cache(maxsize=8192)
+def _scene_photos(pid: str, group: str | None, data: str) -> tuple[dict, ...]:
+    """The best photo per scene of a place, in the order of its kind (corpus.serving.scenes: no person, not blurry, no
+    near-duplicate), shaped like the web's cover photos. `data` (the DATA_DIR env, read without touching .env) only keys
+    the cache. Empty without labels. Sizes come from the label file; a file labelled before sizes were stored is opened,
+    and left out when it is gone. Display only: no score reads this."""
+    out = []
+    for p in scenes.for_place(pid, group)[:PHOTO_SCENES]:
+        w, h = p.get("w"), p.get("h")
+        if not (w and h):  # labelled before sizes were stored
+            from PIL import Image
+            try:
+                with Image.open(data_root() / p["file"]) as im:
+                    w, h = im.size
+            except OSError:
+                continue
+        out.append({"scene": p["scene"], "src": "/media/" + p["file"].replace("gmaps/places/", "gmaps/", 1),
+                    "credit": "Google Maps", "kind": "gmaps", "w": w, "h": h})
+    return tuple(out)
+
+
+def scene_photos(pid: str, rec: dict) -> list[dict]:
+    """Cover first, then up to PHOTO_SCENES - 1 more distinct scenes; [] leaves the web on the photos it already has."""
+    return list(_scene_photos(pid, rec["identity"].get("category_group"), os.environ.get("DATA_DIR", "")))
 
 
 def _fallback(c: Cand, cfg) -> dict:
@@ -200,4 +239,6 @@ def card(c: Cand, si, cfg, *, wanted=(), chosen=False, locked=False, anchor=Fals
         "failed": [_fail_text(x, cfg) for x in c.checks if x["result"] == "fail"],
         "chosen": chosen, "locked": locked, "anchor": anchor,
         "alternatives": [{"id": i, "name": n} for i, n in alternatives], "suggested": suggested, "top": top,
+        "photos": scene_photos(c.id, rec),
+        "hot": pulse_hot().get(c.id),
     }

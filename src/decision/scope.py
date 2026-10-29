@@ -22,7 +22,7 @@ def replan_scope(action: dict) -> dict:
         return _out(FEEDBACK_STEP.get(action.get("reason"), "rank"))
     if t == "relax" or t == "undo":
         return _out("screen")
-    if t == "prefer" or (t == "answer" and str(action.get("qid", "")).startswith("pattern:") and action.get("chip") == "yes"):
+    if t in ("prefer", "like") or (t == "answer" and str(action.get("qid", "")).startswith("pattern:") and action.get("chip") == "yes"):
         return _out("rank")
     return _out("diversify")
 

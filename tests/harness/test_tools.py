@@ -79,11 +79,12 @@ def test_real_overload_handoff_offers_tradeoffs_and_confirms_only_valid_drafts(t
     assert {p['id'] for p in v['outputs']['decision']['confirmed']} == set(original)
 
 
-def test_planning_tools_reject_chat_without_invoking_the_agent():
+def test_planning_turn_takes_only_text_and_the_harness_trip_session():
     from planning import Engine, Tools
     tools = Tools(Engine([]))
-    with pytest.raises(ValueError, match="turn"):
-        tools.apply("000000000001", "turn", {"text": "change everything"}, lambda *a: None)
+    for bad in ({}, {"text": " "}, {"text": "x" * 1001}, {"text": "đổi lịch", "other": 1}):
+        with pytest.raises(ValueError, match="text must be"):
+            tools.apply("000000000001", "turn", bad, lambda *a: None)
 
 
 def test_real_planning_suggestion_read_preserves_snapshot_and_tags_journey_revision(tmp_path):

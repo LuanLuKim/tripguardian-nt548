@@ -112,9 +112,17 @@ def test_retrieval_scores_are_returned_without_replacing_them(catalog):
 
 def test_dish_review_order_is_kept_alongside_the_menu():
     record = rec(1, "Quán A", {})
-    record["details"] = {"order": [{"text": "Lẩu gà lá é", "n": 3}]}
+    record["review_dishes"] = [{"dish": "Lẩu gà lá é", "n": 3, "quote": "gọi lẩu gà lá é"}]
     catalog = Catalog.from_records([record], 1)
     assert catalog.dishes("lẩu gà lá é")[0]["evidence"][0]["source"] == "review_order"
+
+
+def test_dish_from_the_name_of_an_eatery_without_a_menu():
+    record = rec(1, "Bánh căn Hồ Út", {})
+    record["identity"]["category_group"] = "restaurant"
+    catalog = Catalog.from_records([record], 1)
+    assert [e["source"] for e in catalog.dishes("bánh căn")[0]["evidence"]] == ["name"]
+    assert catalog.dishes("bò né") == []
 
 
 def test_gaps_reject_unquoted_data_without_mutating_state(catalog, tmp_path):

@@ -234,7 +234,7 @@ def score_table(region, si, profile, cfg, fit: list, live: np.ndarray, role: lis
     live_voices = sorted(voices_all[live].tolist() + [0] * extra_voices)
     top = max(1, len(live_voices) - 1)
     pop = np.minimum(1.0, np.searchsorted(np.array(live_voices), voices_all, side="left") / top)
-    ws = wants(si, profile)
+    ws = wants(si, profile, cfg)
     pref, unc = _preference(region, ws, role, act, n, overrides or {})
     visited = set(si.novelty.visited) | set(profile.visited)
     nov_v = {"new": -1.0, "familiar": 0.3}.get(si.novelty.level, 0.0)
@@ -243,6 +243,7 @@ def score_table(region, si, profile, cfg, fit: list, live: np.ndarray, role: lis
     exp = pop if exp_kind == "first" else (1 - pop if exp_kind == "returning" else np.zeros(n))
     mid = p["price_mid_vnd"].fill_null(0.0).to_numpy()
     norm = np.where(p["price_mid_vnd"].is_null().to_numpy(), 0.0, np.minimum(1.0, mid / cfg.price_ref_vnd))
+    rep = p["reputation"].fill_null(0.5).to_numpy() - 0.5 if "reputation" in p.columns else np.zeros(n)  # rank.reputation_part
     parts = {"ctx": np.array(fit, dtype=np.float64),
              "pref": np.array(_round(pref)),
              "nov": nov,
@@ -250,7 +251,8 @@ def score_table(region, si, profile, cfg, fit: list, live: np.ndarray, role: lis
              "pop": np.array(_round(pop)),
              "unc": -np.array(_round(unc)),
              "price": -np.array(_round(profile.price_sensitivity * norm)),
-             "wish": np.array(_round(_wish(region, wishes, role, group)))}
+             "wish": np.array(_round(_wish(region, wishes, role, group))),
+             "rep": np.array(_round(rep))}
     # rank.score: sum(cfg.weights.get(k, 0.0) * v for k, v in parts.items()); Python 3.12's float sum is compensated
     return _round(_py_sum([cfg.weights.get(k, 0.0) * v for k, v in parts.items()], n)), live_voices
 
@@ -310,7 +312,7 @@ def _preference(region, ws, role, act, n, overrides: dict) -> tuple[np.ndarray, 
             top = region.ctx_top(fid, f"{k}={v}")
             cur = [t if t is not None else c for t, c in zip(top, cur)]
         hit = np.array([c == val for c in cur], dtype=bool) & col.exists
-        total = total + np.where(app, abs(w), 0)
+        total = total + np.where(app, max(1.0, abs(w)), 0)
         if w > 0:
             missing = missing + np.where(app & (~col.exists | col.uncertain), w, 0)
         fit = fit + np.where(app & hit, w * col.conf, 0.0)

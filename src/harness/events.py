@@ -20,6 +20,8 @@ CLIENT = {
     "evidence_play": {"place_id", "video_id"},
     "compare_open": {"a", "b"},
     "outbound_click": {"kind", "place_id"},
+    "booking_click": {"offer_id", "provider", "kind"},
+    "place_like": {"place_id", "value"},
     "tab_hidden": {"stage", "ms"},
     "today_open": set(),
     "suggestion_open": {"place_id", "kind"},

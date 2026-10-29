@@ -69,3 +69,22 @@ def test_bandit_waits_for_enough_sends_then_prefers_the_better_variant():
     assert [pick(["a", "b"]) for _ in range(50)].count("a") >= 48
     kind = {"variants": [{"id": "a", "title": "A", "body": "x"}, {"id": "b", "title": "B", "body": "y"}]}
     assert render(kind, {}, "seed", lambda ids: "b")[0] == "b"
+
+
+def test_no_notification_opens_the_dropped_today_screen():
+    # the product ends at the confirmed plan (/app/plan); /app/today is not a destination any more
+    assert all(not link.startswith("/app/today") for link in CFG["links"].values())
+    for kind in ("book_ahead", "eve_of_trip", "day_brief", "checkin_hint", "golden_hour", "weather_change"):
+        assert CFG["links"][kind] == "/app/plan", kind
+
+
+def test_the_eve_forecast_point_is_the_trips_own_first_stop_then_its_lodging():
+    from notify.plan import trip_point
+    recs = {"a": {"identity": {"lat": 11.91, "lng": 108.40}}, "b": {"identity": {"lat": 11.80, "lng": 108.50}},
+            "stay1": {"identity": {"lat": 11.95, "lng": 108.43}}, "nocoord": {"identity": {}}}
+    stops = [{"day": 2, "seq": 1, "place_id": "b"}, {"day": 1, "seq": 2, "place_id": "a"},
+             {"day": 1, "seq": 1, "place_id": "nocoord"}]
+    plan = {"lodging": {"chosen": {"id": "stay1"}}}
+    assert trip_point(stops, plan, recs, 1) == (11.91, 108.40)   # first stop with coordinates on that day
+    assert trip_point(stops, plan, recs, 3) == (11.95, 108.43)   # no stop that day -> the lodging
+    assert trip_point([], {}, recs, 1) is None                   # nothing known -> no forecast, never a made-up city point

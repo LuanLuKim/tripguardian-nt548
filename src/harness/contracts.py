@@ -14,6 +14,15 @@ class Conflict(ValueError):
     """A stale revision, a reused request_id, or a journey another writer changed first (HTTP 409)."""
 
 
+class StaleDataVersion(Conflict):
+    """The journey is pinned to a corpus version that was pruned (HTTP 409 `stale_data_version`). Nothing else is
+    served in its place; the user starts the trip again."""
+
+    def __init__(self, name: str, version: str):
+        super().__init__(f"the {name} version {version} this journey was built on is no longer available")
+        self.name, self.version = name, version
+
+
 class TripNotReady(Conflict):
     """Planning needs trip answers or confirmation of the current read-back."""
 

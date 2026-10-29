@@ -1,0 +1,55 @@
+# The Lựa chọn chatbot's bench cases (src/decision/bench.py docstring; run: python -m decision bench --live --family select).
+# {p1} {p2} {p3} = names of the first shortlist places. tools = names the LAST turn must use (`heuristic` = no model call).
+# expect = state after the last turn (at least n of selected / dropped / locked / likes / filters / soft; unchanged: true).
+cases:
+  # ---- select / drop / lock / visited by name or pointer
+  - {id: sel-name, family: select, turns: ["Cho mình thêm {p1} vào chuyến nhé"], tools: [select], expect: {selected: 1}}
+  - {id: sel-point, family: select, turns: ["Lấy quán đầu tiên nha"], tools: [select], expect: {selected: 1}}
+  - {id: sel-second, family: select, turns: ["Mình thấy quán thứ hai ổn, chọn luôn"], tools: [select], expect: {selected: 1}}
+  - {id: sel-vague, family: select, turns: ["Chọn đi"], expect: {unchanged: true}}
+  - {id: sel-two, family: select, turns: ["Thêm {p1} và {p2} vào chuyến"], tools: [select], expect: {selected: 2}}
+  - {id: drop-name, family: drop, turns: ["Bỏ {p2} đi, mình không thích"], tools: [drop], expect: {dropped: 1}}
+  - {id: drop-far, family: drop, turns: ["Quán đầu xa quá, bỏ đi"], tools: [drop], expect: {dropped: 1}}
+  - {id: drop-visited, family: drop, turns: ["{p1} mình đi rồi, đừng gợi ý nữa"], tools: [visited], expect: {dropped: 1}}
+  - {id: lock-name, family: lock, turns: ["Chốt {p1} nhé, chắc chắn đi chỗ này"], tools: [lock], expect: {locked: 1}}
+  - {id: lock-point, family: lock, turns: ["Khóa quán đầu tiên giúp mình"], tools: [lock], expect: {locked: 1}}
+  # ---- rerank by taste
+  - {id: rr-quiet-parking, family: rerank, turns: ["Mình thích quán yên tĩnh, có chỗ đỗ ô tô"], tools: [rerank]}
+  - {id: rr-near, family: rerank, turns: ["Ưu tiên chỗ gần trung tâm cho đỡ đi lại nhé"], tools: [rerank]}
+  - {id: rr-view, family: rerank, turns: ["Xếp những quán có view đẹp lên trước giúp mình"], tools: [rerank], expect: {soft: 1}}
+  - {id: rr-avoid, family: rerank, turns: ["Tránh mấy chỗ ồn ào đi"], tools: [rerank]}
+  - {id: rr-kids, family: rerank, turns: ["Có trẻ nhỏ đi cùng nên ưu tiên chỗ có khu vui chơi"], tools: [rerank]}
+  - {id: rr-combo, family: rerank, turns: ["Mình muốn quán rẻ hơn và ít đông, bỏ quán đầu luôn"], tools: [drop]}
+  # ---- filter
+  - {id: fl-early, family: filter, turns: ["Chỉ xem quán mở trước 7h"], tools: [heuristic], expect: {filters: 1}}
+  - {id: fl-feature, family: filter, turns: ["Chỉ cho mình xem quán có chỗ đỗ ô tô thôi"], tools: [filter], expect: {filters: 1}}
+  - {id: fl-clear, family: filter, turns: ["Chỉ xem quán mở trước 7h", "Bỏ lọc đi"], tools: [heuristic]}
+  - {id: fl-two-asks, family: filter, turns: ["Chỉ xem quán mở trước 7h và thêm {p1} luôn"], tools: [filter, select], expect: {filters: 1, selected: 1}}
+  # ---- why_not
+  - {id: wn-named, family: why_not, turns: ["Sao mình không thấy Langbiang trong danh sách?"], tools: [why_not], expect: {unchanged: true}}
+  - {id: wn-dropped, family: why_not, turns: ["Bỏ {p2} đi", "Sao {p2} lại không còn nữa vậy?"], reply_has: ["bỏ"]}
+  - {id: wn-unknown, family: why_not, turns: ["Sao không có quán Nhà Hàng Rồng Vàng Siêu Sao?"], reply_lacks: ["Rồng Vàng.*(mở|ngon|giá)"], expect: {unchanged: true}}
+  # ---- compare
+  - {id: cmp-two, family: compare, turns: ["So {p1} với {p2} giúp mình"], tools: [compare], expect: {unchanged: true}}
+  - {id: cmp-which, family: compare, turns: ["{p1} hay {p2} hợp hơn với mình?"], tools: [compare], reply_lacks: ["chắc chắn nên"]}
+  - {id: cmp-follow, family: compare, turns: ["So {p1} với {p2} giúp mình", "Còn về độ đông thì sao?"], reply_lacks: ["\\bP\\d\\b"]}
+  # ---- like / more like / swap / undo / trip wishes
+  - {id: lk-like, family: like, turns: ["Mình mê {p1} lắm"], tools: [like], expect: {likes: 1}}
+  - {id: lk-more, family: like, turns: ["Kiếm thêm chỗ giống {p1} đi"], tools: [more_like], expect: {likes: 1}}
+  - {id: sw-swap, family: swap, turns: ["Đổi {p1} lấy chỗ khác tương tự được không?"], tools: [swap_suggest], expect: {unchanged: true}}
+  - {id: un-undo, family: undo, turns: ["Chọn {p1} nhé", "Hoàn tác đi"], tools: [undo]}
+  - {id: tr-chill, family: trip, turns: ["Chuyến này mình muốn chill hơn, đi chậm thôi"], tools: [trip]}
+  - {id: tr-with-pick, family: trip, turns: ["Mình muốn thêm một ngày nữa, và chọn {p1} luôn"], tools: [select]}
+  # ---- follow-ups (history + context)
+  - {id: fu-it, family: followup, turns: ["Thêm {p1} vào chuyến", "Chốt nó luôn nhé"], tools: [lock], expect: {locked: 1}}
+  - {id: fu-other, family: followup, turns: ["Bỏ {p1} đi", "Thôi giữ lại đi, bỏ quán thứ hai thay"], reply_lacks: ["chưa hiểu ý bạn"]}  # model may undo alone (then asks again) or select+drop
+  - {id: fu-recap, family: followup, turns: ["Chọn {p1}", "Mình đã chọn những quán nào rồi?"], reply_has: ["{p1}"], expect: {selected: 1}}
+  # ---- photos and facts through the shared read tools (needs --trip)
+  - {id: ph-inside, family: photos, trip: true, turns: ["Cho mình xem ảnh bên trong {p1} với"], tools: [place_photos]}
+  - {id: ph-view, family: photos, trip: true, turns: ["{p1} nhìn view thế nào, có ảnh không?"], tools: [place_photos]}
+  - {id: rd-hours, family: read, trip: true, turns: ["{p1} mở cửa tới mấy giờ?"], tools: [get_place]}
+  - {id: rd-parking, family: read, trip: true, turns: ["{p2} có chỗ đậu ô tô không?"], tools: [place_evidence]}
+  - {id: rd-far, family: read, trip: true, turns: ["Từ {p1} sang {p2} đi xe máy mất bao lâu?"], tools: [distance]}
+  # ---- no block, no push, off topic
+  - {id: nb-bad-pick, family: no_block, turns: ["Mình cứ muốn chọn {p1} dù nó hơi xa, thêm giúp mình"], tools: [select], expect: {selected: 1}}
+  - {id: nb-offtopic, family: no_block, turns: ["Hôm nay bạn khỏe không?"], expect: {unchanged: true}}

@@ -86,3 +86,30 @@ def lift(ws, pid: str, role: str | None, group: str | None) -> tuple[float, list
         if s > 0:
             hits.append((w.key, w.kind, w.label, round(w.a * s, 4)))
     return 1 - keep, sorted(hits, key=lambda h: (-h[3], h[0]))
+
+
+def reserve(top: set[str], wishes, ranked: Mapping[str, list[str]], picked: set[str], usable: Callable[[str], bool],
+            score: Callable[[str], float]) -> set[str]:
+    """Every said wish (dish, kind, like) that some listed place meets has a meeting place in `top` (or picked).
+    A wish with none gets its best-scored listed meeting place, in the slot of the lowest-scored `top` place that is
+    not the only one meeting another wish (no such place: `top` grows by one). Picked places, hard constraints and
+    scores are never touched."""
+    top = set(top)
+    said = [w for w in wishes if w.kind in ("dish", "kind", "like") and w.places]
+    listed = {p for ids in ranked.values() for p in ids}
+    for w in said:
+        if w.places.keys() & (top | picked):
+            continue
+        meeting = [p for p in w.places if p in listed and p not in picked and usable(p)]
+        if not meeting:
+            continue
+        only = set()
+        for x in said:
+            cover = x.places.keys() & (top | picked)
+            if len(cover) == 1:
+                only |= cover
+        free = sorted(top - only, key=lambda p: (score(p), p))
+        if free:
+            top.discard(free[0])
+        top.add(min(meeting, key=lambda p: (-score(p), p)))
+    return top

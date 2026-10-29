@@ -15,10 +15,12 @@ from .domain.prepass import prepass
 from .domain.state import BudgetIntent, MAX_TRIP_DAYS, RECOMMENDED_TRIP_DAYS, SearchInput, TripState
 from .domain.text import contains, squash
 from .infrastructure.catalog import Catalog
+from .infrastructure.clef import ask as clef_ask
+from .infrastructure.knowledge import LiveTools
 from .infrastructure.profile import USER_ID, ProfileStore
 from .infrastructure.sessions import SessionStore
-from .infrastructure.settings import Settings
+from .infrastructure.settings import Settings, load as load_settings
 
-__all__ = ["CompiledFrame", "compile_frame", "plan_digest", "readiness_missing", "BudgetIntent", "group_budget", "MAX_TRIP_DAYS", "RECOMMENDED_TRIP_DAYS", "Catalog", "Engine", "Pattern", "ProfileStore", "SearchInput", "SessionStore", "Settings", "Summary", "USER_ID",
-           "TripState", "TurnInput", "Tools", "UnhandledSignal", "compile_search_input", "contains", "create_engine",
+__all__ = ["CompiledFrame", "compile_frame", "plan_digest", "readiness_missing", "BudgetIntent", "group_budget", "MAX_TRIP_DAYS", "RECOMMENDED_TRIP_DAYS", "Catalog", "Engine", "LiveTools", "Pattern", "ProfileStore", "SearchInput", "SessionStore", "Settings", "Summary", "USER_ID",
+           "TripState", "TurnInput", "Tools", "UnhandledSignal", "compile_search_input", "contains", "create_engine", "clef_ask", "load_settings",
            "detect", "drop_ride", "nights", "upgrade", "prepass", "rents_bike", "seed", "squash", "values"]

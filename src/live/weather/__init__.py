@@ -4,9 +4,10 @@ from datetime import date as _date
 
 from ..settings import Settings
 from .climate import climate
+from .hourly import weather_hourly
 from .open_meteo import forecast, in_range
 
-__all__ = ["weather"]
+__all__ = ["weather", "weather_hourly"]
 
 
 def weather(lat: float, lng: float, dates: list[str], cfg: Settings, today_fn=_date.today) -> dict:

@@ -10,11 +10,12 @@ from corpus.ontology import load
 from corpus.serving import feature
 
 from .cards import phrase
+from .guard import filter_ok
 from .model import FIRM
 from .session import Chip, Drop, Lodging, Pending, SoftAdd, State
 
 REASONS = ("far", "crowded", "pricey", "dislike", "visited")
-PLACE_ACTIONS = {"select", "drop", "lock", "unlock", "swap", "relax", "wishlist", "move_chunk"}
+PLACE_ACTIONS = {"select", "drop", "lock", "unlock", "swap", "relax", "wishlist", "move_chunk", "like"}
 
 
 class ActionError(ValueError):
@@ -112,6 +113,17 @@ def apply(state: State, act: dict, known, alternatives: dict[str, list[str]], pe
         if not _ontology().valid(f, v) or w not in (1, -1):
             raise ActionError(f"bad preference {f!r}={v!r} weight {w!r}")
         s.profile.soft = [x for x in s.profile.soft if (x.feature, x.value) != (f, v)] + [SoftAdd(feature=f, value=v, weight=w)]
+    elif t == "filter":
+        k, v = act.get("key"), act.get("value")
+        if not filter_ok(k, v):
+            raise ActionError(f"bad filter {k!r}={v!r}")
+        if (k, v) not in s.filters:
+            s.filters.append((k, v))
+    elif t == "unfilter":
+        s.filters = []
+    elif t == "like":
+        if pid not in s.likes:
+            s.likes.append(pid)
     elif t == "note":
         phrase_ = (act.get("phrase") or "").strip()
         if not phrase_:

@@ -69,10 +69,10 @@ def test_votes_are_only_explicit_choices():
     s = put(TripState(), "pace", "slow")
     s = put(s, "soft", ("crowd=low", "avoid"), op="add")
     s = put(s, "soft", ("scenic_view=present", "love"), source="inferred", op="add")  # a guess
-    s = put(s, "signal", "knee", op="add")                                           # body: never voted on
+    s = put(s, "signal", "knee", op="add")              # a need the user said: stored (owner 2026-10-28), asked back
     s = put(s, "hard", {"feature": "steep_or_stairs", "op": "ne", "value": "present"}, op="add")
     s = put(s, "days", 3)
-    assert votes_from_state(s) == {"pace": "slow", "soft:crowd=low": "avoid"}
+    assert votes_from_state(s) == {"pace": "slow", "soft:crowd=low": "avoid", "need:knee": "yes"}
 
 
 def test_a_confirmed_stored_pattern_is_not_a_new_vote(catalog):

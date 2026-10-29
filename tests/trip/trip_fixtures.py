@@ -54,3 +54,29 @@ class ScriptedChat:
         if r.text:
             on_say(r.text)
         return r
+
+
+ALL_DAY = {d: [["07:00", "22:00"]] for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}
+SUITABILITY = {"kids", "elderly", "couples", "groups"}
+
+
+def served(fid, name, features=None, group="cafe", category="Quán cà phê", lat=11.94, lng=108.44, hours=ALL_DAY,
+           price=None, voices=30, photos=None):
+    """One serving record (corpus.serving shape) for the assistant's Knowledge tests; features: {fid: value}."""
+    from corpus import load_ontology
+    ont = load_ontology()
+    rec = {"id": fid, "status": "VERIFIED",
+           "identity": {"name": name, "kind": "POI", "category": category, "category_group": group,
+                        "lat": lat, "lng": lng, "address": "Đà Lạt", "area": "area-1"},
+           "operation": {"hours": {"value": hours, "status": "VERIFIED"} if hours else None,
+                         "price_per_person": {"value": price, "status": "VERIFIED"} if price else None},
+           "experience": {}, "environment": {}, "service": {}, "effort": {}, "suitability": {},
+           "usable_as": ["experience", "meal", "backup"], "provenance": {"voices": voices}}
+    if photos is not None:
+        rec["media"] = {"photos": photos}
+    for f, v in (features or {}).items():
+        rec[ont.features[f].group][f] = {"value": v, "distribution": {v: 3}, "status": "VERIFIED", "n": 3,
+                                         "mention_rate": 0.1, "by_context": {}, "precision": None, "evidence": ["x:1"],
+                                         "confidence": {"independent_sources": 3, "agreement": 1.0,
+                                                        "freshness_days": 10, "source_types": ["provider"]}}
+    return rec

@@ -78,6 +78,8 @@ class State(BaseModel):
     free_time: bool = False
     activities: dict[str, Activity] = Field(default_factory=dict)
     lodging: Lodging | None = None
+    filters: list[tuple[str, str]] = Field(default_factory=list)  # (feature | "opens_by", value) the lists are narrowed to
+    likes: list[str] = Field(default_factory=list)  # places the user asked for more of ("giống X")
 
 
 class Session(BaseModel):

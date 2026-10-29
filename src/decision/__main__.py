@@ -26,10 +26,15 @@ def main() -> None:
     serve = sub.add_parser("serve", help="run the API the web shortlist / feasibility screens talk to")
     serve.add_argument("--port", type=int, default=8767)
     sub.add_parser("evaluate", help="offline Place Decision check on the serving records")
-    args = ap.parse_args()
+    sub.add_parser("bench", help="the Lựa chọn chatbot on config/bench_decision_assistant.yaml (options: python -m decision.bench -h)")
+    args, rest = ap.parse_known_args()
 
     load_dotenv(ROOT / ".env")
     cfg = default()
+    if args.cmd == "bench":
+        from .bench import main as bench
+        bench(rest)
+        return
     if args.cmd == "evaluate":
         from .evaluate import run as evaluate
         evaluate()

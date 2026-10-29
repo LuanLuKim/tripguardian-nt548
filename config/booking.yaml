@@ -1,0 +1,20 @@
+# Booking settings (docs/BOOKING.md). Deeplinks only: no payment, no partner API yet.
+version: 1
+
+# Which published stay_prices file the stay adapters read (data/serving/stay_prices/<city>.json).
+stay_city: dalat
+# A price older than this is not stated (the link stays, price = unknown). The price crawl refreshes within ~12-48 h.
+stay_max_age_h: 72
+
+# Crawled flights (data/serving/flight_offers/<city>.json, published by `python -m corpus flight_offers`). The hourly crawl
+# searches each day again after 12 h, so a search 36 h old has missed at most two passes; older states nothing.
+flight_city: dalat
+flight_max_age_h: 36
+
+# Affiliate tag per provider: appended as ?<param>=<value of the env key in .env> only when BOTH are set. Left empty
+# until the owner has a partner id; turning it on is adding the param name here and the value in .env.
+affiliate:
+  vexere: {param: null, env: BOOKING_VEXERE_AFFILIATE}
+  google_flights: {param: null, env: null}
+  gtravel: {param: null, env: null}
+  tripcom: {param: null, env: BOOKING_TRIPCOM_AFFILIATE}

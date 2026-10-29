@@ -62,8 +62,10 @@ class Settings:
     polarity: dict
     labels: dict
     shortlist_days: int = 7
+    prior_weight: float = 0.4  # a wish from the long-term profile counts this much of a wish of this trip (rank.wants)
     coach_min_people: int = 9  # a party this big needs a coach or a 16-seater: it counts as the companion `large_group`
     details_fit: dict = field(default_factory=lambda: {"good_bonus": 0.1, "bad_penalty": 0.2, "feature_bonus": 0.05})
+    assistant: dict = field(default_factory=lambda: {"enabled": False, "max_steps": 4, "top": 5, "max_tokens": 800})  # config/decision.yaml assistant
     wish: dict = field(default_factory=lambda: {"a": {}, "like_min": 1.0, "purpose": {}})  # config/decision.yaml wish
 
 

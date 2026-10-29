@@ -12,16 +12,17 @@ def test_router_rejects_wrong_stage_before_dispatch():
         route("trip", request("decision", "act"))
 
 
-def test_planning_does_not_accept_a_chat_turn():
+def test_planning_accepts_a_chat_turn_but_not_a_trip_operation():
     from harness import RouteError, route
-    with pytest.raises(RouteError):
-        route("planning", request("planning", "turn"))
+    assert route("planning", request("planning", "turn")) == "planning"
     assert route("planning", request("planning", "recommend")) == "planning"
+    with pytest.raises(RouteError):
+        route("planning", request("planning", "advance"))
 
 
 @pytest.mark.parametrize("stage,operation", [("trip", "turn"), ("trip", "advance"),
     ("decision", "act"), ("decision", "turn"), ("decision", "advance"),
-    ("decision", "back"), ("planning", "act"), ("planning", "back"), ("planning", "confirm")])
+    ("decision", "back"), ("planning", "act"), ("planning", "back"), ("planning", "confirm"), ("planning", "turn")])
 def test_router_accepts_only_declared_operations(stage, operation):
     from harness import route
     assert route(stage, request(stage, operation)) == stage

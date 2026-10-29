@@ -1,7 +1,15 @@
 import type { LodgingCandidate } from '../planning/types'
-import type { Action, ActResult, CompareResult, PlanPreview, SearchResult, TripSummary, TurnHandlers, View, WhyNot } from './types'
+import type { Action, ActResult, Card, CompareResult, PlanPreview, SearchResult, TripSummary, TurnHandlers, View, WhyNot } from './types'
+import { setScenePhotos } from '../../data/store'
 import { json, loadJourney, mutateJourney, readJourney, resumeJourney, type JourneyView } from '../journey'
 export { JourneyError as DecisionError } from '../journey'
+// Cards bring their scene photos (no people, one per scene); every list the screens read goes through here, so PlacePhoto,
+// the disc and the sheet show them before the place's cover gallery. Cards without photos change nothing.
+const withPhotos = <T extends { view?: View; cards?: Card[] }>(r: T): T => {
+  const cards = [...(r.cards ?? []), ...(r.view?.groups.flatMap((g) => g.cards) ?? []), ...(r.view?.unverified?.cards ?? [])]
+  for (const c of cards) setScenePhotos(c.id, c.photos)
+  return r
+}
 // Understand starts the first read of this stage the moment it has advanced, so the screen finds it on arrival instead of
 // asking after the route changed. A journey that has just advanced has nothing to recover, so that step is skipped too.
 const primed = new Map<string, Promise<JourneyView>>()
@@ -17,18 +25,18 @@ export const loadDecision = async (id: string) => {
   if (early) {
     try {
       const j = await early
-      return { ...(j.result as { view: View }), id: j.id, stage: j.stage, recoveredHandoff: undefined }
+      return withPhotos({ ...(j.result as { view: View }), id: j.id, stage: j.stage, recoveredHandoff: undefined })
     } catch { /* the full path below reads it again and reports the error */ }
   }
   const recovery = await resumeJourney(id)
   const j = await loadJourney(id, 'decision')
-  return { ...(j.result as {view: View}), id: j.id, stage: j.stage, recoveredHandoff: recovery.recoveredOperation === 'advance' && recovery.view.stage === 'planning' ? recovery.view : undefined }
+  return withPhotos({ ...(j.result as {view: View}), id: j.id, stage: j.stage, recoveredHandoff: recovery.recoveredOperation === 'advance' && recovery.view.stage === 'planning' ? recovery.view : undefined })
 }
-export const act = async (id: string, a: Action) => (await mutateJourney(id, 'decision', 'act', a)).result as ActResult
+export const act = async (id: string, a: Action) => withPhotos((await mutateJourney(id, 'decision', 'act', a)).result as ActResult)
 export const compare = (id: string, a: string, b: string) => readJourney<CompareResult>(id, `decision/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`)
 // Page n (1 = first) of one tab; without n the next page.
-export const gotoPage = (id: string, group: string, n?: number) => readJourney<{ view: View }>(id, `decision/page?group=${encodeURIComponent(group)}${n ? `&n=${n}` : ''}`)
-export const searchList = (id: string, q: string) => readJourney<SearchResult>(id, `decision/search?q=${encodeURIComponent(q)}`)
+export const gotoPage = (id: string, group: string, n?: number) => readJourney<{ view: View }>(id, `decision/page?group=${encodeURIComponent(group)}${n ? `&n=${n}` : ''}`).then(withPhotos)
+export const searchList = (id: string, q: string) => readJourney<SearchResult>(id, `decision/search?q=${encodeURIComponent(q)}`).then(withPhotos)
 export const whyNot = (id: string, place: string) => readJourney<WhyNot>(id, `decision/why-not?place=${encodeURIComponent(place)}`)
 export async function sendText(id: string, text: string, h: TurnHandlers): Promise<void> { await mutateJourney(id, 'decision', 'turn', {text}, h as Record<string, ((d: any) => void) | undefined>) }
 // Served stays around the places chosen so far, ranked by Planning; "empty" until a place is chosen.

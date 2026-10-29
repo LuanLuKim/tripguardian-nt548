@@ -1,0 +1,26 @@
+/* QA fixes 2026-10-30 (fix-ui): small rules that belong to no single screen file. Tokens only. */
+
+/* Lịch trình: plan already confirmed (replaces the confirm button) */
+.tg-it-confirmed { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 16px; border-radius: 999px; background: var(--tg-pine-soft); border: 1px solid var(--tg-line-2); color: var(--tg-ink); font: 600 0.9rem var(--tg-sans); white-space: nowrap; }
+
+/* Lịch trình: bottom bar of the day view lives in the narrow left pane, so it keeps its text short and its buttons compact.
+   `.tg ` raises the specificity because itinerary.css is loaded after this file. */
+.tg .tg-it-status { padding-inline: 20px; font-size: 0.88rem; }
+.tg .tg-it-status > span { flex: 1 1 auto; overflow: visible; text-overflow: clip; }
+.tg .tg-it-status > div { gap: 8px; }
+.tg .tg-it-status .tg-btn { padding-inline: 16px; }
+.tg .tg-it-status .tg-btn--primary { padding-inline: 18px; }
+
+/* Hôm nay: the reminder card and the stops share the left column, so the right column starts at the same height */
+.tg-td__main { display: grid; gap: 12px; min-width: 0; align-content: start; }
+.tg-td__main > * { margin: 0; }
+
+/* Giờ đến và giờ về: 24-hour selects, label next to the field */
+.tg-eve__times-row > div { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; color: var(--tg-ink-2); }
+.tg-pchip:not(:has(.tg-pchip__ph)) { padding-left: 12px; }
+
+/* a loading screen that takes longer than usual: one calm line under the wait line (ui/SlowHint.tsx) */
+.tg-busy__slow { margin: -10px 0 18px; font-size: 0.9rem; color: var(--tg-ink-3); animation: tg-pop 260ms var(--tg-ease); }
+
+/* Đường tới / về: the km of a coach or flight, one stretch per line (to the station, from the station) */
+.tg .tg-wy__legs { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 0.88rem; color: var(--tg-ink-2); }

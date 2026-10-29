@@ -7,8 +7,9 @@ import { go, warmPhotos } from '../ui/common'
 import { primePlanning } from '../planning/api'
 import * as api from './api'
 import type { Action, Card, DecisionOutput, Diff, PlanPreview, View } from './types'
-import type { Readback } from '../tu/types'
+import type { ChatPlaces, Readback } from '../tu/types'
 import { ReadbackSheet } from '../ui/ReadbackSheet'
+import { explainError } from '../journeyErrors'
 
 // "building" while the background schedule for the current selection is being made (Planning, not confirmed).
 export type PreviewState = { status: 'idle' | 'building' } | PlanPreview
@@ -20,7 +21,7 @@ interface DecisionCtx {
   busy: boolean
   preview: PreviewState
   act: (a: Action) => Promise<boolean>
-  say: (text: string, onSay: (soFar: string) => void) => Promise<Diff | null>
+  say: (text: string, onSay: (soFar: string) => void, onPlaces?: (d: ChatPlaces) => void) => Promise<Diff | null>
   toPlan: () => Promise<boolean>
   reload: () => void
   more: (group: string, n?: number) => Promise<void> // page n (1 = first) of a tab, or its next page
@@ -110,7 +111,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
         if (e instanceof api.DecisionError && (e.status === 404 || e.status === 409)) {
           dispatch({ type: 'set', patch: { decisionId: null } })
           setError(e.status === 404 ? 'Phiên chọn nơi đã hết. Quay lại bước Tìm hiểu để bắt đầu lại.' : null)
-        } else setError(OFFLINE)
+        } else setError(explainError(e, OFFLINE))
       },
     )
     return () => {
@@ -143,7 +144,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
         return true
       } catch (e) {
         if (early) setTimeout(() => { void api.loadDecision(id).then((r) => { if (queued.current === 0) setView(r.view) }, () => {}) }, 0) // the server said no: show what it holds
-        setError(e instanceof api.DecisionError ? `Không thực hiện được: ${e.detail || e.status}` : OFFLINE)
+        setError(explainError(e, OFFLINE, 'Không thực hiện được'))
         return false
       } finally {
         if (early) queued.current -= 1
@@ -154,7 +155,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
   )
 
   const say = useCallback(
-    async (text: string, onSay: (soFar: string) => void) => {
+    async (text: string, onSay: (soFar: string) => void, onPlaces?: (d: ChatPlaces) => void) => {
       if (!id) return null
       setBusy(true)
       let acc = ''
@@ -165,6 +166,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
             acc = d.replace !== undefined ? d.replace : acc + (d.delta ?? '')
             onSay(acc)
           },
+          places: (d) => onPlaces?.(d),
           view: (r) => {
             dispatch({ type: 'set', patch: { planningId: null } })
             setView(r.view)
@@ -175,8 +177,8 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
         })
         refreshPreview()
         return last
-      } catch {
-        setError(OFFLINE)
+      } catch (e) {
+        setError(explainError(e, OFFLINE))
         return null
       } finally {
         setBusy(false)
@@ -218,7 +220,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
           } catch { /* fall through to the message */ }
         }
         if (!opened) setError(e.status === 409 ? 'Các nơi đã chọn chưa đủ để xếp thành lịch trọn vẹn. Bạn thử thêm hoặc đổi vài nơi nhé.' : 'Chưa xếp lịch được lúc này. Bạn thử lại sau ít giây nhé.')
-      } else setError(OFFLINE)
+      } else setError(explainError(e, OFFLINE))
       return false
     } finally {
       setBusy(false)
@@ -233,8 +235,8 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
     try {
       const r = await api.gotoPage(id, group, n)
       setView(r.view)
-    } catch {
-      setError(OFFLINE)
+    } catch (e) {
+      setError(explainError(e, OFFLINE))
     } finally {
       loading.current = null
       setLoadingMore(null)

@@ -396,3 +396,27 @@ span.tg-it-stay__ph { display: grid; place-items: center; background: var(--tg-p
 .tg-it-map.is-pannable { cursor: grab; touch-action: none; }
 .tg-it-pin:hover, .tg-it-pin.is-hot { border-color: var(--tg-brand); }
 @media (prefers-reduced-motion: reduce) { .tg-it-stop > .tg-it-card::before { transition: none; } }
+
+/* D.3 evening check: photo option cards (screens/plan/EveBanner.tsx) */
+.tg-eve { display: grid; gap: 14px; padding: 18px 20px; border: 1px solid var(--tg-warn-line); border-radius: var(--tg-r-l); background: var(--tg-surface); box-shadow: var(--tg-sh-1); animation: tg-eve-in 0.28s var(--tg-ease) both; transition: opacity 0.2s ease, transform 0.2s ease; }
+.tg-eve.is-leaving { opacity: 0; transform: translateY(-6px) scale(0.98); }
+.tg-eve__head { display: flex; gap: 12px; align-items: flex-start; }
+.tg-eve__ico { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--tg-warn-bg); color: var(--tg-warn); }
+.tg-eve__head h3 { margin: 0; font: 600 1.05rem/1.35 var(--tg-sans); color: var(--tg-ink); }
+.tg-eve__head p { margin: 2px 0 0; color: var(--tg-ink-2); font-size: 0.9rem; }
+.tg-eve__opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.tg-eve__opt { min-height: 44px; cursor: pointer; font: inherit; animation-delay: calc(var(--i, 0) * 60ms); }
+.tg-eve .tg-cx__pics { grid-template-rows: 130px; }
+.tg-eve .tg-cx__opt-b b { font: 600 1rem/1.3 var(--tg-sans); }
+.tg-eve .tg-cx__pic { cursor: pointer; position: relative; }
+.tg-eve__kind { position: absolute; left: 8px; bottom: 8px; }
+.tg-eve__foot { display: flex; justify-content: flex-end; }
+@keyframes tg-eve-in { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .tg-eve, .tg-eve__opt { animation: none; transition: none; } .tg-eve.is-leaving { transform: none; } }
+
+/* Eve: arrive / leave time of the confirmed trip; trust card; Nhịp Đà Lạt beside the plan */
+.tg-eve__times-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0 6px; }
+.tg-eve__times-row label { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; color: var(--tg-ink-2); }
+.tg-eve__times-row input { padding: 6px 10px; border: 1px solid var(--tg-line); border-radius: 10px; background: var(--tg-surface); color: var(--tg-ink); font: inherit; }
+.tg-eve__times .tg-faint { margin: 0; font-size: 0.84rem; }
+.tg-tripside { max-width: 100%; overflow: hidden; }

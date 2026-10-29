@@ -152,6 +152,15 @@ function Chosen({ c, busy, back, onClear }: { c: LodgingChoice; busy: boolean; b
 }
 
 // "08/10" in Vietnam time.
+function ago(h: number) {
+  return h < 1 ? 'vừa xong' : h < 24 ? `${Math.round(h)} giờ trước` : `${Math.round(h / 24)} ngày trước`
+}
+// A dated price was seen for this trip's own stay; a reference one is Maps' list price from other dates (check before booking).
+function priceNote(c: LodgingCandidate) {
+  if (c.price_kind === 'dated' && c.price_at) return `giá ngày ${day(c.price_at)}${c.price_age_h != null ? `, cập nhật ${ago(c.price_age_h)}` : ''}`
+  return 'giá tham khảo trên Maps, kiểm lại khi đặt'
+}
+
 function day(iso: string) {
   const d = new Date(iso.length === 10 ? `${iso}T12:00:00+07:00` : iso)
   if (isNaN(d.getTime())) return iso
@@ -161,7 +170,7 @@ function day(iso: string) {
 // A lodging as a place card: the same markup as PlaceCard (ui/PlaceCard.tsx), so every group reads alike. The trip has
 // one lodging: the first is added, any other replaces it, so once one is chosen the button of every other card says
 // it swaps.
-function LodgingCard({ c, order, top, on, swap, busy, onPick }: { c: LodgingCandidate; order: number; top: boolean; on: boolean; swap: boolean; busy: boolean; onPick: () => void }) {
+export function LodgingCard({ c, order, top, on, swap, busy, onPick }: { c: LodgingCandidate; order: number; top: boolean; on: boolean; swap: boolean; busy: boolean; onPick: () => void }) {
   const p = info(c.id) // in the snapshot: photos and a detail sheet
   const saved = useUi((u) => u.saved.includes(c.id))
   const rating = p?.rating ?? c.rating
@@ -193,7 +202,8 @@ function LodgingCard({ c, order, top, on, swap, busy, onPick }: { c: LodgingCand
         {trade ? <p className="tg-pc__trade"><Icon name="warn" size={15} /><span><b>Đánh đổi:</b> {trade}</span></p> : <p className="tg-faint">Chưa thấy điều gì đáng ngại.</p>}
         {alerts.slice(0, 2).map((n) => <p key={n} className="tg-pc__alert"><Icon name="warn" size={14} />{n}</p>)}
         <div className="tg-pc__facts">
-          {c.price_vnd ? <span className="tg-mono" title={c.price_at ? `Giá tham khảo trên Maps ngày ${day(c.price_at)}; kiểm lại khi đặt` : 'Giá tham khảo'}>{fmtVnd(c.price_vnd)}/đêm</span> : <span className="tg-faint">Chưa có giá</span>}
+          {c.price_vnd ? <span className="tg-mono">{fmtVnd(c.price_vnd)}/đêm</span> : <span className="tg-faint">Chưa có giá</span>}
+          {c.price_vnd && priceNote(c) && <small className="tg-faint tg-pc__pricenote">{priceNote(c)}</small>}
           {loc?.minutes != null && <span className="tg-mono" title="Ước tính">≈ {loc.minutes}′ từ {loc.center}</span>}
           {c.avg_min != null && <span className="tg-mono" title="Ước tính">≈ {fmtMin(c.avg_min)} tới các nơi đã chọn</span>}
           {c.confidence && <Trust level={TRUST[c.confidence.level]} why={c.confidence.reason} />}

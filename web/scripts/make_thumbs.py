@@ -30,7 +30,7 @@ def srcs() -> set[str]:
     for f in (ROOT / "web" / "public" / "data" / "covers").glob("*.json"):  # galleries pick_covers.py split out
         out |= {c["src"] for c in json.loads(f.read_text(encoding="utf-8"))}
     out |= {ph["src"] for p in landing for ph in p.get("photos", [])}
-    return out | indexed()
+    return out | indexed() | scene_photos()
 
 
 def indexed() -> set[str]:
@@ -41,6 +41,24 @@ def indexed() -> set[str]:
     except ImportError:
         return set()
     return {media_url(r["file"]) for r in Index.load().photo_rows}
+
+
+def scene_photos() -> set[str]:
+    """The best photo per scene of every labelled place (corpus.serving.scenes: no person, not blurry): what Decision cards, the
+    Trip chat disc and the place walk show. Without the corpus on the path only the web's own photos get thumbnails."""
+    try:
+        from corpus.serving import scenes
+        from trip.domain.vibes import media_url
+    except ImportError:
+        return set()
+    out: set[str] = set()
+    for f in (ROOT / "data" / "gmaps" / "photo_scenes").glob("*.json"):
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        out |= {media_url(p["file"]) for p in scenes.pick(doc)}
+    return out
 
 
 def paths(src: str) -> tuple[Path, Path] | None:

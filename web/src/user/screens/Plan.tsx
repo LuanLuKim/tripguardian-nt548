@@ -2,12 +2,15 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { useEffect, useMemo, useState } from 'react'
 import { VEHICLE_LABEL } from '../../data/store'
 import { enterStage } from '../journey'
+import { isStaleText } from '../journeyErrors'
+import { tripSummaries } from '../pd/api'
 import { fmtMin, fmtVnd, info } from '../lib'
 import { usePlanning } from '../planning/planning'
 import type { Action, Diff } from '../planning/types'
 import { setOptimized, setUi, useUi } from '../store'
 import { useTrip } from '../trip'
 import { ArtRoute, Busy, Empty, go } from '../ui/common'
+import { AssistantFloat } from '../ui/Assistant'
 import { Icon } from '../ui/icons'
 import { RouteStory } from '../ui/RouteStory'
 import { FlowBar, Page, useTitle } from '../ui/Shell'
@@ -21,10 +24,17 @@ import { useRoutes } from './plan/useRoutes'
 import { BackupCard, KeepAll, Lodging, NoHotel, Optimize, TimeCard } from './plan/parts'
 import { costText, MEAL_LABEL, openPlace, placeName, visits } from './plan/shared'
 import { Swap } from './plan/Swap'
+import { EveBanner, useEve } from './plan/EveBanner'
+import { TripPulse } from './plan/TripPulse'
+import { TrustCard } from './plan/Trust'
+import { StayOffer, WayIn } from './plan/WayIn'
+import { LodgingCost, lodgingBasis } from './plan/LodgingCost'
+import '../css/fixes.css'
 
 // docs/UI_SPEC_USER_WEB.md Trang 8, layout from ui_mock_for_design/designs/itinerary: choose a way → overview → one screen per day
 // (+ a screen to swap or add a place). Times and routes are estimates and say so; warnings sit on the stop they concern.
-// Lịch trình takes actions only (no chat): docs/PLANNING.md.
+// Lịch trình takes actions and, through the assistant panel (ui/Assistant.tsx), typed messages: docs/PLANNING.md. A turn that changes
+// the plan leaves one new version, which the provider accepts like an act's.
 
 const SCOPE_TEXT: Record<Diff['scope'], string> = {
   none: '',
@@ -53,6 +63,16 @@ export function Plan() {
   const [story, setStory] = useState(false)
   const [hot, setHot] = useState<string | null>(null)
   const [opt, setOpt] = useState(false)
+  const [confirmed, setConfirmed] = useState(false) // the trip already has a confirmed plan: this screen then edits it, it does not confirm it again
+  useEffect(() => {
+    const id = trip.planningId
+    setConfirmed(false)
+    if (!id) return
+    let live = true
+    tripSummaries().then((l) => { if (live) setConfirmed(l.some((t) => t.id === id && t.confirmed)) }, () => {})
+    return () => { live = false }
+  }, [trip.planningId])
+  const eve = useEve(trip.journeyId ?? null) // D.3: tomorrow's pending changes on the confirmed plan
   useEffect(() => { window.scrollTo(0, 0) }, [screen, changing, view?.state.chosen_variant])
   // The road of each day is read apart from the plan; it is read again whenever the stops, their order or the lodging change.
   const routeKey = `${view?.state.lodging_id ?? ''}|${(view?.itinerary ?? []).map((x) => x.items.filter((it) => it.kind === 'visit').map((it) => it.place_id).join(',')).join('|')}`
@@ -85,7 +105,9 @@ export function Plan() {
       <>
         <FlowBar step="plan" />
         <Page>
-          {error ? <Empty art={<ArtRoute />} title="Chưa tải được lịch trình" body={error} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => location.reload()}><Icon name="refresh" size={18} /> Thử lại</button>} /> : (
+          {error ? <Empty art={<ArtRoute />} title="Chưa tải được lịch trình" body={error} action={isStaleText(error)
+            ? <button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/trips')}>Về chuyến của tôi</button>
+            : <button type="button" className="tg-btn tg-btn--primary" onClick={() => location.reload()}><Icon name="refresh" size={18} /> Thử lại</button>} /> : (
             <>
               <Busy text="Đang xếp lịch… chỗ nghỉ có thể đến sau ~10 giây" />
               <div className="tg-it-skel" aria-busy="true">
@@ -137,6 +159,7 @@ export function Plan() {
   const robustness = view.robustness ?? variant?.robustness
   const vehicle = trip.vehicle ? VEHICLE_LABEL[trip.vehicle].toLowerCase() : ''
   const lodgingName = view.lodging.candidates.find((c) => c.id === view.state.lodging_id)?.name ?? ((view.state.lodging_point?.text as string | undefined) || null)
+  const origin = trip.searchInput?.context.origin ?? null // where the trip starts: the way in and back is timed from here
   const better = optimized?.status === 'accepted' && optimized.after < optimized.before
   const planDropped = (variant?.dropped_by_plan ?? []).filter((x) => (view.state.plan_dropped ?? []).includes(x.place_id))
   const userDropped = view.state.dropped.filter((x) => !planDropped.some((p) => p.place_id === x.place_id))
@@ -158,11 +181,15 @@ export function Plan() {
     : diff && SCOPE_TEXT[diff.scope]
       ? <p className="tg-it-diff" role="status"><Icon name="bolt" size={15} />{SCOPE_TEXT[diff.scope]}<button type="button" disabled={busy} onClick={() => act({ type: 'undo' })}>Hoàn tác</button></p>
       : null
-  const confirmButton = <button type="button" className="tg-btn tg-btn--primary" disabled={busy || blocked} title={blocked ? 'Lịch còn lỗi hoặc phương án chưa đạt yêu cầu; sửa trước khi chốt.' : undefined} onClick={onConfirm}>Chốt kế hoạch này <Icon name="arrow" size={18} /></button>
+  const confirmButton = confirmed && !diff
+    ? <span className="tg-it-confirmed" role="status"><Icon name="check" size={16} /> Kế hoạch đã chốt</span>
+    : <button type="button" className="tg-btn tg-btn--primary" disabled={busy || blocked} title={blocked ? 'Lịch còn lỗi hoặc phương án chưa đạt yêu cầu; sửa trước khi chốt.' : undefined} onClick={onConfirm}>{confirmed ? 'Chốt lại thay đổi' : 'Chốt kế hoạch này'} <Icon name="arrow" size={18} /></button>
 
   const notices = (
     <div className="tg-it-notices">
+      {eve.state && <EveBanner {...eve} state={eve.state} arrive={days[0]?.window[0]} leave={days[days.length - 1]?.window[1]} />}
       {!hasHotel && <NoHotel onHotel={toLodging} />}
+      {view.warnings.filter((w) => w.code === 'restricted_place').map((w, i) => <div key={`rp${i}`} className="tg-it-note is-attention" role="status"><Icon name="warn" size={18} /><span>{w.text}</span></div>)}
       <LongTripWarning days={days.length} />
       {view.overload && <div className="tg-it-note is-attention" role="status"><Icon name="warn" size={18} /><div><b>{view.overload.text}</b><p>Ước lượng tải cho {view.overload.selection_places} nơi; lịch bên dưới được kiểm tra bằng validator.</p></div></div>}
       {better && !optimized.seen && (
@@ -178,9 +205,12 @@ export function Plan() {
   const overviewFooter = (
     <div className="tg-it-foot">
       <div className="tg-it-foot__in">
+        <div className="tg-it-foot__costs">
         <div className="tg-it-foot__cost">
-          <span>Chi phí địa điểm đã biết</span><b>{metrics ? (metrics.cost_vnd ? `≈ ${fmtVnd(metrics.cost_vnd)}` : 'Chưa có giá') : '—'}</b><span>chưa gồm chỗ nghỉ, di chuyển</span>
+          <span>Chi phí địa điểm đã biết</span><b>{metrics ? (metrics.cost_vnd ? `≈ ${fmtVnd(metrics.cost_vnd)}` : 'Chưa có giá') : '—'}</b><span>{variant?.lodging_budget ? "chưa gồm di chuyển" : "chưa gồm chỗ nghỉ, di chuyển"}</span>
           <button type="button" className="tg-it-textbtn" aria-label="Chi phí này gồm gì" onClick={() => setCostOpen(true)}><Icon name="info" size={16} /></button>
+        </div>
+        <LodgingCost budget={variant?.lodging_budget} />
         </div>
         <div className="tg-it-foot__acts">{confirmButton}<button type="button" className="tg-btn tg-btn--soft" onClick={() => openDay(dayIdx)}>Xem lịch từng ngày <Icon name="arrow" size={18} /></button></div>
       </div>
@@ -188,7 +218,7 @@ export function Plan() {
   )
   const dayFooter = (
     <div className="tg-it-status">
-      <span>{places} nơi trong lịch · {droppedCount} nơi tạm bỏ</span>
+      <span>{places} nơi trong lịch{droppedCount > 0 ? ` · ${droppedCount} tạm bỏ` : ''}</span>
       <div>
         <button type="button" className="tg-it-textbtn is-sec" onClick={() => setScreen('overview')}>Tổng quan</button>
         <button type="button" className="tg-btn tg-btn--ghost tg-btn--sm" disabled={busy} onClick={async () => { await optimize(); setOpt(true) }}><Icon name="sparkle" size={15} /> {busy ? 'Đang thử…' : 'Tối ưu lịch'}</button>
@@ -206,6 +236,8 @@ export function Plan() {
         <h2 id="tg-nt-h"><Icon name="info" size={18} /> Lưu ý cả chuyến</h2>
         {view.warnings.length === 0 && !(variant?.warnings.length) ? <p className="tg-faint">Chưa có lưu ý nào.</p> : <ul className="tg-notes">{[...view.warnings, ...(variant?.warnings ?? [])].slice(0, 6).map((w, i) => <li key={i}><Icon name="warn" size={14} /><span>{w.text}</span></li>)}</ul>}
       </section>
+      <TrustCard view={view} />
+      <TripPulse />
       {!!variant?.checklist?.length && (
         <section className="tg-sidecard" aria-labelledby="tg-cl-h">
           <h2 id="tg-cl-h"><Icon name="check" size={18} /> Chuẩn bị trước khi đi</h2>
@@ -218,9 +250,11 @@ export function Plan() {
   return (
     <>
       {note && screen !== 'swap' && <div className="tg-it-toast">{note}</div>}
+      <AssistantFloat stage="planning" onOpenDay={(n) => openDay(Math.min(Math.max(0, n - 1), Math.max(0, days.length - 1)))} />
       {screen === 'overview' && <Overview days={days} variant={variant} robustness={robustness} travelMin={travel} visitMin={metrics?.visit_min ?? 0} droppedCount={droppedCount}
-        lodgingName={lodgingName} hasHotel={hasHotel} arriveHow={trip.searchInput?.context.frame?.arrive?.how ?? trip.searchInput?.context.arrival_mode} leaveHow={trip.searchInput?.context.frame?.leave?.how ?? trip.searchInput?.context.arrival_mode} notices={notices} footer={overviewFooter} busy={busy} delta={delta} sameAs={sameAs}
-        after={view.keep_all ? <KeepAll variant={view.keep_all} busy={busy} onPick={(id) => act({ type: 'pick_variant', id })} /> : null} onReoptimize={() => { void previewAct({ type: 'reoptimize' }) }} onDay={openDay} onChangeVariant={() => setChanging(true)} onHotel={toLodging}
+        lodgingName={lodgingName} hasHotel={hasHotel} wayIn={<WayIn lat={origin?.lat} lng={origin?.lng} date={days[0]?.date} way="inbound" />} wayOut={<WayIn lat={origin?.lat} lng={origin?.lng} date={days[days.length - 1]?.date} way="outbound" />}
+        stayOffer={hasHotel ? <StayOffer fid={view.state.lodging_id} checkIn={days[0]?.date ?? null} nights={Math.max(1, days.length - 1)} /> : null} arriveHow={trip.searchInput?.context.frame?.arrive?.how ?? trip.searchInput?.context.arrival_mode} leaveHow={trip.searchInput?.context.frame?.leave?.how ?? trip.searchInput?.context.arrival_mode} notices={notices} footer={overviewFooter} busy={busy} delta={delta} sameAs={sameAs}
+        after={<>{view.keep_all ? <KeepAll variant={view.keep_all} busy={busy} onPick={(id) => act({ type: 'pick_variant', id })} /> : null}<TrustCard view={view} /><TripPulse /></>} onReoptimize={() => { void previewAct({ type: 'reoptimize' }) }} onDay={openDay} onChangeVariant={() => setChanging(true)} onHotel={toLodging}
         onDropped={() => setDroppedOpen(true)} onStory={() => setStory(true)} onOpen={openPlace} />}
       {screen === 'day' && d && <DayView days={days} dayIdx={dayIdx} week={Math.floor(dayIdx / 7)} onDay={setDayIdx} busy={busy} locked={view.state.locked}
         durationRange={view.duration_range} durationOverrides={view.state.visit_duration_override ?? {}} cond={view.day_conditions?.find((c) => c.day === d.day)} tips={view.crowd_tips ?? []}
@@ -274,7 +308,8 @@ export function Plan() {
             {!!metrics?.meal_cost_unknown && <li>{metrics.meal_cost_unknown} bữa tự chọn chưa tính giá.</li>}
             {metrics?.transport_cost_vnd == null && <li>Chưa tính chi phí di chuyển.</li>}
             {!!metrics?.extras_max_vnd && <li>Có thể thêm tới {fmtVnd(metrics.extras_max_vnd)} cho trò chơi, thuê đồ.</li>}
-            <li>Chưa gồm chỗ nghỉ và chuyến đến, về.</li>
+            <li>{variant?.lodging_budget?.total_vnd != null ? `Chỗ nghỉ tính riêng: ≈ ${fmtVnd(variant.lodging_budget.total_vnd)} (${lodgingBasis(variant.lodging_budget)}).` : 'Chưa gồm chỗ nghỉ.'}</li>
+            <li>Chưa gồm chuyến đến, về.</li>
           </ul>
           {variant && <p className="tg-faint">Phương án {variant.label}: {costText(variant)}.</p>}
         </Dialog.Content></Dialog.Portal>

@@ -14,6 +14,8 @@ import { useTrip } from '../trip'
 import { ArtRoute, Busy, Empty, go, PlacePhoto } from '../ui/common'
 import { Icon } from '../ui/icons'
 import { Page, useTitle } from '../ui/Shell'
+import { EveTimes, useEve } from './plan/EveBanner'
+import { TripPulse } from './plan/TripPulse'
 
 // Màn Hôm nay (docs/COMPANION.md, Role_Web §2.13). "Đã đến" is voluntary: a stop nobody checked in at just stays
 // planned (unknown), never "missed". Before arriving the card shows the logistics and warnings; after, what to do here.
@@ -50,6 +52,7 @@ function TodayTrip({ id, focus }: { id: string; focus: string | null }) {
   const [here, setHere] = useState<string | null>(null)
   const [other, setOther] = useState(false)
   const [tight, setTight] = useState(false)
+  const eve = useEve(id) // only to change arrive / leave time after the confirm; answers nothing when eve_replan is off
   const reload = useCallback((d?: number) => loadToday(id, d).then((v) => { setView(v); setError(null) }, (e: Error) => setError(e.message)), [id])
   useEffect(() => { void reload(day) }, [reload, day])
   // On a wide screen the last check-in reopens "Ở đây" beside the list; on a narrow one it is a sheet, opened by hand.
@@ -71,17 +74,19 @@ function TodayTrip({ id, focus }: { id: string; focus: string | null }) {
         <button type="button" className="tg-btn tg-btn--ghost tg-btn--sm" onClick={() => setOther(true)}><Icon name="pin" size={16} /> Tôi đang ở nơi khác</button>
       </header>
       {view.days.length > 1 && <div className="tg-tabs" role="tablist" aria-label="Ngày">{view.days.map((d) => <button key={d.day} type="button" role="tab" aria-selected={d.day === view.day} className="tg-tab" onClick={() => setDay(d.day)}>Ngày {d.day}{d.day === view.today ? <b>hôm nay</b> : null}</button>)}</div>}
-      <PushCard />
-      {view.tight && view.tight.day === view.day && (
-        <div className="tg-td__tight" role="status"><span>Phần còn lại hơi chật</span><button type="button" className="tg-link" onClick={() => setTight(true)}>Xem cách điều chỉnh</button></div>
-      )}
       <div className={`tg-td ${here ? 'has-here' : ''}`}>
-        <ol className="tg-td__stops" aria-label={`Các điểm ngày ${shown?.day}`}>
-          {(shown?.stops ?? []).map((s) => <StopCard key={s.id} s={s} focus={s.id === focus} warnings={view.warnings} onAct={act} onOpen={() => setHere(s.place_id)} open={here === s.place_id} />)}
-          {(shown?.stops.length ?? 0) === 0 && <li className="tg-muted">Ngày này chưa có điểm nào trong lịch.</li>}
-        </ol>
+        <div className="tg-td__main">
+          <PushCard />
+          {view.tight && view.tight.day === view.day && (
+            <div className="tg-td__tight" role="status"><span>Phần còn lại hơi chật</span><button type="button" className="tg-link" onClick={() => setTight(true)}>Xem cách điều chỉnh</button></div>
+          )}
+          <ol className="tg-td__stops" aria-label={`Các điểm ngày ${shown?.day}`}>
+            {(shown?.stops ?? []).map((s) => <StopCard key={s.id} s={s} focus={s.id === focus} warnings={view.warnings} onAct={act} onOpen={() => setHere(s.place_id)} open={here === s.place_id} />)}
+            {(shown?.stops.length ?? 0) === 0 && <li className="tg-muted">Ngày này chưa có điểm nào trong lịch.</li>}
+          </ol>
+        </div>
         <aside className="tg-td__side">
-          {here ? <HerePanel journey={id} place={here} onClose={() => setHere(null)} onChanged={() => reload(day)} day={view.day} /> : <TripSide view={view} journey={id} />}
+          {here ? <HerePanel journey={id} place={here} onClose={() => setHere(null)} onChanged={() => reload(day)} day={view.day} /> : <TripSide view={view} journey={id} eve={eve} />}
         </aside>
       </div>
       {other && <OtherPlace onClose={() => setOther(false)} onPick={async (pid) => { setOther(false); await act('checkin', { place_id: pid }) }} />}
@@ -264,11 +269,16 @@ function PushCard() {
   )
 }
 
-function TripSide({ view, journey }: { view: TodayView; journey: string }) {
+function TripSide({ view, journey, eve }: { view: TodayView; journey: string; eve: ReturnType<typeof useEve> }) {
+  const arrive = view.days[0]?.window?.[0]
+  const leave = view.days[view.days.length - 1]?.window?.[1]
   return (
     <>
+      {eve.state && arrive && leave && view.trip.status !== 'done' && <EveTimes key={`${arrive}${leave}`} arrive={arrive} leave={leave} busy={eve.busy} send={eve.send} />}
+      {eve.error && <p className="tg-it-diff is-bad" role="alert"><Icon name="warn" size={15} />{eve.error}</p>}
       <CalendarCard journey={journey} state={view.calendar} />
       {view.warnings.length > 0 && <section className="tg-card tg-td__warn"><h2>Cần để ý</h2><ul>{view.warnings.map((w) => <li key={w.code + w.text}>{w.text}</li>)}</ul></section>}
+      <TripPulse />
     </>
   )
 }

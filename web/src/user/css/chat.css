@@ -272,3 +272,20 @@ a.tg-cx__tag:hover { border-color: var(--tg-pine); color: var(--tg-pine); }
 .tg-cx__fit .tg-cx__n { flex: none; margin: 0; }
 .tg-cx__fit .tg-cx__n b { font-size: 2.09rem; }
 .tg-cx__fit .tg-cx__n span { font-size: 1.045rem; }
+
+/* The assistant's quick replies under its reply (src/trip/api/engine.py kind replies); its places use the photo stage (ask.css) */
+.tg-cx-qr { display: flex; flex-wrap: wrap; gap: 6px; max-width: 720px; }
+
+/* result blocks: dish -> places with evidence, services list (screens/understand/Blocks.tsx) */
+.tg-cx-dish { display: grid; gap: 10px; max-width: 720px; }
+.tg-cx-dish__list, .tg-cx-svc ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tg-cx-dish__list li, .tg-cx-svc li { display: grid; gap: 3px; padding: 10px 14px; border: 1px solid var(--tg-line); border-radius: 14px; background: var(--tg-surface); font-size: 0.935rem; color: var(--tg-ink-2); }
+.tg-cx-dish__list b, .tg-cx-svc b { font-weight: 600; color: var(--tg-ink); }
+.tg-cx-dish__list p { margin: 0; }
+.tg-cx-dish__src { color: var(--tg-ink-3); }
+.tg-cx-dish__price { font-family: var(--tg-mono); color: var(--tg-ink); }
+.tg-cx-dish__list q { display: block; margin-top: 2px; color: var(--tg-ink); font-style: italic; }
+.tg-cx-svc { display: grid; gap: 8px; max-width: 720px; }
+.tg-cx-svc__head { margin: 0; font-weight: 600; color: var(--tg-ink); }
+.tg-cx-svc li small, .tg-cx-svc__src { font-size: 0.85rem; color: var(--tg-ink-3); }
+.tg-cx-svc__links { display: flex; flex-wrap: wrap; gap: 4px 14px; }

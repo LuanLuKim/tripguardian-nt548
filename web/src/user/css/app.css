@@ -46,6 +46,19 @@
 .tg-detail__out { display: inline-flex; align-items: center; gap: 8px; max-width: 34ch; font-size: 0.86rem; }
 .tg-facts__hours { display: grid; gap: 2px; font-size: 0.84rem; }
 .tg-minimap iframe { display: block; width: 100%; height: 190px; border: 0; }
+/* "Xem 360°" tab */
+.tg-pano { display: grid; gap: 12px; }
+.tg-pano__note { display: flex; gap: 8px; align-items: flex-start; max-width: 68ch; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--tg-line); background: var(--tg-surface); color: var(--tg-ink-2); font-size: 0.86rem; line-height: 1.5; }
+.tg-pano__note svg { flex: none; margin-top: 2px; color: var(--tg-brand); }
+.tg-pano__stage { position: relative; height: min(58vh, 460px); border-radius: 14px; overflow: hidden; border: 1px solid var(--tg-line); background: var(--tg-pine-soft); }
+.tg-pano__stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.tg-pano__cover, .tg-pano__wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; padding: 16px; }
+.tg-pano__cover small { color: var(--tg-ink-3); font-size: 0.84rem; }
+.tg-pano__wait { grid-auto-flow: column; align-content: center; gap: 8px; background: var(--tg-pine-soft); color: var(--tg-ink-2); font-size: 0.9rem; pointer-events: none; }
+.tg-pano__wait svg { animation: tg-pano-spin 1.6s linear infinite; }
+.tg-pano__out { justify-self: start; display: inline-flex; align-items: center; gap: 6px; font-size: 0.88rem; }
+@keyframes tg-pano-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tg-pano__wait svg { animation: none; } }
 .tg-why-list { display: grid; gap: 8px; font-size: 0.92rem; }
 .tg-why-list li { display: flex; gap: 8px; align-items: flex-start; }
 .tg-why-list li svg { flex: none; margin-top: 3px; color: var(--tg-pine); }

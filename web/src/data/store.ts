@@ -116,6 +116,9 @@ export function loadSnapshot() {
   const c = fetch('/data/covers.json')
     .then((r) => (r.ok ? r.json() : {}))
     .then((x) => (covers = x), () => {})
+    .then(() => fetch('/data/photo_allow.json'))
+    .then((r) => (r.ok ? r.json() : {}), () => ({}))
+    .then((x: Record<string, string[]>) => { allow = Object.fromEntries(Object.entries(x).map(([k, v]) => [k, new Set(v)])); merged.clear() }, () => {})
   const read = admin
     ? readSnapshot(wholeUrl)
     : readSnapshot('/data/snapshot-lite.json').then(
@@ -152,9 +155,32 @@ export interface Cover {
   w: number
   h: number
   url?: string
+  scene?: string // Place Decision card photos: the scene the photo shows (exterior, interior, view, food, ...)
 }
 let covers: Record<string, Cover[]> = {}
-export const coversOf = (id: string): Cover[] => covers[id] ?? []
+// Photos a Place Decision card carries (src/decision/cards.py `photos`: the best photo per scene, no people, not blurry).
+// A place that has them shows them first, then the rest of its cover gallery; a place without keeps the covers.
+const NONE: Cover[] = []
+const scenePhotos = new Map<string, Cover[]>()
+const merged = new Map<string, { scene: Cover[] | undefined; rest: Cover[]; out: Cover[] }>() // one array per (scene, covers) pair, so callers can compare by identity
+export function setScenePhotos(id: string, photos: Cover[] | undefined) {
+  if (photos?.length) scenePhotos.set(id, photos)
+}
+// Owner rule 2026-10-28: no photo with a person on it. photo_allow.json (web/scripts/export_photo_allow.py) lists, per place,
+// the Maps photo files whose scene label says "no person" with high confidence. An old cover is shown only when it is listed
+// (unlabelled covers, clip frames and doubtful labels are not); if the file is missing nothing old is shown (fail closed).
+let allow: Record<string, Set<string>> = {}
+const permitted = (id: string, c: Cover) => c.kind === 'gmaps' && !!allow[id]?.has(c.src.slice(c.src.lastIndexOf('/') + 1))
+export function coversOf(id: string): Cover[] {
+  const all = covers[id] ?? NONE
+  const scene = scenePhotos.get(id)
+  const hit = merged.get(id)
+  if (hit && hit.scene === scene && hit.rest === all) return hit.out
+  const rest = all.filter((c) => permitted(id, c))
+  const out = scene ? [...scene, ...rest.filter((c) => !scene.some((s) => s.src === c.src))] : rest.length === all.length ? all : rest
+  merged.set(id, { scene, rest: all, out })
+  return out
+}
 
 // A large gallery set is split (pick_covers.py): covers.json then holds only each cover, the rest is in
 // covers/<id>.json, loaded when a place is opened. A place with one photo simply has no such file.
@@ -346,6 +372,17 @@ export function travelMin(a: { lat: number; lng: number }, b: { lat: number; lng
 export function mapsEmbed(q: { lat: number; lng: number } | string, zoom = 15) {
   const query = typeof q === 'string' ? encodeURIComponent(q) : `${q.lat},${q.lng}`
   return `https://maps.google.com/maps?q=${query}&z=${zoom}&hl=vi&output=embed`
+}
+
+// Unofficial keyless Street View embed (output=svembed): it shows the panorama nearest to the point, which may be the
+// street in front of the place or a visitor's photosphere nearby. docs/Role_Web_Functional_Design.md §6, "Xem 360°".
+export function streetViewEmbed(q: { lat: number; lng: number }) {
+  return `https://maps.google.com/maps?q=&layer=c&cbll=${q.lat},${q.lng}&cbp=11,0,0,0,0&output=svembed&hl=vi`
+}
+
+// Official keyless Maps URL for the same point; opens in a new tab.
+export function streetViewLink(q: { lat: number; lng: number }) {
+  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${q.lat},${q.lng}`
 }
 
 export function mapsRouteEmbed(stops: { lat: number; lng: number }[]) {

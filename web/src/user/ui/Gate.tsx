@@ -202,10 +202,10 @@ export function GateAsk({ deck, busy, issues, lines, changed, error, onAnswer, o
     <header className="tg-gt__top">
       <div>
         <p className="tg-gt__kicker">Trước khi lên lịch</p>
-        <Dialog.Title className="tg-gt__heading">Còn {leftHere} câu hỏi nữa thôi!</Dialog.Title>
-        <Dialog.Description className="tg-gt__sub">Cho mình biết thêm một chút để lên lịch trình thật hợp ý bạn nhé.</Dialog.Description>
+        <Dialog.Title className="tg-gt__heading">{leftHere > 0 ? `Còn ${leftHere} câu hỏi nữa thôi!` : 'Đủ rồi, mình xếp lịch nhé!'}</Dialog.Title>
+        <Dialog.Description className="tg-gt__sub">{leftHere > 0 ? 'Cho mình biết thêm một chút để lên lịch trình thật hợp ý bạn nhé.' : 'Bạn đã trả lời hết. Bấm Xong để mình bắt đầu xếp lịch.'}</Dialog.Description>
       </div>
-      <span className="tg-gt__meter" role="img" aria-label={`Còn ${leftHere} trên ${deck.tabs.length} câu`}>Còn {leftHere}/{deck.tabs.length}<i><b style={{ width: `${(deck.tabs.length - leftHere) / deck.tabs.length * 100}%` }} /></i></span>
+      <span className="tg-gt__meter" role="img" aria-label={leftHere > 0 ? `Còn ${leftHere} trên ${deck.tabs.length} câu` : 'Đã trả lời hết các câu'}>{leftHere > 0 ? `Còn ${leftHere}/${deck.tabs.length}` : 'Đã xong'}<i><b style={{ width: `${(deck.tabs.length - leftHere) / deck.tabs.length * 100}%` }} /></i></span>
     </header>
     <div className={`tg-gt__stage ${deck.tabs[at]?.qid === 'lodging' ? 'is-lodging' : ''}`} role="group" aria-label="Các câu hỏi" ref={fan.stage} {...fan.handlers}>
       {deck.tabs.map((t, i) => {

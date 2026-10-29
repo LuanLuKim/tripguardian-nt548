@@ -5,6 +5,7 @@ import { useOpenJourney } from '../home/dialogs'
 import { primeDecision } from '../pd/api'
 import type { TripSummary } from '../pd/types'
 import { consumeStageEntry, enterStage, mutateJourney, resumeJourney } from '../journey'
+import { track } from '../events'
 import { rememberTrip } from '../store'
 import { useTrip } from '../trip'
 import { fromSearchInput } from '../tu/adapter'
@@ -52,8 +53,14 @@ const isOpen = (c: Card | Deck | null) => !!c && (c.kind === 'deck' || (c.qid !=
 function fromTranscript(v: View): Msg[] {
   const out: Msg[] = [botMsg(key(), { say: GREET })]
   for (const t of v.transcript) {
+    const lastBot = out[out.length - 1]
     if (t.role === 'user') out.push({ key: key(), who: 'me', text: t.text })
-    else if (t.text && t.turn > 0) out.push(botMsg(key(), { say: t.text })) // turn 0 is the server's greeting: the chat has its own
+    else if ((t.kind === 'places' || t.kind === 'replies' || t.kind === 'block') && lastBot?.who === 'bot') {
+      // the assistant's cards and buttons belong to the reply just before them
+      if (t.kind === 'places') lastBot.places = [...(lastBot.places ?? []), { ids: t.ids ?? [], why: t.why ?? '', cards: t.cards ?? [] }]
+      else if (t.kind === 'block') { if (t.block) lastBot.blocks = [...(lastBot.blocks ?? []), t.block] }
+      else lastBot.replies = t.options ?? []
+    } else if (t.text && t.turn > 0) out.push(botMsg(key(), { say: t.text })) // turn 0 is the server's greeting: the chat has its own
   }
   if (isOpen(v.card)) out.push(botMsg(key(), { card: v.card }))
   return out
@@ -176,6 +183,9 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
           state: (s) => { setU(s.understanding); setPreview(new Set()) },
           card: (c) => patchBot(bot, () => ({ card: isOpen(c) ? c : null })),
           deck_issues: (d) => patchBot(bot, () => ({ issues: d.issues })),
+          places: (d) => patchBot(bot, (m) => ({ places: [...(m.places ?? []), d] })),
+          block: (d) => patchBot(bot, (m) => ({ blocks: [...(m.blocks ?? []), d] })),
+          replies: (d) => patchBot(bot, () => ({ replies: d.options })),
           readback: (readback) => setU(old => old ? { ...old, readback } : old),
           done: (d) => { compiled = d.search_input },
           error: (e) => setNotice(e.message),
@@ -198,7 +208,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
         setBusy(false)
         setPreview(new Set())
         // a turn that brought nothing to show (an edit) leaves no empty bubble behind
-        setMsgs((ms) => ms.flatMap((m) => (m.key !== bot || m.who !== 'bot' ? [m] : !m.say && !m.card && !m.steps.length ? [] : [{ ...m, live: false, t1: Date.now() }])))
+        setMsgs((ms) => ms.flatMap((m) => (m.key !== bot || m.who !== 'bot' ? [m] : !m.say && !m.card && !m.steps.length && !m.places?.length && !m.blocks?.length ? [] : [{ ...m, live: false, t1: Date.now() }])))
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -268,6 +278,13 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
     }
   }
   const edit = (target: string, value: string | null) => send({ kind: 'edit', target, value }, null)
+  // Thích on a chat place card: shown at once on every card of that place, written by the server without the model
+  const like = (id: string, on: boolean) => {
+    if (busy) return
+    setMsgs((ms) => ms.map((m) => (m.who === 'bot' && m.places ? { ...m, places: m.places.map((r) => ({ ...r, cards: r.cards.map((c) => (c.id === id ? { ...c, liked: on } : c)) })) } : m)))
+    track('place_like', { place_id: id, value: on ? 'on' : 'off' })
+    send({ kind: 'like', target: id, value: on ? 'on' : 'off' }, null)
+  }
   const show = () => { if (!busy) send({ kind: 'show' }, null) }
   const newTrip = () => {
     if (busy) return
@@ -327,7 +344,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
                   ))}
                 </ul>
               </section> : <ol className="tg-cx__log" aria-live="polite" aria-label="Trò chuyện về chuyến đi">
-                {msgs.map((m) => <Turn key={m.key} m={m} busy={busy} onAnswer={answer} onDeck={answerDeck} onText={typed} onPhoto={photoFromCard} />)}
+                {msgs.map((m, i) => <Turn key={m.key} m={m} busy={busy} onAnswer={answer} onDeck={answerDeck} onText={typed} onPhoto={photoFromCard} onLike={like} last={i === msgs.length - 1} />)}
               </ol>}
               {notice && <p className="tg-alert" role="alert"><Icon name="warn" size={16} /> {notice}</p>}
             </div>

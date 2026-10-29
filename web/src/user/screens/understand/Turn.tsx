@@ -1,9 +1,11 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import type { Card, Deck, DeckAnswers, DeckIssue, Step, WebSource } from '../../tu/types'
+import type { Card, ChatPlaces, Deck, DeckAnswers, DeckIssue, ResultBlock, Step, WebSource } from '../../tu/types'
 import { Icon } from '../../ui/icons'
 import { AskCard, PhotoStage } from './Ask'
 import { CardView, type Answer } from './Cards'
 import { DeckIssues } from './Deck'
+import { Block } from './Blocks'
+import { PlaceStage } from './Places'
 
 // One message of the conversation. A bot turn shows, in order: what it is doing (steps, from the server's progress
 // events; folded once the turn ends), what it says, and at most one question: its words as a line of the chat, then
@@ -13,7 +15,7 @@ import { DeckIssues } from './Deck'
 export type Msg =
   | { key: string; who: 'me'; text: string; photo?: string; files?: string[] }
   | { key: string; who: 'bot'; say: string; steps: Step[]; sources: WebSource[]; card: Card | Deck | null; answered: string | null; issues?: DeckIssue[]
-      live: boolean; t0: number; t1?: number }
+      live: boolean; t0: number; t1?: number; places?: ChatPlaces[]; blocks?: ResultBlock[]; replies?: string[] }
 
 export const botMsg = (key: string, patch: Partial<Extract<Msg, { who: 'bot' }>> = {}): Msg =>
   ({ key, who: 'bot', say: '', steps: [], sources: [], card: null, answered: null, live: false, t0: Date.now(), ...patch })
@@ -63,7 +65,7 @@ function Steps({ steps, sources, live, secs }: { steps: Step[]; sources: WebSour
   )
 }
 
-export function Turn({ m, busy, onAnswer, onDeck, onText, onPhoto }: { m: Msg; busy: boolean; onAnswer: (m: Msg, ...a: Parameters<Answer>) => void; onDeck: (m: Msg, answers: DeckAnswers, shown: string) => void; onText: (text: string) => void; onPhoto: () => void }) {
+export function Turn({ m, busy, onAnswer, onDeck, onText, onPhoto, onLike, last = false }: { m: Msg; busy: boolean; onAnswer: (m: Msg, ...a: Parameters<Answer>) => void; onDeck: (m: Msg, answers: DeckAnswers, shown: string) => void; onText: (text: string) => void; onPhoto: () => void; onLike: (id: string, on: boolean) => void; last?: boolean }) {
   if (m.who === 'me')
     return (
       <li className="tg-cx__m is-me">
@@ -86,6 +88,13 @@ export function Turn({ m, busy, onAnswer, onDeck, onText, onPhoto }: { m: Msg; b
           <div className="tg-cx__say">
             {m.say && <p>{m.say}</p>}
             {tab && <p className="tg-cx__say-ask">{tab.question}</p>}
+          </div>
+        )}
+        {m.places?.map((row, i) => <PlaceStage key={i} row={row} busy={busy} autoOpen={m.live} onLike={onLike} />)}
+        {m.blocks?.map((b, i) => <Block key={i} block={b} busy={busy} autoOpen={m.live} onLike={onLike} />)}
+        {last && m.replies && m.replies.length > 0 && (
+          <div className="tg-cx-qr" role="group" aria-label="Trả lời nhanh">
+            {m.replies.map((r) => <button key={r} type="button" className="tg-chip" disabled={busy} onClick={() => onText(r)}>{r}</button>)}
           </div>
         )}
         {m.card && m.card.kind !== 'deck' && m.card.text && m.card.qid !== 'conversation' && (

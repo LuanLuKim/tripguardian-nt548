@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as api from './api'
 import type { Action, ActPreview, Diff, PlanOutput, ProgressEvent, View } from './types'
+import type { ChatPlaces } from '../tu/types'
 import { useTrip } from '../trip'
 import { mergeSuggestions, PlanningGate } from './current'
+import { explainError } from '../journeyErrors'
 
 interface PlanningCtx {
   view: View | null
@@ -11,6 +13,7 @@ interface PlanningCtx {
   error: string | null
   busy: boolean
   act: (a: Action) => Promise<boolean>
+  say: (text: string, onSay: (soFar: string) => void, onPlaces?: (d: ChatPlaces) => void) => Promise<Diff | null>
   previewAct: (a: Action) => Promise<ActPreview | null>
   editPreview: ActPreview | null
   dismissPreview: () => void
@@ -59,8 +62,8 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
         if (!live) return
         if (accept(ticket, r.revision, r.view)) setError(null)
       },
-      () => {
-        if (live && ticket.generation === gate.current.ticket().generation && ticket.epoch === gate.current.ticket().epoch) setError(OFFLINE)
+      (e) => {
+        if (live && ticket.generation === gate.current.ticket().generation && ticket.epoch === gate.current.ticket().epoch) setError(explainError(e, OFFLINE))
       },
     )
     return () => {
@@ -115,7 +118,7 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
         if (accept(ticket, r.revision, r.view, true)) { setDiff(r.diff); setError(null); return true }
         return false
       } catch (e) {
-        if (ticket.generation === gate.current.ticket().generation) setError(e instanceof api.PlanningError ? `Không thực hiện được: ${e.detail || e.status}` : OFFLINE)
+        if (ticket.generation === gate.current.ticket().generation) setError(explainError(e, OFFLINE, 'Không thực hiện được'))
         return false
       } finally {
         if (ticket.generation === gate.current.ticket().generation) { pending.current--; setBusy(pending.current > 0) }
@@ -123,6 +126,32 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
     },
     [id, accept],
   )
+
+  // One typed message to the assistant. The reply streams in as text and place cards; the plan it leaves (one new version per
+  // turn) is accepted the same way an act's is, so every part of the screen shows what the backend returned.
+  const say = useCallback(async (text: string, onSay: (soFar: string) => void, onPlaces?: (d: ChatPlaces) => void) => {
+    if (!id) return null
+    gate.current.invalidate()
+    const ticket = gate.current.ticket()
+    pending.current++
+    setBusy(true)
+    let acc = ''
+    let last: Diff | null = null
+    try {
+      const r = await api.sendText(id, text, {
+        say: (d) => { acc = d.replace !== undefined ? d.replace : acc + (d.delta ?? ''); onSay(acc) },
+        places: (d) => onPlaces?.(d),
+        view: (d) => { last = d.diff },
+      })
+      if (accept(ticket, r.revision, r.view, true)) { setDiff(last); setError(null) }
+      return last
+    } catch (e) {
+      if (ticket.generation === gate.current.ticket().generation) setError(explainError(e, OFFLINE, 'Chưa trả lời được'))
+      return null
+    } finally {
+      if (ticket.generation === gate.current.ticket().generation) { pending.current--; setBusy(pending.current > 0) }
+    }
+  }, [id, accept])
 
   const confirm = useCallback(async () => {
     if (!id) return null
@@ -136,7 +165,7 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
       setError(null)
       return out
     } catch (e) {
-      if (ticket.generation === gate.current.ticket().generation) setError(e instanceof api.PlanningError ? `Chưa chốt được: ${e.detail || e.status}` : OFFLINE)
+      if (ticket.generation === gate.current.ticket().generation) setError(explainError(e, OFFLINE, 'Chưa chốt được'))
       return null
     } finally {
       if (ticket.generation === gate.current.ticket().generation) { pending.current--; setBusy(pending.current > 0) }
@@ -156,7 +185,7 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
       return result
     } catch (e) {
       if (!gate.current.currentPreview(ticket, currentView.current)) return null
-      setError(e instanceof api.PlanningError ? `Chưa xem trước được: ${e.detail || e.status}` : OFFLINE)
+      setError(explainError(e, OFFLINE, 'Chưa xem trước được'))
       return null
     }
   }, [id, view])
@@ -172,13 +201,15 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
       const r = await api.runRecommend(id, view)
       if (r) accept(ticket, r.revision, r.view, true)
       else if (ticket.generation === gate.current.ticket().generation) setError(OFFLINE)
+    } catch (e) {
+      if (ticket.generation === gate.current.ticket().generation) setError(explainError(e, OFFLINE))
     } finally {
       if (ticket.generation === gate.current.ticket().generation) { pending.current--; setBusy(pending.current > 0) }
     }
   }, [id, view, accept])
 
   return (
-    <Ctx.Provider value={{ view, diff, lodgingProgress, error, busy, act, previewAct,
+    <Ctx.Provider value={{ view, diff, lodgingProgress, error, busy, act, say, previewAct,
       editPreview: preview && !busy && preview.view === view && gate.current.currentPreview(preview.ticket, view)
         && id && api.acceptsRevision(id, preview.revision) ? preview.result : null,
       dismissPreview: () => { gate.current.previewTicket(); setPreview(null) },

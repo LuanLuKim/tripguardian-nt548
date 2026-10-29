@@ -209,7 +209,36 @@ export interface Turn {
   role: 'user' | 'agent'
   text: string
   turn: number
+  kind?: string | null // 'places' / 'replies': the assistant's cards and buttons under its reply
+  ids?: string[]
+  why?: string
+  cards?: ChatPlace[]
+  options?: string[]
+  block?: ResultBlock | null
 }
+
+// A place card the assistant showed in the chat (src/trip/infrastructure/knowledge.py Knowledge.view): every value is
+// copied from the corpus record, null when it has none.
+export interface ChatPlace {
+  id: string
+  name: string | null
+  category: string | null
+  area: string | null
+  rating: number | null
+  reviews: number | null
+  photos: string[]
+  hours_today: string | null
+  price: [number, number] | null
+  liked: boolean
+}
+
+export interface DishEvidence { source: 'menu_popular' | 'name' | 'menu' | 'menu_photo' | 'review_order'; dish: string; section?: string; quote?: string; n?: number; price_vnd?: number }
+export interface DishBlock { kind: 'dish'; dish: string; places: { id: string; evidence: DishEvidence[] }[]; cards: ChatPlace[] }
+export interface ServiceRow { name: string; kind?: string; distance_km?: number; address?: string; phone?: string; website?: string; hours?: string[] | string; open_status?: string; rating?: number; reviews?: number; maps_url?: string }
+export interface ServicesBlock { kind: 'services'; rows: ServiceRow[]; found: number; anchor?: string; sources: string[]; crawled?: string }
+export type ResultBlock = DishBlock | ServicesBlock
+
+export interface ChatPlaces { ids: string[]; why: string; cards: ChatPlace[] }
 
 export interface View {
   id: string
@@ -294,6 +323,7 @@ export type TurnInput =
   | { kind: 'edit'; target: string; value: string | null }
   | { kind: 'show' }
   | { kind: 'image'; value: string; text?: string } // value: a data URL of the photo, ≤ ~45 KB (harness body limit)
+  | { kind: 'like'; target: string; value: 'on' | 'off' } // Thích on a chat place card
 
 export interface Handlers {
   preview?: (d: { fields: { target: string; value: unknown; quote: string }[] }) => void
@@ -303,6 +333,9 @@ export interface Handlers {
   deck_issues?: (d: { issues: DeckIssue[] }) => void
   readback?: (d: Readback) => void
   progress?: (d: { steps: Step[]; sources: WebSource[] }) => void
+  places?: (d: ChatPlaces) => void
+  block?: (d: ResultBlock) => void
+  replies?: (d: { options: string[] }) => void
   done?: (d: { search_input: SearchInput }) => void
   error?: (d: { message: string }) => void
 }

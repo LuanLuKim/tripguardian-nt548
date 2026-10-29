@@ -1,0 +1,6 @@
+/* Trust card ("Độ tin cậy của lịch"): info lines are neutral, only what the plan gave up uses the warning colour. */
+.tg-trustcard__list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tg-trustcard__list li { display: flex; align-items: flex-start; gap: 8px; color: var(--tg-ink-2); font: 400 0.88rem/1.45 var(--tg-sans); }
+.tg-trustcard__list svg { flex: none; margin-top: 3px; color: var(--tg-ink-3); }
+.tg-trustcard__list.is-warn li, .tg-trustcard__list.is-warn svg { color: var(--tg-warn); }
+.tg-trustcard__sub { margin: 4px 0 0; font: 700 0.84rem var(--tg-sans); color: var(--tg-ink-2); }

@@ -174,3 +174,7 @@
 .tg-pager__btn:disabled:not([aria-current]) { opacity: 0.4; cursor: default; }
 .tg-pager[aria-busy='true'] .tg-pager__btn { cursor: progress; }
 .tg-pager__gap { min-width: 20px; text-align: center; color: var(--tg-ink-3); }
+
+.tg-xfilter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 0.88rem; color: var(--tg-ink-2); }
+.tg-xfilter b { color: var(--tg-ink); font-weight: 600; }
+.tg-xfilter .tg-link { margin-left: 4px; font-weight: 500; }

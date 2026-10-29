@@ -12,17 +12,20 @@ import { DAY_NAMES, fmtClock, fmtRange, info, priceText, reducedMotion, reviewsO
 import { useDecision } from '../pd/decision'
 import type { Card, Claim } from '../pd/types'
 import { DropSheet, useEditTicket } from '../screens/Explore'
-import { toggleCmp, toggleSaved, useUi } from '../store'
+import { openAssistant, toggleCmp, toggleSaved, useUi } from '../store'
 import { useTrip } from '../trip'
 import { go, Photo, Trust, Unconfirmed, warmPhoto } from './common'
 import { HeartFill, Icon } from './icons'
+import { Pano } from './Pano'
+import { askAssistant } from './askAssistant'
+import { PlaceWalk, walkOf } from './PlaceWalk'
 import { DetailsOverview, KnownFor } from './PlaceDetails'
 
 // docs/Role_Web_Functional_Design.md §6: "Xem chi tiết" of a place. One sheet for the disc, the grid and the shared
 // link page (/explore/place/:id). As a modal it lives in the URL (?place=<id>), so the browser's Back closes it.
 
 const SLOTS: [string, string][] = [['early_morning', 'Sớm'], ['morning', 'Sáng'], ['noon', 'Trưa'], ['afternoon', 'Chiều'], ['evening', 'Tối']]
-const TABS = [['overview', 'Tổng quan'], ['photos', 'Hình ảnh'], ['plan', 'Gợi ý lịch trình'], ['reviews', 'Đánh giá']] as const
+const TABS = [['overview', 'Tổng quan'], ['photos', 'Hình ảnh'], ['pano', 'Xem 360°'], ['plan', 'Gợi ý lịch trình'], ['reviews', 'Đánh giá']] as const
 type Tab = (typeof TABS)[number][0]
 const HERO = 'tg-hero' // view-transition-name shared by the photo that opened the sheet and the sheet's big photo
 const EASE = 'cubic-bezier(.2,.8,.2,1)'
@@ -161,11 +164,12 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
   const [dropping, setDropping] = useState(false)
   const [report, setReport] = useState<'closed' | 'form' | 'sending' | 'sent' | 'error'>('closed')
   const [reportText, setReportText] = useState('')
+  const [walking, setWalking] = useState(false) // "Đi một vòng": the scene photo walk
   const [viewing, setViewing] = useState<number | null>(null) // the clip open in the TikTok-style viewer
   const tabsRef = useRef<HTMLDivElement>(null)
   const gallery = useGallery(id)
   const detailed = useDetail(id) // its evidence loads first; the basics are on screen already
-  useEffect(() => { setG(0); setTab('overview'); setViewing(null) }, [id])
+  useEffect(() => { setG(0); setTab('overview'); setViewing(null); setWalking(false) }, [id])
   const Title = onClose ? Dialog.Title : 'h1'
   if (!p || !snap)
     return (
@@ -179,6 +183,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
   const card: Card | undefined = view ? [...view.groups.flatMap((c) => c.cards), ...view.unverified.cards].find((c) => c.id === id) : undefined
   const photos = gallery.length ? gallery : p.photos
   const shots = photos.length
+  const walk = walkOf(gallery) // plain call: cheap, and this sits below the early return so no hook here
   const others = photos.map((_, j) => j).filter((j) => j !== g).slice(0, 3)
   const quote = p.quotes[0]?.text
   const today = hoursToday(snap)
@@ -232,7 +237,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
                 <button type="button" className="tg-ps__cta" disabled={busy} onClick={() => act({ type: 'select', place_id: id })}>Thêm vào hành trình <Icon name="arrow" size={18} /></button>
               )
             ) : view ? (
-              <span className="tg-faint tg-ps__out">Nơi này không nằm trong gợi ý của chuyến này. <button type="button" className="tg-link" onClick={editTicket}>Xem giới hạn</button></span>
+              <span className="tg-faint tg-ps__out">Nơi này không nằm trong gợi ý của chuyến này. <button type="button" className="tg-link" onClick={editTicket}>Xem giới hạn</button> <button type="button" className="tg-link" onClick={() => { onClose?.(); openAssistant(true); askAssistant({ kind: 'why-not', id, name: p.name }) }}>Vì sao không gợi ý?</button></span>
             ) : null}
             <button type="button" className={`tg-disc__ic ${saved ? 'is-on' : ''}`} onClick={() => toggleSaved(id, p.name)} aria-pressed={saved} aria-label={saved ? 'Bỏ lưu' : 'Lưu'} title="Lưu">{saved ? <HeartFill size={18} /> : <Icon name="heart" size={18} />}</button>
             {card && (
@@ -311,10 +316,16 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
         {tab === 'photos' && (
           <>
             <h3>Hình ảnh</h3>
+            {walk.length > 0 && <button type="button" className="tg-btn tg-btn--soft tg-btn--sm tg-ps__walkbtn" onClick={() => setWalking(true)}><Icon name="route" size={15} /> Đi một vòng ({walk.length} chỗ)</button>}
+            {walking && <PlaceWalk name={p.name} steps={walk} onClose={() => setWalking(false)} />}
             {shots ? (
               <ul className="tg-ps__gal">{photos.map((ph, j) => <li key={ph.src}><Photo photo={ph} alt={`${p.name}, ảnh ${j + 1}`} className="tg-ps__gp" sizes="(max-width: 600px) 92vw, 260px" /><small>Ảnh: {ph.credit}</small></li>)}</ul>
             ) : <p className="tg-faint">Chưa có ảnh của nơi này.</p>}
           </>
+        )}
+
+        {tab === 'pano' && (
+          <Pano key={id} id={id} name={p.name} lat={p.lat} lng={p.lng} />
         )}
 
         {tab === 'plan' && (

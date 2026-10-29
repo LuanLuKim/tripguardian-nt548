@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { openCreate, openTheme, setFamiliar, useFamiliar } from '../home/dialogs'
 import { MiniCalendar } from '../home/MiniCalendar'
+import { Pulse, usePulse } from '../home/Pulse'
 import { Who } from '../home/Who'
 import { useSnapshot } from '../../data/store'
 import { matches, THEMES, type Theme } from '../home/themes'
@@ -31,6 +32,7 @@ export function Discover() {
   }, [])
   const shown = THEMES.filter((t) => matches(t, q))
   const { snap } = useSnapshot()
+  const pulse = usePulse()
   const ctx = hasTrip(trip) ? trip.searchInput?.context : null
   return (
     <div className="tg-hm">
@@ -85,7 +87,7 @@ export function Discover() {
       <aside className="tg-hm__rail" aria-label="Hồ sơ, lịch và xu hướng">
         <Who />
         <MiniCalendar start={ctx?.start_date ?? null} days={ctx?.days ?? null} />
-        <div className="tg-hm__trend">
+        {pulse ? <Pulse b={pulse} /> : <div className="tg-hm__trend">
           <div className="tg-hm__thead"><h2>Top xu hướng</h2><p>Top 3 ý tưởng để bắt đầu chuyến đi</p></div>
           <ol className="tg-hm__ideas">
             {THEMES.slice(0, 3).map((t, i) => (
@@ -98,7 +100,7 @@ export function Discover() {
               </li>
             ))}
           </ol>
-        </div>
+        </div>}
       </aside>
     </div>
   )

@@ -114,6 +114,7 @@ html.tg-stage-open #root { filter: blur(14px) saturate(0.85); transition: filter
 .tg-stage__card { visibility: var(--far, visible); }
 .tg-stage__foot { display: flex; align-items: center; gap: 8px; width: min(680px, 100%); padding: 8px; border-radius: 999px; background: var(--tg-surface); box-shadow: var(--tg-sh-2); }
 .tg-stage__other { flex: 1; min-width: 0; }
+.tg-stage__note { flex: 1; min-width: 0; padding: 0 16px; font-size: 0.88rem; color: var(--tg-ink-3); }
 .tg-stage__other input { width: 100%; min-height: 44px; padding: 0 16px; border: 0; outline: 0; background: none; font: inherit; color: var(--tg-ink); }
 .tg-stage__other input::placeholder { color: var(--tg-ink-3); }
 .tg-stage__other:focus-within { border-radius: 999px; box-shadow: inset 0 0 0 2px var(--tg-ink); }

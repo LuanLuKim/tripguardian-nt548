@@ -221,3 +221,6 @@ export async function deleteAccount() {
 }
 
 export const initialOf = (a: Account | null | undefined) => (a ? (a.guest ? 'K' : ((a.name || a.email || '?').trim()[0] ?? '?').toUpperCase()) : null)
+
+// "Nhớ cho lần sau": the one consent for the long-term profile (docs/TRIP_UNDERSTANDING.md §17).
+export const rememberProfile = (on: boolean) => send('POST', '/api/harness/me/remember', { on }).then(keep)

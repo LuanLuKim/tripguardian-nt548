@@ -1,0 +1,17 @@
+/* Nhịp Đà Lạt: the home rail's bulletin. It reuses the trend card (.tg-hm__idea) of home.css; only what is new is here. */
+.tg-pulse__tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.tg-pulse__tab { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--tg-line); background: var(--tg-surface); color: var(--tg-ink-3); font: 500 0.82rem var(--tg-sans); transition: background 180ms var(--tg-ease), color 180ms var(--tg-ease), border-color 180ms var(--tg-ease); }
+.tg-pulse__tab:hover { border-color: var(--tg-line-2); color: var(--tg-ink); }
+.tg-pulse__tab[aria-selected='true'] { background: var(--tg-ink); border-color: var(--tg-ink); color: var(--tg-surface); }
+.tg-pulse__tab:focus-visible, .tg-pulse__name:focus-visible, .tg-pulse__src a:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg-pulse__item { grid-template-columns: minmax(0, 1fr); }
+.tg-pulse__item .tg-hm__open { align-items: flex-start; }
+.tg-pulse__name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-width: 100%; padding: 0; overflow: hidden; white-space: normal; text-align: left; font: 600 1.05rem/1.35 var(--tg-sans); color: var(--tg-ink); }
+b.tg-pulse__name::first-letter, button.tg-pulse__name::first-letter { text-transform: uppercase; }
+button.tg-pulse__name:hover { text-decoration: underline; text-underline-offset: 3px; }
+.tg-hm__open small.tg-pulse__text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; white-space: normal; margin-top: 3px; line-height: 1.4; }
+.tg-hm__open small.tg-pulse__src { flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; font-size: 0.8rem; }
+.tg-pulse__src a { display: inline-flex; align-items: center; gap: 2px; color: var(--tg-ink-3); text-decoration: underline; text-underline-offset: 2px; }
+.tg-pulse__src a:hover { color: var(--tg-ink); }
+.tg-pulse__more { margin: 10px 2px 0; }
+@media (prefers-reduced-motion: reduce) { .tg-pulse__item { animation: none; } .tg-pulse__tab { transition: none; } }

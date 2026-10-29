@@ -1,0 +1,42 @@
+/* "Mình nhớ gì về bạn" (screens/Memory.tsx): a memory list; colors only from tokens.css */
+.tg-mem__ctl { display: grid; margin-bottom: 20px; }
+.tg-mem__sw { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 24px; }
+.tg-mem__sw + .tg-mem__sw { border-top: 1px solid var(--tg-line); }
+.tg-mem__sw label b { font-size: 0.98rem; }
+.tg-mem__sw p { margin-top: 2px; font-size: 0.88rem; max-width: 58ch; }
+.tg-switch { position: relative; flex: none; width: 46px; height: 28px; border-radius: 999px; background: var(--tg-line-2); transition: background 200ms var(--tg-ease); }
+.tg-switch i { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--tg-surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 200ms var(--tg-ease); }
+.tg-switch[aria-checked='true'] { background: var(--tg-brand); }
+.tg-switch[aria-checked='true'] i { transform: translateX(18px); }
+.tg-switch:focus-visible { outline: 3px solid var(--tg-pine-line); outline-offset: 2px; }
+.tg-switch:disabled { opacity: 0.6; cursor: progress; }
+
+.tg-mem__list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; transition: opacity 200ms; }
+.tg-mem__list.is-paused { opacity: 0.6; }
+.tg-mem__row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 16px 20px; background: var(--tg-surface); border: 1px solid var(--tg-line); border-radius: var(--tg-r-m); transition: opacity 200ms var(--tg-ease), transform 200ms var(--tg-ease), border-color 150ms; }
+.tg-mem__row:hover { border-color: var(--tg-line-2); }
+.tg-mem__row.is-off .tg-mem__text { color: var(--tg-ink-3); }
+.tg-mem__row.is-leaving { opacity: 0; transform: translateX(12px); }
+.tg-mem__main { display: grid; gap: 6px; min-width: 0; flex: 1; }
+.tg-mem__text { font: 600 1rem/1.45 var(--tg-sans); overflow-wrap: anywhere; }
+.tg-mem__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 0.82rem; color: var(--tg-ink-3); }
+.tg-mem__on { background: var(--tg-brand-soft); color: var(--tg-ink); }
+.tg-mem__edit { display: flex; gap: 8px; align-items: center; }
+.tg-mem__edit .tg-input { min-height: 40px; }
+.tg-mem__ops { display: flex; align-items: center; gap: 12px; flex: none; }
+.tg-mem__ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--tg-ink-2); transition: background 150ms, color 150ms; }
+.tg-mem__ic:hover { background: var(--tg-pine-soft); color: var(--tg-ink); }
+.tg-mem__ic--del:hover { background: var(--tg-danger-bg); color: var(--tg-danger); }
+.tg-mem__ic:focus-visible { outline: 3px solid var(--tg-pine-line); outline-offset: 1px; }
+.tg-mem__ask { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+.tg-mem__proof { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 220ms var(--tg-ease); }
+.tg-mem__proof.is-open { grid-template-rows: 1fr; }
+.tg-mem__proof > div { overflow: hidden; }
+.tg-mem__proof ul { list-style: none; margin: 4px 0 0; padding: 10px 0 0; border-top: 1px dashed var(--tg-line-2); display: grid; gap: 6px; font-size: 0.88rem; color: var(--tg-ink-2); }
+.tg-mem__fine { display: flex; gap: 8px; align-items: center; margin-top: 22px; font-size: 0.82rem; }
+.tg-mem__link { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 24px; margin-bottom: 20px; }
+.tg-mem__link h2 { font: 700 1.05rem var(--tg-sans); letter-spacing: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .tg-switch, .tg-switch i, .tg-mem__row, .tg-mem__proof, .tg-mem__list { transition: none; }
+}
+.tg-mem__ops .tg-link { min-width: 68px; text-align: right; white-space: nowrap; }

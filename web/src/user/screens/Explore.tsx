@@ -6,6 +6,8 @@ import type { Card, Group, SearchResult } from '../pd/types'
 import { searchList } from '../pd/api'
 import { requestStageEntry } from '../journey'
 import { openAssistant, setUi, toggleCmp, useUi } from '../store'
+import { WaitLine } from '../ui/SlowHint'
+import '../css/fixes.css'
 import { DROP_LABEL, STEPS, useTrip, type DropReason } from '../trip'
 import { placesDelta } from '../tu/labels'
 import { AssistantFloat, AssistantPinned } from '../ui/Assistant'
@@ -128,7 +130,7 @@ export function Explore() {
             <Empty art={<ArtHills />} title="Chưa tải được gợi ý" body={`${error} Lựa chọn của bạn vẫn còn nguyên.`} action={<button type="button" className="tg-btn tg-btn--primary" onClick={reload}><Icon name="refresh" size={18} /> Thử lại</button>} />
           ) : (
             <>
-              <p className="tg-busy" role="status"><i /> Đang chuẩn bị gợi ý cho chuyến của bạn…</p>
+              <WaitLine text="Đang chuẩn bị gợi ý cho chuyến của bạn…" />
               <div className="tg-grid" aria-busy="true">{Array.from({ length: 6 }, (_, i) => <div key={i} className="tg-skel-card"><div className="tg-skel" /><div><span className="tg-skel tg-skel-line" style={{ width: '70%' }} /><span className="tg-skel tg-skel-line" style={{ width: '90%' }} /><span className="tg-skel tg-skel-line" style={{ width: '55%' }} /></div></div>)}</div>
             </>
           )}
@@ -161,7 +163,7 @@ export function Explore() {
               </div>
               <div className="tg-xhead__ops">
                 <div className="tg-seg" role="group" aria-label="Cách xem"><button type="button" aria-pressed={mode === 'grid'} onClick={() => setMode('grid')}><Icon name="grid" size={15} /> Lưới</button><button type="button" aria-pressed={mode === 'disc'} disabled={!groups.length} onClick={() => setMode('disc')}><Icon name="compass" size={15} /> Đĩa xoay</button></div>
-                {mode === 'grid' && groups.length > 0 && !discHint.seen && (
+                {mode === 'grid' && groups.length > 0 && !discHint.seen && !(asst.open && !asst.pinned) && ( // the floating chat would sit on top of it
                   <p className="tg-seghint" role="note">
                     <span>Thử <b>Đĩa xoay</b>: lăn chuột để lướt từng nơi, ảnh to và rõ hơn.</span>
                     <button type="button" onClick={() => { discHint.dismiss(); setMode('disc') }}>Xem thử</button>
@@ -178,6 +180,24 @@ export function Explore() {
                 <button type="button" className="tg-excl" aria-expanded={exOpen} onClick={() => setExOpen((v) => !v)}><Icon name="lock" size={16} /><span><b>Giới hạn của bạn đã loại {excluded} nơi.</b> Bấm để xem vì giới hạn nào.</span><Icon name="chevronDown" size={18} /></button>
                 {exOpen && <ul className="tg-excl-list">{view.excluded.by_rule.map((r) => <li key={r.rule}><span>{r.label}</span><span style={{ opacity: 0.7 }}>· loại {r.count} nơi</span><button type="button" className="tg-link" onClick={editTicket}>Nới giới hạn</button></li>)}</ul>}
               </>
+            )}
+
+            {view.filter && (view.filter.active.length > 0 || total > 0) && (
+              <div className="tg-xfilter" role="group" aria-label="Bộ lọc">
+                {view.filter.active.length > 0 ? (
+                  <>
+                    <b>Đang lọc</b>
+                    {view.filter.active.map((f) => <span key={`${f.key}=${f.value}`} className="tg-chip tg-chip--soft">{f.label}</span>)}
+                    <span className="tg-faint">{view.filter.hidden} nơi đang ẩn</span>
+                    <button type="button" className="tg-link" disabled={busy} onClick={() => act({ type: 'unfilter' })}>Bỏ lọc</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="tg-faint">Lọc nhanh</span>
+                    <button type="button" className="tg-chip" disabled={busy} onClick={() => act({ type: 'filter', key: 'opens_by', value: '07:00' })}>Mở cửa trước 7h</button>
+                  </>
+                )}
+              </div>
             )}
 
             {total === 0 ? (

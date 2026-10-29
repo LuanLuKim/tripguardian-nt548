@@ -1,3 +1,5 @@
+import type { ChatPlaces } from '../tu/types'
+
 // Shapes of the Planning API (src/planning/engine.py, session.py, output.py, robustness.py, objectives.py).
 
 // A warning is {code, text} (src/planning/build.py _warn); text is the Vietnamese sentence to show.
@@ -66,6 +68,12 @@ export interface Robustness {
   scenarios: Record<string, unknown>[]
 }
 
+// src/planning/validate.py lodging_budget: one row per night; price_kind dated = seen for the trip's dates, reference = Maps list price.
+export interface LodgingBudget {
+  nights: { night: number; date: string | null; price_vnd: number | null; price_kind: 'dated' | 'reference' | null; price_age_h: number | null; over_vnd: number | null }[]
+  total_vnd: number | null; per_night_cap_vnd: number | null; over_budget: boolean | null; over_vnd: number | null
+}
+
 export interface VariantLodging {
   id: string | null
   name: string | null
@@ -119,6 +127,7 @@ export interface Variant {
   warnings: Warning[]
   checklist?: ChecklistItem[]
   lodging: VariantLodging
+  lodging_budget?: LodgingBudget | null
 }
 
 export interface LodgingCandidate {
@@ -140,6 +149,8 @@ export interface LodgingCandidate {
   tradeoffs?: { text: string; sid: string | null }[]
   location?: { center: string | null; km: number | null; minutes: number | null }
   confidence?: { level: 'high' | 'medium' | 'low'; reason: string }
+  price_kind?: 'dated' | 'reference' | null // dated: seen for the trip's own stay and dates; reference: Maps' list price from other dates
+  price_age_h?: number | null // hours since a dated price was seen
   price_at?: string | null // the day Maps' hotel list showed that price a night (a reference, not the trip's dates)
 }
 
@@ -215,6 +226,15 @@ export interface View {
   violations?: { kind: string; day: number | null; place_id: string | null; detail: string }[]
   day_conditions?: DayConditions[]
   crowd_tips?: CrowdTip[]
+  // How far to trust the plan and where its facts came from (src/planning/build.py trust_output, engine.py _trust).
+  uncertainty?: { travel_source: string; rough_pairs: number; estimated: string[] }
+  provenance?: {
+    travel?: { source: string; fetched_at: string | null }
+    weather?: { source: string; fetched_at: string | null }[]
+    points?: Record<string, { text: string; source: string; fetched_at: string | null }>
+  }
+  time_budget?: { days: number; nights: number; total_minutes: number; per_day: { day: number; from: string; to: string; minutes: number }[] }
+  tradeoffs?: ({ kind: 'relaxed'; place_id: string; features: string[] } | { kind: 'unplaced'; place_id: string; reason: string })[]
   state: SessionState
 }
 
@@ -259,9 +279,13 @@ export interface ActPreview {
   make_room: Action[]
 }
 
+// A day a chat turn changed, with the stops it holds now (the backend's own list; `day` counts from 1).
+export interface ChangedDay { day: number; stops: { id: string; name: string; start: string; end: string }[] }
+
 export interface Diff {
   affected_chunks?: number[]
   scope: 'none' | 'relayout' | 'variant' | 'lodging_home' | 'lodging_fetch'
+  days?: ChangedDay[]
 }
 
 export interface ActResult {
@@ -271,6 +295,7 @@ export interface ActResult {
 
 export interface TurnHandlers {
   say?: (d: { delta?: string; replace?: string }) => void
+  places?: (d: ChatPlaces) => void
   view?: (d: ActResult) => void
   done?: () => void
   error?: (d: { message: string }) => void

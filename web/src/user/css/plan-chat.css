@@ -1,0 +1,12 @@
+/* Lịch trình chat: the days a turn changed, shown under the reply (the backend's own list of stops and times). */
+.tg-msg__days { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tg-chday { display: grid; gap: 6px; width: 100%; padding: 10px 12px 11px; text-align: left; border-radius: var(--tg-r-m); border: 1px solid var(--tg-line); background: var(--tg-surface); transition: border-color 150ms, background 150ms; }
+.tg-chday:hover, .tg-chday:focus-visible { border-color: var(--tg-pine); background: var(--tg-pine-soft); }
+.tg-chday__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 0.86rem; }
+.tg-chday__head b { color: var(--tg-ink); }
+.tg-chday__head span { color: var(--tg-ink-3); font-size: 0.78rem; }
+.tg-chday ol { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; font-size: 0.82rem; color: var(--tg-ink-2); }
+.tg-chday li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.tg-chday li time { font: 500 0.76rem var(--tg-mono); color: var(--tg-ink-3); font-feature-settings: 'tnum'; }
+.tg-chday li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-chday__empty { color: var(--tg-ink-3); font-size: 0.82rem; }

@@ -1,4 +1,4 @@
-import type { SearchInput } from '../tu/types'
+import type { ChatPlaces, SearchInput } from '../tu/types'
 
 // Shapes of the Place Decision API (src/decision/engine.py, pipeline.py, cards.py, feasibility.py).
 
@@ -36,6 +36,8 @@ export interface Card {
   alternatives: { id: string; name: string }[]
   suggested: boolean
   top: boolean
+  // Best photo per scene, cover first (src/decision/cards.py): no person, not blurry. Empty = the web keeps the place's own photos.
+  photos?: { scene: string; src: string; credit: string; kind: 'gmaps'; w: number; h: number }[]
 }
 
 export interface Group {
@@ -71,6 +73,9 @@ export type Action =
   | { type: 'keep_free_time' }
   | { type: 'set_lodging'; lodging: LodgingPick }
   | { type: 'clear_lodging' }
+  | { type: 'like'; place_id: string } // "more like this": lifts look-alikes, removes none
+  | { type: 'filter'; key: string; value: string } // key: a feature id or 'opens_by' (HH:MM); hides only
+  | { type: 'unfilter' }
 
 // Where the user sleeps, picked at Lựa chọn: a served stay (the server reads its point) or a point from the search box.
 export type LodgingPick = { kind: 'corpus'; id: string } | { kind: 'live' | 'address'; id?: string; text: string; lat: number; lng: number }
@@ -132,6 +137,9 @@ export interface View {
   unmapped: string[]
   // One lodging for the whole trip. booked: told at Hiểu chuyến đi; chosen: picked at Lựa chọn (replaces booked);
   // needed: neither is known yet
+  // Session filters (src/decision/filters.py): they hide cards, never change a score. likes: places the user asked for more of.
+  filter?: { active: { key: string; value: string; label: string }[]; hidden: number }
+  likes?: string[]
   lodging?: { booked: { id: string | null; text: string; lat: number; lng: number } | null; chosen: LodgingChoice | null; needed: boolean }
 }
 
@@ -188,6 +196,7 @@ export interface DecisionOutput {
 
 export interface TurnHandlers {
   say?: (d: { delta?: string; replace?: string }) => void
+  places?: (d: ChatPlaces) => void // place cards under the reply (same event as the Trip chat)
   view?: (d: ActResult) => void
   done?: () => void
   error?: (d: { message: string }) => void

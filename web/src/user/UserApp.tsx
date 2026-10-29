@@ -8,6 +8,7 @@ import { isPhone } from './landing/device'
 import { DecisionProvider } from './pd/decision'
 import { PlanningProvider } from './planning/planning'
 import { Account, Saved, Trips } from './screens/Account'
+import { MemoryPage } from './screens/Memory'
 import { Auth } from './screens/Auth'
 import { Compare } from './screens/Compare'
 import { Discover } from './screens/Discover'
@@ -44,6 +45,7 @@ import './css/itinerary.css'
 import './css/landing.css'
 import './css/app.css'
 import './css/today.css'
+import './css/memory.css'
 import './css/home.css'
 import './css/motion.css'
 import './css/blog.css'
@@ -83,8 +85,15 @@ export default function UserApp({ path }: { path: string }) {
 
 function Shell({ p, sheet }: { p: string; sheet: string | null }) {
   const account = useAccount()
-  const { trip } = useTrip()
+  const { trip, dispatch } = useTrip()
   useEffect(() => { setEventJourney(trip.journeyId ?? null) }, [trip.journeyId])
+  // A trip notification opens its confirmed plan: /app/plan?journey=<id> switches to that journey first.
+  const linked = p === '/plan' ? query(location.search).get('journey') : null
+  useEffect(() => {
+    if (!linked || linked === trip.journeyId) return
+    dispatch({ type: 'reset' })
+    dispatch({ type: 'set', patch: { journeyId: linked, decisionId: linked, planningId: linked } })
+  }, [linked]) // eslint-disable-line react-hooks/exhaustive-deps
   const note = query(location.search).get('n')
   useEffect(() => { if (note && account) void openNote(note, 'link') }, [note, !!account]) // eslint-disable-line react-hooks/exhaustive-deps
   const { snap, error } = useSnapshot()
@@ -113,6 +122,7 @@ function Shell({ p, sheet }: { p: string; sheet: string | null }) {
   else if (p === '/support') screen = <Support />
   else if (p === '/inbox') screen = guest ? <GuestGate what="Thông báo" /> : <Inbox />
   else if (p === '/profile') screen = guest ? <GuestProfile /> : <Account />
+  else if (p === '/profile/memory') screen = guest ? <GuestGate what="Hồ sơ của tôi" /> : <MemoryPage />
   else if (!snap) {
     screen = error ? (
       <Empty art={<ArtHills />} title="Chưa tải được dữ liệu địa điểm" body={`(${error}) Chạy web/scripts/export_snapshot.py rồi tải lại trang.`} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => location.reload()}>Tải lại</button>} />

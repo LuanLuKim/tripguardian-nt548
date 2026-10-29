@@ -1,7 +1,8 @@
-import type { Action, ActPreview, ActResult, DayRoute, PlanOutput, ProgressEvent, Suggestions, View } from './types'
+import type { Action, ActPreview, ActResult, DayRoute, PlanOutput, ProgressEvent, Suggestions, TurnHandlers, View } from './types'
 import { acceptsRevision, loadJourney, mutateJourney, readJourney, resumeJourney, type JourneyView } from '../journey'
 import { setOptimized } from '../store'
-export { JourneyError as PlanningError } from '../journey'
+import { JourneyError } from '../journey'
+export { JourneyError as PlanningError }
 // Lựa chọn starts the first read of this stage the moment it has advanced (see pd/api primeDecision): no resume step, no wait for the route.
 const primed = new Map<string, Promise<JourneyView>>()
 export const primePlanning = (id: string) => {
@@ -19,6 +20,12 @@ export const loadPlanning = async (id: string) => {
   return { ...(j.result as {view: View}), id: j.id, revision: j.revision }
 }
 export const act = async (id: string, a: Action) => { const j = await mutateJourney(id, 'planning', 'act', a); return { ...(j.result as ActResult), revision: j.revision } }
+// One typed message to the Lịch trình assistant: the client sends only the text (the harness adds the trip session). The
+// plan the turn leaves comes back as the journey's result, with the revision to accept it under.
+export const sendText = async (id: string, text: string, h: TurnHandlers) => {
+  const j = await mutateJourney(id, 'planning', 'turn', { text }, h as Record<string, ((d: any) => void) | undefined>) // eslint-disable-line @typescript-eslint/no-explicit-any
+  return { ...(j.result as { view: View }), revision: j.revision }
+}
 export const readSuggestions = (id: string) => readJourney<Suggestions & { revision: number }>(id, 'planning/suggestions')
 export const previewAct = (id: string, action: Action) => readJourney<ActPreview & { revision: number }>(id, `planning/preview-act?action=${encodeURIComponent(JSON.stringify(action))}`)
 export const readRoutes = (id: string) => readJourney<{ days: DayRoute[] }>(id, 'planning/routes')
@@ -54,7 +61,8 @@ export async function runRecommend(id: string, before: View | null) {
     const base = before && before.variants.length ? (before.state.chosen_variant ? travelOf(before) : before.variants[0].metrics.travel_min) : travelOf(r.view)
     setOptimized(id, { status: r.proposal.status, before: base, after: travelOf(r.view), diagnostics: r.proposal.diagnostics, seen: false })
     return r
-  } catch {
+  } catch (e) {
+    if (e instanceof JourneyError) throw e // the caller tells a busy / failing server from a plain "no better layout"
     return null
   }
 }

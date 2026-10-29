@@ -21,6 +21,7 @@ export function PlaceCard({ c, onDrop, cmp, onCmp, warn, phase = 'stay', order =
   const price = c.price ?? priceText(p?.price)
   const { why, trade, alerts } = cardLines(c)
   const credit = p?.photos[0]?.credit
+  const liked = Boolean(view?.likes?.includes(c.id))
   return (
     <article className={`tg-pc ${c.chosen ? 'is-sel' : ''} ${c.locked ? 'is-lock' : ''} ${warn ? 'is-warn' : ''} ${c.status === 'unverified' ? 'is-dim' : ''} ${flash ? 'tg-flash' : ''} is-${phase}`} style={{ '--i': order } as CSSProperties} data-place={c.id} aria-hidden={phase === 'leave' || undefined}>
       <div className="tg-pc__media">
@@ -64,6 +65,7 @@ export function PlaceCard({ c, onDrop, cmp, onCmp, warn, phase = 'stay', order =
           )}
           <div className="tg-pc__more" role="group" aria-label={`Thao tác với ${c.name}`}>
             <button type="button" className={`tg-pc__ic ${c.locked ? 'is-on' : ''}`} disabled={busy} onClick={() => act({ type: c.locked ? 'unlock' : 'lock', place_id: c.id })} aria-pressed={c.locked} title={c.locked ? 'Bỏ khóa' : 'Khóa: luôn giữ nơi này'}><Icon name={c.locked ? 'lock' : 'unlock'} size={17} /><span>Khóa</span></button>
+            <button type="button" className={`tg-pc__ic ${liked ? 'is-on' : ''}`} disabled={busy || liked} onClick={() => act({ type: 'like', place_id: c.id })} aria-pressed={liked} title={liked ? 'Đã thích: đang gợi ý thêm nơi giống' : 'Thích: gợi ý thêm nơi giống nơi này'}><Icon name="sparkle" size={17} /><span>Thích</span></button>
             <button type="button" className={`tg-pc__ic ${cmp ? 'is-on' : ''}`} onClick={() => onCmp(c.id)} aria-pressed={cmp} title="So sánh"><Icon name="swap" size={17} /><span>So sánh</span></button>
             {!c.chosen && <button type="button" className="tg-pc__ic" onClick={() => onDrop(c)} title="Bỏ nơi này"><Icon name="x" size={17} /><span>Bỏ</span></button>}
           </div>

@@ -25,9 +25,9 @@ function Row({ icon, title, sub, children }: { icon: IconName; title: string; su
   )
 }
 
-export function Overview({ days, variant, robustness, travelMin, visitMin, droppedCount, lodgingName, hasHotel, arriveHow, leaveHow, notices, after, delta, sameAs, busy, footer, onDay, onChangeVariant, onHotel, onDropped, onStory, onReoptimize, onOpen }: {
+export function Overview({ days, variant, robustness, travelMin, visitMin, droppedCount, lodgingName, hasHotel, arriveHow, leaveHow, wayIn, wayOut, stayOffer, notices, after, delta, sameAs, busy, footer, onDay, onChangeVariant, onHotel, onDropped, onStory, onReoptimize, onOpen }: {
   days: ItineraryDay[]; variant: Variant | null; robustness?: Robustness; travelMin: number; visitMin: number; droppedCount: number
-  lodgingName: string | null; hasHotel: boolean; arriveHow?: string | null; leaveHow?: string | null; notices: ReactNode; after: ReactNode; delta: string | null; sameAs: string | null; busy: boolean; footer: ReactNode
+  lodgingName: string | null; hasHotel: boolean; arriveHow?: string | null; leaveHow?: string | null; wayIn?: ReactNode; wayOut?: ReactNode; stayOffer?: ReactNode; notices: ReactNode; after: ReactNode; delta: string | null; sameAs: string | null; busy: boolean; footer: ReactNode
   onDay: (i: number) => void; onChangeVariant: () => void; onHotel: () => void; onDropped: () => void; onStory: () => void; onReoptimize: () => void; onOpen: (id: string) => void
 }) {
   const ids = days.flatMap((d) => visits(d).map((it) => it.place_id!))
@@ -68,9 +68,11 @@ export function Overview({ days, variant, robustness, travelMin, visitMin, dropp
         </Row>
         <Row icon={wayIcon(arriveHow)} title="Đến Đà Lạt" sub={shortDate(first?.date, 1)}>
           <div className="tg-it-transit"><span><Icon name={wayIcon(arriveHow)} size={16} /><b>Di chuyển đến Đà Lạt</b></span><span>{first ? `Lịch ngày đầu bắt đầu lúc ${first.window[0]}` : 'Chưa có thông tin chuyến đến'}</span></div>
+          {wayIn}
         </Row>
         <Row icon="bed" title="Chỗ nghỉ" sub={days.length > 1 ? `${days.length - 1} đêm` : 'Không nghỉ đêm'}>
           <div className="tg-it-transit"><span><Icon name="bed" size={16} /><b>{hasHotel && lodgingName ? lodgingName : 'Chưa chọn chỗ nghỉ'}</b></span><button type="button" className="tg-it-textbtn" onClick={onHotel}>{hasHotel ? 'Đổi chỗ nghỉ' : 'Chọn chỗ nghỉ'} <Icon name="chevronRight" size={14} /></button></div>
+          {stayOffer}
         </Row>
         <Row icon="calendar" title="Lịch trình" sub={`Ngày 1–${days.length}`}>
           <div className="tg-it-days">
@@ -94,6 +96,7 @@ export function Overview({ days, variant, robustness, travelMin, visitMin, dropp
         </Row>
         <Row icon={wayIcon(leaveHow)} title="Rời Đà Lạt" sub={shortDate(last?.date, days.length)}>
           <div className="tg-it-transit"><span><Icon name={wayIcon(leaveHow)} size={16} /><b>Di chuyển về</b></span><span>{last ? `Lịch ngày cuối kết thúc lúc ${last.window[1]}` : 'Chưa có thông tin chuyến về'}</span></div>
+          {wayOut}
         </Row>
         {after}
       </main>

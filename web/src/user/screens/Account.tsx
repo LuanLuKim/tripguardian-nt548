@@ -197,10 +197,14 @@ export function Account() {
         <ProfileForm account={account} />
         <TasteCard account={account} />
       </div>
+      <section className="tg-card tg-mem__link" aria-labelledby="tg-mem-h">
+        <div><h2 id="tg-mem-h">Mình nhớ gì về bạn</h2><p className="tg-faint">Những điều mình rút ra sau các chuyến. Bạn xem, sửa, tạm dừng hay xóa từng dòng.</p></div>
+        <Link to="/profile/memory" className="tg-btn tg-btn--soft tg-btn--sm">Mở danh sách</Link>
+      </section>
       <NotifyPrefs />
       {account.calendar && <CalendarLink />}
       <DeleteAccount />
-      <p className="tg-faint tg-prof__fine"><Icon name="shield" size={14} /> Tín hiệu sức khỏe hay thể chất chỉ dùng trong phiên, không lưu lâu dài. Không thu vị trí GPS.</p>
+      <p className="tg-faint tg-prof__fine"><Icon name="shield" size={14} /> Điều bạn tự nói về sức khỏe hay ăn uống của chính mình chỉ được nhớ khi bạn bật “Nhớ cho lần sau”, và bạn xóa được bất cứ lúc nào. Không thu vị trí GPS.</p>
     </Page>
   )
 }

@@ -93,7 +93,11 @@ const infoCache = new Map<string, PlaceInfo>()
 
 export function info(id: string): PlaceInfo | null {
   const hit = infoCache.get(id)
-  if (hit) return hit
+  if (hit) {
+    const photos = coversOf(id) // a card may have brought scene photos after the place was first read
+    if (photos.length && photos !== hit.photos) hit.photos = photos
+    return hit
+  }
   const p = placeById(id)
   if (!p) return null
   const spans = new Set(p.hoursText.map((l) => l.replace(/^[^\d]*/, '')).filter(Boolean))

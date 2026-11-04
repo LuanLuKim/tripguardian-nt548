@@ -24,7 +24,8 @@ class Fact(BaseModel):
 
     field: FieldName | Literal["dish", "kind", "intent"] = Field(description=(
         "dish / kind: a dish or a kind of place the user wants (value = their words); the corpus is searched here. "
-        "intent (assistant only): explore | plan, from the user's own words."))
+        "intent (assistant only): explore | plan, from the user's own words. "
+        "origin: exact departure city/place words from the user, plain text without coordinates; never entry_point."))
     op: Literal["set", "add", "remove"]
     value: str = Field(description="In the format the instructions give for this field.")
     quote: str = Field(description="The user's own words that support it, copied exactly from any user turn in this session.")

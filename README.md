@@ -13,7 +13,7 @@ Place Decision      src/decision/ → shortlist → người dùng tuyển chọ
 Planning & Valid.   src/planning/ + src/live/ → phương án, chỗ ở, độ vững → Plan Output
 ```
 
-Phần dùng chung: `src/harness/` (HTTP/SSE, hành trình chung), `src/agents/` (Agent, tool, skill), `src/accounts/` + `src/db/` (tài khoản, Postgres), `src/companion/` (chế độ Đang đi), `src/analytics/`, `src/notify/`, `src/requirements/`, `src/social/`, `src/bench/` (đo độ trễ). Giao diện: `web/`.
+Phần dùng chung: `src/harness/` (HTTP/SSE, hành trình chung), `src/agents/` (Agent, tool, skill), `src/accounts/` + `src/db/` (tài khoản, Postgres), `src/companion/` (chế độ Đang đi), `src/analytics/`, `src/notify/`, `src/mailer/` (thư SMTP), `src/requirements/`, `src/social/`, `src/bench/` (đo độ trễ). Giao diện: `web/`.
 
 ## Tài liệu
 
@@ -63,7 +63,7 @@ cp .env.example .env                                     # điền key: docs/LLM
 1. **Dữ liệu.** Tải `tripguardian-data-<ngày>.zip` mới nhất từ [Drive của nhóm](https://drive.google.com/drive/folders/1LeEgIdoioyCAM64WV3VLGeKYA-X5yEGT?usp=sharing), giải nén **tại thư mục gốc repo**: `python -m zipfile -e tripguardian-data-<ngày>.zip .` — gói trả về đúng chỗ `data/`, `web/public/data/snapshot.json` (dữ liệu web hiển thị) và `tests/fixtures/{gmaps,tiktok}` (trang crawl thật cho test parser). Mấy file này trích review và tài khoản người thật nên không nằm trong repo public. Gói không có `video.mp4` của TikTok (chỉ bước ASR khi crawl cần); bản `--no-photos` không có ảnh Maps, khi đó `/admin/labels` không hiện ảnh.
 2. **Key.** Trip Understanding, chọn câu hỏi và mọi phase cần model gọi API UIT, chỉ trả lời trong mạng campus; key và endpoint ở `.env`. Lỗi chứng chỉ `llm.uit.edu.vn`: tạo CA bundle một lần mỗi máy — `docs/LLM_PROVIDER.md` §Chứng chỉ TLS.
 3. **OSRM** (thời gian di chuyển cho Planning): `bash scripts/osrm_setup.sh` một lần mỗi máy — tải OSM Việt Nam, dựng chỉ mục vào `osrm-data/`, mở `127.0.0.1:5000`. Lần sau chỉ cần chạy lại container (dòng `docker run ... -p 127.0.0.1:5000:5000` cuối script). Không có OSRM thì Planning ước lượng thô và gắn cảnh báo. Endpoint và TTL ở `config/live.yaml`; `LIVE_CONTACT` trong `.env` là liên hệ gửi kèm request.
-4. **Postgres** (tài khoản, hành trình, event, thông báo; cần Docker): điền `POSTGRES_PASSWORD`, `DATABASE_URL`, `DATABASE_URL_READONLY` trong `.env`, rồi `./run.sh db` — tạo container `tripguardian-pg` ở `127.0.0.1:5433`, role, database và chạy migration (chạy lại an toàn). `./run.sh db-backup` sao lưu vào `data/backup/pg/`. Đăng nhập Google, Calendar và web push cần thêm `APP_BASE_URL`, `GOOGLE_*`, `TOKEN_ENC_KEY`, `VAPID_*` (`.env.example`, `docs/ACCOUNTS.md`). Hành trình cũ dạng file: `python -m harness import-files data/harness/sessions data/harness/feedback.jsonl`.
+4. **Postgres** (tài khoản, hành trình, event, thông báo; cần Docker): điền `POSTGRES_PASSWORD`, `DATABASE_URL`, `DATABASE_URL_READONLY` trong `.env`, rồi `./run.sh db` — tạo container `tripguardian-pg` ở `127.0.0.1:5433`, role, database và chạy migration (chạy lại an toàn). `./run.sh db-backup` sao lưu vào `data/backup/pg/`. Quên mật khẩu cần thư: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` (`docs/ACCOUNTS.md` §2c). Đăng nhập Google, Calendar và web push cần thêm `APP_BASE_URL`, `GOOGLE_*`, `TOKEN_ENC_KEY`, `VAPID_*` (`.env.example`, `docs/ACCOUNTS.md`). Hành trình cũ dạng file: `python -m harness import-files data/harness/sessions data/harness/feedback.jsonl`.
 5. **Agent endpoint và web search.** `AGENT_BASE_URL` trỏ `127.0.0.1:<cổng>` thì `./run.sh start` tự bật **9router** (cần `npm i -g 9router`; không có thì Agent trả lời theo policy dự phòng). `./run.sh prod` bật thêm **SearXNG** (`127.0.0.1:8888`, Docker; `docker/searxng/README.md`) cho tool `web_search` của Trip agent; `web_base_url` trống ở `config/trip.yaml` thì agent không có tool web.
 6. **Chỉ mục ngữ nghĩa** (ảnh / câu → "vibe", "chỗ như này"): nằm trong gói dữ liệu ở `data/index/`. Harness nạp embedder trên GPU `HARNESS_GPU` (mặc định `1,3`); dựng lại: `python -m corpus index` (`docs/CORPUS.md` §Chỉ mục ngữ nghĩa).
 7. **Chỉ khi crawl:** đăng nhập tài khoản phụ một lần mỗi máy, `python -m corpus login tiktok`, `python -m corpus login gmaps` (profile lưu ở `.browser/`, đã gitignore). Chạy dịch vụ và Planning lodging không cần đăng nhập.
@@ -83,6 +83,8 @@ Production (gpu156, public qua Cloudflare tunnel):
 ./run.sh prod       # backup + migrate db → thumbnail → build web (build:prod) → SearXNG → 9router → harness :8769 → web/server.mjs :28899 → worker thông báo → tunnel (token ở ~/.cloudflared/tripguardian.token) → smoke test
 ./run.sh prod-stop  # dừng tất cả
 ```
+
+Prod chạy code từ **bản đông cứng `src_live/`** (không phải `src/`): `./run.sh prod` chép `src/` → `src_live.new/`, kiểm import, dừng dịch vụ cũ rồi đổi tên và khởi động harness + worker thông báo với `PYTHONPATH=src_live`. Sửa `src/` (người hay agent, kể cả worker quá tải `spawn` nạp lại `planning` mỗi lượt) không vào prod cho tới lần deploy sau. `src_live*` nằm ngoài git.
 
 `web/server.mjs` chỉ phục vụ phần public: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media` (jpg), thumbnail `/media/thumb` (WebP) và proxy `/api/harness/*`, `/api/auth/*` (keep-alive); `/admin`, analytics, mọi `/api` khác và video trả 404. Cần Postgres đang chạy (`./run.sh db`). Route hostname → cổng nằm trong dashboard Cloudflare của tunnel; `prod` in ra các route nhận được để thấy ngay khi token sai. Đổi cổng / token: `PUBLIC_PORT`, `TUNNEL_TOKEN_FILE`. Tiến trình chạy bằng `nohup`, không tự khởi động lại khi máy reboot.
 
@@ -104,6 +106,11 @@ tail -n 5 logs/run/keepalive.log
 ```
 
 Mỗi request giới hạn 15 giây; khóa file tránh chạy chồng. Log ghi giờ UTC, HTTP status, độ trễ và `ok`, xoay vòng tối đa khoảng 3 MiB (`keepalive.log`, `.1`, `.2`); exit code 1 khi lỗi. Tắt ping: xóa riêng dòng có nhãn `# tripguardian-keepalive` trong `crontab -e`. `prod-stop` không xóa cron; khi stack dừng, ping ghi lỗi. Cron vẫn được giữ qua reboot nhưng app/tunnel chạy bằng `nohup` không tự lên lại. Ping không tự khởi động lại tiến trình hay bảo đảm uptime khi máy/mạng ngừng hoạt động; chưa gửi cảnh báo ra ngoài.
+
+**Ổ cục bộ và sao lưu DB (từ 04/11/2026).** Dữ liệu Postgres (`tripguardian-pg`) nằm trên ổ cục bộ `/` của gpu156 (volume Docker trong `~/.local/share/docker`), không phải ổ NFS của repo. Ngày 03/11 ổ này đầy 100% làm Postgres tắt. Hai job cron:
+- `scripts/disk_guard.sh` (mỗi 10 phút, nhãn `# tripguardian-disk-guard`): `/` còn dưới 5 GiB thì ghi `logs/disk_guard.log` và chạy `CHECKPOINT`.
+- `scripts/pg_backup_nas.sh` (02:30 hằng đêm, nhãn `# tripguardian-pg-backup`): `pg_dump` sang `/AIClub_NAS/luanhh/tripguardian/pg-backup/`, giữ 14 bản mới nhất, log `logs/pg_backup_nas.log`.
+Khi `:5433` từ chối kết nối hoặc harness báo `PoolTimeout`: xem `df -h /` và `docker logs --tail 30 tripguardian-pg` trước.
 
 | Dịch vụ | Cổng | Lệnh tương đương |
 |---|---|---|
@@ -181,6 +188,8 @@ python -m pytest -q                      # không gọi mạng; thiếu gói Dri
 python -m pytest -q tests/planning        # một giai đoạn
 python scripts/journey_sim.py [--monkey N]           # mô phỏng người dùng đi hết Trip → Decision → Planning trên dữ liệu thật, không gọi model hay mạng; báo cáo ở data/journey_sim/report.json; `--agent` chạy 5 kịch bản gõ chữ qua Gemma trên UIT (từ chối chạy nếu `AGENT_BASE_URL` không phải UIT) và in thời gian từng lượt
 ```
+
+Đo matrix local từ `src/` hiện tại (cần Postgres, `bwrap`, `.env`, model gateway đang có; không deploy/build): `scripts/local_stack.sh start`, `status`, `stop`. Mặc định web `127.0.0.1:28919` → harness `:8879`; đổi bằng `LOCAL_WEB_PORT`/`LOCAL_HARNESS_PORT` khi start. Ví dụ smoke **một ca**: `PROD_JOURNEY_BASE=http://127.0.0.1:28919 .venv/bin/python scripts/prod_journey_e2e.py --only solo_f_cafe_photo --jobs 4 --run-id local-smoke`. DB schema riêng; config CPU overlay, cache/log/PID riêng dưới `.superpowers/sdd/2026-11-03-prod-e2e/local-harness/`; corpus và `web/dist` chỉ đọc, không notify worker. `stop` chỉ dừng tiến trình của stack, giữ schema và bằng chứng; số đo CPU không so trực tiếp với GPU prod. Không chạy cả matrix trên gateway dùng chung khi chưa được phép.
 
 Test gọi mạng hoặc model thật nằm sau marker `live` và bị `addopts` loại khỏi lần chạy mặc định (`pyproject.toml`). Test marker `pg` cần Postgres: `TEST_DATABASE_URL=<DATABASE_URL> python -m pytest -q` (mỗi test một schema tạm); thiếu biến thì tự skip. Marker `corpus` cần `data/snapshot/current` (`python -m corpus snapshot`); thiếu thì tự skip.
 

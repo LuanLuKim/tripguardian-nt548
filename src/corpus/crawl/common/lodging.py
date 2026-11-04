@@ -16,10 +16,15 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from .files import STAY, append_jsonl, data_dir, load_config, now
+import yaml
+
+from .files import ROOT, STAY, append_jsonl, data_dir, load_config, now
 
 WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 GENERIC = {"khach", "san", "hotel", "dalat"}  # words every lodging carries: they say nothing about which one
+KINDS = {"homestay", "house", "home", "villa", "resort", "apartment", "apart", "hostel", "boutique", "motel", "inn",
+         "lodge", "bungalow", "spa"}  # kinds of lodging: two names alike only in these are two lodgings
+NOT_DRAWN_H = 6  # a page whose offers never drew is looked at again after this many hours
 REQUIRED = ("fid", "stay_date", "nights", "adults", "observed_at", "source")
 
 
@@ -49,18 +54,52 @@ def settings(city: str) -> dict:
     return cfg
 
 
-def stay_dates(cfg: dict, today: date | None = None) -> list[Stay]:
-    """The date set from config rules {weekday, count, nights}: the next `count` such weekdays after today (tonight's
-    price is gone by the time anyone plans), in rule order, without duplicates."""
+def holiday_runs(path=None) -> list[tuple[date, int]]:
+    """(first day, length) of each run of consecutive days in config/holidays.yaml, oldest first."""
+    path = path or ROOT / "config" / "holidays.yaml"
+    days = sorted(date.fromisoformat(str(d)) for d in (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("holidays", {}))
+    runs: list[list] = []
+    for d in days:
+        if runs and d - timedelta(days=runs[-1][1]) == runs[-1][0]:
+            runs[-1][1] += 1
+        else:
+            runs.append([d, 1])
+    return [(d, n) for d, n in runs]
+
+
+def stay_dates(cfg: dict, today: date | None = None, holidays: list[tuple[date, int]] | None = None) -> list[Stay]:
+    """The date set from config rules, in rule order (= priority: the first is the probe date), without duplicates.
+    Tonight's price is gone by the time anyone plans, so no stay starts today. A rule is one of
+      {weekday, count, nights}  the next `count` such weekdays after today
+      {ahead_days, nights[, weekday]}  the stay that starts that many days from today (the first such weekday on or
+                                after it when `weekday` is given)
+      {holidays, within_days, nights, count}  the first `count` public-holiday runs that start within that many days;
+                                the stay begins the evening before the run and lasts `nights` at most (run length + 1)"""
     today = today or date.today()
+    adults = int(cfg.get("adults", 2))
     out: list[Stay] = []
+
+    def add(checkin: date, nights: int) -> None:
+        stay = Stay(checkin, nights, adults)
+        if checkin > today and stay not in out:
+            out.append(stay)
+
     for rule in cfg["stays"]:
-        first = today + timedelta(days=1)
-        first += timedelta(days=(WEEKDAYS[rule["weekday"]] - first.weekday()) % 7)
-        for i in range(int(rule["count"])):
-            stay = Stay(first + timedelta(days=7 * i), int(rule["nights"]), int(cfg.get("adults", 2)))
-            if stay not in out:
-                out.append(stay)
+        if "count" in rule and "weekday" in rule:
+            first = today + timedelta(days=1)
+            first += timedelta(days=(WEEKDAYS[rule["weekday"]] - first.weekday()) % 7)
+            for i in range(int(rule["count"])):
+                add(first + timedelta(days=7 * i), int(rule["nights"]))
+        elif "ahead_days" in rule:
+            day = today + timedelta(days=int(rule["ahead_days"]))
+            if "weekday" in rule:
+                day += timedelta(days=(WEEKDAYS[rule["weekday"]] - day.weekday()) % 7)
+            add(day, int(rule["nights"]))
+        elif rule.get("holidays"):
+            runs = holiday_runs() if holidays is None else holidays
+            coming = [(d, n) for d, n in runs if today < d <= today + timedelta(days=int(rule["within_days"]))]
+            for d, n in coming[: int(rule.get("count", 1))]:
+                add(d - timedelta(days=1), min(int(rule["nights"]), n + 1))
     return out
 
 
@@ -89,20 +128,32 @@ def meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 6371000 * 2 * math.asin(math.sqrt(a))
 
 
+def _numbers(name: str, city_name: str) -> set[str]:
+    return {t for t in fold(name, city_name).split() if t.isdigit()}
+
+
 def match(name: str, lat: float | None, lng: float | None, stays: list[dict], city_name: str, cfg: dict) -> Match:
     """The corpus lodging a result is: near by name and distance, never by name alone (branches share names). A pin
     up to far_m away still counts when the name is near-exact (OTA pins drift). Two lodgings that fit equally well,
-    or one name that contains the other, are ambiguous: no match."""
+    or one name that contains the other, are ambiguous: no match, unless one of them is the exact name (the same name
+    after folding, within max_m). Branch numbers must agree when both names have one ("Thanh Thanh 2" is not "Thanh Thanh 5"). Names with no word
+    in common still count when they are the same letters run together ("Du Parc" / "Duparc")."""
     if lat is None or lng is None or not fold(name, city_name):
         return Match(None, 0.0, None)
-    found, words = [], set(fold(name, city_name).split())
+    found, words, nums = [], set(fold(name, city_name).split()), _numbers(name, city_name)
+    squashed = fold(name, city_name).replace(" ", "")
     for s in stays:
         if s.get("lat") is None or s.get("lng") is None:
             continue
         d = meters(lat, lng, s["lat"], s["lng"])
-        if d > cfg["far_m"] or not words & set(fold(s["name"], city_name).split()):
-            continue  # a name sharing no word is another lodging, however alike the letters look
-        score = similarity(name, s["name"], city_name)
+        their_nums = _numbers(s["name"], city_name)
+        if d > cfg["far_m"] or (nums and their_nums and nums != their_nums):
+            continue
+        theirs = fold(s["name"], city_name)
+        if not (words & set(theirs.split()) - KINDS) and difflib.SequenceMatcher(None, squashed, theirs.replace(" ", "")).ratio() < 0.9:
+            continue  # a name sharing no word (other than the kind of lodging) is another lodging, however alike the letters look
+        score = max(similarity(name, s["name"], city_name),
+                    round(difflib.SequenceMatcher(None, squashed, theirs.replace(" ", "")).ratio(), 4))
         if (d <= cfg["max_m"] and score >= cfg["min_score"]) or score >= cfg["far_score"]:
             found.append((score, d, s))
     if not found:
@@ -110,8 +161,11 @@ def match(name: str, lat: float | None, lng: float | None, stays: list[dict], ci
     found.sort(key=lambda f: (-f[0], f[1]))
     best = found[0]
     bt = set(fold(best[2]["name"], city_name).split())
+    exact = best[0] == 1.0 and best[1] <= cfg["max_m"] and found[1:] and all(f[0] < 1.0 for f in found[1:])
     for score, _, s in found[1:]:
         tokens = set(fold(s["name"], city_name).split())
+        if exact:
+            break
         if score >= best[0] - cfg["margin"] or bt <= tokens or tokens <= bt:
             return Match(None, best[0], best[1])
     return Match(best[2]["fid"], best[0], round(best[1], 1))
@@ -170,23 +224,50 @@ def latest(source: str, city: str) -> dict[tuple[str, str, int], dict]:
     return out
 
 
-def seen(source: str, city: str) -> dict[tuple[str, str, int], tuple[str, bool | None]]:
-    return {k: (r["observed_at"], r.get("available")) for k, r in latest(source, city).items()}
-
-
-def due(fids: list[str], stays: list[Stay], seen_: dict, fresh_h: float, no_offer_h: float,
-        now: str | None = None) -> list[tuple[str, Stay]]:
-    """(fid, stay) pairs to look at again, never-seen first, then the oldest. A priced pair is due after fresh_h; one
-    with no offer is asked again after no_offer_h (most such lodgings list no booking offer at all)."""
+def queue(fids: list[str], stays: list[Stay], rows: dict, fresh_h: float, no_offer_h: float, dead_h: float,
+          now: str | None = None) -> list[tuple[str, Stay]]:
+    """(fid, stay) pairs to look at, best first. `fids` come best first (the ones users see), `stays[0]` is the probe
+    date; `rows` is latest(source, city). One fid at a time goes through these tiers, tier by tier across all fids:
+      0  never looked at: the probe date only (coverage first: every lodging gets one look before any gets two)
+      1  looked at but no price yet and fewer than 2 dates with "no offer": one more date, so a lodging that
+         simply has no rooms on the probe date is not written off ("Chưa rõ" only after 2 different dates say so)
+      2  has a price on some date: its other dates (never-seen first, then oldest) and priced ones older than fresh_h
+      3  no price anywhere after 2 dates (no OTA listing): asked again once the last look is older than dead_h
+    A page that wants a longer stay ("có phòng trống cho các khách lưu trú 2 đêm") adds that stay for the fid.
+    A no-offer pair is asked again after no_offer_h, a page that was not drawn counts as no look (retry later)."""
     at = datetime.fromisoformat(now) if now else datetime.now(UTC)
+    by_fid: dict[str, list[dict]] = {}
+    for (fid, *_), r in rows.items():
+        by_fid.setdefault(fid, []).append(r)
     todo = []
     for i, fid in enumerate(fids):
-        for j, stay in enumerate(stays):
-            got = seen_.get((fid, stay.checkin.isoformat(), stay.nights))
+        mine = by_fid.get(fid, [])
+        priced = any(r.get("price_night_vnd") for r in mine)
+        looks = [r for r in mine if r.get("note") != "not_drawn"]
+        no_offer_days = {r["stay_date"] for r in looks if not r.get("price_night_vnd") and not r.get("min_nights")}
+        longer = [Stay(date.fromisoformat(r["stay_date"]), int(r["min_nights"]), int(r["adults"])) for r in mine
+                  if r.get("min_nights") and int(r["min_nights"]) > int(r["nights"])]
+        for j, stay in enumerate(stays + [x for x in longer if x not in stays]):
+            if stay.checkin <= at.date():
+                continue
+            got = rows.get((fid, stay.checkin.isoformat(), stay.nights))
+            age_h = (at - datetime.fromisoformat(got["observed_at"])).total_seconds() / 3600 if got else None
+            if not looks:
+                tier = 0 if j == 0 else None
+            elif not priced and len(no_offer_days) < 2:
+                tier = 1 if j > 0 or not got else None
+            elif priced:
+                tier = 2
+            else:
+                tier = 3 if j == 0 else None
+            if tier is None:
+                continue
             if got is not None:
-                age_h = (at - datetime.fromisoformat(got[0])).total_seconds() / 3600
-                if age_h < (fresh_h if got[1] else no_offer_h):
+                limit = fresh_h if got.get("price_night_vnd") else NOT_DRAWN_H if got.get("note") == "not_drawn" else no_offer_h
+                if tier == 3 and got.get("note") != "not_drawn":
+                    limit = dead_h
+                if age_h < limit:
                     continue
-            todo.append(((got[0] if got else ""), i, j, fid, stay))
-    todo.sort(key=lambda t: t[:3])
+            todo.append((tier, got["observed_at"] if got else "", i, j, fid, stay))
+    todo.sort(key=lambda t: t[:4])
     return [(fid, stay) for *_, fid, stay in todo]

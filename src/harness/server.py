@@ -2,11 +2,12 @@
 
 Every /api/harness/* call needs a session (cookie tg_session): a Google or email account, or a guest made by POST /api/auth/guest
 (a guest plans like anyone but keeps no history and gets no Calendar, notifications or Today). /api/auth/* is the sign-in flow:
-Google, or an email and a password (register / login).
+Google, or an email and a password (register / login, and a one-time code by email to reset a forgotten password).
 Mutations must come from the app's own origin. Another account's journey is answered 404, as if it did not exist.
 """
 
 import json
+import logging
 import ipaddress
 import re
 import sys
@@ -19,9 +20,10 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, quote, urlparse
 
 from pydantic import ValidationError
-from accounts import AVATAR_MAX_BYTES, AuthError, safe_next
+from accounts import AVATAR_MAX_BYTES, RESET_MINUTES, RESET_COOLDOWN_S, AuthError, ResetError, safe_next
 from agents import ToolError
 from companion import CalendarError, NotConnected
+from mailer import reset_code_message
 
 from . import booking_routes
 from .contracts import Request, TripNotReady
@@ -29,6 +31,7 @@ from .contracts import StaleDataVersion
 from .dispatch import Conflict, LIVE
 from .router import RouteError, route
 from .protection import ProtectedHTTPServer, ProtectionSettings, RateGate, settings as protection_settings
+from .timing import current as current_trace, request_trace
 
 BASE = "/api/harness/sessions"
 PROFILE = re.compile(r"/api/harness/profile/([A-Za-z0-9_-]{8,64})")
@@ -36,7 +39,7 @@ ENTRY = re.compile(r"/api/harness/me/profile/entries/([0-9a-f]{12})")  # one pro
 AVATAR = re.compile(r"/api/harness/avatars/([0-9a-f]{32})")
 SESSION = re.compile(BASE + r"/([0-9a-f]{12})")
 REQUEST = re.compile(BASE + r"/([0-9a-f]{12})/request")
-READ = re.compile(BASE + r"/([0-9a-f]{12})/read/(?:(decision|planning)/(compare|why-not|evidence|lodging|variants|page|search|suggestions|preview-act|routes)|(trip)/(readback))")
+READ = re.compile(BASE + r"/([0-9a-f]{12})/read/(?:(decision|planning)/(compare|why-not|evidence|lodging|variants|page|search|suggestions|preview-act|routes)|(trip)/(readback|stage))")
 LODGING = re.compile(BASE + r"/([0-9a-f]{12})/planning/lodging/events")
 PREVIEW = re.compile(BASE + r"/([0-9a-f]{12})/preview")
 FEEDBACK = re.compile(BASE + r"/([0-9a-f]{12})/feedback")
@@ -57,6 +60,8 @@ STATE_COOKIE = "tg_oauth"
 SESSION_MAX_AGE = 30 * 86400
 AUTH_PER_IP_15MIN = 20  # sign-up and sign-in tries one address may make in 15 minutes
 AUTH_FAILS_15MIN = 8  # wrong passwords for one email in 15 minutes, from anywhere, before it waits
+RESET_ASKS_PER_IP_HOUR = 10  # "send me a code" requests from one address in an hour (per email limits live in accounts)
+RESET_TRIES_PER_IP_15MIN = 20  # code-and-new-password submissions from one address in 15 minutes
 PURGE_EVERY_S = 3600
 LEAVERS_EVERY_S = 15  # how often guests whose page closed are looked for
 MEMBERS_ONLY = {"/api/harness/me/notification-prefs", "/api/harness/notifications", "/api/harness/push/key",
@@ -71,6 +76,11 @@ def _stale_body(exc: StaleDataVersion) -> dict:
             "detail": str(exc), "artifact": exc.name, "version": exc.version}
 
 
+def _spawn(job):
+    """Mail is sent off the request thread, so the answer takes the same time whether or not the account exists."""
+    threading.Thread(target=job, daemon=True).start()
+
+
 class StalePreview(Exception):
     def __init__(self, preview: dict):
         super().__init__("stale preview")
@@ -78,10 +88,11 @@ class StalePreview(Exception):
 
 
 def handler(harness, accounts, base_url: str = "", test_login: bool = False,
-            protection: ProtectionSettings | None = None, social=None, library=None):
+            protection: ProtectionSettings | None = None, social=None, library=None, mailer=None):
     """base_url: the public origin (APP_BASE_URL); https makes cookies Secure. test_login enables
     GET /api/auth/test/login for browser walk-throughs and is refused on an https base URL.
-    social: social.Social (friends, messages); library: accounts.Library (saved, recent). None turns either off."""
+    social: social.Social (friends, messages); library: accounts.Library (saved, recent). None turns either off.
+    mailer: mailer.Mailer for the password-reset code; None answers 503 on those routes (the web then hides the link)."""
     secure = "; Secure" if base_url.startswith("https://") else ""
     base = urlparse(base_url)
     base_origin = f"{base.scheme}://{base.netloc}" if base.netloc else None
@@ -105,6 +116,7 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
 
         def handle_one_request(self):
             self._set = []
+            self._started = time.perf_counter()
             if not active.acquire(blocking=False):
                 try:
                     self.connection.sendall(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\nRetry-After: 1\r\n\r\n")
@@ -113,7 +125,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 self.close_connection = True
                 return
             try:
-                super().handle_one_request()
+                with request_trace():
+                    super().handle_one_request()
             finally:
                 active.release()
 
@@ -129,13 +142,25 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            if trace := current_trace():
+                self.send_header('X-Request-ID', trace.request_id)
             for name, value in [*self._set, *headers]:
                 self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
 
         def _json(self, code, value):
-            self._send(code, json.dumps(value, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+            started = time.perf_counter()
+            body = json.dumps(value, ensure_ascii=False).encode()
+            serialize_ms = (time.perf_counter() - started) * 1000
+            app_ms = (started - self._started) * 1000
+            timing = f"app;dur={app_ms:.2f}, serialize;dur={serialize_ms:.2f}"
+            if trace := current_trace():
+                timing += ''.join(f", {name.removesuffix('_ms')};dur={duration:.2f}" for name, duration in sorted(trace.spans.items()))
+                logging.getLogger(__name__).info('HTTP trace_id=%s method=%s status=%s app_ms=%.2f serialize_ms=%.2f spans=%s',
+                    trace.request_id, self.command, code, app_ms, serialize_ms, json.dumps(trace.spans, sort_keys=True))
+            self._send(code, body, "application/json; charset=utf-8",
+                       [("Server-Timing", timing)])
 
         def _redirect(self, location):
             self.send_response(302)
@@ -154,17 +179,17 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return None
             return jar[name].value if name in jar else None
 
-        def _auth_count(self, key, limit, record):
-            """True while `key` has fewer than `limit` entries in the last 15 minutes; `record` adds one."""
+        def _auth_count(self, key, limit, record, window_s=900):
+            """True while `key` has fewer than `limit` entries in the last `window_s` seconds; `record` adds one."""
             now = time.monotonic()
             with guest_lock:
                 if len(auth_tries) > 5000:
-                    for k in [k for k, q in auth_tries.items() if not q or now - q[-1] > 900]:
+                    for k in [k for k, q in auth_tries.items() if not q or now - q[-1] > 3600]:
                         del auth_tries[k]
                 if key not in auth_tries and len(auth_tries) >= protection.max_keys:
                     return False
                 window = auth_tries.setdefault(key, deque())
-                while window and now - window[0] > 900:
+                while window and now - window[0] > window_s:
                     window.popleft()
                 if len(window) >= limit:
                     return False
@@ -208,6 +233,62 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return self._json(200, {"signed_in": True})
             except ValueError as exc:
                 return self._json(409 if "taken" in str(exc) else 400, {"error": str(exc)})
+
+        def _client_ip(self):
+            """The caller's address: the one the web server in front reports (loopback only), else the socket's."""
+            peer = self.client_address[0]
+            if ipaddress.ip_address(peer).is_loopback:
+                try:
+                    return str(ipaddress.ip_address(self.headers.get("X-Tg-Client-Ip", "").strip()))
+                except ValueError:
+                    pass
+            return peer
+
+        def _password_reset(self, path):
+            """POST /api/auth/password/forgot {email} and /api/auth/password/reset {email, code, password}
+            (docs/ACCOUNTS.md §2c). Forgot answers the same 200 for every valid email."""
+            if not self._same_origin():
+                return self._json(403, {"error": "cross-origin request refused"})
+            if mailer is None or not accounts.reset_ready:
+                return self._json(503, {"error": "password reset unavailable"})
+            try:
+                body = self._body()
+                email = body.get("email")
+                if not isinstance(email, str):
+                    raise ValueError("email is required")
+                ip = self._client_ip()
+                if path.endswith("forgot"):
+                    if not self._auth_count("resetask:" + ip, RESET_ASKS_PER_IP_HOUR, True, 3600):
+                        return self._json(429, {"error": "too many requests"})
+                    try:
+                        sent = accounts.forgot(email)
+                    except ResetError as exc:
+                        return self._json(429, {"error": "wait", "retry_after": exc.retry_after})
+                    if sent:
+                        def deliver(to=sent[0], code=sent[1]):
+                            try:
+                                mailer.send(reset_code_message(to, code, RESET_MINUTES))
+                            except Exception as exc:  # the answer was already the same 200; never print the code
+                                print(f"password reset mail failed: {type(exc).__name__}", file=sys.stderr)
+                        _spawn(deliver)
+                    return self._json(200, {"sent": True, "resend_after": RESET_COOLDOWN_S, "expires_in": RESET_MINUTES * 60})
+                code, password = body.get("code"), body.get("password")
+                if not isinstance(code, str) or not isinstance(password, str):
+                    raise ValueError("code and password are required")
+                if not self._auth_count("resettry:" + ip, RESET_TRIES_PER_IP_15MIN, True):
+                    return self._json(429, {"error": "too many requests"})
+                try:
+                    token = accounts.reset_password(email, code, password, self.headers.get("User-Agent", ""))
+                except ResetError as exc:
+                    if exc.kind == "wrong":
+                        return self._json(400, {"error": "wrong code", "tries_left": exc.tries_left})
+                    return self._json(410, {"error": "code locked" if exc.kind == "locked" else "code expired"})
+                with guest_lock:  # a new password also ends the wait that wrong passwords had put on this email
+                    auth_tries.pop("mail:" + email.strip().lower(), None)
+                self._signed_in(token, "auth.password_reset")
+                return self._json(200, {"signed_in": True})
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
 
         def _user(self):
             """The signed-in account or None; a session idle for a while gets its cookie re-sent (sliding 30 days)."""
@@ -318,6 +399,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
         # --- sign-in ------------------------------------------------------------------------------------------
 
         def _auth_get(self, path, query):
+            if path == "/api/auth/options":  # what the sign-in page may offer
+                return self._json(200, {"password_reset": mailer is not None and accounts.reset_ready})
             if path == "/api/auth/google/start":
                 purpose = query.get("purpose", "login")
                 uid = None
@@ -397,6 +480,10 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return self._call(lambda: harness.geo(query.get("q", "")))
             if path == "/api/harness/pulse":
                 return self._call(harness.pulse)
+            if path == "/api/harness/tags/trending":
+                return self._call(harness.tags_trending)
+            if path == "/api/harness/tags":
+                return self._call(lambda: harness.tag(query.get("ref", "")))
             if path == "/api/harness/booking/offers":
                 return self._call(lambda: booking_routes.offers(query))
             if path == "/api/harness/journey":
@@ -436,6 +523,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 stage = query.get("stage")
                 if stage not in (None, "trip", "decision", "planning"):
                     return self._json(400, {"error": "unknown stage"})
+                if query.get("view") == "0":
+                    return self._call(lambda: harness.state(m[1], owner))
                 return self._call(lambda: harness.load(m[1], stage, owner))
             if m := READ.fullmatch(path):
                 # trip/readback: the gate still open before planning, read after a partial answer (ui/ReadbackSheet.tsx)
@@ -490,6 +579,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                     return self._json(200, {})
                 if path in ("/api/auth/register", "/api/auth/login"):
                     return self._password_auth(path)
+                if path in ("/api/auth/password/forgot", "/api/auth/password/reset"):
+                    return self._password_reset(path)
                 if path == "/api/auth/logout":
                     if not self._same_origin():
                         return self._json(403, {"error": "cross-origin request refused"})
@@ -719,7 +810,7 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
     return Handler
 
 
-def run(harness, accounts, port=8769, base_url="", test_login=False, social=None, library=None):
+def run(harness, accounts, port=8769, base_url="", test_login=False, social=None, library=None, mailer=None):
     def sweep():
         last = 0.0
         while True:  # guests whose page closed or whose sessions ran out are deleted with their trips, even when nobody new arrives
@@ -733,4 +824,4 @@ def run(harness, accounts, port=8769, base_url="", test_login=False, social=None
             time.sleep(LEAVERS_EVERY_S)
     threading.Thread(target=sweep, daemon=True).start()
     cfg = protection_settings()
-    ProtectedHTTPServer(("127.0.0.1", port), handler(harness, accounts, base_url, test_login, cfg, social, library), cfg).serve_forever()
+    ProtectedHTTPServer(("127.0.0.1", port), handler(harness, accounts, base_url, test_login, cfg, social, library, mailer), cfg).serve_forever()

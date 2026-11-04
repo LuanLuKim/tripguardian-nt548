@@ -1,6 +1,6 @@
 """③ Constraint screen (docs/PLACE_DECISION.md §6): physical first, then each hard filter, pass | fail | unknown."""
 
-from requirements import hard_result
+from requirements import hard_result, safety_requirement
 
 from .model import Cand
 
@@ -36,6 +36,7 @@ def screen(c: Cand, si, days, relaxed: set[tuple[str, str]]) -> None:
             warnings.append(f"{warn}:{h.feature}")
         checks.append({"kind": "hard", "feature": h.feature, "value": h.value, "op": h.op, "result": r,
                        "reason": f"hard:{h.feature}", "policy": h.unknown_policy})
-    results = {x["result"] for x in checks}
     c.checks, c.warnings = checks, warnings
-    c.status = "excluded" if "fail" in results else "unverified" if "unknown" in results else "main"
+    fail = any(x["result"] == "fail" for x in checks)
+    unknown = any(x["result"] == "unknown" and (x["feature"] == "pets" or not safety_requirement(x)) for x in checks)
+    c.status = "excluded" if fail else "unverified" if unknown else "main"

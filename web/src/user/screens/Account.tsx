@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { deleteAccount, refreshAccount, signOut, updateProfile, uploadAvatar, useAccount, type Companions, type Me, type Mobility } from '../account'
 import { calendarDisconnect } from '../today'
 import { track } from '../events'
-import { enablePush, KIND_LABEL, loadPrefs, pushSupported, savePrefs, type Prefs } from '../notify'
+import { enablePush, notificationLabel, loadPrefs, pushSupported, savePrefs, type Prefs } from '../notify'
 import { useWarm } from '../../data/store'
 import { dateRange, info } from '../lib'
 import { deleteTrip, tripSummaries } from '../pd/api'
@@ -17,6 +17,7 @@ import { Page, useTitle } from '../ui/Shell'
 import { openShare, openTheme, useBegin } from '../home/dialogs'
 import { themeOf } from '../home/themes'
 import { GuestNotice } from './Guest'
+import { TourButton } from '../tour'
 
 const STAGE_STEP = { trip: 0, decision: 1, planning: 2 } as const
 type Kind = 'building' | 'confirmed' | 'done'
@@ -68,7 +69,7 @@ export function Trips() {
   return (
     <Page>
       <GuestNotice />
-      <header className="tg-head"><div><p className="tg-kicker">Chuyến của tôi</p><h1>Chuyến đi của bạn</h1><p>Các chuyến của tài khoản này, mở được trên mọi máy.</p></div><button type="button" className="tg-btn tg-btn--primary" onClick={() => begin({ startWith: 'nothing', startText: null })}><Icon name="plus" size={18} /> Tạo chuyến đi</button></header>
+      <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Chuyến của tôi</p><h1>Chuyến đi của bạn</h1><p>Các chuyến của tài khoản này, mở được trên mọi máy.</p></div><button type="button" className="tg-btn tg-btn--primary" onClick={() => begin({ startWith: 'nothing', startText: null })}><Icon name="plus" size={18} /> Tạo chuyến đi</button></header>
       <div className="tg-tabs" role="tablist" aria-label="Trạng thái chuyến">
         {([['building', 'Đang lên kế hoạch'], ['confirmed', 'Sắp tới'], ['done', 'Đã hoàn thành']] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className="tg-tab" onClick={() => setTab(k)}>{l}{list && <b>{list.filter((t) => kindOf(t) === k).length}</b>}</button>)}
       </div>
@@ -122,7 +123,7 @@ export function Saved() {
   const count = (k: string) => saved.filter((id) => k === 'all' || info(id)?.group === k).length
   return (
     <Page>
-      <header className="tg-head"><div><p className="tg-kicker">Đã lưu</p><h1>Địa điểm bạn đã lưu</h1><p>Lưu theo tài khoản, mở được trên mọi máy. Nơi đã lưu không tự vào lịch; thêm vào chuyến khi nơi đó nằm trong gợi ý.</p></div></header>
+      <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Đã lưu</p><h1>Địa điểm bạn đã lưu</h1><p>Lưu theo tài khoản, mở được trên mọi máy. Nơi đã lưu không tự vào lịch; thêm vào chuyến khi nơi đó nằm trong gợi ý.</p></div></header>
       {themes.length > 0 && (
         <section className="tg-sv-themes" aria-label="Chủ đề đã lưu">
           {themes.map((t) => (
@@ -181,7 +182,7 @@ export function Account() {
   const done = trips?.filter((t) => t.confirmed).length ?? 0
   return (
     <Page>
-      <header className="tg-head"><div><p className="tg-kicker">Hồ sơ</p><h1>Hồ sơ của bạn</h1><p>Bạn bè thấy tên, nickname, giới thiệu và ảnh. Gu đi chơi chỉ là gợi ý ban đầu cho chuyến mới; điều bạn nói trong chuyến luôn thắng.</p></div></header>
+      <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Hồ sơ</p><h1>Hồ sơ của bạn</h1><p>Bạn bè thấy tên, nickname, giới thiệu và ảnh. Gu đi chơi chỉ là gợi ý ban đầu cho chuyến mới; điều bạn nói trong chuyến luôn thắng.</p></div></header>
       <section className="tg-card tg-me" aria-label="Tài khoản">
         <AvatarPicker account={account} />
         <div className="tg-me__id"><b>{account.name || 'Bạn'}</b>{account.nickname && <span className="tg-muted">@{account.nickname}</span>}<span className="tg-faint">{account.email}</span></div>
@@ -191,6 +192,7 @@ export function Account() {
           <div><dt>Đã lưu</dt><dd><Link to="/saved">{savedN}</Link></dd></div>
           <div><dt>Bạn bè</dt><dd>{friends ? friends.friends.length : '–'}</dd></div>
         </dl>
+        <TourButton className="tg-btn tg-btn--ghost tg-btn--sm">Xem lại hướng dẫn</TourButton>
         <button type="button" className="tg-btn tg-btn--ghost tg-btn--sm" onClick={() => { void signOut(); go('/login') }}>Đăng xuất</button>
       </section>
       <div className="tg-prof">
@@ -307,7 +309,7 @@ function NotifyPrefs() {
         <p className="tg-faint">{p.push_devices ? `Đang nhận trên ${p.push_devices} trình duyệt.` : 'Chưa bật trên trình duyệt nào; vẫn có trong Hộp thông báo.'} Không nhắn từ {p.quiet_start} đến {p.quiet_end}.</p>
         <div className="tg-npref">
           <label><input type="checkbox" checked={p.paused} disabled={busy} onChange={(e) => save({ paused: e.target.checked })} /> Tạm im mọi thông báo</label>
-          {p.kinds.map((k) => <label key={k}><input type="checkbox" checked={p.enabled_kinds.includes(k)} disabled={busy || p.paused} onChange={() => toggle(k)} /> {KIND_LABEL[k] ?? k}</label>)}
+          {p.kinds.map((k) => <label key={k}><input type="checkbox" checked={p.enabled_kinds.includes(k)} disabled={busy || p.paused} onChange={() => toggle(k)} /> {notificationLabel(k)}</label>)}
         </div>
         {pushSupported() && Notification.permission === 'default' && <button type="button" className="tg-btn tg-btn--soft tg-btn--sm" onClick={async () => { const r = await enablePush(); if (r === 'granted') { toast('Đã bật thông báo'); loadPrefs().then(setP) } }}>Bật trên trình duyệt này</button>}
       </section>

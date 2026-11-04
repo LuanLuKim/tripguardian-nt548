@@ -3,9 +3,12 @@ over a list of serving records). Oracle for tests/decision/test_equivalence.py: 
 same view. Update this copy only when the behaviour of run() changes on purpose."""
 
 from collections import Counter
+import math
 
-from corpus.serving import feature
+from corpus.serving import conf, feature
 from requirements import activity_for
+
+from decision.learning import signals
 
 from decision.cards import card, feature_label, value_label  # noqa: F401
 from decision.chunks import assign_chunks, coverage, describe_chunks
@@ -15,7 +18,7 @@ from decision.feasibility import evaluate
 from decision.fit import DAYTIME, centers, fit
 from decision.model import FIRM, Cand, role_of
 from decision.pipeline import Result, _lodging_view, _rule_label, stub, wanted
-from decision.rank import score
+from decision.rank import safety_priority, score
 from decision.screen import screen
 from decision.trip_days import trip_days
 from decision.window import change, pages, window
@@ -63,6 +66,37 @@ def run_reference(s, records: list[dict], cfg) -> Result:
                                           if (f := feature(r, fid)) and f["status"] in FIRM and f["value"] == value},
                       lambda pid: by_id[pid]["identity"]["name"] if pid in by_id else None)
     score(live, si, st.profile, cfg, wishes=wl)
+    votes = signals(st, si, by_id, cfg) if cfg.wish["session_learning"].get("enabled", False) else {}
+    selected = set(st.selected) - {a.place_id for a in si.anchors}
+    groups = {by_id[p]["identity"].get("category_group") for p in selected if p in by_id}
+    baseline = [r for r in records if r["identity"].get("category_group") in groups]
+    cf = cfg.wish["session_learning"]
+    terms, total, weighted = {}, 0.0, []
+    for key, weight in votes.items():
+        fid, value = key
+        matching = {r["id"]: conf(f) for r in records if (f := feature(r, fid))
+                    and f["value"] == value and f["status"] == "VERIFIED" and f["n"] > 0 and f.get("evidence")}
+        if weight > 0 and len(selected) >= cf["consistent_min"]:
+            successes = sum(bool(matching.get(p)) for p in selected)
+            matches = sum(bool(matching.get(r["id"])) for r in baseline)
+            prevalence = (matches + 1) / (len(baseline) + 2)
+            if not baseline or matches == len(baseline) or successes / len(selected) <= prevalence:
+                continue
+            tail = sum(math.comb(len(selected), k) * prevalence ** k * (1 - prevalence) ** (len(selected) - k)
+                       for k in range(successes, len(selected) + 1))
+            weight *= (1 - tail) * len(selected) / (len(selected) + cf["evidence_prior"])
+        weighted.append((key, weight, matching))
+    positives = sorted((x for x in weighted if x[1] > 0), key=lambda x: (-x[1], x[0]))[:cf["top_k"]]
+    for _, weight, matching in [*positives, *(x for x in weighted if x[1] < 0)]:
+        for pid, confidence in matching.items():
+            terms[pid] = terms.get(pid, 0.0) + confidence * weight
+        total += max(abs(weight), cf["select_weight"])
+    if total:
+        for c in live:
+            delta = round(cf["max_lift"] * terms.get(c.id, 0.0) / total, 4)
+            if delta:
+                c.parts["session"] = delta
+                c.score = round(c.score + delta, 4)
     group_of = {c.id: tab(c, cfg) for c in live}
 
     visited = set(si.novelty.visited) | set(st.profile.visited)
@@ -98,7 +132,7 @@ def run_reference(s, records: list[dict], cfg) -> Result:
 
     ranked: dict[str, list[str]] = {}
     for c in sorted([*(x for x in chosen if x.id not in anchors), *listed],
-                    key=lambda c: (tier.get(c.id, 1), crowded(c), -c.score, c.id)):
+                    key=lambda c: (safety_priority(c), tier.get(c.id, 1), crowded(c), -c.score, c.id)):
         ranked.setdefault(group_of.get(c.id, "sights"), []).append(c.id)
     picked = {c.id for c in chosen}
     top = set()

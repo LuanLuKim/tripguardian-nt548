@@ -32,6 +32,61 @@ def test_a_second_writer_with_an_old_revision_gets_conflict(pool, store_kind):
     assert b.get(j.id).revision == 1  # the losing writer reloads the winner's journey
 
 
+@pytest.mark.parametrize("reload_first", [False, True])
+def test_cas_loser_retry_restores_winning_module_snapshot(pool, reload_first):
+    from test_dispatch import decision, make, run
+
+    a, _ = make()
+    a.store = PgStore(pool)
+    view = decision(a)
+    b, _ = make()
+    b.store = PgStore(pool)
+    b.load(view["id"])
+    winner = run(a, view, "act", "winner")
+    with pytest.raises(Conflict):
+        run(b, view, "act", "loser")
+    if reload_first:
+        assert b.load(view["id"])["result"]["view"]["value"] == 1
+    with pytest.raises(Conflict):
+        run(b, view, "act", "loser")
+    retry = run(b, winner, "act", "loser")
+    saved = PgStore(pool).get(view["id"])
+    assert retry["result"]["view"]["value"] == 2
+    assert saved.snapshots["decision"]["value"] == 2
+    assert "winner" in saved.receipts and "loser" in saved.receipts
+
+
+def test_append_sends_only_new_receipts_and_keeps_legacy_history(pool, monkeypatch):
+    import harness.pgstore as module
+
+    store = PgStore(pool)
+    session = store.new()
+    session.receipts = {"legacy": {"response": {"large": [1, 2, 3]}}}
+    store.save(session)
+    sent = []
+    jsonb = module.Jsonb
+
+    def capture(value):
+        sent.append(value)
+        return jsonb(value)
+
+    monkeypatch.setattr(module, "Jsonb", capture)
+    with store.lock(session.id):
+        working = store._working(session.id)
+        working.revision = 1
+        working.receipts["new"] = {"response": {"value": 2}}
+        store.save(working)
+    assert "legacy" not in json.dumps(sent)
+    assert PgStore(pool).get(session.id).receipts == {
+        "legacy": {"response": {"large": [1, 2, 3]}}, "new": {"response": {"value": 2}}}
+    # Ordinary detached saves still support replacing or removing receipts.
+    detached = store.get(session.id)
+    detached.receipts = {"replacement": {"response": {}}}
+    detached.revision = 2
+    store.save(detached)
+    assert PgStore(pool).get(session.id).receipts == detached.receipts
+
+
 def test_journeys_list_by_owner_and_restart_reads_them_back(pool, store_kind):
     s = PgStore(pool, "v1")
     mine, other = s.new(), s.new()

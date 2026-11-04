@@ -7,6 +7,7 @@ It answers natural-language questions with a probability per option. It checks f
 import json
 import re
 import os
+import time
 import urllib.request
 
 from dotenv import load_dotenv
@@ -22,30 +23,39 @@ PROMISE = "reply.promises_results"
 INVENT = "reply.states_unsaid_fact"
 
 
+SELF_PAUSE_S = 30.0  # a failing self-host is skipped this long, so each call does not wait for it first
+_SELF_DOWN_UNTIL = 0.0
+
+
 def ask(state: dict, questions: dict, cfg: Settings) -> dict:
-    """One Clef request -> {question name: answer}. {} when Clef is not configured, slow or failing: it decides nothing."""
+    """One Clef request -> {question name: answer}. The self-hosted Clef (CLEF_BASE_URL) answers when it is up;
+    when it is down or failing, Cloudflare's Clef does. {} when neither is configured or both fail: it decides nothing."""
+    global _SELF_DOWN_UNTIL
     load_dotenv(ROOT / ".env")
-    base = os.getenv("CLEF_BASE_URL")  # self-hosted gateway (scripts/model_gateway.py /v1/clef-flash); unset = Cloudflare
+    base = os.getenv("CLEF_BASE_URL")  # self-hosted gateway (scripts/model_gateway.py /v1/clef-flash)
     token, account = os.getenv("CLOUDFLARE_API_TOKEN"), os.getenv("CLOUDFLARE_ACCOUNT_ID")
-    if not (base or (token and account)):
-        return {}
     try:
         timeout = float(os.getenv("CLEF_TIMEOUT_S", cfg.clef_timeout_s))
     except ValueError:
         timeout = cfg.clef_timeout_s
-    payload = {"model": os.getenv("CLEF_MODEL", "clef-flash"), "state": state, "questions": questions}
-    model_id = os.getenv("CLEF_MODEL_ID", "@cf/cloudflare/clef-flash")
-    url = base or f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model_id}"
-    key = os.getenv("CLEF_API_KEY", "") if base else token
-    request = urllib.request.Request(url, json.dumps(payload).encode(),
-                                     {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}, method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = json.load(response)
-            raw = (body["systemone"] if base else body["result"])["answers"]
-            return raw if isinstance(raw, dict) else {a["name"]: a for a in raw}  # by name; older replies were a list
-    except (OSError, ValueError, KeyError, TypeError):
-        return {}
+    payload = json.dumps({"model": os.getenv("CLEF_MODEL", "clef-flash"), "state": state, "questions": questions}).encode()
+    targets = []  # (url, key, field holding the answers)
+    if base and time.monotonic() >= _SELF_DOWN_UNTIL:
+        targets.append((base, os.getenv("CLEF_API_KEY", ""), "systemone"))
+    if token and account:
+        model_id = os.getenv("CLEF_MODEL_ID", "@cf/cloudflare/clef-flash")
+        targets.append((f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model_id}", token, "result"))
+    for url, key, field in targets:
+        request = urllib.request.Request(url, payload, {"Content-Type": "application/json",
+                                                        "Authorization": f"Bearer {key}"}, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = json.load(response)[field]["answers"]
+                return raw if isinstance(raw, dict) else {a["name"]: a for a in raw}  # by name; older replies were a list
+        except (OSError, ValueError, KeyError, TypeError):
+            if url == base:
+                _SELF_DOWN_UNTIL = time.monotonic() + SELF_PAUSE_S
+    return {}
 
 
 def prob(answers: dict, name: str, option: str) -> float:

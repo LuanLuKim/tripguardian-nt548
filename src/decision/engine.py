@@ -28,6 +28,7 @@ from .guard import TurnPlan, guard, names_in
 from .heuristics import common_wish, exact_command, general_wish
 from .pipeline import Data, Result, run, wanted, why_not
 from .policy import DONE, NONE, policy
+from .rank import pet_access_priority, safety_priority
 from .scope import STEPS, replan_scope
 from .session import Pending, Session, State, Store
 from .settings import Settings
@@ -61,6 +62,23 @@ def _ontology_version() -> int:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _pet_safety(si: SearchInput) -> SearchInput:
+    """Normalize legacy handoffs too; unknown pet policy is not permission."""
+    if "pet" not in si.context.companions or any(
+            h.feature == "pets" and h.op == "ne" and h.value == "not_allowed" and h.unknown_policy == "flag"
+            for h in si.hard_filters):
+        return si
+    payload = si.model_dump(mode="json")
+    filters = payload["hard_filters"]
+    for h in filters:
+        if h["feature"] == "pets" and h["op"] == "ne" and h["value"] == "not_allowed":
+            h["unknown_policy"] = "flag"
+            break
+    else:
+        filters.append({"feature": "pets", "op": "ne", "value": "not_allowed", "unknown_policy": "flag"})
+    return SearchInput.model_validate(payload)
 
 
 def _confirmable(feasibility: dict) -> bool:
@@ -150,6 +168,11 @@ class Engine:
             raise NoSession(sid) from None
 
     def _result(self, s: Session) -> Result:
+        normalized = _pet_safety(s.search_input)
+        if normalized is not s.search_input:
+            s.search_input, s.output = normalized, None
+            self._results.pop(s.id, None)
+            self.store.save(s)
         if s.id not in self._results:
             res = run(s, self.data, self.cfg, self._memo.setdefault(s.id, {}))
             if res.shown != s.state.shown or res.chunk_assignments != s.state.chunk_assignments:
@@ -185,13 +208,7 @@ class Engine:
         r = self.data.by_id.get(lod.get("id"))
         if r is None or r["identity"].get("category_group") != "stay":
             raise ActionError(f"unknown lodging {lod.get('id')!r}")
-        ont = load_ontology()
-        for requirement in si.hard_filters:
-            definition = ont.features.get(requirement.feature)
-            protected = requirement.feature.startswith("fit.") or (definition and definition.group in {"effort", "suitability"})
-            checked = requirement.model_copy(update={"unknown_policy": "exclude"}) if protected else requirement
-            if not allowed(r, checked, activity="accommodation"):
-                raise ActionError(f"lodging requirement failed or unknown: {requirement.feature}")
+        # Explicit choices are preserved; Planning warns without replacing the user's lodging.
         night = r["operation"].get("price_per_night") or {}
         return {"kind": "corpus", "id": r["id"], "text": r["identity"]["name"], "lat": r["identity"]["lat"],
                 "lng": r["identity"]["lng"], "price_vnd": night.get("value")}
@@ -277,13 +294,13 @@ class Engine:
 
     # ---------- API ----------
 
-    def create(self, search_input: dict, trip_session: str | None = None) -> dict:
-        si = SearchInput.model_validate(search_input)
+    def create(self, search_input: dict, trip_session: str | None = None, *, hidden_ids: tuple[str, ...] = ()) -> dict:
+        si = _pet_safety(SearchInput.model_validate(search_input))
         if si.ontology_version != _ontology_version():
             raise VersionMismatch(f"Search Input ontology v{si.ontology_version}, corpus v{_ontology_version()}")
         st = State(selected=[a.place_id for a in si.anchors],
                    locked=[a.place_id for a in si.anchors if a.priority == "must"])
-        s = self.store.new(si, trip_session, st)
+        s = self.store.new(si, trip_session, st, hidden_ids=hidden_ids)
         res = self._result(s)
         s.first_shortlist = sum(1 for g in res.view["groups"] for c in g["cards"] if c["top"] or c["anchor"])
         self.store.save(s)
@@ -325,10 +342,22 @@ class Engine:
             res = self._result(s)
             labels = self.cfg.labels["group"]
             ids = [p for g in self.cfg.tabs for p in res.ranked.get(g, [])] + list(res.unverified or [])
-            found = [p for p in ids if hit(f"{res.cands[p].name} {res.cands[p].rec['identity'].get('category') or ''} "
-                                           f"{labels.get(res.group_of.get(p, ''), '')}")]
-            found.sort(key=lambda p: -res.cands[p].score)  # stable: a tie keeps its tab's order
-            have = set(ids) | {c["id"] for g in res.view["groups"] for c in g["cards"]}
+            region = self.data.region
+            names, categories = region.column("name"), region.column("category")
+            found = [p for p in ids if p in region.index
+                     and hit(f"{names[region.index[p]] or ''} {categories[region.index[p]] or ''} "
+                             f"{labels.get(res.group_of.get(p, ''), '')}")]
+            found += [p for p in ids if p not in region.index and hit(res.cands[p].name)]
+            # Trip exclusions are suggestions-only: a typed name is an intentional lookup, without a reminder.
+            excluded = {p.place_id for p in s.search_input.excluded_places}
+            found += [p for p in region.ids if p in excluded and p in res.cands and p not in ids
+                      and p not in s.hidden_ids and hit(names[region.index[p]] or "")
+                      and not hit(f"{categories[region.index[p]] or ''} "
+                                  f"{labels.get(res.group_of.get(p, ''), '')}")]
+            found.sort(key=lambda p: (safety_priority(res.cands[p]),
+                                      pet_access_priority(res.cands[p].rec, s.search_input.context.companions),
+                                      -res.cands[p].score))  # stable: a tie keeps its tab's order
+            have = set(ids) | set(found) | excluded | set(s.hidden_ids) | {c["id"] for g in res.view["groups"] for c in g["cards"]}
             outside = []
             for pid, name in zip(self.data.region.ids, self.data.region.places["name"].to_list()):
                 if len(outside) >= SEARCH_OUTSIDE or pid in have or pid in self.data.region.stay or not hit(name or ""):
@@ -487,12 +516,13 @@ class Engine:
             return PlaceEvidence(corpus_binding=s.search_input.corpus_binding, place_id=payload.place,
                                  feature=payload.feature, value=value, status=status, reason=reason, items=items)
 
-    def confirm(self, sid: str) -> dict:
+    def confirm(self, sid: str, *, for_planning: bool = False) -> dict:
         s = self._get(sid)
         with self.store.lock(sid):
             res = self._result(s)
             status = res.view["feasibility"]["status"]
-            if not _confirmable(res.view["feasibility"]):
+            # Handoff is not a claim of feasibility; Planning must validate every scheduled visit.
+            if not for_planning and not _confirmable(res.view["feasibility"]):
                 raise NotConfirmable(status)
             try:
                 self._check_current_lodging(s)

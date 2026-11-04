@@ -7,3 +7,4 @@ tools:
   - {name: planning.diagnostics, access: read}
   - {name: planning.propose, access: read}
   - {name: planning.turn, access: write}
+  - {name: planning.set_stop_time, access: write}

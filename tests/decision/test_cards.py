@@ -50,9 +50,11 @@ def test_price_unknown_budget_warnings_failed_and_declined():
                       "reason": "hard:long_walk", "policy": "flag"}])
     got = card(c, si(unknowns=["budget_vnd"]), CFG)
     assert price_text(rec) == "100k–200k/người"
-    assert got["depends_on_unknown"] == "Chưa biết ngân sách của bạn; giá khoảng 100k–200k/người"
+    assert got["depends_on_unknown"] is None  # a missing budget is the traveller's to give, never a card tradeoff
+    assert got["price"] == "100k–200k/người" and not any("ngân sách" in t["text"] for t in got["tradeoffs"])
     assert got["warnings"] == ["Giờ mở cửa có thể đã đổi, kiểm tra lại trước chuyến", "Độ ồn: chưa xác nhận chắc"]
-    assert got["failed"] == ["Dốc, nhiều bậc: có"] and got["unverified"] == ["Chưa xác minh được: phải đi bộ xa"]
+    assert got["failed"] == ["Dốc, nhiều bậc: có"] and got["unverified"] == []
+    assert got["tradeoffs"] == [{"text": "Chưa rõ có phải đi bộ xa", "sid": "long_walk"}]
     assert got["declined"] is True and phrase("crowd", "high", CFG) == "Độ đông: đông"
 
 
@@ -145,3 +147,19 @@ def test_card_photos_are_scene_photos_without_people_and_blur_in_the_order_of_th
 def test_card_without_labels_has_no_photos_so_the_web_keeps_its_own(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     assert card(cand(srec("0xc:0xd")), si(), CFG)["photos"] == []
+
+
+def test_card_photo_past_the_age_cap_carries_its_year_and_only_for_an_outdoor_scene_of_a_sight(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    year = __import__("datetime").date.today().year - 4
+    for pid, group in (("0xa:0xb", "nature"), ("0xc:0xd", "cafe")):
+        _label(tmp_path, pid, [("v", "view", {}), ("i", "interior", {})])
+        f = tmp_path / "gmaps" / "photo_scenes" / f"{pid.replace(':', '_')}.json"
+        doc = json.loads(f.read_text())
+        for e in doc["photos"]:
+            e.update(old=True, month=f"{year}-06")
+        f.write_text(json.dumps(doc))
+    got = card(cand(srec("0xa:0xb", group="nature")), si(), CFG)["photos"]
+    assert [(p["scene"], p.get("year")) for p in got] == [("view", year)]  # the old interior is dropped
+    assert card(cand(srec("0xc:0xd", group="cafe")), si(), CFG)["photos"] == []

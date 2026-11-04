@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { initialOf, useAccount } from '../account'
-import { enterStage, requestStageEntry, resumeJourney, type Stage } from '../journey'
+import { enterStage, requestStageEntry, type Stage } from '../journey'
+import { primeDecision } from '../pd/api'
 import { STEPS, useTrip, type StepId } from '../trip'
 import { go, href, Link } from './common'
 import { Icon } from './icons'
@@ -12,13 +13,12 @@ function Me({ className }: { className: string }) {
 }
 
 const STAGE_OF: Record<StepId, Stage> = { understand: 'trip', explore: 'decision', plan: 'planning' }
-const ORDER: Record<Stage, number> = { trip: 0, decision: 1, planning: 2 }
 
 // A finished step is a way back: the journey on the server steps back with it (never forward).
 // A later step is a way ahead without finishing this one: `onAhead` lets the screen move the journey on itself
 // (Tìm hiểu hands what it has to Lựa chọn); without it the step's page opens and says what it still needs.
 export function FlowBar({ step, aside, onAhead }: { step: StepId | 'done'; aside?: ReactNode; onAhead?: (target: StepId) => void }) {
-  const { trip, dispatch } = useTrip()
+  const { trip } = useTrip()
   const [going, setGoing] = useState<StepId | null>(null) // the step clicked while the server steps the journey back: it shows at once
   const idx = step === 'done' ? STEPS.length : STEPS.findIndex((s) => s.id === step) // feedback comes after the last step
   const back = async (target: StepId, to: string) => {
@@ -32,12 +32,9 @@ export function FlowBar({ step, aside, onAhead }: { step: StepId | 'done'; aside
       const origin = location.pathname + location.search
       const stage = STAGE_OF[target]
       try {
-        const current = (await resumeJourney(id)).view
+        const current = await enterStage(id, stage)
         if (origin !== location.pathname + location.search) return
-        if (ORDER[stage] < ORDER[current.stage]) {
-          await enterStage(id, stage)
-          dispatch({ type: 'set', patch: { planningId: null, ...(stage === 'trip' ? { decisionId: null } : {}) } })
-        }
+        if (stage === 'decision') primeDecision(id, current)
         if (stage === 'trip') requestStageEntry(id, 'trip')
       } catch {
         /* the target screen shows the connection error itself */

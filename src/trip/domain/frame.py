@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import Field as PydanticField, field_validator, model_validator
 
+from ..infrastructure.settings import ARRIVAL_BUFFER_MIN, DEPARTURE_BUFFER_MIN
 from .state import Evidence, Field, Frozen, Source
 
 if TYPE_CHECKING:
@@ -176,8 +177,8 @@ def _blocks(blocks: list[Busy], start: int, end: int) -> tuple[BusyBlock, ...]:
                  for lo, hi, members in merged)
 
 
-def compile_frame(state: TripState, arrival_buffer_min: int = 45, entry_min: int = 30,
-                  defaults: FrameDefaults | None = None) -> CompiledFrame | None:
+def compile_frame(state: TripState, arrival_buffer_min: int = ARRIVAL_BUFFER_MIN, entry_min: int = 30,
+                  defaults: FrameDefaults | None = None, *, departure_buffer_min: int | None = None) -> CompiledFrame | None:
     """Physical arrival/departure bounds override wishes, never the other way around."""
     if not state.start_date.known or not state.days.known:
         return None
@@ -186,15 +187,13 @@ def compile_frame(state: TripState, arrival_buffer_min: int = 45, entry_min: int
     defaults = defaults or FrameDefaults()
     frame = state.frame
     first_date, count = state.start_date.value, state.days.value
-    arrive = frame.arrive.value
-    if arrive is None and state.inbound.value:
-        arrive = Moment(at=state.inbound.value.arrive_at, how=state.inbound.value.mode)
-    leave = frame.leave.value
-    if leave is None and state.outbound.value:
-        leave = Moment(at=state.outbound.value.depart_at, how=state.outbound.value.mode)
-    buffer = timedelta(minutes=arrival_buffer_min + entry_min)
-    ready = datetime.fromisoformat(arrive.at) + buffer if arrive else None
-    done = datetime.fromisoformat(leave.at) - buffer if leave else None
+    from .logistics import travel_bound, travel_moments
+
+    arrive, leave = travel_moments(state)
+    ready = travel_bound(arrive, arrival_buffer_min, entry_min, point=state.entry_point.value)
+    departure_margin = departure_buffer_min if departure_buffer_min is not None else (
+        DEPARTURE_BUFFER_MIN if arrival_buffer_min == ARRIVAL_BUFFER_MIN else arrival_buffer_min)
+    done = travel_bound(leave, departure_margin, entry_min, departing=True, point=state.exit_point.value)
     issues = []
     if arrive and datetime.fromisoformat(arrive.at).date() != first_date:
         issues.append(FrameIssue(code="arrive_not_on_first_day", day=0))

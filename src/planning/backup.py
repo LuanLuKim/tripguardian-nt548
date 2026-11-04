@@ -6,9 +6,11 @@ since backups are not in the travel matrix), the same kind, through the hard fil
 reason. None found -> said so, nothing invented. For a delay, each day names the stop to drop first.
 """
 
+from dataclasses import replace
+
 from requirements import activity_for, allowed
 
-from . import places as pl
+from . import diet, pets, places as pl
 from .conditions import advisory_hits, crowd_sensitive, hazard, warned
 from .details import block, season
 from .schedule import DayCtx, intervals_for
@@ -57,6 +59,8 @@ def _fits(b, s, reasons: list[str], cx: DayCtx, hard_filters: list) -> bool:
     if "advisory" in reasons and advisory_hits(b, cx.cond):
         return False
     activity = activity_for(b.rec, s.activity, s.kind)
+    if not diet.allowed(replace(b, activity=activity, kind=s.kind), cx):
+        return False
     if any(not allowed(b.rec, hf, activity, s.kind) for hf in hard_filters):
         return False
     if "rain" in reasons and exposure(b) != "sheltered":
@@ -71,7 +75,7 @@ def _fits(b, s, reasons: list[str], cx: DayCtx, hard_filters: list) -> bool:
 def backups(ctxs: list[DayCtx], results: list, decision: dict, by_id: dict) -> dict:
     cfg = ctxs[0].cfg
     tc = decision["trip_context"]
-    mobility, hard = tc["context"].get("mobility"), tc.get("hard_filters") or []
+    mobility, hard = tc["context"].get("mobility"), pets.filters(tc)
     confirmed = {c["id"] for c in decision["confirmed"]} | {pid for r in results for pid in r.order}
     pool = [b for b in decision.get("backup_pool") or [] if b["id"] not in confirmed]
     entry = {b["id"]: b for b in pool}
@@ -98,7 +102,8 @@ def backups(ctxs: list[DayCtx], results: list, decision: dict, by_id: dict) -> d
             out.append({"day": cx.day.index + 1, "place_id": s.id, "name": s.name, "reasons": reasons,
                         "text": ", ".join(REASON_TEXT[x] for x in reasons),
                         "alternatives": [{"id": b.id, "name": b.name, "minutes_rough": m, "for_this": not other,
-                                          "reason": entry[b.id].get("reason")}
+                                          "reason": entry[b.id].get("reason"),
+                                          "warnings": pets.warnings([b], hard)}
                                          for other, _, m, _, b in alts[: cfg.backups_per_place]],
                         "none_text": None if alts else "Không có phương án thay."})
         droppable = [i for i in r.order if cx.places[i].role == "selected"]

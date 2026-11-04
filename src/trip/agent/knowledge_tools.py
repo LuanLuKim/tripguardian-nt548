@@ -5,12 +5,14 @@ dates; a field the corpus lacks is "unknown"."""
 
 from __future__ import annotations
 
+import re
 from typing import ClassVar, Literal
 
 from agents.assistant import action_tool, read_tool
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..domain.state import Anchor, ontology, settle, with_meta
+from ..domain.text import squash
 
 DATE = r"^\d{4}-\d{2}-\d{2}$"
 
@@ -29,6 +31,8 @@ def _many(turn, refs: list[str]) -> list[str]:
 def resolve_find_places(turn, criteria: dict) -> dict:
     """find_places criteria with the place names of near_place / exclude mapped to ids (an unknown name is an error)."""
     out = dict(criteria)
+    if isinstance(out.get("dish"), str):
+        _food(turn, out["dish"])
     if isinstance(out.get("near_place"), str):
         out["near_place"] = _one(turn, out["near_place"])
     if isinstance(out.get("exclude"), list):
@@ -118,11 +122,43 @@ class FindDishes(BaseModel):
     dish: str = Field(min_length=1, max_length=100, description="The dish as the user wrote it.")
 
 
+def _food(turn, phrase: str) -> None:
+    from .tools import dish_phrase
+    if not dish_phrase(phrase, turn.catalog.dishes(phrase)):
+        raise ValueError("not a grounded food phrase; use the whole dish name, never conversation words or cafe style")
+
+
 @read_tool(FindDishes, group="places")
 def find_dishes(turn, inp: FindDishes) -> dict:
+    _food(turn, inp.dish)
     out = turn.knowledge.more.dishes(inp.dish, turn.state)
     out["_cards"] = out["ranked"]
     return out
+
+
+class BrowseTags(BaseModel):
+    """Show a BROAD ask as cards the user taps. The app decides the shape from the criteria you give: nothing named
+    ("gợi ý gì hay ở Đà Lạt", "chưa biết đi đâu") -> mode "tags", the biggest kinds of places in the city; ONE interest named
+    ("tui thích săn mây, có kiểu nào hay", "đi ăn gì ở Đà Lạt", "chỗ nào chill") -> mode "subtags", groups inside that
+    interest; two things named ("quán cà phê săn mây"), few matches, a weak split, or the same cards just shown -> mode
+    "places", the plain list. Use it for an interest, a mood or a request for ideas / kinds; for a specific ask (a named
+    place, a price, a distance, a group size, "thêm nữa") use find_places. The result has `mode` and, for tags / subtags,
+    each kind with its label and how many places. Its cards are already on the user's screen: in mode tags / subtags write
+    ONE sentence naming 3-4 of the labels and invite a tap, and do not list places or ask a question; in mode places
+    talk about the list like a find_places result."""
+    model_config = ConfigDict(extra="forbid")
+    tool_name: ClassVar[str] = "browse_tags"
+
+    criteria: dict = Field(description=(
+        "The ask as find_places criteria: groups, must / prefer [[fid, value]], dish, month, text, exclude. Give ONLY what the "
+        "user said: empty {} for a vague ask; săn mây -> must cloud_hunting=present; bánh căn -> dish; ăn uống -> groups "
+        "restaurant; a mood (chill) -> prefer, not must. Never guess kinds yourself. near_place, price_max, sort and page "
+        "are not taken."))
+
+
+@read_tool(BrowseTags, group="places")
+def browse_tags(turn, inp: BrowseTags) -> dict:
+    return turn.knowledge.browse.subtags(resolve_find_places(turn, inp.criteria), turn.state, turn.tag_seen, turn.tag_picked)
 
 
 # ---------- 5.3 travel ----------
@@ -302,20 +338,43 @@ def save_place(turn, inp: SavePlace) -> dict:
 
 
 class HidePlace(BaseModel):
-    """Stop suggesting a place in this trip ("đừng gợi ý quán này nữa"). It only hides the place here: it is not a dislike
-    and nothing is learned from it unless the user says why. undo true shows it again."""
+    """Stop suggesting a place in this trip ("đừng gợi ý quán này nữa", "quán X đóng cửa rồi mà"). It only hides the place
+    here: it is not a dislike and nothing is learned from it unless the user says why. undo true shows it again. When the
+    user says a place has CLOSED, set closed true (kept as a report for the data) and same_name true if they named the
+    brand, not one branch ("Tao Ngộ đóng cửa rồi"): its other branches are hidden too."""
     model_config = ConfigDict(extra="forbid")
     tool_name: ClassVar[str] = "hide_place"
 
     id: str = Field(description="A place id or name.")
     undo: bool = Field(False, description="true = show the place again.")
+    closed: bool = Field(False, description="true = the user says the place is closed or gone.")
+    same_name: bool = Field(False, description="true = also hide the places with the same name apart from a branch number.")
+
+
+def _stem(name: str) -> str:
+    return re.sub(r"\b(?:chi nhanh|co so|cn)\s+(?:so\s+)?\d+\s*$", "", squash(name)).strip()
 
 
 @action_tool("trip", HidePlace, requires="assistant")
 def hide_place(turn, inp: HidePlace) -> dict:
     pid = _one(turn, inp.id)
+    target = turn.catalog.by_id[pid]
+    ids = [pid]
+    if inp.same_name:
+        names = {_stem(p.name) for p in turn.catalog.places}
+
+        def brand(name: str) -> str:
+            stem = _stem(name)
+            base = re.sub(r"\s+\d+$", "", stem)
+            return base if base != stem and base in names else stem  # an unnumbered catalog name proves the shared base
+
+        if stem := brand(target.name):
+            ids += [p.id for p in turn.catalog.places if p.id != pid and brand(p.name) == stem]
     hidden = turn.state.meta.hidden_ids
-    kept = tuple(x for x in hidden if x != pid)
-    new = kept if inp.undo else (*kept, pid)
+    kept = tuple(x for x in hidden if x not in ids)
+    new = kept if inp.undo else (*kept, *ids)
     turn.state = with_meta(turn.state, hidden_ids=new[-200:])
-    return {"ok": True, "hidden": not inp.undo, "n": turn.catalog.by_id[pid].name}
+    if inp.closed and not inp.undo:  # the user's report goes to the data's gaps (the user is a source, not proof)
+        from ..infrastructure.gaps import record
+        record(turn.gaps, f"user says closed: {target.name}", "user_report", topic="status", subject=pid)
+    return {"ok": True, "hidden": not inp.undo, "n": target.name, "also_hidden": len(ids) - 1}

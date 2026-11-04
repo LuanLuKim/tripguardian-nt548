@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Khám phá 3D</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Same values as web/src/user/css/tokens.css: this page is an iframe, the app's stylesheet does not reach it. */
+:root {
+  color-scheme: light;
+  --tg-bg: #f6f6f6; --tg-surface: #ffffff; --tg-ink: #111111; --tg-ink-2: #444444; --tg-ink-3: #6b6b6b;
+  --tg-line: #e5e5e5; --tg-line-2: #d4d4d4; --tg-pine: #111111; --tg-pine-d: #000000; --tg-pine-soft: #f0f0f0;
+  --tg-brand: #b4532a;
+  --tg-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --tg-sh-1: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 20px rgba(0, 0, 0, 0.05);
+  --tg-ease: cubic-bezier(0.22, 0.8, 0.3, 1);
+  font-size: 82.5%; /* the app is drawn at 82.5% too (html.tg-scaled) */
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; overflow: hidden; color: var(--tg-ink); font: 400 1rem/1.5 var(--tg-sans); background: var(--tg-bg); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--tg-brand); outline-offset: 2px; }
+button:disabled { opacity: 0.35; cursor: default; }
+[hidden] { display: none !important; }
+
+#canvas { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 44%, var(--tg-surface) 0%, var(--tg-bg) 62%, #ededed 100%); opacity: 0; transition: opacity 420ms var(--tg-ease); }
+.is-ready #canvas { opacity: 1; }
+canvas { display: block; position: relative; }
+
+.masthead { display: none; } /* the sheet above already names the place */
+
+/* Sizes in rem: the app's authored px are drawn at 82.5%, so 1rem here is the same size as 1rem out there. */
+.pin { position: absolute; z-index: 3; width: 1.85rem; height: 1.85rem; padding: 0; border: 0; border-radius: 50%; background: var(--tg-surface); color: var(--tg-ink); font: 600 0.8rem var(--tg-sans); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.1); transform: translate(-50%, -50%); transition: background 180ms, color 180ms, box-shadow 220ms; }
+.pin:before { content: ''; position: absolute; inset: -0.5rem; border-radius: 50%; }
+.pin:hover, .pin:focus-visible, .pin.highlight { background: var(--tg-pine); color: #fff; }
+.pin.current { background: var(--tg-brand); color: #fff; box-shadow: 0 0 0 0.3rem rgba(180, 83, 42, 0.18); }
+.pin.has-inside:after { content: ''; position: absolute; right: -1px; bottom: 0; width: 0.5rem; height: 0.5rem; border: 2px solid var(--tg-surface); border-radius: 50%; background: var(--tg-brand); }
+.pin.current.has-inside:after { display: none; }
+.pin.next { animation: next-stop 2.6s ease-out infinite; }
+@keyframes next-stop { 0%, 100% { box-shadow: 0 0 0 0.2rem rgba(180, 83, 42, 0.16); } 60% { box-shadow: 0 0 0 0.6rem rgba(180, 83, 42, 0); } }
+.pin span { position: absolute; top: 50%; left: 2.4rem; display: none; padding: 0.4rem 0.7rem; border-radius: 0.6rem; background: var(--tg-pine); color: #fff; font: 500 0.84rem var(--tg-sans); white-space: nowrap; pointer-events: none; transform: translateY(-50%); }
+.pin:hover span, .pin:focus-visible span { display: block; }
+.pin-leaders { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; pointer-events: none; }
+.pin-leaders line { stroke: var(--tg-ink-3); stroke-width: 0.7; opacity: 0.45; }
+
+/* The controls float on the model as separate pieces, each one showing only in its moment. */
+.tour-bar { display: contents; }
+.tour-bar button { border: 0; font-weight: 600; white-space: nowrap; }
+.tour-bar button:active:not(:disabled) { transform: scale(0.96); }
+#tour-progress { display: none; }
+
+/* Overview: one way in. */
+#tour-start { position: absolute; z-index: 6; left: 50%; bottom: 1.25rem; display: inline-flex !important; align-items: center; gap: 0.55rem; min-height: 3.1rem; padding: 0 1.6rem 0 1.25rem; border-radius: 999px; background: var(--tg-pine); color: #fff; font-size: 1rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 14px 34px rgba(0, 0, 0, 0.2); translate: -50% 0.75rem; opacity: 0; transition: translate 420ms var(--tg-ease), opacity 280ms var(--tg-ease), background 150ms, transform 150ms; }
+#tour-start:hover { background: var(--tg-pine-d); }
+.is-ready #tour-start { translate: -50% 0; opacity: 1; }
+.is-ready #tour-start[hidden] { translate: -50% 0.75rem; opacity: 0; pointer-events: none; visibility: hidden; transition: translate 280ms var(--tg-ease), opacity 200ms, visibility 0s 280ms; }
+#tour-count { display: inline !important; font-weight: 400; opacity: 0.68; font-variant-numeric: tabular-nums; }
+#tour-count:before { content: '·'; margin-right: 0.55rem; }
+
+/* Touring: back to the overview at the corner the hint leaves free. */
+#tour-overview { position: absolute; z-index: 6; top: 1rem; left: 1rem; display: inline-flex !important; align-items: center; gap: 0.35rem; min-height: 2.5rem; padding: 0 1rem 0 0.75rem; border-radius: 999px; background: var(--tg-surface); color: var(--tg-ink); font-size: 0.9rem; box-shadow: var(--tg-sh-1); transition: translate 320ms var(--tg-ease), opacity 240ms, background 150ms, transform 150ms; }
+#tour-overview:hover { background: var(--tg-pine-soft); }
+#tour-overview[hidden] { translate: -0.5rem 0; opacity: 0; pointer-events: none; visibility: hidden; transition: translate 240ms var(--tg-ease), opacity 200ms, visibility 0s 240ms; }
+
+/* Touring: the stop itself, a stacked glass card the camera frames the model beside. */
+.tour-card { position: absolute; z-index: 6; left: 1rem; bottom: 1rem; display: grid; gap: 0.85rem; width: 24rem; max-width: calc(100% - 2rem); padding: 1.15rem 1.15rem 0.9rem 1.3rem; border-radius: 1.35rem; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(18px) saturate(1.25); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 2px 6px rgba(0, 0, 0, 0.05), 0 18px 48px rgba(0, 0, 0, 0.12); translate: 0 1rem; opacity: 0; visibility: hidden; transition: translate 320ms var(--tg-ease), opacity 220ms, visibility 0s 320ms; }
+.is-touring .tour-card { translate: 0 0; opacity: 1; visibility: visible; transition: translate 460ms var(--tg-ease) 80ms, opacity 320ms var(--tg-ease) 80ms; }
+.tour-copy.is-new > * { animation: copy-in 340ms var(--tg-ease) backwards; }
+.tour-copy.is-new > :nth-child(2) { animation-delay: 30ms; }
+.tour-copy.is-new > :nth-child(n + 3) { animation-delay: 60ms; }
+@keyframes copy-in { from { opacity: 0; transform: translateY(0.4rem); } }
+#tour-step { display: block; margin-bottom: 0.35rem; color: var(--tg-brand); font: 600 0.72rem/1.3 var(--tg-sans); letter-spacing: 0.12em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.tour-copy h2 { margin: 0 0 0.25rem; font: 600 1.18rem/1.3 var(--tg-sans); letter-spacing: -0.01em; text-wrap: balance; }
+.tour-copy p { margin: 0; color: var(--tg-ink-2); font-size: 0.95rem; line-height: 1.5; }
+#tour-hint { display: block; margin-top: 0.35rem; color: var(--tg-brand); font-size: 0.86rem; font-weight: 500; }
+#tour-hint:empty { display: none; }
+
+.tour-foot { display: flex; align-items: center; }
+#tour-previous, #tour-next { display: none !important; } /* the wheel, the arrow keys and the route dots move the tour */
+
+/* The route: the line fills with the wheel, stop by stop. */
+.tour-dots { --route: 0; --inset: 0.35rem; position: relative; display: flex; flex: 1; align-items: center; justify-content: space-between; min-width: 0; height: 1.7rem; }
+.tour-dots:before, .tour-dots:after { content: ''; position: absolute; left: var(--inset); top: 50%; height: 2px; border-radius: 2px; translate: 0 -50%; }
+.tour-dots:before { right: var(--inset); background: var(--tg-line-2); }
+.tour-dots:after { width: calc((100% - 2 * var(--inset)) * var(--route)); background: var(--tg-brand); transition: width 520ms var(--tg-ease); }
+.tour-dots.is-live:after { transition: none; }
+.tour-bar .tour-dot { position: relative; z-index: 1; flex: none; width: 0.7rem; height: 1.7rem; padding: 0; background: none; }
+.tour-dot:before { content: ''; position: absolute; inset: 0 -0.3rem; }
+.tour-dot:after { content: ''; position: absolute; top: 50%; left: 50%; width: 0.7rem; height: 0.7rem; border: 2px solid var(--tg-line-2); border-radius: 50%; background: var(--tg-surface); translate: -50% -50%; transition: border-color 180ms, background 180ms, scale 260ms var(--tg-ease); }
+.tour-dot:hover:after { border-color: var(--tg-ink-3); }
+.tour-dot.is-past:after { border-color: var(--tg-brand); background: var(--tg-brand); }
+.tour-dot[aria-current='step']:after { scale: 1.35; border-color: var(--tg-brand); background: var(--tg-surface); }
+
+/* The guides, the same pill as the rotary disc's (.tg-disc__hint): one tells how to look around, one how to walk. */
+#view-guide { left: 1rem; }
+#tour-guide { left: 26rem; }
+.guide { position: absolute; z-index: 6; bottom: 1rem; display: flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.55rem 1rem 0.55rem 0.75rem; border: 1px solid var(--tg-line-2); border-radius: 999px; background: var(--tg-surface); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 18px 48px rgba(0, 0, 0, 0.12); color: var(--tg-pine-d); font-size: 0.84rem; line-height: 1.35; white-space: nowrap; pointer-events: none; translate: 0 0.6rem; opacity: 0; visibility: hidden; transition: translate 280ms var(--tg-ease), opacity 200ms, visibility 0s 280ms; }
+.is-ready:not(.is-touring) #view-guide, .is-touring #tour-guide { translate: 0 0; opacity: 1; visibility: visible; transition: translate 460ms var(--tg-ease) 260ms, opacity 320ms var(--tg-ease) 260ms; }
+#tour-guide.is-bump { animation: guide-bump 340ms var(--tg-ease); }
+@keyframes guide-bump { 30% { scale: 1.05; } }
+.guide span { display: grid; flex: none; animation: guide-nudge 1.6s ease-in-out infinite; }
+@keyframes guide-nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+.guide svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.tour-bar svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ?poster=1: the still shown while the model loads, no controls in it. */
+.is-poster #tour-start, .is-poster .guide, .is-poster .tour-card, .is-poster #tour-overview, .is-poster .pin, .is-poster .pin-leaders { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) { *, *:before, *:after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="canvas" aria-label="Mô hình kiến trúc ba chiều"></div>
+<header class="masthead" id="masthead"><h1 id="place-name"></h1><span id="place-location"></span></header>
+<p class="guide" id="view-guide" role="note">
+  <span aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 5 5v8a5 5 0 0 1-10 0V8a5 5 0 0 1 5-5ZM12 7v3"/></svg></span>
+  Kéo để xoay · Lăn chuột để phóng to
+</p>
+<nav class="tour-bar" id="tour-bar" aria-label="Điều hướng tham quan">
+  <button id="tour-start">
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5-12-7.5Z"/></svg>
+    Bắt đầu tham quan <span id="tour-count"></span>
+  </button>
+  <button id="tour-overview" hidden title="Trở về toàn cảnh (Esc)">
+    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    Toàn cảnh
+  </button>
+  <div class="tour-card">
+    <div class="tour-copy" aria-live="polite" aria-atomic="true">
+      <span id="tour-step"></span>
+      <h2 id="tour-title"></h2>
+      <p id="tour-caption"></p>
+      <small id="tour-hint"></small>
+    </div>
+    <div class="tour-foot">
+      <div class="tour-dots" id="tour-dots"></div>
+      <button id="tour-previous" hidden></button>
+      <button id="tour-next" hidden></button>
+    </div>
+  </div>
+  <p class="guide" id="tour-guide" role="note">
+    <span aria-hidden="true">
+      <svg width="13" height="13" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
+      <svg width="13" height="13" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </span>
+    <b id="tour-guide-text" style="font-weight: 400"></b>
+  </p>
+  <div id="tour-progress" aria-hidden="true"></div>
+</nav>
+<script type="module" src="viewer-5f124691e5.js"></script>
+</body>
+</html>

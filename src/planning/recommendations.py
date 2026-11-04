@@ -4,11 +4,15 @@ from dataclasses import replace
 
 from requirements import allowed, category_for
 
+from . import diet, pets
 from .places import build_places
+from .lodging import hard_requirements
+from .traits import suggestion_fit
 from .schedule import simulate
 from .settings import fmt
 from .timefit import period_load, period_windows, windows_for
-from .validate import validate
+from .validate import NO_BUDGET_CAP, validate
+from .safety import unknown_features, warnings as safety_warnings
 
 PERIOD_TEXT = {"morning": "buổi sáng", "midday": "giữa trưa", "afternoon": "buổi chiều", "evening": "buổi tối"}
 GROUPS = {"morning": {"museum", "religious", "attraction", "nature", "garden_farm"},
@@ -47,15 +51,19 @@ def recommend(ctxs: list, results: list, decision: dict, by_id: dict) -> list[di
         return []
     cfg = ctxs[0].cfg
     tc = decision["trip_context"]
-    hard = tc.get("hard_filters") or []
+    hard = hard_requirements(pets.filters(tc))
     selected = {pid for r in results for pid in r.order}
-    pool = [p for p in decision.get("backup_pool") or [] if p["id"] not in selected]
+    hidden = set(decision.get("hidden_ids") or [])
+    pool = [p for p in decision.get("backup_pool") or [] if p["id"] not in selected | hidden]
     activities = dict(tc.get("activities") or {})
     for entry in pool:
         source = next((cx.places.get(entry.get("for")) for cx in ctxs if entry.get("for") in cx.places), None)
         if source and source.activity:
             activities.setdefault(entry["id"], source.activity)
     candidates, _ = build_places({"confirmed": pool, "trip_context": {**tc, "activities": activities}}, by_id, cfg)
+    fits = {p.id: suggestion_fit(p, tc) for p in candidates}
+    candidates = sorted((p for p in candidates if fits[p.id] is not None),
+                        key=lambda p: (bool(unknown_features(p.rec, hard, p.activity, p.kind)), -fits[p.id], p.id))
     out = []
     for cx, result in zip(ctxs, results):
         excess = period_load(list(result.order), cx)
@@ -70,8 +78,10 @@ def recommend(ctxs: list, results: list, decision: dict, by_id: dict) -> list[di
             if not gaps:
                 continue
             alternatives = []
-            for candidate in sorted(candidates, key=lambda p: p.id):
+            for candidate in candidates:
                 if candidate.id not in cx.travel.index or not _suited(candidate, period, cx):
+                    continue
+                if not diet.allowed(candidate, cx):
                     continue
                 if any(not allowed(candidate.rec, hf, candidate.activity, candidate.kind) for hf in hard):
                     continue
@@ -86,12 +96,13 @@ def recommend(ctxs: list, results: list, decision: dict, by_id: dict) -> list[di
                     trial_results = [trial if old is result else old for old in results]
                     trial_ctxs = [trial_cx if old is cx else old for old in ctxs]
                     anchors = {c["id"] for c in decision["confirmed"] if c.get("role") == "anchor"}
-                    if validate(trial_ctxs, trial_results, hard, anchors, tc["context"].get("budget_vnd"),
+                    if validate(trial_ctxs, trial_results, hard, anchors, NO_BUDGET_CAP,
                                 (tc.get("pace") or {}).get("max_leg_min")):
                         continue
                     alternatives.append({"id": candidate.id, "name": candidate.name, "activity": candidate.activity,
                                          "trial_visit": [fmt(item.start), fmt(item.end)], "requires_relayout": True,
-                                         "cost_unknown": candidate.cost_vnd is None})
+                                         "cost_unknown": candidate.cost_vnd is None,
+                                         "warnings": pets.warnings([candidate], hard) + safety_warnings([candidate], hard)})
                     break
                 if len(alternatives) >= cfg.time_suitability["recommendations_per_gap"]:
                     break

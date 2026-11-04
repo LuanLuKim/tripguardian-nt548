@@ -38,7 +38,7 @@ export function Discover() {
     <div className="tg-hm">
       <div className="tg-hm__center">
         <header className="tg-hm__bar">
-          <form className="tg-hm__search" role="search" onSubmit={(e) => { e.preventDefault(); openCreate(q.trim()) }}>
+          <form className="tg-hm__search" data-tour="search" role="search" onSubmit={(e) => { e.preventDefault(); openCreate(q.trim()) }}>
             <Icon name="search" size={15} />
             <label className="tg-sr" htmlFor="tg-hm-q">Bạn muốn đi đâu, làm gì?</label>
             <input id="tg-hm-q" ref={input} value={q} maxLength={200} placeholder="Bạn muốn đi đâu, làm gì?" autoComplete="off" onChange={(e) => setQ(e.target.value)} />
@@ -46,7 +46,7 @@ export function Discover() {
           </form>
         </header>
 
-        <section className="tg-hm__hero" aria-label="Gợi ý khám phá Đà Lạt">
+        <section className="tg-hm__hero" data-tour="hero" aria-label="Gợi ý khám phá Đà Lạt">
           <div className="tg-hm__cover">
             <img src="/img/home/dalat-rays.jpg" alt="Tia nắng sớm xuyên qua rừng thông và biển mây ở Đà Lạt" />
             {snap && <span className="tg-hm__chip"><Icon name="pin" size={14} />{snap.places.length.toLocaleString('vi-VN')} địa điểm</span>}
@@ -59,7 +59,7 @@ export function Discover() {
           </div>
         </section>
 
-        <section className="tg-hm__coll" aria-labelledby="tg-hm-coll">
+        <section className="tg-hm__coll" data-tour="themes" aria-labelledby="tg-hm-coll">
           <div className="tg-hm__head">
             <div>
               <h2 id="tg-hm-coll">Gợi ý để bắt đầu</h2>

@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 # A chat may also take `on_args`: it is then handed the record_fact arguments written so far, while the call streams.
 Chat = Callable[[list[dict], list[BaseTool], Callable[[str], None]], Awaitable[AIMessageChunk]]
 THOUGHT_OPEN, THOUGHT_CLOSE = "<|channel>", "<channel|>"
-ASSISTANT_CALLS = 2  # model calls a turn may make with the assistant on: the second is offered no tool
+ASSISTANT_CALLS = 2  # model calls a turn may make with the assistant on: the last offers only actions
 # Error results allowed in one turn before the loop stops calling tools and says the fallback.
 MAX_TOOL_FAILS = 4
 
@@ -104,7 +104,7 @@ class LoopState(TypedDict):
     reply_content: str  # the latest assistant reply's text
     reply_calls: list  # its tool calls as plain {id, name, arguments} dicts
     ended: bool  # the turn is over: the routers send it to END
-    final: bool  # the next model call is offered no tool (the assistant: its data is all there is)
+    final: bool  # the next model call offers only actions (the assistant: no more reads)
 
 
 class Visible:
@@ -150,10 +150,19 @@ def langchain_chat(cfg: ChatSettings) -> Chat:
     tokens) is kept on the returned message."""
     async def chat(messages: list[dict], tools: list[dict], on_say: Callable[[str], None],
                    on_args: Callable[[str], None] | None = None) -> AIMessageChunk:
+        started_at = time.monotonic()
+        latency = {"queue": "unknown"}  # the upstream does not expose its scheduler's queue time
+
+        async def request_sent(request):
+            latency["dispatch"] = time.monotonic() - started_at
+
+        async def response_headers(response):
+            latency["headers"] = time.monotonic() - started_at
+
         client, model = AGENT.client()
         # an HTTP client of this call's own: each turn runs in a fresh event loop, and LangChain's shared default
         # client stays bound to the loop that first used it
-        http = httpx.AsyncClient(timeout=cfg.total_s)
+        http = httpx.AsyncClient(timeout=cfg.total_s, event_hooks={"request": [request_sent], "response": [response_headers]})
         effort = AGENT.reasoning()
         extra = AGENT.cache_key(cfg.cache_key) if effort else {}
         if cfg.service_tier:
@@ -173,8 +182,10 @@ def langchain_chat(cfg: ChatSettings) -> Chat:
             async with asyncio.timeout(cfg.total_s):
                 bound = llm.bind_tools(tools, tool_choice="auto") if tools else llm  # no tool: the reply only
                 async for chunk in bound.astream(convert_to_messages(messages)):
-                    if full is None and on_args is not None:
-                        on_args(None)  # the first chunk: the model has read the prompt (timing only)
+                    if full is None:
+                        latency["ttft"] = time.monotonic() - started_at
+                        if on_args is not None:
+                            on_args(None)  # first chunk, including tool arguments rather than just visible text
                     full = chunk if full is None else full + chunk  # merges tool-call pieces by index
                     show(visible.feed(chunk.text))
                     if on_args is not None and chunk.tool_call_chunks:
@@ -189,7 +200,8 @@ def langchain_chat(cfg: ChatSettings) -> Chat:
             await client.close()
         # the reasoning markers are gone from the text the loop sees; the tool-call pieces stay raw
         return AIMessageChunk(content=shown, tool_call_chunks=full.tool_call_chunks if full else [],
-                              usage_metadata=getattr(full, "usage_metadata", None))
+                              usage_metadata=getattr(full, "usage_metadata", None),
+                              response_metadata={"latency": latency})
     return chat
 
 
@@ -237,7 +249,7 @@ async def run_loop(chat: Chat, messages: list[dict], tools, on_say: Callable[[st
             tools.log.append("guard_stop")
             return {"ended": True}
         steps = state["steps"] + 1
-        # the assistant's last allowed call, or one after a response the cache answered whole: no tool is offered
+        # No more reads on the last call; actions still preserve facts learned before a lookup.
         final = tools.assistant and (state.get("final") or steps == ASSISTANT_CALLS)
         started, hs = False, state["has_say"]
 
@@ -254,16 +266,35 @@ async def run_loop(chat: Chat, messages: list[dict], tools, on_say: Callable[[st
 
         started_at = time.monotonic()
         tools.preview_reset()
-        use = [] if final else offered
-        reply = await (chat(state["messages"], use, lambda delta: None, on_args=tools.preview) if streams_args
-                       else chat(state["messages"], use, lambda delta: None))
-        tools.timings.append(f"t_call {time.monotonic() - started_at:.1f}")  # where a slow turn spends its time
+        first_chunk = None
+
+        def preview(arguments):
+            nonlocal first_chunk
+            if first_chunk is None:
+                first_chunk = time.monotonic() - started_at
+            tools.preview(arguments)
+
+        use = actions if final else offered
+        reply = None
+        try:
+            reply = await (chat(state["messages"], use, lambda delta: None, on_args=preview) if streams_args
+                           else chat(state["messages"], use, lambda delta: None))
+        finally:
+            elapsed = time.monotonic() - started_at
+            latency = (getattr(reply, "response_metadata", None) or {}).get("latency") or {}
+            ttft = latency.get("ttft", first_chunk)
+            measured = lambda value: f"{value:.3f}" if isinstance(value, (int, float)) else "unknown"
+            tools.timings.append(f"t_call {elapsed:.1f}")
+            tools.timings.append(f"t_call_span call={steps} seconds={elapsed:.3f} ttft={measured(ttft)} "
+                                 f"dispatch={measured(latency.get('dispatch'))} headers={measured(latency.get('headers'))} "
+                                 f"queue={measured(latency.get('queue'))}")
         if (c := cached_tokens(reply)) is not None:
             tools.timings.append(f"cached_tokens {c[0]}/{c[1]}")
         text = tools.trim(reply.text)
         calls = [{"id": t["id"] or f"call_{uuid.uuid4().hex[:8]}", "name": t["name"] or "",
                   "arguments": t["args"]}
-                 for t in sorted(reply.tool_call_chunks, key=lambda t: t["index"] or 0)] if not final else []
+                 for t in sorted(reply.tool_call_chunks, key=lambda t: t["index"] or 0)
+                 if not final or t["name"] in action_names]
         for c in calls:
             try:
                 args = json.loads(c["arguments"])
@@ -300,6 +331,8 @@ async def run_loop(chat: Chat, messages: list[dict], tools, on_say: Callable[[st
         return {"ended": True}
 
     offered = langchain_tools(tools)
+    actions = [t for t in offered if tools.tool(t.name).kind == "action"]
+    action_names = {t.name for t in actions}
     streams_args = "on_args" in inspect.signature(chat).parameters  # a scripted chat in tests may not take it
 
     def refuse_call(e: Exception) -> str:
@@ -343,7 +376,7 @@ async def run_loop(chat: Chat, messages: list[dict], tools, on_say: Callable[[st
             if (stop := tools.after_call(dict(state), out, fails)) is not None:
                 return stop
         if tools.assistant and state["reply_calls"] and tools.cache_hits - hits == len(state["reply_calls"]):
-            # every call asked for data CURRENT CONTEXT already held: its reply stands, or one call with no tool
+            # Every call asked for data CURRENT CONTEXT already held: its reply stands, or one call without reads.
             tools.log.append("cache_only")
             if (state["reply_content"] or "").strip():
                 return {"messages": out, "fails": fails, "ended": True}

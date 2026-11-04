@@ -1,0 +1,5 @@
+# Outgoing mail (src/mailer). Host, port, account and password are in .env (SMTP_HOST, SMTP_PORT, SMTP_USER,
+# SMTP_PASSWORD, MAIL_FROM); nothing secret here. docs/ACCOUNTS.md §2c.
+from_name: TripGuardian   # display name before the MAIL_FROM address
+timeout_s: 15             # connect and each SMTP step
+dev_outbox: logs/mail_outbox.jsonl   # only written when MAIL_DEV_OUTBOX=1 and APP_BASE_URL is not https

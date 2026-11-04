@@ -29,7 +29,7 @@ import random
 import openai
 
 from ..crawl.common.files import ROOT, data_dir, load_config, now
-from ..llm import OBS_AUDIT, OBS_AUDIT_FIRST, OBS_AUDIT_GEMMA, OBS_AUDIT_STRONG, OutOfQuota
+from ..llm import OBS_AUDIT, OBS_AUDIT_FIRST, OBS_AUDIT_GEMMA, OBS_AUDIT_STRONG, OutOfQuota, Runaway, SchemaError
 from ..observe import TARGETED, targeted_ok
 from ..ontology import load as load_ontology
 from ..review import evidence, judge_label, label_key, label_records
@@ -268,6 +268,8 @@ def place_info(stem: str) -> dict:
 
 async def ask(task, client, model, **kw) -> dict:
     """task.ask, waiting out a busy proxy and spent accounts (every model of the pool resting) instead of failing."""
+    if kw.get("attempts") == 1:
+        return await task.ask(client, model, **kw)
     tries = 0
     while True:
         try:
@@ -347,8 +349,8 @@ def render(chunk: list[tuple], ont, claim: bool = False) -> tuple[dict, list[byt
             images, refs)
 
 
-async def label_with(task, chunk: list[tuple], ont, city: str, clients: dict, sems: dict, look: int = 1,
-                     keep=None) -> tuple[collections.Counter, list[tuple]]:
+async def label_once(task, chunk: list[tuple], ont, city: str, clients: dict, sems: dict, look: int = 1,
+                     keep=None, **options) -> tuple[collections.Counter, list[tuple]]:
     """One call of task over chunk (sems: role name -> Pool of its endpoints). Verdicts in keep (all when None) are written as labels; the rows of the other
     verdicts and of items the answer left out are returned for another reader. On the Gemma audit an unsure is
     written as look 2 so aggregate drops it until the Codex Judge reads it again (current)."""
@@ -357,7 +359,10 @@ async def label_with(task, chunk: list[tuple], ont, city: str, clients: dict, se
         # render (disk reads) only once a slot is free: rendering all calls up front starves the event loop when
         # a read-all run starts tens of thousands of them at once
         fields, images, refs = render(chunk, ont, claim=single)
-        ans = await ask(task, client, model, images=images, city=city, **fields)
+        ans = await ask(task, client, model, images=images, city=city, **options, **fields)
+    answered = [item["ref"].strip("<>/ ") for item in ans["items"]]
+    if keep is None and (len(answered) != len(refs) or set(answered) != set(refs)):
+        raise SchemaError("audit answer must contain each requested item exactly once")
     got, rest = collections.Counter(), []
     by = f"judge:{ans.get('_model', model)}"
     row_of = {f"i{i}": r for i, r in enumerate(chunk, 1)}
@@ -379,6 +384,43 @@ async def label_with(task, chunk: list[tuple], ont, city: str, clients: dict, se
         else:
             rest.append(row_of[ref])
     rest += [row_of[ref] for ref in refs]
+    return got, rest
+
+
+async def label_with(task, chunk: list[tuple], ont, city: str, clients: dict, sems: dict, look: int = 1,
+                     keep=None) -> tuple[collections.Counter, list[tuple]]:
+    """Isolate malformed batch answers; an exhausted item is explicitly uncertain, never a technical hang.
+
+    A first reader must not drop evidence on its own: its failed item still goes to the Judge. Network,
+    authorization and configuration errors propagate unchanged instead of being persisted as judgments.
+    """
+    content_errors = (Runaway, json.JSONDecodeError, SchemaError)
+    try:
+        return await label_once(task, chunk, ont, city, clients, sems, look, keep)
+    except content_errors as batch_error:
+        batch_runaway = isinstance(batch_error, Runaway)
+    got, rest = collections.Counter(), []
+    options = {"max_tokens": min(task.max_tokens, 1000), "attempts": 1}
+    if task.role.guided:
+        options.update(frequency_penalty=0.3, presence_penalty=0.2)
+    for row in chunk:
+        try:
+            more, pending = await label_once(task, [row], ont, city, clients, sems, look, keep, **options)
+        except content_errors as error:
+            if keep is not None and "unsure" not in keep:
+                rest.append(row)
+                continue
+            source, stem, _, obs = row
+            runaway = batch_runaway or isinstance(error, Runaway)
+            reason = "runaway" if runaway else "invalid_json"
+            model = clients[task.role.name][1]
+            judge_label(obs, stem, source, "unsure", f"{reason}: singleton retry failed ({type(error).__name__})",
+                        f"judge:{model}", task.prompt_hash, 2 if task is OBS_AUDIT_GEMMA else look)
+            got["unsure"] += 1
+            got[f"{reason}_unsure"] += 1
+        else:
+            got.update(more)
+            rest += pending
     return got, rest
 
 
@@ -489,6 +531,7 @@ async def run(city: str, limit: int | None = None) -> dict:
         if limit is not None or not labelled or rounds >= (1 if local else MAX_ROUNDS):  # Gemma: one round
             break
     second = await second_look(ont, name, clients, sems) if limit is None and not local else collections.Counter()
-    summary = {"at": now(), "rounds": rounds, "labels": dict(total), "second_look": dict(second)}
+    summary = {"at": now(), "rounds": rounds, "labels": dict(total), "second_look": dict(second),
+               "runaway_unsure": total["runaway_unsure"] + second["runaway_unsure"]}
     print(f"judge audit {city}: {json.dumps(summary, ensure_ascii=False)}")
     return summary

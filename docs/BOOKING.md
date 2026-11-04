@@ -52,7 +52,7 @@ Ngưỡng ở `config/journey.yaml`; bảng sân bay ở `config/airports.yaml`.
 | Route (đọc, cần phiên) | Việc |
 |---|---|
 | `GET /api/harness/booking/offers?kind=coach\|flight\|stay&…` | `coach`: `lat,lng` hoặc `origin`, `date`, `way`; `flight`: `src,dst,date`; `stay`: `fid,check_in,nights` |
-| `GET /api/harness/journey?lat&lng&dest_lat&dest_lng&date&way` | `Journey.as_dict()` |
+| `GET /api/harness/journey?lat&lng\|origin&dest_lat&dest_lng&date&way` | `Journey.as_dict()`; chỉ có `origin` (chữ) thì tra bảng thành phố; tra không ra → `{origin: null, origin_text, options: [], reason: "unknown_origin"}` (không bịa toạ độ) |
 
 Tham số sai → 400 (`booking.query_from_params`). Chỗ ở người dùng tự nhập (`fid` bắt đầu bằng `@`, ví dụ `@home`) không có offer: trả 200 `{"offers": [], "reason": "self_entered_lodging"}`, không phải lỗi. Bấm đặt: web mở `offer.url` rồi gửi `booking_click {offer_id, provider, kind}` qua `/api/harness/events` (`docs/ANALYTICS.md`); URL luôn do server dựng.
 

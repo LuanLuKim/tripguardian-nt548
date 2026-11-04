@@ -9,6 +9,8 @@ Features with `check: span` are read again (VIDEO_VERIFY: the segments around th
 had none). A video posted by the place's own account (owner_account: the handle spells the place's name) is the
 business talking: author = "tiktok:owner:<fid>", one voice for all its accounts, and aggregate keeps only what such a
 source can show (corpus.aggregate). observed_at = the video's upload date.
+Context-limit rejections split the transcript into overlapping segment windows without discarding evidence;
+unchanged caption, screen text and frames accompany each window. Only a fully read pair may be saved.
 `details` (free-text `detail.<kind>` observations, details_gate.py) come from speech and caption only, never a frame.
 A place is done again when its pairs, their transcripts, the prompts or the ontology change; a pair that fails
 leaves the place without a file this run (retried next run) and a line in data/tiktok/observe_errors.jsonl.
@@ -197,17 +199,25 @@ async def observe_pair(client, model: str, sem: asyncio.Semaphore, city: str, v:
     caption = " ".join([v.get("caption") or "", *(f"#{h}" for h in v.get("hashtags") or [])])
     with_frames = not others and ((d / "video.mp4").exists() or (d / "frames" / "f1.jpg").exists())  # saved frames outlive a deleted clip
     images = await asyncio.to_thread(frames, d / "video.mp4", t["total_s"], d / "frames") if with_frames else []
-    async with sem:
-        answer = await ask(VIDEO_OBSERVE, 
-            client, model, images=images, city=city, name=place["name"], category=place.get("category") or "unknown",
+    fields = dict(images=images, city=city, name=place["name"], category=place.get("category") or "unknown",
             others="; ".join(others) or "none", ontology=ont.prompt_text(), frames=FRAMES,
             frame_note="attached, evenly spaced" if images else "no frames attached: do not use frame",
             frame_features=", ".join(f"{f} {'/'.join(sorted(vs))}" for f, vs in FRAME_VALUES.items()),
             desc=v.get("caption") or "", hashtags=" ".join(f"#{h}" for h in v.get("hashtags") or []),
-            screen_text="; ".join(t.get("check", {}).get("screen_text") or []) or "none", segments=segments_text(segs))
-    kept, dropped = gate(answer, segs, caption, bool(images), ont)
-    kept_details, detail_dropped = gate_details(answer, segs, caption, ont)
-    dropped.update(detail_dropped)
+            screen_text="; ".join(t.get("check", {}).get("screen_text") or []) or "none")
+    kept, kept_details, dropped = [], [], collections.Counter()
+    seen, seen_details = set(), set()
+    for window, answer in await observe_windows(client, model, sem, segs, fields):
+        observations, drop = gate(answer, window, caption, bool(images), ont)
+        details, detail_drop = gate_details(answer, window, caption, ont)
+        dropped.update(drop)
+        dropped.update(detail_drop)
+        for items, target, visited in ((observations, kept, seen), (details, kept_details, seen_details)):
+            for item in items:
+                key = json.dumps(item, sort_keys=True, ensure_ascii=False)
+                if key not in visited:
+                    visited.add(key)
+                    target.append(item)
     final = []
     for o in kept:
         if ont.features[o["feature"]].span_check:
@@ -242,6 +252,29 @@ async def observe_pair(client, model: str, sem: asyncio.Semaphore, city: str, v:
             extractor=f"video_observe@{VIDEO_OBSERVE.prompt_hash}", ontology_version=ont.version,
             start_s=seg["start_s"] if seg else None, end_s=seg["end_s"] if seg else None, detail=x["detail"]))
     return out, details, dropped
+
+
+async def observe_windows(client, model: str, sem: asyncio.Semaphore, segs: list[dict], fields: dict) -> list[tuple]:
+    """Split only on a context-limit rejection, keeping every segment and all static evidence.
+
+    Segment numbers/timestamps remain global. Neighbour overlap preserves context at window edges;
+    the gate is scoped to each window and observe_pair removes repeated claims from overlap.
+    An unsplittable rejection propagates: the caller must never persist a partially read video.
+    """
+    try:
+        async with sem:
+            answer = await ask(VIDEO_OBSERVE, client, model, segments=segments_text(segs), **fields)
+        return [(segs, answer)]
+    except openai.BadRequestError as error:
+        text = str(error).lower()
+        context_limit = ("maximum context length" in text or "context_length_exceeded" in text)
+        if not context_limit or len(segs) < 2:
+            raise
+    middle = len(segs) // 2
+    overlap = min(CONTEXT_WINDOW, max(0, (len(segs) - 2) // 2))
+    left = await observe_windows(client, model, sem, segs[:middle + overlap], fields)
+    right = await observe_windows(client, model, sem, segs[middle - overlap:], fields)
+    return left + right
 
 
 def _client():

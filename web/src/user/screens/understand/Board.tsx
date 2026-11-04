@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Understanding } from '../../tu/types'
 import { Icon, type IconName } from '../../ui/icons'
 import { dateLine, requiredLines } from '../../ui/Ticket'
+import { softText } from '../../tu/labels'
 
 const ICONS: Record<string, IconName> = { trip: 'calendar', companions: 'users', mobility: 'route', care: 'heart', pace: 'sliders', budget: 'wallet', lodging: 'bed' }
 
@@ -25,7 +26,7 @@ function useCount(value: number) {
   return shown
 }
 
-export function Board({ u, busy, preview, onShow, onOpen }: { u: Understanding | null; busy: boolean; preview: Set<string>; onShow: () => void; onOpen: (target: string | null) => void }) {
+export function Board({ u, busy, preview, onShow, onOpen, onEdit, discovery = false }: { discovery?: boolean; u: Understanding | null; busy: boolean; preview: Set<string>; onShow: () => void; onOpen: (target: string | null) => void; onEdit?: (target: string, value: string | null) => void }) {
   const n = useCount(u?.matching ?? u?.total ?? 0)
   const lines = u ? requiredLines(u) : []
   const groups = (u?.required ?? []).map(group => ({ ...group, line: lines.find(line => line.key === group.key), active: preview.has(group.key) }))
@@ -53,8 +54,8 @@ export function Board({ u, busy, preview, onShow, onOpen }: { u: Understanding |
             <li key={group.key} className={filled(group) ? 'is-done' : group.active ? 'is-working' : ''}>
               <span className="tg-cx__mark" aria-hidden="true"><Icon name={ICONS[group.key] ?? 'info'} size={22} /></span>
               <div className="tg-progress__row">
-                <div className="tg-progress__top"><h4>{group.title ?? group.label}</h4><small>{group.done ? 'Đã ghi nhận' : group.active ? 'Đang ghi nhận…' : group.line?.value ? 'Cần bổ sung' : 'Chưa điền'}</small></div>
-                <p className={group.line?.value ? 'tg-cx__val' : 'tg-cx__ask'} title={group.line?.value || undefined}>{group.line?.value ? short(group.key, group.line.value) : group.done ? 'Đã ghi nhận' : `Bổ sung ${(group.title ?? group.label).toLowerCase()}`}</p>
+                <div className="tg-progress__top"><h4>{group.title ?? group.label}</h4><small>{group.done ? 'Đã ghi nhận' : group.active ? 'Đang ghi nhận…' : group.line?.value ? (discovery ? 'Đã ghi nhận' : 'Cần bổ sung') : (discovery ? 'Chưa chia sẻ' : 'Chưa điền')}</small></div>
+                <p className={group.line?.value ? 'tg-cx__val' : 'tg-cx__ask'} title={group.line?.value || undefined}>{group.line?.value ? short(group.key, group.line.value) : group.done ? 'Đã ghi nhận' : discovery ? 'Bạn có thể kể thêm khi muốn' : `Bổ sung ${(group.title ?? group.label).toLowerCase()}`}</p>
                 {<button type="button" className="tg-link tg-progress__edit" disabled={busy} aria-label={`Sửa ${(group.title ?? group.label).toLowerCase()}`} onClick={() => onOpen(group.key)}>Sửa</button>}
               </div>
             </li>
@@ -74,6 +75,21 @@ export function Board({ u, busy, preview, onShow, onOpen }: { u: Understanding |
           </div>
         </footer>
       </section>
+      {discovery && <section className="tg-ticket2" aria-label="Gu của chuyến">
+        <div className="tg-ticket2__bar"><span className="tg-ticket2__pill">Gu của chuyến</span></div>
+        <ol className="tg-cx__steps2">
+          {(u?.soft ?? []).filter(row => row.weight !== 'off').map(row => (
+            <li key={row.target} className="is-done">
+              <span className="tg-cx__mark" aria-hidden="true"><Icon name="sparkle" size={22} /></span>
+              <div className="tg-progress__row">
+                <div className="tg-progress__top"><h4>{softText(row)}</h4><small>{row.weight === 'avoid' ? 'Muốn tránh' : 'Nghiêng về'}</small></div>
+                <button type="button" className="tg-link tg-progress__edit" disabled={busy} aria-label={`Xoá gu ${softText(row)}`} onClick={() => onEdit?.(row.target, null)}>Xoá</button>
+              </div>
+            </li>
+          ))}
+        </ol>
+        {!u?.soft.some(row => row.weight !== 'off') && <p className="tg-cx__ask">Gu sẽ dần rõ qua những điều bạn thích.</p>}
+      </section>}
       <button type="button" className="tg-cx__go" disabled={busy || !u} onClick={onShow}><Icon name="sparkle" size={20} />Tiếp tục đến chọn nơi</button>
     </aside>
   )

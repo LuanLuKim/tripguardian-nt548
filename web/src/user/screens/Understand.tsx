@@ -16,6 +16,7 @@ import { Icon } from '../ui/icons'
 import { LongTripWarning } from '../ui/LongTripWarning'
 import { useTitle } from '../ui/Shell'
 import { TicketFull, type Source } from '../ui/Ticket'
+import { TagEnvContext } from '../tags/env'
 import { Board } from './understand/Board'
 import { Composer, shrink, type Outgoing } from './understand/Composer'
 import { History } from './understand/History'
@@ -27,6 +28,7 @@ import { botMsg, Turn, type Msg } from './understand/Turn'
 
 const KEY = 'tg.tu.v1'
 export const GREET = 'Chuyến Đà Lạt bạn đang mong là chuyến như thế nào? Kể tự nhiên thôi: đi cùng ai, mấy ngày, muốn săn mây, sống chậm hay ăn cho đã. Gửi ảnh một nơi bạn thích cũng được.'
+const DISCOVERY_GREET = 'Bạn hình dung một chuyến Đà Lạt như thế nào? Mình cùng khám phá những nơi và kiểu trải nghiệm bạn thích nhé. Gửi ảnh một nơi bạn thích cũng được.'
 
 // Starting points on the welcome canvas: a tap fills the message box, the user still sends it.
 const STARTERS = [
@@ -51,7 +53,7 @@ const isOpen = (c: Card | Deck | null) => !!c && (c.kind === 'deck' || (c.qid !=
 
 // The server's transcript -> the chat, for a resumed session: what was said stays, old cards read as text.
 function fromTranscript(v: View): Msg[] {
-  const out: Msg[] = [botMsg(key(), { say: GREET })]
+  const out: Msg[] = [botMsg(key(), { say: v.discovery ? DISCOVERY_GREET : GREET })]
   for (const t of v.transcript) {
     const lastBot = out[out.length - 1]
     if (t.role === 'user') out.push({ key: key(), who: 'me', text: t.text })
@@ -78,8 +80,13 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   const openJourney = useOpenJourney()
   const [sid, setSid] = useState<string | null>(null)
   const [u, setU] = useState<Understanding | null>(null)
+  const [discovery, setDiscovery] = useState(false)
+  const greet = discovery ? DISCOVERY_GREET : GREET
   const [msgs, setMsgs] = useState<Msg[]>(() => [botMsg(key(), { say: GREET })])
   const [busy, setBusy] = useState(false)
+  const flying = useRef(false) // a turn is on the wire
+  const queued = useRef<TurnInput[]>([]) // likes and kind wishes (no model call) wait here instead of being dropped
+  const drain = useRef<() => void>(() => {})
   const [handing, setHanding] = useState(false)
   const [offline, setOffline] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -148,9 +155,15 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
         store.set(KEY, v.id)
         rememberTrip(v.id)
         setSid(v.id)
-        dispatch({ type: 'set', patch: { journeyId: v.id, decisionId: null, planningId: null } })
+        const journey = recovery?.view
+        dispatch({ type: 'set', patch: {
+          journeyId: v.id,
+          decisionId: journey?.sessions.decision ? v.id : null,
+          planningId: journey?.sessions.planning ? v.id : null,
+        } })
         setU(v.understanding)
-        if (resumed) setMsgs(fromTranscript(v))
+        setDiscovery(v.discovery === true)
+        setMsgs(resumed ? fromTranscript(v) : [botMsg(key(), { say: v.discovery ? DISCOVERY_GREET : GREET })])
         return v.id
       } catch {
         setOffline(true)
@@ -165,6 +178,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   const send = useCallback(
     async (input: TurnInput, mine: Msg | null, id = sid): Promise<boolean> => {
       if (!id) return false
+      flying.current = true
       setBusy(true)
       setNotice(null)
       const bot = key()
@@ -205,7 +219,9 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
         } else setOffline(true)
         return false
       } finally {
+        flying.current = false
         setBusy(false)
+        window.setTimeout(() => drain.current(), 0) // picks made while this turn ran go out now, in order
         setPreview(new Set())
         // a turn that brought nothing to show (an edit) leaves no empty bubble behind
         setMsgs((ms) => ms.flatMap((m) => (m.key !== bot || m.who !== 'bot' ? [m] : !m.say && !m.card && !m.steps.length && !m.places?.length && !m.blocks?.length ? [] : [{ ...m, live: false, t1: Date.now() }])))
@@ -278,13 +294,17 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
     }
   }
   const edit = (target: string, value: string | null) => send({ kind: 'edit', target, value }, null)
-  // Thích on a chat place card: shown at once on every card of that place, written by the server without the model
-  const like = (id: string, on: boolean) => {
-    if (busy) return
+  // Thích on a chat place card: shown at once on every card of that place, written by the server without the model. A pick made
+  // while a turn runs is kept and sent right after it, never dropped.
+  const enqueue = (input: TurnInput) => { queued.current.push(input); if (!flying.current) drain.current() }
+  drain.current = () => { const next = queued.current.shift(); if (next && sid) send(next, null) }
+  const like = (id: string, on: boolean, stage = false) => {
     setMsgs((ms) => ms.map((m) => (m.who === 'bot' && m.places ? { ...m, places: m.places.map((r) => ({ ...r, cards: r.cards.map((c) => (c.id === id ? { ...c, liked: on } : c)) })) } : m)))
-    track('place_like', { place_id: id, value: on ? 'on' : 'off' })
-    send({ kind: 'like', target: id, value: on ? 'on' : 'off' }, null)
+    track('place_like', { place_id: id, value: on ? 'on' : 'off', ...(stage ? { from: 'tag_stage' } : {}) })
+    enqueue({ kind: 'like', target: id, value: on ? 'on' : 'off', ...(stage ? { qid: 'stage' as const } : {}) })
   }
+  // The tag stage's two writes: a place becomes a want, a whole kind becomes a soft preference (Engine._wish).
+  const tagEnv = { sid, like: (id: string, on: boolean) => like(id, on, true), wish: (sig: string, path: string, on: boolean) => enqueue({ kind: 'wish', qid: sig, target: path, value: on ? 'on' : 'off' }) }
   const show = () => { if (!busy) send({ kind: 'show' }, null) }
   const newTrip = () => {
     if (busy) return
@@ -300,7 +320,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   const reset = async () => {
     if (!confirm('Đặt lại toàn bộ những gì mình đã hiểu về chuyến này?')) return
     setFull(false)
-    setMsgs([botMsg(key(), { say: GREET })])
+    setMsgs([botMsg(key(), { say: greet })])
     await open(true)
   }
   const openRow = (target: string | null) => {
@@ -316,7 +336,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
 
   const source = (_t: string, mark?: boolean): Source => ({ text: mark ? 'mình suy ra, sửa được' : 'bạn nói', turns: [] })
   const ticket = u && { u, intent: null, busy, preview, source, onEdit: edit, onShow: show }
-  const greeting = msgs.length === 1 && msgs[0].who === 'bot' && msgs[0].say === GREET && !msgs[0].card
+  const greeting = msgs.length === 1 && msgs[0].who === 'bot' && msgs[0].say === greet && !msgs[0].card
   const name = account?.guest ? '' : account?.name?.trim()
 
   return (
@@ -344,7 +364,9 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
                   ))}
                 </ul>
               </section> : <ol className="tg-cx__log" aria-live="polite" aria-label="Trò chuyện về chuyến đi">
+                <TagEnvContext.Provider value={tagEnv}>
                 {msgs.map((m, i) => <Turn key={m.key} m={m} busy={busy} onAnswer={answer} onDeck={answerDeck} onText={typed} onPhoto={photoFromCard} onLike={like} last={i === msgs.length - 1} />)}
+                </TagEnvContext.Provider>
               </ol>}
               {notice && <p className="tg-alert" role="alert"><Icon name="warn" size={16} /> {notice}</p>}
             </div>
@@ -353,7 +375,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
             {dragging && <div className="tg-cx__drop" aria-hidden="true"><Icon name="image" size={28} /><b>Thả ảnh vào đây</b><span>Ảnh một nơi bạn thích, hoặc danh sách địa điểm</span></div>}
             </>}
           </main>
-          <Board u={u} busy={busy || handing || offline} preview={preview} onShow={show} onOpen={openRow} />
+          <Board discovery={discovery} u={u} busy={busy || handing || offline} preview={preview} onShow={show} onOpen={openRow} onEdit={edit} />
         </div>
       </div>
       {ticket && <TicketFull {...ticket} open={full} onClose={() => setFull(false)} focus={focus} onFocus={setFocus} onReset={reset} />}

@@ -1,4 +1,3 @@
-import * as Dialog from '@radix-ui/react-dialog'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { impression } from '../events'
 import { useDecision } from '../pd/decision'
@@ -8,7 +7,7 @@ import { requestStageEntry } from '../journey'
 import { openAssistant, setUi, toggleCmp, useUi } from '../store'
 import { WaitLine } from '../ui/SlowHint'
 import '../css/fixes.css'
-import { DROP_LABEL, STEPS, useTrip, type DropReason } from '../trip'
+import { STEPS, useTrip } from '../trip'
 import { placesDelta } from '../tu/labels'
 import { AssistantFloat, AssistantPinned } from '../ui/Assistant'
 import { ArtHills, Empty, go, PlacePhoto } from '../ui/common'
@@ -141,7 +140,6 @@ export function Explore() {
   const anchors = view.groups.find((g) => g.id === 'anchors')?.cards ?? []
   const total = groups.reduce((n, g) => n + g.total, 0) + anchors.length
   const excluded = view.excluded.by_rule.reduce((n, r) => n + r.count, 0)
-  const conflicted = new Set(view.feasibility.conflicts.flatMap((c) => c.places))
   const q = view.pending
   const question = q && (
     <div key="ask" className="tg-narrow" aria-live="polite">
@@ -220,7 +218,7 @@ export function Explore() {
                       <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }} placeholder="Tìm theo tên hoặc loại nơi, ví dụ “bánh căn”, “chùa”, “kem”" aria-label="Tìm địa điểm trong mọi nhóm" />
                       {query && <button type="button" className="tg-xsearch__clear" aria-label="Xóa ô tìm" onClick={() => setQuery('')}><Icon name="x" size={16} /></button>}
                     </label>
-                    {searching ? <SearchResults q={query.trim()} found={found} groups={groups} cmp={cmp} onCmp={onCmp} onDrop={setDropFor} pinned={pinned} conflicted={conflicted} onClear={() => setQuery('')} /> : <>
+                    {searching ? <SearchResults q={query.trim()} found={found} groups={groups} cmp={cmp} onCmp={onCmp} onDrop={setDropFor} pinned={pinned} onClear={() => setQuery('')} /> : <>
                     <div className="tg-tabs" role="tablist" aria-label="Nhóm địa điểm" onKeyDown={(e) => {
                       const i = groups.findIndex((g) => g.id === current?.id)
                       if (e.key === 'ArrowRight') setUi({ tab: groups[(i + 1) % groups.length].id })
@@ -237,7 +235,7 @@ export function Explore() {
                     ) : (
                       <div ref={gridRef} className={`tg-grid ${pinned ? 'is-two' : ''} ${replacing ? 'is-replacing' : ''}`} key={current.id}>
                         {items.flatMap(({ card: c, phase, i: order }, i) => {
-                          const out = [<PlaceCard key={c.id} c={c} phase={phase} order={order} onDrop={setDropFor} cmp={cmp.includes(c.id)} onCmp={onCmp} warn={conflicted.has(c.id) ? 'Đang vướng một chỗ cần chú ý' : undefined} />]
+                          const out = [<PlaceCard key={c.id} c={c} phase={phase} order={order} onDrop={setDropFor} cmp={cmp.includes(c.id)} onCmp={onCmp} />]
                           if (i === Math.min(4, items.length - 1) && question) out.push(question)
                           return out
                         })}
@@ -262,7 +260,7 @@ export function Explore() {
       </Page>
 
       {cmp.length >= 2 && <button type="button" className="tg-btn tg-btn--primary tg-float-cmp" onClick={() => goCompare(cmp)}><Icon name="swap" size={18} /> So sánh {cmp.length} nơi</button>}
-      <SelectedBar onRelax={editTicket} />
+      <SelectedBar />
       <AssistantFloat />
       <DropSheet card={dropFor} onClose={() => setDropFor(null)} />
     </>
@@ -270,7 +268,7 @@ export function Explore() {
 }
 
 // What the search box found: places of every tab, best first, each with its tab; then named places the lists do not hold, and why.
-function SearchResults({ q, found, groups, cmp, onCmp, onDrop, pinned, conflicted, onClear }: { q: string; found: SearchResult | null; groups: Group[]; cmp: string[]; onCmp: (id: string) => void; onDrop: (c: Card) => void; pinned: boolean; conflicted: Set<string>; onClear: () => void }) {
+function SearchResults({ q, found, groups, cmp, onCmp, onDrop, pinned, onClear }: { q: string; found: SearchResult | null; groups: Group[]; cmp: string[]; onCmp: (id: string) => void; onDrop: (c: Card) => void; pinned: boolean; onClear: () => void }) {
   if (!found || found.q !== q) return <p className="tg-busy" role="status"><i /> Đang tìm “{q}”…</p>
   const label = (id?: string | null) => groups.find((g) => g.id === id)?.label
   return (
@@ -281,7 +279,7 @@ function SearchResults({ q, found, groups, cmp, onCmp, onDrop, pinned, conflicte
           {found.cards.map((c) => (
             <div key={c.id} className="tg-xfound__item">
               {label(c.group) && <span className="tg-xfound__tab">{label(c.group)}</span>}
-              <PlaceCard c={c} onDrop={onDrop} cmp={cmp.includes(c.id)} onCmp={onCmp} warn={conflicted.has(c.id) ? 'Đang vướng một chỗ cần chú ý' : undefined} />
+              <PlaceCard c={c} onDrop={onDrop} cmp={cmp.includes(c.id)} onCmp={onCmp} />
             </div>
           ))}
         </div>
@@ -297,25 +295,16 @@ function SearchResults({ q, found, groups, cmp, onCmp, onDrop, pinned, conflicte
 }
 
 export function DropSheet({ card, onClose, after }: { card: Card | { id: string; name: string } | null; onClose: () => void; after?: () => void }) {
-  const { act, busy } = useDecision()
-  const drop = async (reason?: DropReason) => {
-    if (!card) return
+  const { act } = useDecision()
+  const sent = useRef<string | null>(null)
+  useEffect(() => {
+    if (!card) { sent.current = null; return }
+    if (sent.current === card.id) return
+    sent.current = card.id
     onClose()
-    if (await act({ type: 'drop', place_id: card.id, ...(reason ? { reason } : {}) })) after?.()
-  }
-  return (
-    <Dialog.Root open={Boolean(card)} onOpenChange={(o) => !o && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="tg tg-overlay" />
-        <Dialog.Content className="tg tg-sheet" aria-describedby={undefined}>
-          <Dialog.Title>Bỏ {card?.name ?? ''}?</Dialog.Title>
-          <p className="tg-muted">Cho mình biết lý do để gợi ý đúng hơn, hoặc bỏ luôn cũng được.</p>
-          <div className="tg-sheet__chips">{(Object.keys(DROP_LABEL) as DropReason[]).map((r) => <button key={r} type="button" className="tg-chip" disabled={busy} onClick={() => drop(r)}>{DROP_LABEL[r]}</button>)}</div>
-          <div className="tg-sheet__foot"><button type="button" className="tg-link" onClick={onClose}>Giữ lại</button><button type="button" className="tg-btn tg-btn--primary" disabled={busy} onClick={() => drop()}>Bỏ luôn, không cần lý do</button></div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  )
+    void act({ type: 'drop', place_id: card.id }).then(ok => { if (ok) after?.() })
+  }, [card, act, onClose, after])
+  return null
 }
 
 // A one-time pointer to the disc view: shown until the user dismisses it or has tried the disc once (per browser).

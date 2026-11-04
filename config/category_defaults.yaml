@@ -7,6 +7,10 @@
 # effort_hint: what the group usually asks of a visitor. Measured on 1437 places (2026-10-02): steep_or_stairs present
 #   for 16% of restaurants, 37% of cafes, 4% of spas, so `low` is only a ranking hint, never "absent".
 usd_vnd: 26300  # rate for Maps ticket prices shown in US$ (2026-10)
+# Maps ticket box as an entry fee: OFF. Gate 2026-10-30 (.superpowers/sdd/2026-10-30-fill-maps/labels_ticket_price.jsonl): the
+# official-row price is within 30% of the reviews' / official-site fee for 12 of 18 places (Wilson LB 0.44 < 0.85); it is a
+# "from" price (child or cheapest product), and a market's or glamping's box is a tour or stay product. Re-enable only with a better rule.
+maps_tickets_entry_fee: false
 groups:
   # Lodging (corpus list <city>_stay.json): only Planning reads it; usable_as [] keeps it out of Place Decision.
   - {id: stay, match: [khách sạn, nhà nghỉ, nhà khách, nhà trọ, homestay, khu nghỉ dưỡng, resort, biệt thự, villa, căn hộ, chỗ ở, hostel, motel, guest house, guesthouse, lưu trú], visit_minutes: [0, 0, 0], usable_as: [], effort_hint: unknown}
@@ -31,3 +35,16 @@ groups:
 # visit_duration values from reviews -> minutes [short, long]
 visit_duration_minutes: {under_1h: [15, 60], 1_to_2h: [60, 120], half_day: [180, 300], full_day: [360, 600]}
 visit_duration_min_n: 3  # authors before review evidence replaces the category estimate
+# Visit time read from the quotes of visitors (observe/visit_time.py, aggregate/estimates.py): the minutes come from the
+# words of a quote ("2 tiếng", "1-2 tiếng", "nửa ngày"), one figure per author.
+visit_time:
+  sources: [gmaps_review]  # source_type of observations whose quotes give a duration (a source joins after its labelled precision passes)
+  min_n: 1            # authors before explicit durations replace the category estimate (bucket-only evidence keeps visit_duration_min_n)
+  outlier_min_n: 4    # with at least this many stays, a stay far from the median is left out
+  outlier_ratio: 2.5  # ... far = more than 2.5x the median or below 1/2.5 of it
+  single_short: 0.75  # one author, one figure: short / long = typical x these
+  single_long: 1.5
+  round_to: 15        # minutes, from one hour up (below it: 5)
+  min_minutes: 10     # a stay shorter / longer than this is no visit of a place (a stray number in the quote)
+  max_minutes: 720
+  priority: [attraction, garden_farm, amusement, museum, nature, religious, spa, camping, golf, tour, other, bar, cafe, restaurant, dessert, market, shop]  # order places are read in

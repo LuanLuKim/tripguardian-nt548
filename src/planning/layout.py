@@ -7,9 +7,11 @@ returned, never dropped silently; a place the user must go to is put even where 
 
 from dataclasses import dataclass, field, replace
 
+from . import diet
 from .conditions import crowd_sensitive, hazard, queue_minutes
 from .roles import ROLE_SLOTS, takes_meal_slot
-from .schedule import DayCtx, busy_place, day_meals, intervals_for, meal_slot, meal_visit_fits, pin_window
+from .schedule import (DayCtx, busy_place, day_meals, intervals_for, meal_slot, meal_visit_fits, pin_hostable,
+                       pin_window, simulate)
 from .traits import exposure, visit_minutes
 
 # A day pulled to dawn rests at the lodging at midday (spec section 6, "ngày bình minh").
@@ -183,8 +185,13 @@ class _Day:
     def _slots_for(self, p) -> list[str]:
         """Free meal slots in role preference order, open for the visit and its pin."""
         cx, cfg = self.cx, self.cx.cfg
-        return [n for n in ROLE_SLOTS.get(p.meal_kind, tuple(cfg.meal_windows))
-                if n in self.slots and meal_visit_fits(p, n, cx)]
+        free = [n for n in ROLE_SLOTS.get(p.meal_kind, tuple(cfg.meal_windows)) if n in self.slots]
+        held = [n for n in free if meal_visit_fits(p, n, cx)]
+        if held or not p.pins:
+            return held
+        # A time of day (sunset, music) is a wish: a meal place whose wish lies off every meal window still takes the
+        # meal; the day's clock gives the wish up (_unpin) and the user is told. Opening hours and the day stay hard.
+        return [n for n in free if meal_visit_fits(replace(p, pins=()), n, cx)]
 
     def _load(self, p, slot: str | None, shrink: bool = False) -> int:
         cx = self.cx
@@ -231,7 +238,10 @@ class _Day:
                 continue
             miss = bool(win) and not _hosts(p, self.cx, st, True)
             fill = (self.used() + load + add) / max(1, self.cap)
-            key = (miss, clash, add + BALANCE_MIN * fill + away, add, self.k, i)
+            # a breakfast dish belongs to a day whose breakfast it can take; lunch is the fallback (T14: bánh căn at 13:30)
+            late = 1 if slot and p.meal_kind == "breakfast" and slot != "breakfast" else 0
+            excess = max(0, len(self.order) + 1 - self.cx.cfg.per_day[self.cx.pace]) if lay.balance_count else 0
+            key = (miss, clash, late, excess, add + BALANCE_MIN * fill + away, add, self.k, i)
             if best is None or key < best[0]:
                 best = (key, i, at, slot, load)
         return best
@@ -273,11 +283,14 @@ class _Layout:
         self.luggage = trip.decision["trip_context"]["context"].get("mobility") in LUGGAGE_MOBILITY
         self.max_leg = (trip.decision["trip_context"].get("pace") or {}).get("max_leg_min")
         self.musts = must_places(trip)
+        self.balance_count = (trip.decision["trip_context"].get("sources") or {}).get("pace") in {"user", "inferred"}
 
     def allowed(self, p, day: _Day) -> bool:
         """Hard rules: not on a hazard day, open that weekday long enough, and, on a last day carried out with the bags
         by motorbike or on foot, near the lodging or the way out (spec section 4)."""
         cx = day.cx
+        if not diet.allowed(p, cx) and any(diet.allowed(p, d.cx) for d in self.days):
+            return False            # keep an already-selected meal visible when no day satisfies it; validate explains
         if hazard(p, cx.cond) and any(not hazard(p, d.cx.cond) for d in self.days):
             return False            # a hazard on every day is not solved by leaving it out: its check refuses the plan
         need = _need(p, cx)
@@ -306,7 +319,9 @@ class _Layout:
         key = trial.where[pid], trial.stretches[trial.where[pid]]
         miss = bool(_timed(self.places[pid], pulled)) and not _hosts(self.places[pid], pulled, key[1], True)
         add = trial.tour() - day.tour()
-        return ((miss, False, add + BALANCE_MIN * trial.used() / max(1, trial.cap), add, day.k, key[0]), trial, None)
+        excess = max(0, len(trial.order) - pulled.cfg.per_day[pulled.pace]) if self.balance_count else 0
+        late = int(trial.meal.get(pid) not in (None, "breakfast") and self.places[pid].meal_kind == "breakfast")
+        return ((miss, False, late, excess, add + BALANCE_MIN * trial.used() / max(1, trial.cap), add, day.k, key[0]), trial, None)
 
     def place(self, pid: str, skip: int | None = None) -> bool:
         best = None
@@ -382,12 +397,13 @@ class _Layout:
                     before, used, i = day.tour(), day.used(), day.where[pid]
                     spot = (None, i, day.stretches[i].stops.index(pid) + 1, None, day.loads[pid])
                     day.take(pid)
-                    here = before - day.tour() + BALANCE_MIN * used / max(1, day.cap) + _risk(p, day.cx) + (
-                        AREA_MIN if p.area and all(self.places[q].area != p.area for q in day.order) else 0)
+                    here = (max(0, len(day.order) + 1 - day.cx.cfg.per_day[day.cx.pace]) if self.balance_count else 0,
+                            before - day.tour() + BALANCE_MIN * used / max(1, day.cap) + _risk(p, day.cx) + (
+                                AREA_MIN if p.area and all(self.places[q].area != p.area for q in day.order) else 0))
                     best = None
                     for other in self.days:
                         opt = other.option(pid)
-                        if opt and opt[0][2] < here and (best is None or opt[0] < best[1][0]):
+                        if opt and opt[0][3:5] < here and (best is None or opt[0] < best[1][0]):
                             best = (other, opt)
                     if best is None or best[0] is day and best[1][1] == i:
                         day.put(pid, spot)              # nothing better: back where it was
@@ -396,6 +412,15 @@ class _Layout:
                     moved = True
             if not moved:
                 break
+
+
+def _as_laid(day: _Day) -> DayCtx:
+    """The day's context as build lays it: a stop whose time of day this day cannot host gives that wish up
+    (build._lay, the user is told) instead of making the whole day infeasible."""
+    cx = day.cx
+    off = {pid: replace(cx.places[pid], pins=()) for pid in day.ids()
+           if cx.places[pid].pins and not pin_hostable(cx.places[pid], cx)}
+    return replace(cx, places={**cx.places, **off}) if off else cx
 
 
 def _refill(lay, day: _Day, order: list) -> _Day | None:
@@ -438,6 +463,26 @@ def assign(trip, ctxs: list[DayCtx], ids: list[str]) -> tuple[list[list[str]], l
     lay = _Layout(trip, ctxs)
     left = [pid for pid in sorted(ids, key=_hardness(lay, ids)) if not lay.place(pid)]
     lay.improve(trip.cfg.improve_passes)
+    # Do not change an overloaded subset search. A fitting selection can use its otherwise empty days.
+    if not left:
+        for empty in [d for d in lay.days if not d.order and d.cap and not d.cx.day.blocks]:
+            options = []
+            for donor in lay.days:
+                if len(donor.order) < 2:
+                    continue
+                for pid in donor.order:
+                    target = _refill(lay, empty, [pid])
+                    source = _refill(lay, donor, [q for q in donor.order if q != pid])
+                    if target and source and all(
+                            not (r := simulate(day.ids(), _as_laid(day))).violations
+                            and not any(n.startswith('meal_missed') for n in r.notes)
+                            for day in (source, target)):
+                        delta = target.tour() + source.tour() - donor.tour()
+                        if delta <= 0:
+                            options.append((delta, pid, donor.k, source, target))
+            if options:
+                _, _, k, source, target = min(options, key=lambda x: x[:3])
+                lay.days[k], lay.days[empty.k] = source, target
     left = [pid for pid in left if not lay.place(pid)]          # a move may have made room
     left = lay.swap(lay.evict(left))
     return [day.ids() for day in lay.days], left

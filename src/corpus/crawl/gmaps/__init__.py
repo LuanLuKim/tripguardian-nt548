@@ -9,5 +9,6 @@ relevant.py places with more reviews than crawl kept -> data/gmaps/places/<fid_d
 extremes.py places with >= 30 reviews -> data/gmaps/places/<fid_dir>/reviews_extremes.json (lowest + highest rated)
 keywords.py places by category group -> data/gmaps/places/<fid_dir>/reviews_keywords.json (Maps review search)
 visit.py    places with popular times -> data/gmaps/places/<fid_dir>/visit.json ("people typically spend ... here")
+revisit.py  served places lacking hours / popular times -> data/gmaps/places/<fid_dir>/revisit.json (one visit, every panel)
 qc.py       places -> data/gmaps/qc/ (rule checks + Gemma, Judge role)
 """

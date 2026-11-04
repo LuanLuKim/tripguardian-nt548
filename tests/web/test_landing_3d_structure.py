@@ -19,7 +19,7 @@ def test_landing_uses_six_chapter_sticky_3d_story() -> None:
     assert ".tg-l3__stage { position: sticky;" in styles
 
 
-def test_landing_keeps_approved_hero_layout_and_current_guest_entry() -> None:
+def test_landing_keeps_approved_hero_layout_and_sign_in_entry() -> None:
     source = LANDING.read_text(encoding="utf-8")
 
     assert "Lịch trình Đà Lạt <em>vừa với bạn.</em>" in source
@@ -27,9 +27,10 @@ def test_landing_keeps_approved_hero_layout_and_current_guest_entry() -> None:
     assert "Lên lịch chuyến của bạn" in source
     assert "Xem cách hoạt động" in source
     assert "Miễn phí" in source
-    assert "Không cần tài khoản" in source
+    assert "không cần tài khoản" in source
     assert "Chỗ nào cũng có thật" in source
-    assert "await startGuest()" in source
+    assert "await startGuest()" in source  # a signed-in member may still ask for a fresh guest session
+    assert "navigate('/app/login')" in source  # nobody signed in: the CTA opens sign-in, not the home page (owner 2026-10-30)
 
 
 def test_landing_retains_non_animated_fallbacks() -> None:

@@ -161,18 +161,21 @@ def test_a_response_served_only_from_the_cache_ends_the_turn(make_assistant):
     assert chat.calls == 1 and CAFE in last_say(s) and "find_places cached" in system_log(s)
 
 
-def test_a_cache_only_response_without_text_gets_one_call_without_tools(make_assistant):
+def test_a_cache_only_response_without_text_gets_one_call_without_read_tools(make_assistant):
     q = "Gợi ý quán cà phê view đồi"
     chat = ScriptedChat(reply(call("find_places", criteria={"text": q})), say(f"Bạn thử {CAFE} nhé."))
     s = run_turn(make_assistant(chat), q)
-    assert chat.calls == 2 and chat.seen[1][1] == [] and CAFE in last_say(s)
+    assert chat.calls == 2 and CAFE in last_say(s)
+    assert "record_fact" in chat.seen[1][1]
+    assert not {"find_places", "get_place", "weather", "web_search"} & set(chat.seen[1][1])
 
 
 def test_the_assistant_calls_the_model_twice_at_most(make_assistant):
     chat = ScriptedChat(reply(call("get_place", id="0xa:0x1")), reply(call("get_place", id="0xc:0x1")),
                         say("không bao giờ tới đây"))
     s = run_turn(make_assistant(chat), f"{CAFE} có gì?")
-    assert chat.calls == 2 and chat.seen[1][1] == []
+    assert chat.calls == 2 and "record_fact" in chat.seen[1][1]
+    assert "get_place" not in chat.seen[1][1]
 
 
 # ---------- round 5: the first call offers no lookup when the prepared data answers (assistant.covered_tools) ----------
@@ -194,7 +197,35 @@ def test_covered_question_write_mode_keeps_record_fact_only(make_assistant):
     chat = ScriptedChat(say("Ok."))
     run_turn(_with(make_assistant(chat), covered_tools="write"), "Gợi ý quán cà phê view đồi")
     offered = chat.seen[0][1]
+    assert {"record_fact", "hide_place"} <= set(offered)  # "đóng cửa rồi mà" after a covered list still hides the place
     assert "record_fact" in offered and not {"find_places", "get_place", "distance", "weather", "web_search"} & set(offered)
+
+
+def test_several_questions_keep_the_read_tools_even_when_the_prepared_data_covers_a_group(make_assistant):
+    chat = ScriptedChat(say("Ok."))
+    run_turn(_with(make_assistant(chat), covered_tools="write"), "Gợi ý quán cà phê view đồi? Từ chợ lên đó đi lại bằng gì?")
+    assert {"record_fact", "get_place"} <= set(chat.seen[0][1])  # N3: only one of three questions was answered
+
+
+def test_compound_request_keeps_reads_without_multiple_question_marks(make_assistant):
+    from trip.agent.prefetch import Route
+
+    for mode in ("write", "none"):
+        for text in (
+            "Gợi ý quán cà phê view đồi, từ chợ lên đó đi lại bằng gì?",
+            "Gợi ý quán cà phê view đồi từ chợ lên đó đi lại bằng gì",
+            "Gợi ý quán cà phê view đồi và cách đi từ chợ lên đó",
+        ):
+            chat = ScriptedChat(say("Ok."))
+            engine = _with(make_assistant(chat), covered_tools=mode)
+
+            def prepared(text, state, tools):
+                tools.route = Route({"places"}, [])
+                return {"tim_noi": [{"id": "0xa:0x1", "n": CAFE}]}, "prepared places only"
+
+            engine._prefetch = prepared
+            run_turn(engine, text)
+            assert {"get_place", "find_services"} <= set(chat.seen[0][1]), (mode, text)
 
 
 def test_uncovered_question_keeps_the_tools(make_assistant):

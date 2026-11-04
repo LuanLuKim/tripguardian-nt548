@@ -12,7 +12,7 @@ TOTAL_FROM = 2_000_000  # an amount this large with no scope said is read as the
 
 def scope(state: TripState) -> tuple[str | None, bool]:
     """-> (what the amount covers, whether that is a guess from its size). (None, False) without a budget."""
-    if not state.budget_vnd.known:
+    if "budget" in state.meta.declined or not state.budget_vnd.known:
         return None, False
     if state.budget_scope.known:
         return state.budget_scope.value, False

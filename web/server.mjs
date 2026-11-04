@@ -10,6 +10,7 @@ import { createReadStream, existsSync, realpathSync, statSync } from 'node:fs'
 import { Agent, createServer, request } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
 import { isIP } from 'node:net'
+import { constants as Z, createBrotliCompress, createGzip } from 'node:zlib'
 
 const PORT = Number(process.argv[2] ?? process.env.PORT ?? 28899)
 const HARNESS = { host: '127.0.0.1', port: Number(process.env.HARNESS_PORT ?? 8769), agent: new Agent({ keepAlive: true, maxSockets: 64 }) }
@@ -110,10 +111,24 @@ function proxy(req, res) {
   delete headers['x-forwarded-for']
   delete headers['cf-connecting-ip']
   const up = request({ ...HARNESS, method: req.method, path: req.url, headers }, (r) => {
-    res.writeHead(r.statusCode ?? 502, r.headers)
     r.on('aborted', () => { release(); res.destroy() })
     r.on('error', () => { release(); res.destroy() })
-    r.pipe(res) // streams SSE through unbuffered
+    // JSON goes compressed over the tunnel (a Lựa chọn view is ~0.5 MB of JSON: ~1.4 s uncompressed). SSE is never
+    // compressed here: a compressor would hold events back until its buffer fills.
+    const type = String(r.headers['content-type'] ?? ''), accept = String(req.headers['accept-encoding'] ?? '')
+    const big = Number(r.headers['content-length'] ?? 0) >= 1024 || !r.headers['content-length']
+    const enc = type.startsWith('application/json') && big && !r.headers['content-encoding']
+      ? (/\bbr\b/.test(accept) ? 'br' : /\bgzip\b/.test(accept) ? 'gzip' : null) : null
+    if (!enc) {
+      res.writeHead(r.statusCode ?? 502, r.headers)
+      return r.pipe(res) // streams SSE through unbuffered
+    }
+    const out = { ...r.headers, 'content-encoding': enc, vary: 'Accept-Encoding' }
+    delete out['content-length']
+    res.writeHead(r.statusCode ?? 502, out)
+    const z = enc === 'br' ? createBrotliCompress({ params: { [Z.BROTLI_PARAM_QUALITY]: 4 } }) : createGzip({ level: 5 })
+    z.on('error', () => { release(); res.destroy() })
+    r.pipe(z).pipe(res)
   })
   up.on('error', () => {
     release()

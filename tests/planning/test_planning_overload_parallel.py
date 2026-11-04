@@ -6,6 +6,16 @@ import os
 import time
 from dataclasses import replace
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def fork_only_for_scheduler_probes(monkeypatch, request):
+    # These injected closures / short sleeps isolate search scheduling, not native-runtime initialization.
+    if request.node.name != "test_spawn_search_works_with_an_open_parent_native_runtime":
+        monkeypatch.setattr(overload, "_PROCESS_CONTEXT", "fork")
+
+
 from plan_fixtures import CENTRE, decision, prepared, spot
 
 import planning.overload as overload
@@ -77,6 +87,170 @@ def test_parallel_search_finds_the_same_plans_as_one_after_another():
     serial = public(plan_or_directions(workers(trip, 1)))
     assert serial["overload"]
     assert public(plan_or_directions(workers(trip, 3))) == serial
+
+
+def test_children_share_one_deadline_and_keep_a_fast_answer(monkeypatch):
+    from functools import partial
+
+    monkeypatch.setattr(overload, "_FORK_WAIT_S", 0.4)
+    started = time.monotonic()
+    got = overload._in_children({"a": partial(time.sleep, 2), "b": partial(time.sleep, 2),
+                                 "c": partial(time.sleep, 2), "d": partial(time.sleep, 2),
+                                 "fast": partial(str, "ready")})
+    assert time.monotonic() - started < 1.2
+    assert got == {"fast": "ready"}
+
+
+def test_overload_timeout_does_not_retry_a_hung_child_in_the_parent(monkeypatch):
+    original = overload._direction
+
+    def hung(*args):
+        time.sleep(0.8)
+        return original(*args)
+
+    trip = a_little_short()
+    trip = replace(trip, cfg=replace(trip.cfg, realistic={**trip.cfg.realistic, "overload_deadline_s": 0.15}))
+    monkeypatch.setattr(overload, "_FORK_WAIT_S", 0.05)
+    monkeypatch.setattr(overload, "_direction", hung)
+    started = time.monotonic()
+    out = plan_or_directions(trip)
+    assert time.monotonic() - started < 0.6
+    assert any(w["code"] == "overload_deadline" for w in out["warnings"])
+    assert out["variants"]
+    assert not out["ok"] or any(v["confirmable"] for v in out["variants"])
+    for v in out["variants"]:
+        if v["violations"] or v["left_over"]:
+            assert not v["confirmable"]
+
+
+def test_deadline_keeps_a_checked_main_draft_when_directions_are_slow(monkeypatch):
+    def hung(*args):
+        time.sleep(2)
+
+    trip = a_little_short()
+    monkeypatch.setattr(overload, "_FORK_WAIT_S", 0.4)
+    monkeypatch.setattr(overload, "_direction", hung)
+    monkeypatch.setattr(overload, "_extend", lambda *args: {"side": "end", "per_day_min": 60})
+    out = plan_or_directions(trip)
+    available = [v for v in out["variants"] if v["available"] and v["status"] == "available"]
+    assert available and out["back_to_decision"] is None
+    assert available[0]["left_over"] and not available[0]["confirmable"]
+    assert not available[0]["violations"]
+    assert any(w["code"] == "overload_deadline" for w in out["warnings"])
+    assert out["overload"]["extend"] is not None
+
+
+def test_deadline_draft_never_claims_a_required_place_fits(monkeypatch):
+    def hung(*args):
+        time.sleep(2)
+
+    trip = a_little_short()
+    monkeypatch.setattr(overload, "_FORK_WAIT_S", 0.1)
+    monkeypatch.setattr(overload, "_direction", hung)
+    monkeypatch.setattr(overload, "_extend", hung)
+    out = plan_or_directions(trip, protected=set(trip.by_place))
+    draft = next(v for v in out["variants"] if v["available"])
+    assert not draft["confirmable"] and draft["left_over"]
+    assert any(v["kind"] == "anchor" for v in draft["violations"])
+    assert not out["ok"] and out["back_to_decision"] is None
+
+
+def test_deadline_draft_can_be_opened_without_losing_unplaced_selections(monkeypatch):
+    from plan_fixtures import CFG, FakeLive, fake_matrix, no_geocode
+    from planning import Engine
+    from planning.session import Store
+
+    def hung(*args):
+        time.sleep(2)
+
+    recs = [spot(f"c{i}", CENTRE, i, visit=(50, 60, 70)) for i in range(4)]
+    d = decision([r["id"] for r in recs], days=1,
+                 base={"place_id": None, "text": "home", "lat": CENTRE[0], "lng": CENTRE[1]})
+    monkeypatch.setattr(overload, "_FORK_WAIT_S", 0.1)
+    monkeypatch.setattr(overload, "_direction", hung)
+    engine = Engine(recs, cfg=CFG, live_cfg=FakeLive(), store=Store(None), geocode_fn=no_geocode,
+                    matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), background=False)
+    created = engine.create(d)
+    draft = next(v for v in created["view"]["variants"] if v["status"] == "available")
+    opened = engine.act(created["id"], {"type": "pick_variant", "id": draft["id"]})
+    assert opened["view"]["unplaced"]
+    assert "chưa" in created["view"]["overload"]["text"].lower()
+    assert "thiếu ~" not in created["view"]["overload"]["text"]
+    assert not engine._get(created["id"]).state.plan_dropped
+    from planning.engine import NotConfirmable
+    with pytest.raises(NotConfirmable):
+        engine.confirm(created["id"])
+
+
+def test_worker_settings_do_not_discard_the_main_day_route_cache():
+    from planning.cache import day_key
+
+    trip = a_little_short()
+    cx = trip.ctxs[0]
+    ids = list(trip.by_place)
+    worker = replace(cx, cfg=replace(cx.cfg, direction_workers=1))
+    assert day_key(cx, ids) == day_key(worker, ids)
+    changed = replace(cx, cfg=replace(cx.cfg, buffer_min={k: v + 1 for k, v in cx.cfg.buffer_min.items()}))
+    assert day_key(cx, ids) != day_key(changed, ids)
+
+
+def test_spawn_scheduler_import_does_not_load_chat_or_retrieval_runtime():
+    import subprocess
+    import sys
+
+    probe = subprocess.run([sys.executable, "-c",
+                            "import planning.overload, sys; "
+                            "assert 'trip.api.engine' not in sys.modules; "
+                            "assert 'agents.assistant.loop' not in sys.modules; "
+                            "assert 'lancedb' not in sys.modules"], capture_output=True, text=True)
+    assert probe.returncode == 0, probe.stderr
+
+
+def spawned_hang(path):
+    path.write_text(str(os.getpid()))
+    time.sleep(60)
+
+
+def test_spawned_hung_child_is_killed_by_the_shared_deadline(monkeypatch, tmp_path):
+    from functools import partial
+
+    monkeypatch.setattr(overload, "_PROCESS_CONTEXT", "spawn")
+    pids = tmp_path / "spawned_pid"
+    started = time.monotonic()
+    assert overload._in_children({"hung": partial(spawned_hang, pids)}, deadline=started + 8) == {}
+    assert time.monotonic() - started < 10
+    assert pids.exists() and not alive(int(pids.read_text()))
+
+
+def test_large_trip_payload_does_not_block_spawn_startup_past_deadline(monkeypatch):
+    monkeypatch.setattr(overload, "_PROCESS_CONTEXT", "spawn")
+    trip = a_little_short()
+    trip = replace(trip, decision={**trip.decision, "startup_payload": "x" * 2_000_000},
+                   cfg=replace(trip.cfg, realistic={**trip.cfg.realistic, "overload_deadline_s": 0.2}))
+    started = time.monotonic()
+    out = plan_or_directions(trip)
+    assert time.monotonic() - started < 1.5
+    assert out["warnings"][0]["code"] == "overload_deadline"
+
+
+def parent_runtime_absent():
+    import multiprocessing
+    import sys
+    return "parent_runtime_marker" not in sys.modules and multiprocessing.get_start_method() == "spawn"
+
+
+def test_spawn_search_works_with_an_open_parent_native_runtime(monkeypatch):
+    import sys
+    import types
+
+    # A fork would inherit this live parent-only native runtime marker.
+    monkeypatch.setitem(sys.modules, "parent_runtime_marker", types.ModuleType("parent_runtime_marker"))
+    assert overload._in_children({"runtime": parent_runtime_absent}) == {"runtime": True}
+    trip = a_little_short()
+    out = plan_or_directions(trip)
+    assert out["overload"] and out["ok"]
+    assert not out["warnings"]
+    assert any(v["dropped"] for v in out["variants"])
 
 
 def alive(pid):

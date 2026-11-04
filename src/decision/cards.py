@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from corpus import data_root, load_ontology, pulse
 from corpus.serving import dishes, feature, scenes
-from requirements import activity_for, applicable, scope_allows
+from requirements import activity_for, applicable, safety_requirement, scope_allows
 
 from .model import FIRM, Cand, cost_total, known_for, value
 from .wishes import SAID
@@ -25,7 +25,15 @@ WARNING = {"hours_unknown": "Chưa có giờ mở cửa",
            "missing_record": "Chưa có trong dữ liệu đang phục vụ (có thể đã đóng cửa)"}
 
 
+@lru_cache(maxsize=1)
+def _companion_labels() -> dict[str, str]:
+    return {who: definition.vi for who, definition in load_ontology().companions.items()}
+
+
 def feature_label(fid: str, cfg) -> str:
+    if fid.startswith("fit.") and fid not in cfg.labels["feature"]:
+        who = fid[4:]
+        return "Phù hợp với " + _companion_labels().get(who, who).lower()
     return cfg.labels["feature"].get(fid, fid.replace("_", " "))
 
 
@@ -52,7 +60,7 @@ def price_text(rec: dict) -> str | None:
     return f"{lo // 1000}k/người" if hi == lo else f"{lo // 1000}k–{hi // 1000}k/người"
 
 
-PHOTO_SCENES = 4  # cover + gallery: distinct scenes shown per card
+PHOTO_SCENES = 4  # cover + gallery: photos shown per card (corpus.serving.scenes picks, best first)
 PURPOSE_TEXT = {"relax": "thư giãn", "food_culture": "ăn uống, văn hóa", "nature": "thiên nhiên",
                 "explore": "khám phá", "photo": "chụp ảnh"}
 SOURCE_TEXT = {"menu_popular": " · theo menu", "menu": " · theo menu", "name": " · theo tên quán", "review_order": " · theo review"}
@@ -81,8 +89,8 @@ def wish_text(hit: tuple, rec: dict, cfg, sources: dict | None = None) -> str:
 
 @lru_cache(maxsize=8192)
 def _scene_photos(pid: str, group: str | None, data: str) -> tuple[dict, ...]:
-    """The best photo per scene of a place, in the order of its kind (corpus.serving.scenes: no person, not blurry, no
-    near-duplicate), shaped like the web's cover photos. `data` (the DATA_DIR env, read without touching .env) only keys
+    """The card photos of a place, best first (corpus.serving.scenes: right for its kind, most appealing, no stranger
+    in frame, not blurry, no near-duplicate), shaped like the web's cover photos. `data` (the DATA_DIR env, read without touching .env) only keys
     the cache. Empty without labels. Sizes come from the label file; a file labelled before sizes were stored is opened,
     and left out when it is gone. Display only: no score reads this."""
     out = []
@@ -96,12 +104,12 @@ def _scene_photos(pid: str, group: str | None, data: str) -> tuple[dict, ...]:
             except OSError:
                 continue
         out.append({"scene": p["scene"], "src": "/media/" + p["file"].replace("gmaps/places/", "gmaps/", 1),
-                    "credit": "Google Maps", "kind": "gmaps", "w": w, "h": h})
+                    "credit": "Google Maps", "kind": "gmaps", "w": w, "h": h, **({"year": p["year"]} if p.get("year") else {})})
     return tuple(out)
 
 
 def scene_photos(pid: str, rec: dict) -> list[dict]:
-    """Cover first, then up to PHOTO_SCENES - 1 more distinct scenes; [] leaves the web on the photos it already has."""
+    """Cover first, then up to PHOTO_SCENES - 1 more photos; [] leaves the web on the photos it already has."""
     return list(_scene_photos(pid, rec["identity"].get("category_group"), os.environ.get("DATA_DIR", "")))
 
 
@@ -118,12 +126,21 @@ def _fallback(c: Cand, cfg) -> dict:
     return {"text": text, "sid": None}
 
 
+def _pet_fact(c: Cand, val: str) -> dict | None:
+    f = feature(c.rec, "pets")
+    if (not f or f["status"] not in FIRM or f["value"] != val or not f.get("evidence") or not f["n"]
+            or (val == "allowed" and "not_allowed" in f["distribution"])):
+        return None
+    text = "Cho mang thú cưng" if val == "allowed" else "Không cho mang thú cưng"
+    return {"text": f"{text}, theo {f['n']} người", "sid": "pets"}
+
+
 def _why(c: Cand, anchor: bool, cfg) -> list[dict]:
     """Up to 3 lines: anchor, wishes the user said, matched features, leanings (group / purpose), nearness. Only the
     lines kept are written out."""
     lines = [("anchor", None)] if anchor else []
     lines += [("wish", h) for h in c.wishes if h[1] in SAID]
-    lines += [("feature", m) for m in c.matches if m[2] > 0]
+    lines += [("feature", m) for m in c.matches if m[2] > 0 and m[0] != "pets"]
     lines += [("wish", h) for h in c.wishes if h[1] not in SAID]
     if c.minutes is not None and c.minutes <= cfg.near_min:
         lines.append(("near", None))
@@ -137,7 +154,10 @@ def _why(c: Cand, anchor: bool, cfg) -> list[dict]:
             return {"text": f"{phrase(x[0], x[1], cfg)}, {x[3]} người nhắc", "sid": x[0]}
         return {"text": f"Gần {c.center}, ≈{c.minutes} phút (ước tính)", "sid": None}
 
-    return [text(k, x) for k, x in lines[:3]] or [_fallback(c, cfg)]
+    out = [text(k, x) for k, x in lines[:3]]
+    if (pet := _pet_fact(c, "allowed")):
+        out = [pet, *(x for x in out if x["sid"] != "pets")][:3]
+    return out or [_fallback(c, cfg)]
 
 
 _POLARITY: dict[int, tuple] = {}  # id(cfg) -> (cfg, rows); cfg is a frozen Settings, so the rows are built once
@@ -155,15 +175,22 @@ def _polarity_rows(cfg) -> list[tuple[str, str, str]]:
 
 
 def _tradeoffs(c: Cand, cfg) -> list[dict]:
+    unknown = list(dict.fromkeys(x["feature"] for x in c.checks
+                                if x["result"] == "unknown" and x["feature"] != "pets" and safety_requirement(x)))
+    if unknown:
+        labels = [feature_label(fid, cfg).lower() for fid in unknown]
+        return [{"text": "Chưa rõ có " + "; ".join(labels), "sid": unknown[0]}]
     out = [{"text": f["text"], "sid": f["sid"]} for f in c.flags]
     out += [{"text": f"{phrase(f, v, cfg)}, điều bạn muốn tránh", "sid": f} for f, v, contrib, _ in c.matches
             if contrib < 0]
     seen = {x["sid"] for x in out if x["sid"]}
     for fid, group, bad in _polarity_rows(cfg):
-        f = c.rec.get(group, {}).get(fid)
+        f = feature(c.rec, fid)
         if not f or fid in seen or f["status"] not in FIRM or f["n"] < 2 or f["value"] != bad:
             continue
         out.append({"text": f"{phrase(fid, f['value'], cfg)}, theo {f['n']} người", "sid": fid})
+    if (pet := _pet_fact(c, "not_allowed")):
+        out = [pet, *(x for x in out if x["sid"] != "pets")]
     return out[:3]
 
 
@@ -191,7 +218,9 @@ def _confidence(c: Cand, wanted, cfg, activity=None, requirements=()) -> dict:
             return any(applicable(c.rec, r, activity, c.role) for r in matched) if matched else applicable(
                 c.rec, {"feature": fid}, activity, c.role)
         return any(allows(fid, r) for r in matched) if matched else allows(fid, None)
-    wanted = list(dict.fromkeys(fid for fid in wanted if relevant(fid)))
+    safety_unknown = {x["feature"] for x in c.checks
+                      if x["result"] == "unknown" and x["feature"] != "pets" and safety_requirement(x)}
+    wanted = list(dict.fromkeys(fid for fid in wanted if fid not in safety_unknown and relevant(fid)))
     found = {f: feature(c.rec, f) for f in wanted}
     missing = [f for f in wanted if found[f] is None]
     shaky = [f for f in wanted if (x := found[f]) and x["status"] != "VERIFIED"]
@@ -231,11 +260,13 @@ def card(c: Cand, si, cfg, *, wanted=(), chosen=False, locked=False, anchor=Fals
         "price": price, "known_for": known_for(rec), "cost": cost_total(rec),
         "confidence": _confidence(c, wanted, cfg, si.activities.get(c.id), si.soft_weights),
         "declined": value(rec, "condition_change") == "declined" or trend == "falling",
-        "depends_on_unknown": f"Chưa biết ngân sách của bạn; giá khoảng {price}"
-        if price and "budget_vnd" in si.unknowns else None,
+        # kept for the card contract; empty on purpose: what the traveller has not said is theirs to give (the gate
+        # asks), never a tradeoff of the place, and the price already shows in `price`
+        "depends_on_unknown": None,
         "warnings": [warning_text(w, cfg) for w in c.warnings] + ([WARNING["missing_record"]] if c.missing else []),
-        "unverified": [f"Chưa xác minh được: {feature_label(x['feature'], cfg).lower()}" for x in c.checks
-                       if x["result"] == "unknown"],
+        "unverified": ["Chưa rõ có cho mang thú cưng không" if x["feature"] == "pets"
+                       else f"Chưa xác minh được: {feature_label(x['feature'], cfg).lower()}" for x in c.checks
+                       if x["result"] == "unknown" and (x["feature"] == "pets" or not safety_requirement(x))],
         "failed": [_fail_text(x, cfg) for x in c.checks if x["result"] == "fail"],
         "chosen": chosen, "locked": locked, "anchor": anchor,
         "alternatives": [{"id": i, "name": n} for i, n in alternatives], "suggested": suggested, "top": top,

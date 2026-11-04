@@ -137,11 +137,13 @@
        "start": "08:30"
       },
       {
+       "buffer_min": 20,
        "end": "09:52",
        "from": "s1",
        "kind": "travel",
        "mode": "motorbike",
        "note": "+20",
+       "road_min": 2,
        "start": "09:30",
        "to": "s3"
       },
@@ -166,11 +168,13 @@
        "start": "11:00"
       },
       {
+       "buffer_min": 12,
        "end": "12:48",
        "from": "s3",
        "kind": "travel",
        "mode": "walk",
        "note": "+12",
+       "road_min": 6,
        "start": "12:30",
        "to": "s2"
       },
@@ -215,11 +219,13 @@
        "start": "08:30"
       },
       {
+       "buffer_min": 20,
        "end": "09:53",
        "from": "c1",
        "kind": "travel",
        "mode": "motorbike",
        "note": "+20",
+       "road_min": 3,
        "start": "09:30",
        "to": "c4"
       },
@@ -236,11 +242,13 @@
        "start": "10:53"
       },
       {
+       "buffer_min": 20,
        "end": "11:30",
        "from": "c4",
        "kind": "travel",
        "mode": "motorbike",
        "note": "+20",
+       "road_min": 2,
        "start": "11:08",
        "to": "c2"
       },
@@ -252,11 +260,13 @@
        "start": "11:30"
       },
       {
+       "buffer_min": 20,
        "end": "12:53",
        "from": "c2",
        "kind": "travel",
        "mode": "motorbike",
        "note": "+20",
+       "road_min": 3,
        "start": "12:30",
        "to": "r1"
       },

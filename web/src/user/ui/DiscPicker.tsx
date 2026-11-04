@@ -10,6 +10,7 @@ import type { Card, Group } from '../pd/types'
 import { useDetail } from '../../data/store'
 import { toggleSaved, useUi } from '../store'
 import { cardLines } from './cardLines'
+import { PetFacts } from './PetFacts'
 import { Photo, preloadPhotos } from './common'
 import { HeartFill, Icon, type IconName } from './icons'
 import { openPlace } from './PlaceSheet'
@@ -183,7 +184,7 @@ export function DiscPicker({ groups, tab, onTab, cmp, onCmp, onDrop, onBack, lod
       </div>,
     )
   }
-  const { why, trade, alerts } = cardLines(c) // the grid card's lines: one logic, drawn for the disc
+  const { why, trade, alerts, pets } = cardLines(c) // the grid card's lines: one logic, drawn for the disc
   const isSel = c.chosen
   const isLock = c.locked
   const quote = p?.quotes[0]?.text ? clip(p.quotes[0].text, 130) : null
@@ -238,6 +239,7 @@ export function DiscPicker({ groups, tab, onTab, cmp, onCmp, onDrop, onBack, lod
             ) : <p className="tg-faint">Chưa có lý do rõ.</p>}
             {trade ? <p className="tg-disc__trade"><Icon name="warn" size={15} /><span><b>Đánh đổi:</b> {trade}</span></p> : <p className="tg-faint">Chưa thấy điều gì đáng ngại.</p>}
             {alerts.map((n) => <p key={n} className="tg-disc__alert"><Icon name="warn" size={14} />{n}</p>)}
+            <PetFacts id={c.id} claims={pets} />
             <div className="tg-disc__act">
               <button type="button" className="tg-disc__cta" onClick={() => openPlace(c.id, bigRef.current)}>Xem chi tiết <Icon name="arrow" size={18} /></button>
               {onStay ? (

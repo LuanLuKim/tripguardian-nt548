@@ -125,7 +125,7 @@ def test_main_venue_tries_dinner_when_the_lunch_stretch_has_no_room():
     sights = rec('sight', *CENTRE, visit=(100, 100, 100))
     venue = rec('restaurant', *CENTRE, usable=('meal',), group='restaurant', visit=(90, 90, 90),
                 hours=all_days('10:00', '22:00'))
-    t = framed([sights, venue], ['2026-12-12'], busy={0: [('12:30', '14:00', 'nap', 'lodging')]})
+    t = framed([sights, venue], ['2026-12-12'], busy={0: [('11:30', '14:00', 'nap', 'lodging')]})   # a meal may be eaten down to 60 min: 30 min before the nap is no room
     day = _Layout(t, t.ctxs).days[0]
     day.put('sight', day.option('sight'))
     opt = day.option('restaurant')

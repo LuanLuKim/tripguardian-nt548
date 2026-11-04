@@ -190,7 +190,7 @@ def dual_ctx(**kw):
     from planning.roles import pin_order
     cx = day_ctx([rec("hill", 1, 1, hours=None, features={"cloud_hunting": "present", "sunset_view": "present"})],
                  sun=(360, 1050), start=480, **kw)
-    hill = replace(cx.places["hill"], pins=pin_order(cx.places["hill"].pins, set()))
+    hill = replace(cx.places["hill"], pins=pin_order(cx.places["hill"].pins, {"cloud_hunting", "sunset_view"}))
     return replace(cx, places={"hill": hill})
 
 
@@ -226,12 +226,15 @@ def test_the_plan_says_when_dawn_was_swapped_for_sunset():
     recs = [spot("hill", CENTRE, 0, hours=None, features={"cloud_hunting": "present", "sunset_view": "present"})]
     d, _ = frame_trip(sources={"frame.days.0.start": "user"})
     d["confirmed"] = [{"id": "hill", "name": "hill", "role": "selected", "visit": None, "flags": [], "relaxed": []}]
+    d["trip_context"]["soft_weights"] = [{"feature": "cloud_hunting", "value": "present", "weight": 1},
+                                           {"feature": "sunset_view", "value": "present", "weight": 1}]
     sched = schedule_trip(prepared(d, recs))
     assert any(w["code"] == "dawn_swapped" for w in sched.warnings)
     visit = next(i for i in sched.results[0].items if i.kind == "visit")
     assert visit.start > 900
     d2, _ = frame_trip()
     d2["confirmed"] = d["confirmed"]
+    d2["trip_context"]["soft_weights"] = d["trip_context"]["soft_weights"]
     sched2 = schedule_trip(prepared(d2, recs))
     assert not any(w["code"] == "dawn_swapped" for w in sched2.warnings)
     assert next(i for i in sched2.results[0].items if i.kind == "visit").start < 480

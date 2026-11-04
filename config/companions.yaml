@@ -7,12 +7,12 @@ sensitive: [baby, parents, pregnant, wheelchair]
 companions:
   - {id: solo, vi: "Một mình", synonyms: ["một mình", "đi 1 mình", "solo"], suitability: null}
   - {id: partner, vi: "Người yêu, vợ chồng", synonyms: ["người yêu", "vợ chồng", "cặp đôi", "bạn gái", "bạn trai", "hẹn hò"], suitability: couples}
-  - {id: friends, vi: "Bạn bè", synonyms: ["bạn bè", "nhóm bạn", "hội bạn"], suitability: null}
+  - {id: friends, vi: "Bạn bè", synonyms: ["bạn bè", "nhóm bạn", "hội bạn", "anh em", "ae", "tụi mình", "tui minh", "bọn mình"], suitability: null}
   - {id: kids, vi: "Trẻ nhỏ", synonyms: ["trẻ em", "trẻ nhỏ", "các bé", "con nít", "con nhỏ"], suitability: kids}
   - {id: baby, vi: "Em bé", synonyms: ["em bé", "bé sơ sinh", "xe đẩy", "con mới sinh"], suitability: null}
   - {id: parents, vi: "Bố mẹ, người lớn tuổi", synonyms: ["bố mẹ", "ba mẹ", "ông bà", "người lớn tuổi", "người già"], suitability: elderly}
   - {id: pregnant, vi: "Bà bầu", synonyms: ["bà bầu", "mang thai", "có bầu"], suitability: null}
   - {id: wheelchair, vi: "Người đi xe lăn", synonyms: ["xe lăn"], suitability: wheelchair}
-  - {id: pet, vi: "Thú cưng", synonyms: ["thú cưng", "chó", "mèo", "cún", "pet"], suitability: pets}
+  - {id: pet, vi: "Thú cưng", synonyms: ["thú cưng", "chó", "mèo", "cún", "cún cưng", "boss", "pet"], suitability: pets}
   - {id: coworkers, vi: "Đồng nghiệp", synonyms: ["đồng nghiệp", "công ty", "team building"], suitability: null}
   - {id: large_group, vi: "Đoàn đông", synonyms: ["đoàn đông", "nhóm đông", "cả đoàn"], suitability: groups}

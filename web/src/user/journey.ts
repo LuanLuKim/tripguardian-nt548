@@ -41,6 +41,7 @@ export async function json<T>(res: Response): Promise<T> {
 }
 export const createJourney = (experience: string | null, start_with: string | null) => fetch(BASE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ experience, start_with }) }).then(json<JourneyView>)
 export const loadJourney = (id: string, stage?: Stage) => fetch(`${BASE}/${id}${stage ? `?stage=${stage}` : ''}`).then(json<JourneyView>).then(remember)
+export const loadJourneyState = (id: string) => fetch(`${BASE}/${id}?view=0`).then(json<JourneyView>).then(remember)
 export const readJourney = <T>(id: string, path: string) => fetch(`${BASE}/${id}/read/${path}`).then(json<T>)
 function serial<T>(id: string, run: () => Promise<T>): Promise<T> {
   const next = (queues.get(id) ?? Promise.resolve()).catch(() => {}).then(run)
@@ -59,6 +60,8 @@ async function send(url: string, init: RequestInit) {
   }
 }
 async function post(id: string, req: Request, handlers?: Record<string, ((data: any) => void) | undefined>): Promise<JourneyView> {
+  // The planning gate is a normal question, delivered as a typed stream event rather than a failed HTTP request.
+  if (req.stage === 'decision' && req.operation === 'advance') handlers ??= {}
   const path = typeof location === 'undefined' ? '' : location.pathname + location.search
   const active = () => typeof location === 'undefined' || path === location.pathname + location.search
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -79,7 +82,7 @@ async function post(id: string, req: Request, handlers?: Record<string, ((data: 
           const data = block.split('\n').filter(l => l.startsWith('data: ')).map(l => l.slice(6)).join('\n')
           if (!data) continue
           const e = JSON.parse(data)
-          if (e.request_id !== req.request_id || e.stage !== req.stage || e.revision < req.expected_revision || e.revision > req.expected_revision + 1) continue
+          if (e.request_id !== req.request_id || (e.stage !== req.stage && !(e.event === 'journey' && e.stage === e.data?.stage)) || e.revision < req.expected_revision || e.revision > req.expected_revision + 1) continue
           if (e.event === 'journey') result = e.data
           else if (e.event === 'error') throw new JourneyError(e.data.status ?? 500, e.data.error ?? e.data.message, e.data.missing, e.data.readback)
           else if (active()) handlers[e.event]?.(e.data)
@@ -96,21 +99,25 @@ async function execute(id: string, req: Request, h?: Record<string, ((data: any)
   try { const view = remember(await post(id, req, h)); persist(id); return view }
   catch (e) { if (e instanceof JourneyError && e.status < 500) persist(id); throw e }
 }
-async function recover(id: string) { const old = saved(id); if (old) await execute(id, old) }
-export const resumeJourney = (id: string) => serial(id, async () => {
+async function recover(id: string) { const old = saved(id); return old ? execute(id, old) : undefined }
+export const resumeJourney = (id: string, stage?: Stage) => serial(id, async () => {
   const request = saved(id)
-  await recover(id)
-  return { view: await loadJourney(id), recoveredOperation: request?.operation }
+  const recoveredView = await recover(id)
+  // A replayed receipt may predate another client's committed mutation; always read the current target stage.
+  const view = await loadJourney(id, stage)
+  return { view, recoveredOperation: request?.operation, recoveredView }
 })
-async function stageReady(id: string, stage: Stage) {
-  let current = await loadJourney(id)
+async function stageReady(id: string, stage: Stage, render = false) {
+  let current = await loadJourneyState(id)
+  let hasView = false
   while (current.stage !== stage) {
     if (current.stage === 'trip' || (current.stage === 'decision' && stage === 'planning')) throw new JourneyError(409, 'Advance this journey explicitly first')
     current = await execute(id, { request_id: crypto.randomUUID(), stage: current.stage, operation: 'back', expected_revision: current.revision, payload: {} })
+    hasView = true
   }
-  return current
+  return render && !hasView ? loadJourney(id, stage) : current
 }
-export const enterStage = (id: string, stage: Stage) => serial(id, async () => { await recover(id); return stageReady(id, stage) })
+export const enterStage = (id: string, stage: Stage) => serial(id, async () => { await recover(id); return stageReady(id, stage, true) })
 export function mutateJourney(id: string, stage: Stage, operation: Operation, payload: unknown = {}, handlers?: Record<string, ((data: any) => void) | undefined>) {
   return serial(id, async () => {
     const old = saved(id)
@@ -121,7 +128,7 @@ export function mutateJourney(id: string, stage: Stage, operation: Operation, pa
     const at = latest.get(id)
     if ((operation === 'act' || operation === 'advance') && !handlers && at?.stage === stage) {
       try { return await execute(id, { request_id: crypto.randomUUID(), stage, operation, expected_revision: at.revision, payload }) }
-      catch (e) { if (!(e instanceof JourneyError && e.status === 409)) throw e }
+      catch (e) { if (!(e instanceof JourneyError && e.status === 409 && (e.detail === 'stale revision' || /^expected revision \d+, got \d+$/.test(e.detail)))) throw e }
     }
     const current = await stageReady(id, stage)
     return execute(id, { request_id: crypto.randomUUID(), stage, operation, expected_revision: current.revision, payload }, handlers)

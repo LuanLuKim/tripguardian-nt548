@@ -236,11 +236,19 @@ export interface DishEvidence { source: 'menu_popular' | 'name' | 'menu' | 'menu
 export interface DishBlock { kind: 'dish'; dish: string; places: { id: string; evidence: DishEvidence[] }[]; cards: ChatPlace[] }
 export interface ServiceRow { name: string; kind?: string; distance_km?: number; address?: string; phone?: string; website?: string; hours?: string[] | string; open_status?: string; rating?: number; reviews?: number; maps_url?: string }
 export interface ServicesBlock { kind: 'services'; rows: ServiceRow[]; found: number; anchor?: string; sources: string[]; crawled?: string }
-export type ResultBlock = DishBlock | ServicesBlock
+// A broad ask split into kinds (src/trip/api/blocks.py tags_block): each subtag holds its first places, the cards come once.
+export interface Subtag { id: string; axis: string; label: string; count: number; place_ids: string[]; cover: string[] }
+// level 'tags' = kinds of places to open (a tap sends kind 'tag'); 'subtags' = groups of one interest (a tap opens its places).
+export interface TagsBlock { kind: 'tags'; level?: 'tags' | 'subtags'; title?: string; sig?: string; axis: string; total: number; other: number; subtags: Subtag[]; all: string[]; all_cover?: string | null; cards: ChatPlace[]; criteria?: unknown }
+// One card of the tag stage (src/trip/api/engine.py tag_stage): a tag, a subtag, the "Xem tất cả" of a level, or a place.
+export interface TagNode { ref: string; kind: 'tag' | 'subtag' | 'all' | 'place'; label: string; count: number; cover: string | null; has_children: boolean; wished?: boolean; id?: string; card?: ChatPlace }
+export interface TagLevel { sig: string; ref: string; label: string; count: number; wished: boolean; nodes: TagNode[] }
+export type ResultBlock = DishBlock | ServicesBlock | TagsBlock
 
 export interface ChatPlaces { ids: string[]; why: string; cards: ChatPlace[] }
 
 export interface View {
+  discovery?: boolean
   id: string
   transcript: Turn[]
   understanding: Understanding
@@ -323,7 +331,9 @@ export type TurnInput =
   | { kind: 'edit'; target: string; value: string | null }
   | { kind: 'show' }
   | { kind: 'image'; value: string; text?: string } // value: a data URL of the photo, ≤ ~45 KB (harness body limit)
-  | { kind: 'like'; target: string; value: 'on' | 'off' } // Thích on a chat place card
+  | { kind: 'like'; target: string; value: 'on' | 'off'; qid?: 'stage' } // Thích on a chat place card; qid 'stage' = a place the tag stage listed
+  | { kind: 'wish'; qid: string; target: string; value: 'on' | 'off' } // Thích cả kiểu on a tag stage card (qid = the tags block, target = the node path)
+  | { kind: 'tag'; target: string } // legacy: a tap on a tag card (target = "axis:key"); the tag stage reads nodes instead
 
 export interface Handlers {
   preview?: (d: { fields: { target: string; value: unknown; quote: string }[] }) => void

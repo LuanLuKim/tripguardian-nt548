@@ -147,7 +147,8 @@ async def label_place(client, model: str, sem: asyncio.Semaphore, city: str, d: 
                       old: dict | None) -> dict:
     place = json.loads((d / "place.json").read_text(encoding="utf-8"))
     doc = json.loads((d / PHOTOS_FILE).read_text(encoding="utf-8"))
-    photos = [p for p in doc["photos"] if not p.get("stale") and (d / p["file"]).exists()]  # stale = cover only
+    # stale = cover only, except `display_old`: an outdoor photo of a sight past the 3-year cap, labelled for cards (config pick.old)
+    photos = [p for p in doc["photos"] if (not p.get("stale") or p.get("display_old")) and (d / p["file"]).exists()]
     lh = label_hash(cfg)
     cached = {e["sha"]: e for e in (old or {}).get("photos", []) if e.get("sha")}
     entries, todo = [], []
@@ -156,7 +157,8 @@ async def label_place(client, model: str, sem: asyncio.Semaphore, city: str, d: 
         sha = hashlib.sha256(raw).hexdigest()[:24]
         prev = cached.get(sha)
         e = {"photo_id": p["photo_id"], "file": p["file"], "sha": sha, "kind": p.get("kind"), "owner": bool(p.get("owner")),
-             "author_hash": p.get("author_hash"), "month": p.get("month")}
+             "author_hash": p.get("author_hash"), "month": p.get("month"),
+             **({"old": True} if p.get("display_old") else {})}
         if prev and prev.get("label_hash") == lh:
             e.update({k: prev[k] for k in ("blur", "brightness", "w", "h", "scene", "person", "label_hash") if k in prev})
             if "w" not in prev:  # labelled before sizes were stored: measure again, the labels stay

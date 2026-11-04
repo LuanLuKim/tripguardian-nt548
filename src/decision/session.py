@@ -70,7 +70,7 @@ class State(BaseModel):
     profile: Profile = Field(default_factory=Profile)
     answered: list[str] = Field(default_factory=list)  # question ids answered or declined
     unmapped: list[str] = Field(default_factory=list)
-    suggest_group: str | None = None  # "Gợi ý nơi tương tự" was answered for this display group
+    suggest_group: str | None = None  # legacy snapshots only; ignored by the pipeline
     last: str | None = None  # type of the last action
     shown: dict[str, list[str]] = Field(default_factory=dict)  # tab -> ids on screen, in screen order
     page: dict[str, int] = Field(default_factory=dict)  # tab -> page on screen (0 = first)
@@ -86,6 +86,7 @@ class Session(BaseModel):
     id: str
     trip_session: str | None = None
     search_input: SearchInput
+    hidden_ids: tuple[str, ...] = ()  # Trip reports suppress recommendations, not explicit selections or anchors
     state: State = Field(default_factory=State)
     history: list[State] = Field(default_factory=list)
     log: list[dict] = Field(default_factory=list)
@@ -100,8 +101,8 @@ class Store:
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
 
-    def new(self, si: SearchInput, trip_session: str | None, state: State) -> Session:
-        s = Session(id=uuid.uuid4().hex[:12], trip_session=trip_session, search_input=si, state=state)
+    def new(self, si: SearchInput, trip_session: str | None, state: State, *, hidden_ids: tuple[str, ...] = ()) -> Session:
+        s = Session(id=uuid.uuid4().hex[:12], trip_session=trip_session, search_input=si, state=state, hidden_ids=hidden_ids)
         with self._guard:
             self._mem[s.id] = s
         return s

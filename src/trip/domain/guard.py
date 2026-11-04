@@ -17,8 +17,8 @@ from ..infrastructure.catalog import Catalog
 from .state import SCALARS, Evidence, TripState, Update, apply, ontology, settle
 from .text import contains, fold, language, squash
 
-FieldName = Literal["start_date", "month", "month_part", "days", "nights", "companions", "people", "base", "entry_point", "exit_point", "mobility",
-                    "checkin_at", "checkout_at", "day_end", "purpose", "anchor", "signal", "soft", "hard", "pace", "max_leg_min", "crowd_tolerance",
+FieldName = Literal["start_date", "month", "month_part", "days", "nights", "companions", "people", "base", "origin", "entry_point", "exit_point", "mobility",
+                    "checkin_at", "checkout_at", "day_end", "frame.day_start", "excluded_place", "purpose", "anchor", "signal", "soft", "hard", "pace", "max_leg_min", "crowd_tolerance",
                     "frame.arrive", "frame.leave", "drive_day_min", "driver", "care", "budget_unlimited", "novelty", "budget_vnd", "budget_scope", "liked_groups", "activity", "time_preference", "unmapped", "like"]
 # a place name made only of these is a phrase ("Đặc sản Đà Lạt", "Khu Vui Chơi" are said as plain words too)
 GENERIC = {"du", "lich", "da", "lat", "dalat", "viet", "nam", "thanh", "pho", "tour", "dac", "san", "khu", "vui", "choi"}
@@ -27,7 +27,7 @@ LIST_FIELDS = {"companions", "liked_groups", "anchor", "signal", "soft", "hard",
 
 # Short words keep their marks; longer phrases tolerate spelling slips.
 GROUP_WORDS = {"partner": ("người yêu", "bạn gái", "bạn trai", "vợ chồng", "bồ", "ny", "ngừi iu", "người iu", "vợ", "chồng", "wife", "husband"),
-               "friends": ("bạn", "bạn bè", "nhóm bạn", "hội bạn", "kiểu bạn", "đứa bạn", "nhom minh", "hoi minh"),
+               "friends": ("bạn", "bạn bè", "nhóm bạn", "hội bạn", "kiểu bạn", "đứa bạn", "nhóm mình", "hội mình"),
                "parents": ("bo me", "ba me", "cha me", "ong ba", "ba ma", "voi me", "voi ba", "voi bo", "mother", "father"),
                "kids": ("con nho", "tre nho", "tre em", "em be", "kids", "children"),
                "baby": ("em be", "be so sinh", "xe day", "con moi sinh"),
@@ -45,10 +45,10 @@ CARE_NOTE = re.compile(r"\b(di ung|kieng|an chay|chay truong|thuan chay|hen suye
 TYPO_RATIO = 0.8  # "bnạ bè" still names friends; "họ hàng xa" names no value at all
 
 
-def names_group(quote: str, value: str) -> bool:
+def names_group(quote: str, value: str, *, allow_generic: bool = True) -> bool:
     """Whether the user's quote itself names the group `value`. Spelling slips are allowed: a window of words close
     enough to a group's words counts. A group the words do not name is an OTHER: the agent writes it as unmapped,
-    never as the nearest value."""
+    never as the nearest value. Generic group wording is only a hint, excluded when recording a fact."""
     marked = unicodedata.normalize("NFC", quote).casefold()
     if value == "parents":
         if re.search(r"\b(mẹ|bố|cha)\s+con\b", marked):
@@ -57,16 +57,40 @@ def names_group(quote: str, value: str) -> bool:
             return True
     if value == "kids" and (re.search(r"\bbé\s+\d+", marked) or KIDS.search(marked)):
         return True
+    plain = fold(quote)
+    if value == "pet":
+        synonyms = ontology().companions["pet"].synonyms
+        for phrase in synonyms:
+            for match in re.finditer(rf"\b{re.escape(fold(phrase))}\b", plain):
+                before, after = plain[:match.start()], plain[match.end():]
+                if re.search(r"\b(?:quan|tiem|cafe|ca phe|nha hang|hot|thich|an)\b[^,;.!?]*$", before):
+                    continue
+                if re.search(r"\b(?:khong|chang)\s+(?:mang|dan|di voi)\s*(?:con|be)?\s*$", before):
+                    continue
+                if fold(phrase) == "boss" and re.match(r"\s+(?:cong ty|cua sep)\b", after):
+                    continue
+                bare = plain.strip() == fold(phrase) and (fold(phrase) != "cho" or marked.strip() == "chó")
+                if bare or re.search(r"\b(?:voi|cung|mang|dan|con|be)\s*$", before) or re.match(r"\s+(?:nha|cua)\b", after):
+                    return True
+        return False
     words = re.findall(r"\w+", marked)
-    if value == "friends" and re.search(r"\b\d+\s+đứa\b(?!\s+(?:nhỏ|con|bé|cháu))", marked):  # "nhóm mình 6 đứa": peers
+    if value == "friends" and re.search(r"\b\d+\s+dua\b(?!\s+(?:nho|con|be|chau))", plain):
+        return True
+    if value == "friends" and any(re.search(rf"\b{re.escape(fold(p))}\b", plain)
+                                   and not (fold(p) in ("tui minh", "bon minh") and re.search(r"\b\d+\s+nguoi\b", plain))
+                                   for p in ontology().companions["friends"].synonyms):
         return True
     if value == "friends" and contains(quote, "sinh viên") and any(
             w in ("đứa", "nhóm") or (w.isdecimal() and int(w) >= 2) for w in words):
         return True
     for phrase in GROUP_WORDS.get(value, ()):
+        if not allow_generic and phrase in ("nhóm mình", "hội mình"):
+            continue
         n = len(phrase.split())
         for i in range(len(words) - n + 1):
             window = " ".join(words[i:i + n])
+            if value == "friends" and phrase == "bạn" and i + 1 < len(words) and words[i + 1] in ("trai", "gái"):
+                continue
             if window == phrase or (n > 1 and SequenceMatcher(None, fold(window), fold(phrase)).ratio() >= TYPO_RATIO):
                 return True
     return False
@@ -112,6 +136,33 @@ def record_fact(state: TripState, field: str, op: str, value: str, quote: str, h
     if evidence_turn is None:
         return state, (f"refused: quote {quote!r} is not in the user's message; copy the user's exact words, or do not "
                        f"record {field!r} again this turn if this message does not say it")
+    if field == "excluded_place":
+        from .state import ExcludedPlace
+        clauses = re.split(r"[.;!?\n]", quote)
+        eligible = [c for c in clauses if contains(c, value) and re.search(
+            r"\b(?:bo|loai|tranh|dung\s+(?:goi y|xep)|khong\s+(?:goi y|xep|di|den))\b", fold(c))]
+        anaphoric = any(contains(c, value) and i + 1 < len(clauses)
+                        and re.search(r"\b(?:dung|khong)\s+(?:goi y|xep)\b.*\b(?:quan|noi|cho)\s+do\b", fold(clauses[i + 1]))
+                        for i, c in enumerate(clauses))
+        if how != "said" or not (eligible or anaphoric) or not contains(quote, value):
+            return state, "refused: exclusion needs the user's explicit request to leave out this named place; visited is not excluded"
+        key = squash(value)
+        matches = [p for p in catalog.places if key and f" {key} " in f" {squash(p.name)} "]
+        if not matches:
+            return state, "refused: no matching real corpus place; exclusion was NOT applied; say so and do not promise"
+        ids = {p.id for p in matches}
+        kept = tuple(p for p in state.excluded_places if p.place_id not in ids)
+        if op != "remove":
+            ev = Evidence(turn=evidence_turn, quote=quote)
+            kept += tuple(ExcludedPlace(place_id=p.id, name=p.name, source="user", evidence=(ev,)) for p in matches)
+        return state.model_copy(update={"excluded_places": kept}), ""
+    if field == "care" and op != "remove":
+        words = fold(quote)
+        no_care = re.search(r"\bkhong\s+(?:co\s+)?(?:luu y|gi\s+can\s+luu y)\b", words)
+        if value == "listed" and not CARE_NOTE.search(words):
+            return state, "refused: venue preferences do not answer health/diet care; record a taste instead"
+        if value == "none" and not no_care and not re.fullmatch(r"\s*(?:khong(?: co gi(?: dac biet)?)?|binh thuong)[.! ]*", words):
+            return state, "refused: care none needs an explicit no-care answer"
     if field == "intent":  # the assistant: is the user exploring Đà Lạt or planning this trip (only their own words)
         if how != "said" or op == "remove" or value not in ("explore", "plan"):
             return state, "refused: intent is set to explore or plan, how said, from the user's own words"
@@ -120,6 +171,9 @@ def record_fact(state: TripState, field: str, op: str, value: str, quote: str, h
     if op != "remove" and field not in ("hard", "soft") and value.strip().casefold() in {"", "unknown", "none", "null", "n/a"}:
         if not (field == "care" and value.strip().casefold() == "none"):
             return state, "warning: placeholder value was not recorded"
+    if field == "origin" and op != "remove":
+        if not value.strip() or value.lstrip().startswith("{") or value.strip() not in quote:
+            return state, "refused: origin must be the user's exact place words, without coordinates or JSON"
     if field == "like":
         try:
             import json
@@ -159,7 +213,7 @@ def record_fact(state: TripState, field: str, op: str, value: str, quote: str, h
                                         confidence="high" if how == "said" else "medium",
                                         evidence=Evidence(turn=evidence_turn, quote=quote)))
             return settle(state), ""
-    if field == "companions" and op != "remove" and not names_group(quote, value):
+    if field == "companions" and op != "remove" and not names_group(quote, value, allow_generic=False):
         # Fail-closed: a group the user's own words do not name is never a guess. The agent keeps it as
         # unmapped and asks who comes; nothing is written from this call.
         return state, (f"refused: {value!r} is not one of companions [solo|partner|friends|kids|parents|baby|pet|coworkers] named "
@@ -199,6 +253,27 @@ def record_fact(state: TripState, field: str, op: str, value: str, quote: str, h
             # a hard limit filters every place: "must have a view / local food" would drop every cafe or waterfall
             return state, (f"refused: {parsed['feature']} is a taste, never a hard filter on every place. Record it "
                            f"as soft (love); a dish they must try is field dish, a place they must visit is anchor")
+        if field in {"checkin_at", "frame.day_start"} and op != "remove":
+            words = fold(quote)
+            departure = re.search(r"\bxuat phat\b|\b\d{1,2}\s*(?:h|gio)\s+di\b", words)
+            local_origin = re.search(r"\btu\s+(?:homestay|khach san|cho o|nha nghi|resort|hostel)\b", words)
+            daily_local = re.search(r"\b\d{1,2}h\s+di.*\b\d{1,2}h\s+ve\b", words) and (
+                re.search(r"\b(?:o|tu|ve)\s+(?:homestay|khach san|cho o|nha nghi)\b", fold(text))
+                or re.search(r"\b(?:moi ngay|ca hai ngay)\b", fold(text)))
+            if departure and not local_origin and not daily_local:
+                return state, "refused: departure is not a sightseeing start; clarify the origin/arrival first"
+        if field == "frame.arrive" and op != "remove":
+            # A departure from the lodging opens sightseeing, not the physical inbound journey.
+            words = fold(quote)
+            arrival = re.search(r"\b(?:ha canh|(?:xe|bay)\s+(?:toi|den)|(?:toi|den)\s+da lat)\b", words)
+            if not arrival and re.search(r"\b(?:xuat phat|bat dau|(?:\d{1,2}\s*(?:h|gio)(?:\s*\d{2})?)\s+di)\b", words):
+                intercity = re.search(r"\b(?:len|toi|den|di)\s+da lat\b|\b(?:xe khach|may bay|bay)\b", words)
+                origin = re.search(r"\btu\s+(.+)", words)
+                local_origin = origin and re.match(r"(?:homestay|khach san|cho o|nha nghi|resort|hostel)\b", origin[1])
+                if intercity or not local_origin:
+                    return state, "refused: an intercity departure is not arrival; ask when they reach Da Lat"
+                from .frame import Moment
+                field, parsed = "checkin_at", Moment.model_validate(parsed).at[11:]
         if field not in ("hard", "soft"):  # only a hard or soft fact has a requirement; an extra object is ignored
             requirement = None
         intent = None
@@ -219,6 +294,20 @@ def record_fact(state: TripState, field: str, op: str, value: str, quote: str, h
             raise ValueError("the activity quote must name the selected place")
         if field == "time_preference" and parsed.get("place_id") and not contains(quote, catalog.by_id[parsed["place_id"]].name):
             raise ValueError("the time preference quote must name the selected place")
+        if field == "start_date" and op != "remove":
+            from .dates import RANGE, activity_date
+            if (span := RANGE.search(fold(quote))) and (
+                    parsed.day != int(span[1]) or parsed.month != int(span[3])
+                    or span[4] and parsed.year != int(span[4])):
+                return state, "refused: trip start must be the first day of the user's explicit date range"
+            if activity_date(text, quote):
+                return state, "refused: a meal's date is not the trip start"
+        if field == "start_date" and op != "remove" and state.start_date.known and parsed != state.start_date.value:
+            from .dates import FULL_DATE, RANGE, relative_date_changes_trip, relative_dates
+            low = fold(quote)
+            if (relative_dates(low, quote.lower(), state.start_date.value)
+                    and not FULL_DATE.search(low) and not RANGE.search(low) and not relative_date_changes_trip(text, quote)):
+                return state, "refused: a relative-date comment does not change the recorded trip dates"
         if field in ("pace", "crowd_tolerance") and op != "remove":
             current = getattr(state, field)
             if current.known and current.value != parsed and any(e.turn == evidence_turn for e in current.evidence):

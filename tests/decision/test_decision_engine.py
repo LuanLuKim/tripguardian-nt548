@@ -176,16 +176,15 @@ def test_closed_and_hard_failed_selected_places_still_block_handoff():
             e.confirm(sid)
 
 
-def test_rethink_back_sends_the_user_to_understanding():
+def test_many_drops_never_prompt_or_send_the_user_to_understanding():
     e = engine()
     sid = e.create(trip())["id"]
     s = e.store.get(sid)
     s.first_shortlist = 2
     for i in range(6):
-        e.act(sid, {"type": "drop", "place_id": f"C{i}"})
-    view = e.load(sid)["view"]
-    assert view["pending"]["qid"] == "rethink"
-    assert e.act(sid, {"type": "answer", "qid": "rethink", "chip": "back"})["goto"] == "understand"
+        response = e.act(sid, {"type": "drop", "place_id": f"C{i}"})
+        assert response["view"]["pending"] is None and response.get("goto") is None
+    assert e.load(sid)["view"]["pending"] is None
 
 
 def test_dropped_say_is_replaced_by_a_sentence_never_empty():

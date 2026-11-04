@@ -4,6 +4,7 @@ import { openCreate } from '../home/dialogs'
 import { Icon } from '../ui/icons'
 import { Link } from '../ui/common'
 import { Page, useTitle } from '../ui/Shell'
+import { TourButton } from '../tour'
 
 const STEPS: [string, string][] = [
   ['Tìm hiểu', 'Bạn kể chuyến đi bằng chat hoặc chọn nhanh; TripGuardian hỏi thêm cho đúng ý.'],
@@ -18,7 +19,7 @@ export function Support() {
   const [open, setOpen] = useState(0)
   return (
     <Page>
-      <header className="tg-head"><div><p className="tg-kicker">Trung tâm trợ giúp</p><h1>Hỗ trợ</h1><p>Cách TripGuardian làm việc và những câu bạn hay hỏi.</p></div></header>
+      <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Trung tâm trợ giúp</p><h1>Hỗ trợ</h1><p>Cách TripGuardian làm việc và những câu bạn hay hỏi.</p></div></header>
       <ol className="tg-sup__steps">
         {STEPS.map(([t, d], i) => <li key={t}><i>{i + 1}</i><b>{t}</b><p>{d}</p></li>)}
       </ol>
@@ -32,7 +33,8 @@ export function Support() {
         ))}
       </section>
       <p className="tg-sup__go">
-        <button type="button" className="tg-btn tg-btn--primary" onClick={() => openCreate()}><Icon name="plus" size={16} />Tạo chuyến mới</button>
+        <TourButton className="tg-btn tg-btn--primary">Xem hướng dẫn cùng quả sồi</TourButton>
+        <button type="button" className="tg-btn tg-btn--ghost" onClick={() => openCreate()}><Icon name="plus" size={16} />Tạo chuyến mới</button>
         <Link to="/profile" className="tg-btn tg-btn--ghost">Chỉnh hồ sơ</Link>
       </p>
     </Page>

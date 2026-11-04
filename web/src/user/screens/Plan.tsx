@@ -1,9 +1,11 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useEffect, useMemo, useState } from 'react'
 import { VEHICLE_LABEL } from '../../data/store'
-import { enterStage } from '../journey'
+import { enterStage, json, type JourneyView } from '../journey'
+import { primeDecision } from '../pd/api'
+import { fromSearchInput } from '../tu/adapter'
+import type { SearchInput } from '../tu/types'
 import { isStaleText } from '../journeyErrors'
-import { tripSummaries } from '../pd/api'
 import { fmtMin, fmtVnd, info } from '../lib'
 import { usePlanning } from '../planning/planning'
 import type { Action, Diff } from '../planning/types'
@@ -25,7 +27,6 @@ import { BackupCard, KeepAll, Lodging, NoHotel, Optimize, TimeCard } from './pla
 import { costText, MEAL_LABEL, openPlace, placeName, visits } from './plan/shared'
 import { Swap } from './plan/Swap'
 import { EveBanner, useEve } from './plan/EveBanner'
-import { TripPulse } from './plan/TripPulse'
 import { TrustCard } from './plan/Trust'
 import { StayOffer, WayIn } from './plan/WayIn'
 import { LodgingCost, lodgingBasis } from './plan/LodgingCost'
@@ -65,13 +66,18 @@ export function Plan() {
   const [opt, setOpt] = useState(false)
   const [confirmed, setConfirmed] = useState(false) // the trip already has a confirmed plan: this screen then edits it, it does not confirm it again
   useEffect(() => {
-    const id = trip.planningId
-    setConfirmed(false)
+    const id = trip.journeyId
     if (!id) return
     let live = true
-    tripSummaries().then((l) => { if (live) setConfirmed(l.some((t) => t.id === id && t.confirmed)) }, () => {})
+    setConfirmed(false)
+    fetch(`/api/harness/sessions/${id}?view=0`).then(json<JourneyView>).then((journey) => {
+      if (!live) return
+      const input = journey.outputs.trip as SearchInput | undefined
+      if (input) dispatch({ type: 'set', patch: fromSearchInput(input) })
+      setConfirmed(Boolean(journey.outputs.planning))
+    }, () => {})
     return () => { live = false }
-  }, [trip.planningId])
+  }, [trip.journeyId, dispatch])
   const eve = useEve(trip.journeyId ?? null) // D.3: tomorrow's pending changes on the confirmed plan
   useEffect(() => { window.scrollTo(0, 0) }, [screen, changing, view?.state.chosen_variant])
   // The road of each day is read apart from the plan; it is read again whenever the stops, their order or the lodging change.
@@ -81,8 +87,7 @@ export function Plan() {
   const back = async (to: string) => {
     if (trip.planningId) {
       try {
-        await enterStage(trip.planningId, 'decision')
-        dispatch({ type: 'set', patch: { planningId: null } })
+        primeDecision(trip.planningId, await enterStage(trip.planningId, 'decision'))
       } catch { /* Chọn nơi shows the connection error itself */ }
     }
     go(to)
@@ -97,7 +102,7 @@ export function Plan() {
     return (
       <>
         <FlowBar step="plan" />
-        <Page narrow><Empty art={<ArtRoute />} title="Chưa có lịch trình" body="Chọn vài nơi rồi bấm Xem lịch trình, mình xếp lịch ngay." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/explore')}>Lựa chọn</button>} /></Page>
+        <Page narrow><Empty art={<ArtRoute />} title="Chưa có lịch trình" body="Bạn chọn nơi ở bước Lựa chọn rồi bấm Lập lịch để TripGuardian xếp chuyến đi nhé." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/explore')}>Lựa chọn</button>} /></Page>
       </>
     )
   if (!view)
@@ -229,7 +234,7 @@ export function Plan() {
   const extras = (
     <>
       <Lodging onChange={toLodging} />
-      <TimeCard day={d?.day ?? 1} itinerary={d} timing={view.time_suitability ?? variant?.time_suitability ?? []} suggestions={view.recommendations ?? variant?.recommendations ?? []} status={view.suggestions?.status}
+      <TimeCard day={d?.day ?? 1} itinerary={d} timing={view.time_suitability ?? variant?.time_suitability ?? []} suggestions={view.recommendations ?? variant?.recommendations ?? []} ghosts={view.ghosts} status={view.suggestions?.status}
         busy={busy} onAdd={(place, day) => act({ type: 'add_from_backup', place, day: day - 1 })} />
       <BackupCard b={view.backups ?? variant?.backups} day={d?.day ?? 1} busy={busy} onSwap={async (place, w) => { await previewAct({ type: 'swap', place, with: w }) }} />
       <section className="tg-sidecard" aria-labelledby="tg-nt-h">
@@ -237,7 +242,6 @@ export function Plan() {
         {view.warnings.length === 0 && !(variant?.warnings.length) ? <p className="tg-faint">Chưa có lưu ý nào.</p> : <ul className="tg-notes">{[...view.warnings, ...(variant?.warnings ?? [])].slice(0, 6).map((w, i) => <li key={i}><Icon name="warn" size={14} /><span>{w.text}</span></li>)}</ul>}
       </section>
       <TrustCard view={view} />
-      <TripPulse />
       {!!variant?.checklist?.length && (
         <section className="tg-sidecard" aria-labelledby="tg-cl-h">
           <h2 id="tg-cl-h"><Icon name="check" size={18} /> Chuẩn bị trước khi đi</h2>
@@ -252,9 +256,9 @@ export function Plan() {
       {note && screen !== 'swap' && <div className="tg-it-toast">{note}</div>}
       <AssistantFloat stage="planning" onOpenDay={(n) => openDay(Math.min(Math.max(0, n - 1), Math.max(0, days.length - 1)))} />
       {screen === 'overview' && <Overview days={days} variant={variant} robustness={robustness} travelMin={travel} visitMin={metrics?.visit_min ?? 0} droppedCount={droppedCount}
-        lodgingName={lodgingName} hasHotel={hasHotel} wayIn={<WayIn lat={origin?.lat} lng={origin?.lng} date={days[0]?.date} way="inbound" />} wayOut={<WayIn lat={origin?.lat} lng={origin?.lng} date={days[days.length - 1]?.date} way="outbound" />}
+        lodgingName={lodgingName} hasHotel={hasHotel} wayIn={<WayIn lat={origin?.lat} lng={origin?.lng} originText={origin?.text} date={days[0]?.date} way="inbound" />} wayOut={<WayIn lat={origin?.lat} lng={origin?.lng} originText={origin?.text} date={days[days.length - 1]?.date} way="outbound" />}
         stayOffer={hasHotel ? <StayOffer fid={view.state.lodging_id} checkIn={days[0]?.date ?? null} nights={Math.max(1, days.length - 1)} /> : null} arriveHow={trip.searchInput?.context.frame?.arrive?.how ?? trip.searchInput?.context.arrival_mode} leaveHow={trip.searchInput?.context.frame?.leave?.how ?? trip.searchInput?.context.arrival_mode} notices={notices} footer={overviewFooter} busy={busy} delta={delta} sameAs={sameAs}
-        after={<>{view.keep_all ? <KeepAll variant={view.keep_all} busy={busy} onPick={(id) => act({ type: 'pick_variant', id })} /> : null}<TrustCard view={view} /><TripPulse /></>} onReoptimize={() => { void previewAct({ type: 'reoptimize' }) }} onDay={openDay} onChangeVariant={() => setChanging(true)} onHotel={toLodging}
+        after={<>{view.keep_all ? <KeepAll variant={view.keep_all} busy={busy} onPick={(id) => act({ type: 'pick_variant', id })} /> : null}<TrustCard view={view} /></>} onReoptimize={() => { void previewAct({ type: 'reoptimize' }) }} onDay={openDay} onChangeVariant={() => setChanging(true)} onHotel={toLodging}
         onDropped={() => setDroppedOpen(true)} onStory={() => setStory(true)} onOpen={openPlace} />}
       {screen === 'day' && d && <DayView days={days} dayIdx={dayIdx} week={Math.floor(dayIdx / 7)} onDay={setDayIdx} busy={busy} locked={view.state.locked}
         durationRange={view.duration_range} durationOverrides={view.state.visit_duration_override ?? {}} cond={view.day_conditions?.find((c) => c.day === d.day)} tips={view.crowd_tips ?? []}

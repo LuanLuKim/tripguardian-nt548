@@ -149,7 +149,8 @@ def test_evidence_matches_the_question_when_no_feature_given(k):
 def test_evidence_silence_is_not_a_fact(recs):
     recs[0]["environment"]["parking"].update(reason="silence", value="easy")
     out = make(recs).more.evidence("0xa:0x1", "đậu xe", ["parking"], S)
-    assert "absence" in out["answers"][0]["note"]
+    assert out["answers"] == []
+    assert out["unknown"] == ["parking"]
 
 
 def test_evidence_crowd_and_bad_feature(k):

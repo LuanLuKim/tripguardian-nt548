@@ -10,6 +10,7 @@ from agents.assistant.lc import langchain_tools
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
+from threading import Lock
 
 from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -74,12 +75,17 @@ class TurnTools(TripRules, TurnCore):
 
     def __init__(self, state: TripState, text: str, turn: int, catalog: Catalog, today: date,
                  compared: list[dict] | None = None, judge=None, web=None, on_trace=None, cards: bool = True, history: tuple[tuple[int, str], ...] = (), gaps: Path | None = None,
-                 on_state=None, knowledge=None, assistant: bool = False, on_cards=None):
+                 on_state=None, knowledge=None, assistant: bool = False, on_cards=None, discovery: bool = False):
         assistant = assistant and knowledge is not None
         super().__init__("trip", {f for f, on in (("assistant", assistant), ("cards", cards), ("web", web is not None)) if on},
                          known_ids=lambda pid: pid in catalog.by_id, on_cards=on_cards)
+        self.discovery = discovery
+        if discovery:
+            self.hidden.add("ask_required")
         self.gaps = Path(gaps) if gaps is not None else Path(Settings.gaps_path)
         self.photos: list[dict] = []  # the session's photo records (infrastructure.looks.Looks.read_photo), set by the engine
+        self.tag_seen: tuple[str, ...] = ()    # signatures of the tags blocks shown before, newest first (browse_tags)
+        self.tag_picked: tuple[str, ...] = ()  # tag refs the user opened in this chat
         self.shown_log: list[dict] = []  # last_shown of the transcript (agents.assistant.last_shown), set by the engine
         self.scene_first: dict[str, str] = {}  # place id -> the scene its card shows first (place_photos)
         self.history = history
@@ -102,6 +108,7 @@ class TurnTools(TripRules, TurnCore):
         self.written: set[tuple] = set()  # (field, op, value) written this turn: a repeat is not written twice
         self.refused: set[str] = set()  # fields whose last record_fact was refused and not yet corrected
         self.refusal_notes: dict[str, str] = {}  # field -> why its last record_fact was refused (for the next turn)
+        self.rejected_facts: set[tuple[str, str]] = set()  # a different value in the same field cannot clear a refusal
         self.settled = False  # the last record_fact carried a reply and every fact stood: the turn may end on it
         self.pool = ThreadPoolExecutor(max_workers=8) if judge else None
         self.checks: dict[tuple, Future] = {}  # Clef's checks sent when a reply arrived, read when its tool runs
@@ -113,6 +120,12 @@ class TurnTools(TripRules, TurnCore):
         self.shown_places: list[dict] = []  # show_places calls this turn: {ids, why}; the engine adds the cards
         self.quick: list[str] = []  # quick_replies of this turn
         self.rankings: list[list[str]] = []  # each find_places' ranked ids (Knowledge.find): the cards of a reply
+        self._find_lock = Lock()
+        self._find_jobs: dict[tuple, Future] = {}
+
+    def read_key(self, name: str, args: dict) -> tuple[str, str]:
+        # A prepared read belongs to the state it filtered, not just to the model's arguments.
+        return super().read_key(name, {"args": args, "state": self.state.model_dump(mode="json")})
 
     def prefetch(self, calls, content: str) -> None:
         """Send every Clef check this model reply needs at the same moment, so they cost one round trip together and
@@ -191,6 +204,21 @@ class TurnTools(TripRules, TurnCore):
                 if quote:
                     self.run("record_fact", {"field": "unmapped", "op": "add", "value": quote, "quote": quote, "how": "said"})
 
+    def rejected_claim(self, text: str) -> str | None:
+        """An acknowledgement cannot turn a refused companion value into a saved fact."""
+        from ..domain.guard import names_group
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            plain = fold(sentence)
+            if "?" in sentence or not re.search(r"\b(?:ghi|luu|cap nhat)\b", plain) or re.search(r"\b(?:chua|khong)\s+(?:ghi|luu|cap nhat)\b", plain):
+                continue
+            for field, value in self.rejected_facts:
+                kept_as_words = value != "pet" and any(
+                    fold(u.phrase) in plain or plain.rstrip(" .").endswith(fold(u.phrase).removesuffix(" di"))
+                    for u in self.state.unmapped)
+                if field == "companions" and not kept_as_words and value not in (self.state.companions.value or ()) and names_group(sentence, value):
+                    return f"acknowledges refused {field}={value}"
+        return None
+
     def reply_problem(self) -> str | None:
         """Why Clef thinks the model's text may not be shown, or None."""
         return next((why for f in self.replies if (why := f.result())), None)
@@ -204,8 +232,12 @@ class TurnTools(TripRules, TurnCore):
             self.pool.shutdown(wait=False, cancel_futures=True)
 
     def _checked(self, key: tuple, fallback) -> bool:
-        f = self.checks.get(key)
-        return f.result() if f else fallback()
+        started = time.monotonic()
+        try:
+            f = self.checks.get(key)
+            return f.result() if f else fallback()
+        finally:
+            self.timings.append(f"t_guard phase=fact seconds={time.monotonic() - started:.3f}")
 
     def step(self, sid: str, label: str, status: str) -> None:
         """Add or update one step of the progress line and send the whole line."""
@@ -222,6 +254,13 @@ class TurnTools(TripRules, TurnCore):
         self.on_trace({"steps": [dict(x) for x in self.trace], "sources": list(self.sources)})
 
     def run(self, name: str, args: dict) -> dict:
+        started = time.monotonic()
+        try:
+            return self._run_tool(name, args)
+        finally:
+            self.timings.append(f"t_tool name={name} seconds={time.monotonic() - started:.3f}")
+
+    def _run_tool(self, name: str, args: dict) -> dict:
         """-> the result the agent reads next. Never raises: a bad call is an error result."""
         if name not in self.tool_names():
             return {"error": f"unknown tool {name!r}"}
@@ -233,10 +272,11 @@ class TurnTools(TripRules, TurnCore):
                 self.log.append(f"{name}:error [{unknown[:160]}]")
                 return {"error": unknown}
             key = self.read_key(name, args)
-            if tool.cache and key in self.cache:  # prepared before the model call, or the model asked the same again
+            if tool.cache and name != "find_places" and key in self.cache:  # find uses its captured state and resolved criteria
                 self.log.append(f"{name} cached")
                 self.cache_hits += 1
-                return self.cache[key]
+                result = self.cache[key]
+                return self._pet_policies(result) if "pet" in (self.state.companions.value or ()) else result
         if name == "record_fact" and "facts" in args:
             # every fact of a message in one call: each runs the single-fact path (checks, log, progress line)
             facts = [f.model_dump(exclude_none=True) if hasattr(f, "model_dump") else f for f in args["facts"] or ()]
@@ -245,7 +285,7 @@ class TurnTools(TripRules, TurnCore):
             out, unworded = {"results": results}, False
             if not results or all("error" in r for r in results):
                 out["error"] = "no fact was recorded: see results"
-            elif args.get("ask_required") and not any("error" in r for r in results):
+            elif args.get("ask_required") and not self.discovery and not any("error" in r for r in results):
                 asked = self.run("ask_required", {"topic": args["ask_required"], "question": args.get("ask_question")})
                 out["ask_required"] = asked
                 unworded = "error" in asked and not args.get("ask_question")  # the model writes it again, facts stay
@@ -262,6 +302,11 @@ class TurnTools(TripRules, TurnCore):
             result = {"error": str(e).splitlines()[0]}
         detail = f" {args.get('field')}={args.get('value')}" if name == "record_fact" else ""
         if name == "record_fact":
+            fact = (str(args.get("field")), str(args.get("value")))
+            (self.rejected_facts.add if "error" in result else self.rejected_facts.discard)(fact)
+            if "error" in result:
+                result = {**result, "recorded": False,
+                          "instruction": "This fact was NOT saved. Do not claim it was recorded, even if another fact succeeded."}
             (self.refused.add if "error" in result else self.refused.discard)(args.get("field"))
             if "error" in result:
                 self.refusal_notes[args.get("field")] = str(result["error"])[:200]
@@ -269,13 +314,30 @@ class TurnTools(TripRules, TurnCore):
                 self.refusal_notes.pop(args.get("field"), None)
         status = ":error" if "error" in result else ":unmapped" if args.get("field") == "unmapped" else ""
         why = f" [{str(result['error'])[:160]}]" if "error" in result else ""  # the reason, for the turn log
-        self.log.append(name + detail + status + why)
+        if name != "find_places" or "error" in result:
+            self.log.append(name + detail + status + why)
         if read:
+            if "pet" in (self.state.companions.value or ()):
+                result = self._pet_policies(result)
             self.remember(result)
             if tool.cache:
                 self.cache[key] = result
         self._trace_call(name, args, "error" not in result)
         return result
+
+    def _pet_policies(self, value):
+        """Read results carry an explicit pet-policy limit, never an inferred welcome."""
+        if isinstance(value, list):
+            return [self._pet_policies(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        out = {key: self._pet_policies(item) for key, item in value.items()}
+        place = self.catalog.by_id.get(value.get("id")) if isinstance(value.get("id"), str) else None
+        if place is not None:
+            policy = place.value("pets")
+            out["pet_policy"] = {"allowed": "có bằng chứng cho mang thú cưng", "not_allowed": "không cho mang thú cưng"}.get(
+                policy, "chưa rõ có cho mang thú cưng không")
+        return out
 
     def on_reply(self, text: str) -> None:
         if self.reply_hook is not None:
@@ -412,6 +474,9 @@ class TurnTools(TripRules, TurnCore):
             return {"error": note}
         if key in self.written:  # the same fact again in this turn: already in the state, so answer instead
             return {"ok": True, "note": "already recorded this turn: reply to the user now, in plain text, with no tool call"}
+        if a["field"] == "companions":
+            from ..domain.derive import derive
+            self.state = derive(self.state, self.catalog, self.turn)
         self.recorded.append(a["field"])
         self.written.add(key)
         if not note.startswith("warning:") and a["op"] != "remove":  # a recorded field replaces its stale wishes
@@ -455,6 +520,8 @@ class TurnTools(TripRules, TurnCore):
             raise ValueError("one card per turn: you already asked")
         if topic not in dict(missing(self.state)) or topic in self.state.meta.declined:
             raise ValueError(f"{topic} is not in still_needed: ask another topic or nothing")
+        if topic == "care" and self.state.meta.diet_stalled:
+            raise ValueError("diet date/subject unchanged: keep it unknown; do not repeat the same care question")
         if self.assistant:
             from ..domain.required import planning
             if not planning(self.state):
@@ -536,6 +603,8 @@ class TurnTools(TripRules, TurnCore):
         parsed = FindDishes.model_validate(a)
         self._wish_quote(parsed.text, parsed.quote)
         hits = self.catalog.dishes(parsed.text)
+        if not dish_phrase(parsed.text, hits):
+            raise ValueError("not a grounded food phrase: use only the dish, not conversation words or a kind of cafe")
         wish = DishWish(dish=parsed.text, quote=parsed.quote, place_ids=tuple(h["id"] for h in hits))
         wishes = self.state.wishes.model_copy(update={"dishes": tuple(w for w in self.state.wishes.dishes
                                                                      if squash(w.dish) != squash(parsed.text)) + (wish,)})
@@ -590,14 +659,44 @@ class TurnTools(TripRules, TurnCore):
     def _find_places(self, a: dict) -> dict:
         criteria = FindPlaces.model_validate(a).criteria
         criteria = knowledge_tools.resolve_find_places(self, criteria)
-        out = self.knowledge.find(criteria, self.state)
-        ranked = out.pop("ranked", [])
-        self.rankings.append(ranked)
-        out["_cards"] = ranked  # the cards only (private: the agent reads the top places, TurnCore.model_called sends them)
-        if not out["places"]:  # the corpus has nothing for this ask: counted for offline (spec §B.5)
-            from ..infrastructure.gaps import record
-            record(self.gaps, json.dumps(criteria, ensure_ascii=False, sort_keys=True), "zero_hits", topic="places")
-        return out
+        state = self.state
+        key = super().read_key("find_places", {"criteria": criteria, "state": state.model_dump(mode="json")})
+        with self._find_lock:
+            future = self._find_jobs.get(key)
+            owner = future is None
+            if owner:
+                future = self._find_jobs[key] = Future()
+        started = time.monotonic()
+        safe = {k: criteria[k] for k in ("groups", "must", "prefer", "month", "open_at", "opens_by", "sort", "page", "price_max") if k in criteria}
+        for key in ("text", "dish", "near", "near_place", "exclude"):
+            if key in criteria:
+                safe[key] = "redacted"
+        self.timings.append("find_criteria " + json.dumps(safe, ensure_ascii=False, sort_keys=True))
+        try:
+            if not owner:
+                self.cache_hits += 1
+                self.log.append("find_places cached")
+                return future.result()
+            from corpus.retrieval import trace_reads
+            with trace_reads(self.timings.append):
+                out = self.knowledge.find(criteria, state)
+            ranked = out.pop("ranked", [])
+            self.rankings.append(ranked)
+            out["_cards"] = ranked  # private: the agent reads the top places, model_called sends the cards
+            if not out["places"]:
+                from ..infrastructure.gaps import record
+                record(self.gaps, json.dumps(criteria, ensure_ascii=False, sort_keys=True), "zero_hits", topic="places")
+            self.log.append("find_places")
+            future.set_result(out)
+            return out
+        except BaseException as exc:
+            if owner:
+                future.set_exception(exc)
+                with self._find_lock:
+                    self._find_jobs.pop(key, None)
+            raise
+        finally:
+            self.timings.append(f"t_find reuse={int(not owner)} seconds={time.monotonic() - started:.3f}")
 
     def _get_place(self, a: dict) -> dict:
         pid = GetPlace.model_validate(a).id
@@ -732,15 +831,56 @@ RECORDED_LOOKUPS = frozenset({"find_dishes", "find_kinds"})
 # First words of a dish name ("bánh căn", "lẩu gà lá é"): only phrases starting with one are looked up in the menus
 DISH_HEADS = {"banh", "bun", "pho", "lau", "com", "mi", "mien", "hu", "nem", "xoi", "che", "kem", "oc", "ga", "bo",
               "heo", "ca", "tom", "muc", "vit", "de", "nuong", "chao", "sua", "kho", "goi", "cha", "rau", "trang", "pizza"}
+# a drink every café sells: said alone ("cà phê vắng nhìn rừng thông") it names the kind of place, not a dish to look up
+KIND_NOT_DISH = {"ca phe", "cafe", "coffee", "cf", "tra"}
 KIND_GENERIC = {"quan", "nha", "khu", "cho", "noi", "diem", "tiem", "cua", "hang", "di", "an", "uong", "choi", "o", "ngoi"}
+
+
+def dish_phrase(text: str, hits: list[dict]) -> bool:
+    """A food-headed phrase, bounded by clauses, grounded as a whole in dish evidence."""
+    from corpus.serving import dishes
+    key = squash(text)
+    words = key.split()
+    if (not words or words[0] not in DISH_HEADS or key in KIND_NOT_DISH
+            or re.search(r"\b(?:va|hoac|hay|nhung)\b", key)):
+        return False
+    # Venue traits are not drinks, even when a menu contains the same truncated words.
+    if re.match(r"^ca phe (?:yen|vang|san vuon|view|nhin|chill|dep|lang man)\b", key):
+        return False
+    # Coffee describes a venue unless the complete drink name is actually on a menu.
+    if key.startswith("ca phe "):
+        return any(squash(e.get("dish") or "") == key and e.get("source") != "name"
+                   for h in hits for e in h.get("evidence", ()))
+    wanted, accented = dishes.phrases(text)
+    return any(not e.get("dish") or any(dishes.key_for(e["dish"], accented) == p or dishes.key_for(e["dish"], accented).startswith(p + " ") for p in wanted)
+               for h in hits for e in h.get("evidence", ()) if e.get("source") != "name")
+
+
+def _named_tail(rest: list[str], hits: list[dict], aligned: bool) -> tuple[str, int] | None:
+    """The capitalised words right after a dish phrase ("Nhà Chung" in "quán bánh căn Nhà Chung") as the name of a
+    place or street the user may mean, and how many of the dish's places have it in their name. None when no such
+    words follow."""
+    tail = []
+    for w in rest[:3] if aligned else ():
+        if not w[:1].isupper():
+            break
+        tail.append(w.strip(".,!?;:"))
+    if not tail:
+        return None
+    key = f" {squash(' '.join(tail))} "
+    return " ".join(tail), sum(key in f" {squash(h.get('name') or '')} " for h in hits)
 
 
 def lookups(text: str, catalog: Catalog) -> dict:
     """The corpus lookups the agent would otherwise call one model round each for, run on the user's message before
     the model reads it: dish phrases found in menus, kinds of place found in categories. Data only: the agent decides
     what the user wants and records it (record_fact field dish / kind)."""
-    words = squash(text).split()
-    shown = text.split()
+    import unicodedata
+    text = unicodedata.normalize("NFC", text)
+    tokens = list(re.finditer(r"[a-z0-9]+", fold(text)))
+    words = [m[0] for m in tokens]
+    shown = [text[m.start():m.end()] for m in tokens]
+    aligned = True
     grams = [(i, n) for n in (4, 3, 2) for i in range(len(words) - n + 1)]
     dishes, kinds, used = [], [], set()
     for i, n in grams:
@@ -748,9 +888,31 @@ def lookups(text: str, catalog: Catalog) -> dict:
         if span & used:
             continue
         phrase = " ".join(words[i:i + n])
-        said = " ".join(shown[i:i + n]).strip(".,!?;:") if len(shown) == len(words) else phrase
-        if words[i] in DISH_HEADS and (hits := catalog.dishes(said)):
-            dishes.append({"dish": said, "places": len(hits)})
+        said = " ".join(shown[i:i + n]).strip(".,!?;:") if aligned else phrase
+        crosses_clause = any(re.search(r"[,;.!?]", text[tokens[j].end():tokens[j + 1].start()])
+                             for j in range(i, i + n - 1))
+        hits = catalog.dishes(said) if not crosses_clause and words[i] in DISH_HEADS else []
+        if not dish_phrase(said, hits):
+            hits = []
+        if not aligned and any(p in text for p in (",", ";", ".", "?", "!")):
+            continue
+        if aligned and (crosses_clause or any(w in {"va", "hoac", "hay"} for w in words[i:i + n])):
+            continue
+        if aligned and shown[i][:1].islower() and any(shown[j][:1].isupper() for j in range(i + 1, i + n)) and not any(
+                e["source"] in {"menu", "menu_popular", "menu_photo"} and squash(e.get("dish", "")) == phrase
+                for h in hits for e in h["evidence"]):
+            continue  # a full menu dish ("mì Quảng") wins over the possible start of a place name
+        if hits and any(e["source"] != "name" for h in hits for e in h["evidence"]):
+            # (a phrase only place NAMES hold, like "bánh căn Nhà" in "bánh căn Nhà Chung", is not a dish)
+            entry = {"dish": said, "places": len(hits)}
+            rest = []
+            for j in range(i + n, min(len(shown), i + n + 3)):
+                if re.search(r"[,;.!?]", text[tokens[j - 1].end():tokens[j].start()]):
+                    break
+                rest.append(shown[j])
+            if name := _named_tail(rest, hits, aligned):
+                entry.update(also_named=name[0], dish_places_with_that_name=name[1])
+            dishes.append(entry)
             used |= span
         elif not set(words[i:i + n]) <= KIND_GENERIC and (found := catalog.kinds(phrase)):
             kinds.append({"kind": said, "places": len(found)})

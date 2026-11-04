@@ -1,18 +1,13 @@
-"""⑧ Curation (docs/PLACE_DECISION.md §12): typed actions on the session state, the Session Profile they teach, and
-the one question the rules may open (pattern, gap, rethink). Pure: apply() returns a new State."""
+"""⑧ Curation (docs/PLACE_DECISION.md §12): typed actions and explicit session feedback.
+Pure: apply() returns a new State; curation never opens unsolicited questions."""
 
-from collections import Counter
 from functools import cache
 
 from pydantic import ValidationError
 
 from corpus.ontology import load
-from corpus.serving import feature
-
-from .cards import phrase
 from .guard import filter_ok
-from .model import FIRM
-from .session import Chip, Drop, Lodging, Pending, SoftAdd, State
+from .session import Drop, Lodging, Pending, SoftAdd, State
 
 REASONS = ("far", "crowded", "pricey", "dislike", "visited")
 PLACE_ACTIONS = {"select", "drop", "lock", "unlock", "swap", "relax", "wishlist", "move_chunk", "like"}
@@ -139,8 +134,6 @@ def apply(state: State, act: dict, known, alternatives: dict[str, list[str]], pe
         elif qid.startswith("pattern:") and chip == "yes":
             f, v = qid[len("pattern:"):].split("=", 1)
             s.profile.soft.append(SoftAdd(feature=f, value=v, weight=-1))
-        elif qid.startswith("gap:") and chip == "similar":
-            s.suggest_group = pending.data.get("group")
     else:
         raise ActionError(f"unknown action {t!r}")
     s.last = t
@@ -148,34 +141,5 @@ def apply(state: State, act: dict, known, alternatives: dict[str, list[str]], pe
 
 
 def pending(state: State, by_id: dict, si, feas: dict, first_shortlist: int, group_of: dict[str, str], cfg) -> Pending | None:
-    """The one question the rules open now, most important first: pattern, rethink, gap."""
-    avoided = {(w.feature, w.value) for w in si.soft_weights if w.weight < 0}
-    avoided |= {(x.feature, x.value) for x in state.profile.soft if x.weight < 0}
-    counts = Counter()
-    for d in state.dropped:
-        r = by_id.get(d.place_id)
-        if not r or d.reason == "visited":
-            continue
-        for fid, order in cfg.polarity.items():
-            f = feature(r, fid)
-            if f and f["status"] in FIRM and f["value"] == order[-1]:
-                counts[(fid, order[-1])] += 1
-    for (fid, v), n in sorted(counts.items(), key=lambda x: (-x[1], x[0])):
-        qid = f"pattern:{fid}={v}"
-        if n >= cfg.pattern_min and qid not in state.answered and (fid, v) not in avoided:
-            return Pending(qid=qid, text=f"Mấy nơi bạn bỏ đều có điểm “{phrase(fid, v, cfg)}”. Bạn muốn tránh kiểu nơi này?",
-                           reason=f"{n} nơi bạn bỏ có chung điểm này",
-                           chips=[Chip(id="yes", label="Đúng, tránh giúp mình"), Chip(id="no", label="Không phải")])
-    if (len(state.dropped) >= cfg.rethink_drops and len(state.dropped) * 2 >= first_shortlist
-            and "rethink" not in state.answered):
-        return Pending(qid="rethink", text="Bạn đã bỏ khá nhiều gợi ý. Mình hỏi lại một chút về mục đích chuyến đi nhé?",
-                       reason="Gợi ý có vẻ chưa đúng gu của bạn",
-                       chips=[Chip(id="back", label="Hỏi lại giúp mình"), Chip(id="stay", label="Không, mình tự chọn tiếp")])
-    slack = feas.get("slack")
-    qid = f"gap:{len(state.dropped)}"
-    if state.last == "drop" and slack is not None and slack >= cfg.gap_min and qid not in state.answered:
-        return Pending(qid=qid, text=f"Bỏ nơi này, chuyến còn dư khoảng {slack} phút. Bạn muốn làm gì?",
-                       reason="Thời gian trống sau khi bỏ",
-                       chips=[Chip(id="similar", label="Gợi ý nơi tương tự"), Chip(id="free", label="Để thời gian tự do")],
-                       data={"group": group_of.get(state.dropped[-1].place_id)})
+    """Curation never opens unsolicited questions; feedback remains user initiated."""
     return None

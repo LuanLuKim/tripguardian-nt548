@@ -10,7 +10,7 @@ import polars as pl
 import pyarrow as pa
 
 from ..crawl.common.files import data_dir
-from ..serving.record import config
+from ..serving.record import config, feature
 from .tables import tables
 
 FIRM = ("VERIFIED", "OUTDATED")
@@ -137,6 +137,7 @@ class Region:
     def feature(self, fid: str) -> FeatureColumn:
         if ("f", fid) not in self._cols:
             rows = {r["place_id"]: r for r in self._features.filter(pl.col("fid") == fid).iter_rows(named=True)}
+            rows = {pid: r for pid, r in rows.items() if feature(self.record(pid), fid) is not None}
             get = [rows.get(pid) for pid in self.ids]
             self._cols[("f", fid)] = FeatureColumn(
                 value=[r and r["value"] for r in get], status=[r and r["status"] for r in get],
@@ -149,12 +150,14 @@ class Region:
         if ("c", fid, ctx_key) not in self._cols:
             rows = dict(self._ctx.filter((pl.col("fid") == fid) & (pl.col("ctx_key") == ctx_key))
                         .select("place_id", "top").iter_rows())
-            self._cols[("c", fid, ctx_key)] = [rows.get(pid) for pid in self.ids]
+            self._cols[("c", fid, ctx_key)] = [rows.get(pid) if exists else None
+                                                for pid, exists in zip(self.ids, self.feature(fid).exists)]
         return self._cols[("c", fid, ctx_key)]
 
     def verdict(self, who: str) -> tuple[list, list]:
         if ("v", who) not in self._cols:
             rows = {r["place_id"]: r for r in self._verdicts.filter(pl.col("who") == who).iter_rows(named=True)}
+            rows = {pid: r for pid, r in rows.items() if feature(self.record(pid), f"fit.{who}") is not None}
             self._cols[("v", who)] = ([rows[p]["value"] if p in rows else None for p in self.ids],
                                       [rows[p]["status"] if p in rows else None for p in self.ids])
         return self._cols[("v", who)]

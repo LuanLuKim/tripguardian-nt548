@@ -32,6 +32,20 @@ AVATAR_FORMATS = {"JPEG", "PNG", "WEBP"}
 EMAIL = re.compile(r"[^@\s]{1,64}@[^@\s.]+(\.[^@\s.]+)+")
 PASSWORD_MIN, PASSWORD_MAX = 8, 128
 SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
+RESET_MINUTES = 10  # how long a one-time code lives (docs/ACCOUNTS.md §2c)
+RESET_DIGITS = 6
+RESET_COOLDOWN_S = 60  # between two requests for one email
+RESET_PER_HOUR = 5  # requests for one email in an hour
+RESET_TRIES = 5  # wrong codes before the code dies
+
+
+class ResetError(Exception):
+    """A password reset that cannot go on. kind: "wait" (retry_after seconds), "wrong" (tries_left), "expired" (no live
+    code: never asked, ran out of time, already used), "locked" (too many wrong codes, the code is dead)."""
+
+    def __init__(self, kind: str, retry_after: int = 0, tries_left: int = 0):
+        super().__init__(kind)
+        self.kind, self.retry_after, self.tries_left = kind, retry_after, tries_left
 
 
 class AuthError(ValueError):
@@ -80,9 +94,15 @@ class Accounts:
     def __init__(self, pool, google: GoogleClient, avatars: Path, token_key: str | None = None):
         self.pool, self.google, self.avatars = pool, google, avatars
         self._fernet = None
+        self._reset_key = None  # HMAC key of the reset codes, derived from TOKEN_ENC_KEY; without it resets are off
         if token_key:
             from cryptography.fernet import Fernet
             self._fernet = Fernet(token_key.encode())
+            self._reset_key = hashlib.sha256(b"password-reset|" + token_key.encode()).digest()
+
+    @property
+    def reset_ready(self) -> bool:
+        return self._reset_key is not None
 
     # --- sign-in ---------------------------------------------------------------------------------------------
 
@@ -187,6 +207,78 @@ class Accounts:
                 raise AuthError("wrong email or password")
             conn.execute("UPDATE users SET last_login_at = now() WHERE id = %s", (row["id"],))
         return self.session(str(row["id"]), user_agent)
+
+    # --- forgotten password ---------------------------------------------------------------------------------
+
+    def _code_hash(self, email: str, code: str) -> bytes:
+        return hmac.new(self._reset_key, f"{email}|{code}".encode(), hashlib.sha256).digest()
+
+    def forgot(self, email: str) -> tuple[str, str] | None:
+        """Starts a reset for this email: a new 6-digit code replaces any older one. Returns (email, code) to mail when
+        an active account has this email, None otherwise; the caller answers the same either way. An email without an
+        account gets a row too (nothing is mailed), so cooldown, hourly limit and wrong-code limit behave identically.
+        Raises ResetError("wait") inside the cooldown or past the hourly limit."""
+        if not self._reset_key:
+            raise RuntimeError("password reset is not configured")
+        email = (email or "").strip().lower()
+        if len(email) > 254 or not EMAIL.fullmatch(email):
+            raise ValueError("email is not valid")
+        code = f"{secrets.randbelow(10 ** RESET_DIGITS):0{RESET_DIGITS}d}"
+        with self.pool.connection() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("reset:" + email,))
+            conn.execute("DELETE FROM password_resets WHERE window_start < now() - interval '1 hour'")
+            row = conn.execute("SELECT requests, extract(epoch FROM now() - sent_at) AS since, "
+                               "extract(epoch FROM now() - window_start) AS span FROM password_resets WHERE email = %s",
+                               (email,)).fetchone()
+            if row and row["since"] < RESET_COOLDOWN_S:
+                raise ResetError("wait", retry_after=int(RESET_COOLDOWN_S - row["since"]) + 1)
+            if row and row["requests"] >= RESET_PER_HOUR:
+                raise ResetError("wait", retry_after=int(3600 - row["span"]) + 1)
+            user = conn.execute("SELECT id FROM users WHERE email = %s AND kind = 'user' AND status = 'active' "
+                                "AND deleted_at IS NULL", (email,)).fetchone()
+            conn.execute(
+                "INSERT INTO password_resets (email, user_id, code_hash, expires_at) "
+                "VALUES (%s, %s, %s, now() + make_interval(mins => %s)) ON CONFLICT (email) DO UPDATE SET "
+                "user_id = EXCLUDED.user_id, code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, "
+                "tries = 0, sent_at = now(), requests = password_resets.requests + 1",
+                (email, user["id"] if user else None, self._code_hash(email, code), RESET_MINUTES))
+        return (email, code) if user else None
+
+    def reset_password(self, email: str, code: str, password: str, user_agent: str = "") -> str:
+        """Sets a new password for the code's owner, ends every session of the account and returns a fresh session
+        token. A wrong code costs one of RESET_TRIES; the right code is used up. Raises ValueError for input that is
+        not valid (costs no try) and ResetError("wrong" | "expired" | "locked")."""
+        if not self._reset_key:
+            raise RuntimeError("password reset is not configured")
+        email, code = (email or "").strip().lower(), (code or "").strip()
+        if len(email) > 254 or not EMAIL.fullmatch(email):
+            raise ValueError("email is not valid")
+        if not (len(code) == RESET_DIGITS and code.isascii() and code.isdigit()):
+            raise ValueError(f"code must have {RESET_DIGITS} digits")
+        if not PASSWORD_MIN <= len(password or "") <= PASSWORD_MAX:
+            raise ValueError(f"password must have {PASSWORD_MIN}-{PASSWORD_MAX} characters")
+        digest = hash_password(password)
+        outcome, user_id = ("expired", 0), None
+        with self.pool.connection() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("reset:" + email,))
+            row = conn.execute("SELECT user_id, code_hash, tries, expires_at > now() AS live FROM password_resets "
+                               "WHERE email = %s", (email,)).fetchone()
+            if row and row["live"] and row["tries"] < RESET_TRIES:
+                right = hmac.compare_digest(bytes(row["code_hash"]), self._code_hash(email, code))
+                if right and row["user_id"]:
+                    user_id, outcome = row["user_id"], None
+                    conn.execute("UPDATE password_resets SET expires_at = now() WHERE email = %s", (email,))  # used up
+                    conn.execute("UPDATE users SET password_hash = %s, last_login_at = now() WHERE id = %s", (digest, user_id))
+                    conn.execute("DELETE FROM auth_sessions WHERE user_id = %s", (user_id,))
+                else:
+                    tries = row["tries"] + 1
+                    conn.execute("UPDATE password_resets SET tries = %s WHERE email = %s", (tries, email))
+                    outcome = ("wrong", RESET_TRIES - tries) if tries < RESET_TRIES else ("locked", 0)
+            elif row and row["live"]:
+                outcome = ("locked", 0)
+        if outcome:
+            raise ResetError(outcome[0], tries_left=outcome[1])
+        return self.session(str(user_id), user_agent)
 
     def test_login(self, email: str, name: str, user_agent: str = "") -> str:
         """Only for the walk-through route that the server enables with TG_TEST_LOGIN on a non-https base URL."""
@@ -402,7 +494,7 @@ class Accounts:
         with self.pool.connection() as conn:
             row = conn.execute("SELECT avatar_key FROM users WHERE id = %s", (user_id,)).fetchone()
             for table in ("profiles", "calendar_links", "push_subscriptions", "notification_prefs", "auth_sessions",
-                          "oauth_states", "saved_items"):
+                          "oauth_states", "saved_items", "password_resets"):
                 conn.execute(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
             conn.execute("DELETE FROM friendships WHERE requester = %s OR addressee = %s", (user_id, user_id))
             conn.execute("DELETE FROM messages WHERE sender = %s OR recipient = %s", (user_id, user_id))

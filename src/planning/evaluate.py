@@ -94,7 +94,10 @@ def plan_results(decision_output: dict, records: list[dict], planning_cfg=None, 
     if not view["ok"]:
         return {"ok": False, "ms_variants": ms_variants, "reason": (view["back_to_decision"] or {}).get("reason")}
     sid = created["id"]
-    variant = view["variants"][0]
+    variant = next((v for v in view['variants']
+                    if v.get('status') == 'available' and v.get('confirmable', True)), None)
+    if variant is None:
+        return {'ok': False, 'ms_variants': ms_variants, 'reason': 'no_confirmable_variant'}
     if not any(i["kind"] == "visit" for d in variant["itinerary"] for i in d["items"]):  # ok with nothing scheduled
         return {"ok": False, "ms_variants": ms_variants, "reason": "no_visits"}
     travel_no_lodging = variant["metrics"]["travel_min"]

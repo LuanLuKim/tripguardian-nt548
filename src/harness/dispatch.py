@@ -1,11 +1,16 @@
 """In-process handoffs through public module tools; no hidden LLM supervisor."""
 
 import hashlib
+from copy import deepcopy
 import json
+import logging
 import sys
 import time
 import uuid
 import threading
+from collections import OrderedDict
+from contextlib import contextmanager
+from concurrent.futures import Future
 from datetime import datetime, timezone
 
 from trip import SearchInput, TurnInput
@@ -18,6 +23,7 @@ from .contracts import Conflict, Emit, Journey, JourneyView, ModuleTools, Reques
 from .router import RouteError, route, route_companion
 from .session import Store
 from .chat_guard import admit
+from .timing import current as current_trace, span
 
 
 def _said(events: list[dict]) -> str:
@@ -64,13 +70,20 @@ def chat_title(transcript: list) -> str | None:
     return None
 
 
+@contextmanager
+def _advance_span(spans: dict | None, name: str):
+    with span(name, spans):
+        yield
+
+
 class Harness:
     def __init__(self, trip_tools: ModuleTools, decision_tools: ModuleTools, planning_tools: ModuleTools, store: Store,
                  events=None, companion=None, calendar=None, notify=None, safety=None,
-                 corpus_binding: Binding | None = None, tools_for_binding=None, eve_store=None):
+                 corpus_binding: Binding | None = None, tools_for_binding=None, eve_store=None,
+                 read_tools_for_binding=None):
         """events: harness.events.EventLog (usage events in Postgres); companion: companion.Companion (Đang đi).
         None turns either off (CLI, most tests)."""
-        self.tools = {"trip": trip_tools, "decision": decision_tools, "planning": planning_tools}
+        initial = {"trip": trip_tools, "decision": decision_tools, "planning": planning_tools}
         self.store = store
         self.events = events
         self.companion = companion
@@ -80,25 +93,112 @@ class Harness:
         self.safety = safety
         self.corpus_binding = corpus_binding
         self.tools_for_binding = tools_for_binding
-        self._corpus_tools = {self._binding_key(corpus_binding): self.tools}
+        self.read_tools_for_binding = read_tools_for_binding
+        self._corpus_tools = OrderedDict({self._binding_key(corpus_binding): initial} if all(initial.values()) else {})
+        self._opened_journeys: dict[str, set[str]] = {}
         self._corpus_lock = threading.RLock()
+        self._builds: dict[str, Future] = {}
         self._loaded: set[str] = set()
+        self._runtime_tokens: dict[str, object] = {}
+        self._readers: dict[str, tuple] = {}
+        self._readers_guard = threading.Lock()
+
+    @property
+    def tools(self) -> dict[str, ModuleTools]:
+        return self._tools(self.corpus_binding)
+
+    def warm_releases(self, recent_bindings, recent_journeys=None) -> threading.Thread:
+        """Warm active plus two distinct recent pins off the startup/request thread, then the journeys people used
+        lately (recent_journeys: newest first), so the first open after a restart does not pay a cold Planning base
+        or Decision reader (6-9 s each, measured 04/11)."""
+        def warm():
+            logger = logging.getLogger(__name__)
+            def open_one(binding):
+                started = time.monotonic()
+                try:
+                    self._tools(binding)
+                    logger.info("Corpus warmup ready %s in %.3fs", self._binding_key(binding), time.monotonic() - started)
+                except Exception:
+                    logger.exception("Corpus warmup failed %s", self._binding_key(binding))
+            open_one(self.corpus_binding)
+            try:
+                seen = {self._binding_key(self.corpus_binding)}
+                for binding in recent_bindings():
+                    key = self._binding_key(binding)
+                    if key in seen:
+                        continue
+                    if len(seen) >= 3:
+                        break
+                    seen.add(key)
+                    open_one(binding)
+            except Exception:
+                logger.exception("Corpus warmup recent bindings failed")
+            if recent_journeys is None:
+                return
+            started, n = time.monotonic(), 0
+            try:
+                for jid in recent_journeys():
+                    try:
+                        view = self.load(jid)
+                        if view["stage"] == "planning" and "decision" in view["sessions"]:
+                            self.load(jid, "decision")        # Lịch trình's way back to Lựa chọn
+                        n += 1
+                    except Exception:
+                        logger.exception("Journey warmup failed %s", jid)
+            except Exception:
+                logger.exception("Journey warmup list failed")
+            logger.info("Journey warmup: %d journeys in %.1fs", n, time.monotonic() - started)
+        worker = threading.Thread(target=warm, name="corpus-warm", daemon=True)
+        worker.start()
+        return worker
 
     @staticmethod
     def _binding_key(binding: Binding | None) -> str:
         return binding.model_dump_json() if binding is not None else "legacy"
 
-    def _module(self, session: Journey, stage: Stage) -> ModuleTools:
-        key = self._binding_key(session.corpus_binding)
+    def _tools(self, binding: Binding | None) -> dict[str, ModuleTools]:
+        key = self._binding_key(binding)
         with self._corpus_lock:
-            if key not in self._corpus_tools:
-                if self.tools_for_binding is None:
-                    raise Conflict("corpus binding unavailable; restore the pinned release before continuing")
-                try:
-                    self._corpus_tools[key] = self.tools_for_binding(session.corpus_binding)
-                except PinnedVersionMissing as exc:  # fail-closed, but typed: the API answers 409, not 500
-                    raise StaleDataVersion(exc.name, exc.version) from exc
-            return self._corpus_tools[key][stage]
+            tools = self._corpus_tools.get(key)
+            if tools is not None:
+                self._corpus_tools.move_to_end(key)
+                return tools
+            build = self._builds.get(key)
+            builder = build is None
+            if builder:
+                build = self._builds[key] = Future()
+        if not builder:
+            return build.result()
+        try:
+            if self.tools_for_binding is None:
+                raise Conflict("corpus binding unavailable; restore the pinned release before continuing")
+            try:
+                tools = self.tools_for_binding(binding)
+            except PinnedVersionMissing as exc:
+                raise StaleDataVersion(exc.name, exc.version) from exc
+            with self._corpus_lock:
+                self._corpus_tools[key] = tools
+                while len(self._corpus_tools) > 3:
+                    oldest = next(k for k in self._corpus_tools if k != self._binding_key(self.corpus_binding))
+                    del self._corpus_tools[oldest]
+                    evicted = self._opened_journeys.pop(oldest, set())
+                    self._loaded.difference_update(evicted)
+                    for jid in evicted:
+                        self._runtime_tokens[jid] = object()
+                build.set_result(tools)
+            return tools
+        except Exception as exc:
+            build.set_exception(exc)
+            raise
+        finally:
+            with self._corpus_lock:
+                self._builds.pop(key, None)
+
+    def _module(self, session: Journey, stage: Stage) -> ModuleTools:
+        tools = self._tools(session.corpus_binding)
+        with self._corpus_lock:
+            self._opened_journeys.setdefault(self._binding_key(session.corpus_binding), set()).add(session.id)
+        return tools[stage]
 
     @staticmethod
     def _bound_output(session: Journey, output: dict) -> dict:
@@ -114,17 +214,36 @@ class Harness:
         if self.events is not None:
             self.events.server(name, owner, jid, **props)
 
-    def _get(self, jid: str, owner: str | None = None) -> Journey:
+    def _get(self, jid: str, owner: str | None = None, *, readonly: bool = False, spans: dict | None = None,
+             borrow: bool = False) -> Journey:
         """owner None is the in-process caller (CLI, tests); the HTTP server always names the signed-in account,
-        and another account's journey is reported as missing."""
-        session = self.store.get(jid)
+        and another account's journey is reported as missing. borrow: a pure reader of a journey whose modules are
+        already restored gets Store.peek (no deepcopy of a multi-MB envelope); it must not mutate nested values."""
+        with _advance_span(spans, "db_state_ms"):
+            if borrow and jid in self._loaded:
+                session = self.store.peek(jid)
+            else:
+                session = self.store.state(jid) if readonly else self.store.get(jid)
         if owner is not None and session.user_id != owner:
             raise KeyError(jid)
         if jid not in self._loaded:
+            self._runtime_tokens[jid] = object()
             for stage, snapshot in session.snapshots.items():
-                self._module(session, stage).restore(snapshot)
+                with _advance_span(spans, "tools_ms"):
+                    module = self._module(session, stage)
+                with _advance_span(spans, f"{stage}_restore_ms"):
+                    module.restore(snapshot)
             self._loaded.add(jid)
         return session
+
+    def _save(self, session: Journey) -> None:
+        try:
+            self.store.save(session)
+        except Exception:
+            # Rollback may restore an obsolete snapshot after a competing commit.
+            # The next read/request must restore modules from the store again.
+            self._loaded.discard(session.id)
+            raise
 
     def _view(self, session: Journey, result: dict | None = None, stage: Stage | None = None) -> dict:
         shown = stage or session.stage
@@ -145,26 +264,153 @@ class Harness:
         result = self._module(session, "trip").create(payload)
         session.sessions["trip"] = result["id"]
         session.snapshots["trip"] = self._module(session, "trip").snapshot(result["id"])
-        self.store.save(session)
+        self._save(session)
         self._loaded.add(session.id)
         self._event("journey.create", owner, session.id, start_with=start_with, experience=experience,
                     profile_prior=bool(profile))
         return self._view(session, result)
 
-    def load(self, jid: str, stage: Stage | None = None, owner: str | None = None) -> dict:
+    def state(self, jid: str, owner: str | None = None) -> dict:
+        """Committed journey metadata without restoring or rendering a module."""
         with self.store.lock(jid):
-            return self._view(self._get(jid, owner), stage=stage)
+            with _advance_span(None, 'db_state_ms'):
+                session = self.store.peek(jid)
+            if owner is not None and session.user_id != owner:
+                raise KeyError(jid)
+            return JourneyView(id=session.id, stage=session.stage, revision=session.revision,
+                sessions=session.sessions, outputs=session.outputs, result={}).model_dump(mode="json")
+
+    def _planning_read(self, jid: str, stage: Stage | None, owner: str | None, operation: str | None = None,
+                       payload: dict | None = None, spans: dict | None = None) -> dict | None:
+        """A Planning read rendered on the writer module outside the journey lock (Planning's engine takes its own
+        session lock), then published only when no write landed meanwhile: same revision and the same runtime token
+        (every rollback, restore and eviction mints a new one, so an intermediate write state is never shown). A fork
+        deep-copies the session and its schedules, seconds on a multi-MB journey; this costs the render alone.
+        None when the journey is not at Planning: the caller takes its usual path."""
+        while True:
+            waiting = time.monotonic()
+            with self.store.lock(jid):
+                if spans is not None:
+                    spans["lock_wait_ms"] = spans.get("lock_wait_ms", 0) + (time.monotonic() - waiting) * 1000
+                session = self._get(jid, owner, readonly=True, spans=spans, borrow=True)
+                shown = stage or session.stage
+                if shown != "planning":
+                    return None
+                if shown not in session.sessions:
+                    raise Conflict(f"no {shown} session")
+                module = self._module(session, shown)
+                token = self._runtime_tokens.get(jid)
+            with _advance_span(spans, "view_ms"):
+                if operation is None:
+                    result = self._view(session, result=module.load(session.sessions[shown]), stage=shown)
+                else:
+                    result = module.read(session.sessions[shown], operation, payload or {})
+                    if operation == "suggestions":
+                        result = {**result, "revision": session.revision}
+                    result = deepcopy(result)
+            with self.store.lock(jid):
+                current = self.store.peek(jid)
+                if (current.revision == session.revision and current.user_id == session.user_id
+                        and jid in self._loaded and self._runtime_tokens.get(jid) is token):
+                    return result
+
+    def _snapshot_read(self, jid: str, stage: Stage | None, owner: str | None,
+                       operation: str | None = None, payload: dict | None = None, spans: dict | None = None) -> dict:
+        if spans is None and (trace := current_trace()) is not None:
+            spans = trace.spans
+        # Readers own their sessions/caches; expensive rendering never locks a writer's module.
+        with self._readers_guard:
+            reader_lock, tools, snapshots = self._readers.setdefault(jid, (threading.Lock(), {}, {}))
+        with reader_lock:
+            while True:
+                waiting = time.monotonic()
+                with self.store.lock(jid):
+                    if spans is not None:
+                        spans["lock_wait_ms"] = spans.get("lock_wait_ms", 0) + (time.monotonic() - waiting) * 1000
+                    with _advance_span(spans, "db_state_ms"):
+                        session = self.store.peek(jid)
+                    if owner is not None and session.user_id != owner:
+                        raise KeyError(jid)
+                    shown = stage or session.stage
+                    if shown not in session.sessions:
+                        raise Conflict(f"no {shown} session")
+                    if shown not in {"trip", "decision"} or self.read_tools_for_binding is None:
+                        return self._view(self._get(jid, owner), stage=shown)
+                    if jid in self._loaded:
+                        session.snapshots[shown] = self._module(session, shown).snapshot(session.sessions[shown])
+                    runtime_token = self._runtime_tokens.get(jid)
+                binding_key = self._binding_key(session.corpus_binding)
+                with _advance_span(spans, "reader_tools_ms"):
+                    if tools.get("binding") != binding_key:
+                        tools.clear()
+                        tools.update(binding=binding_key, modules=self.read_tools_for_binding(session.corpus_binding))
+                        snapshots.clear()
+                modules = tools["modules"]
+                with _advance_span(spans, "reader_restore_ms"):
+                    snapshot = session.snapshots[shown]
+                    if snapshots.get(shown) != snapshot:
+                        modules[shown].restore(deepcopy(snapshot))
+                        snapshots[shown] = snapshot
+                module = modules[shown]
+                with _advance_span(spans, "view_ms"):
+                    result = (self._view(session, result=module.load(session.sessions[shown]), stage=shown)
+                              if operation is None else module.read(session.sessions[shown], operation, payload or {}))
+                    if operation is not None:
+                        result = deepcopy(result)
+                # A mutation may have committed during rendering. Never publish that obsolete view.
+                with self.store.lock(jid):
+                    current = self.store.peek(jid)
+                    if current.revision == session.revision and current.user_id == session.user_id:
+                        if jid in self._loaded:
+                            latest_snapshot = self._module(current, shown).snapshot(current.sessions[shown])
+                            if latest_snapshot != session.snapshots[shown]:
+                                snapshots.pop(shown, None)
+                                continue
+                        # Restore/rollback can invalidate capabilities without changing persisted state.
+                        if self._runtime_tokens.get(jid) is not runtime_token:
+                            continue
+                        return result
+
+    def load(self, jid: str, stage: Stage | None = None, owner: str | None = None) -> dict:
+        started = time.monotonic()
+        trace = current_trace()
+        spans = trace.spans if trace else {}
+        shown = stage
+        if shown is None:
+            with self.store.lock(jid):
+                shown = self.store.peek(jid).stage
+        # None: the journey left Planning meanwhile (a back), rendered by its current stage below.
+        result = self._planning_read(jid, stage, owner, spans=spans) if shown == "planning" else None
+        if result is None and self.read_tools_for_binding is not None and shown in {"trip", "decision", "planning"}:
+            result = self._snapshot_read(jid, stage, owner, spans=spans)
+        elif result is None:
+            waiting = time.monotonic()
+            with self.store.lock(jid):
+                spans['lock_wait_ms'] = (time.monotonic() - waiting) * 1000
+                session = self._get(jid, owner, readonly=True, spans=spans)
+                with _advance_span(spans, "view_ms"):
+                    result = self._view(session, stage=stage)
+        logging.getLogger(__name__).info("Journey load %s stage=%s total_ms=%.2f spans=%s",
+            jid, stage or result["stage"], (time.monotonic() - started) * 1000, json.dumps(spans, sort_keys=True))
+        return result
 
     def read(self, jid: str, stage: Stage, operation: str, payload: dict | None = None, owner: str | None = None) -> dict:
         if stage == "decision" and operation == "lodging":
             return self.lodging(jid, owner, *_page(payload or {}))
-        with self.store.lock(jid):
-            session = self._get(jid, owner)
-            if stage not in session.sessions:
-                raise Conflict(f"no {stage} session")
-            out = self._module(session, stage).read(session.sessions[stage], operation, payload or {})
-            if operation in {"suggestions", "preview-act"} and stage == "planning":
-                out = {**out, "revision": session.revision}
+        # Planning reads that mint nothing render outside the journey lock; preview-act mints tokens on the writer.
+        planning_read = stage == 'planning' and operation in {'variants', 'routes', 'lodging', 'suggestions'}
+        out = self._planning_read(jid, stage, owner, operation=operation, payload=payload) if planning_read else None
+        if out is None and self.read_tools_for_binding is not None and stage in {"trip", "decision"} and operation != "page":
+            out = self._snapshot_read(jid, stage, owner, operation, payload)
+        elif out is None:
+            # Paging and preview tokens update module state consumed by the next action.
+            with self.store.lock(jid):
+                session = self._get(jid, owner)
+                if stage not in session.sessions:
+                    raise Conflict(f"no {stage} session")
+                out = self._module(session, stage).read(session.sessions[stage], operation, payload or {})
+                if operation in {"suggestions", "preview-act"} and stage == "planning":
+                    out = {**out, "revision": session.revision}
         if operation == "why-not":
             self._event("why_not", owner, jid, place_id=(payload or {}).get("place"))
         elif operation == "page":
@@ -209,35 +455,28 @@ class Harness:
         return self.summaries(self.store.list_for(owner, limit=1000), limit=None)
 
     def summaries(self, ids: list[str], limit: int | None = 20) -> list[dict]:
-        """One line per asked journey (the first `limit`, all when None); unknown IDs are skipped."""
+        """One line per asked journey (the first `limit`, all when None); unknown IDs are skipped. Reads only the
+        fields a line shows (Store.summary_parts): no module restored, no whole journey loaded."""
+        wanted = ids[:limit]
+        parts = self.store.summary_parts(wanted)
         out = []
-        for jid in ids[:limit]:
-            try:
-                with self.store.lock(jid):
-                    try:
-                        session = self._get(jid)
-                    except KeyError:
-                        raise
-                    except Exception:  # a journey an older build saved cannot be restored: it stays in the list,
-                        session = self.store.get(jid)  # read from its saved copy (opening it reports its own error)
-                    context = (session.outputs.get("trip") or {}).get("context") or {}
-                    if "decision" in session.outputs:
-                        places = [c["id"] for c in session.outputs["decision"].get("confirmed", [])]
-                    elif "decision" in session.sessions:
-                        try:
-                            view = self._module(session, "decision").load(session.sessions["decision"]).get("view") or {}
-                        except Exception:
-                            view = {}
-                        places = list(view.get("selected") or [])
-                    else:
-                        places = []
-            except KeyError:
+        for jid in wanted:
+            p = parts.get(jid)
+            if p is None:
                 continue
-            out.append({"id": session.id, "stage": session.stage, "revision": session.revision,
+            context = p["context"]
+            if p["itinerary"] is not None:
+                places = list(dict.fromkeys(item["place_id"] for day in p["itinerary"] for item in day.get("items", [])
+                                            if item.get("kind") == "visit" and item.get("place_id")))
+            elif p["decision_confirmed"] is not None:
+                places = p["decision_confirmed"]
+            else:                       # not confirmed yet: the choices the Decision snapshot holds
+                places = p["selected"]
+            out.append({"id": p["id"], "stage": p["stage"], "revision": p["revision"],
                         "start_date": context.get("start_date"), "days": context.get("days"),
                         "people": context.get("people"), "places": places,
-                        "confirmed": "planning" in session.outputs,
-                        "title": chat_title((session.snapshots.get("trip") or {}).get("transcript") or [])})
+                        "confirmed": p["confirmed"], "updated_at": p["updated_at"],
+                        "title": chat_title(p["transcript"])})
         return out
 
     def discard(self, jid: str, owner: str) -> None:
@@ -247,7 +486,7 @@ class Harness:
         with self.store.lock(jid):
             session = self._get(jid, owner)
             session.user_id = None
-            self.store.save(session)
+            self._save(session)
         if self.companion is not None:
             self.companion.forget(jid)
         self._event("journey.discard", owner, jid, stage=session.stage)
@@ -281,7 +520,7 @@ class Harness:
         session.sessions, session.outputs, session.snapshots = data["sessions"], data["outputs"], data["snapshots"]
         for stage, snapshot in session.snapshots.items():
             self._module(session, stage).restore(snapshot)
-        self.store.save(session)
+        self._save(session)
         self._loaded.add(session.id)
         self._event("journey.copy", owner, session.id, source=jid)
         return {"id": session.id, "stage": session.stage, "revision": session.revision}
@@ -300,10 +539,14 @@ class Harness:
         if not isinstance(note, str) or len(note) > 1000:
             raise ValueError("note must be at most 1000 characters")
         with self.store.lock(jid):
-            self._get(jid, owner)
+            with _advance_span(None, 'db_state_ms'):
+                session = self.store.peek(jid)
+            if owner is not None and session.user_id != owner:
+                raise KeyError(jid)
         record = {"journey": jid, "user_id": owner, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "scores": scores,
                   "more_search": more, "note": note.strip()}
-        self.store.append_feedback(record)
+        with _advance_span(None, 'feedback_write_ms'):
+            self.store.append_feedback(record)
         self._event("feedback.submit", owner, jid, scores=",".join(f"{k}:{v}" for k, v in sorted(scores.items())),
                     more_search=more, has_note=bool(record["note"]))
         return {"stored": True}
@@ -324,6 +567,18 @@ class Harness:
     def pulse(self) -> dict:
         """Nhịp Đà Lạt (docs/CORPUS.md §Nhịp): the bulletin of the newest daily snapshot; no sections when the job never ran."""
         return corpus_pulse.bulletin("dalat") or {"city": "dalat", "generated_at": None, "day": None, "stale": True, "sections": []}
+
+    def tags_trending(self) -> dict:
+        """Home topics: tags ranked by the TikTok clips of the last 30 days (corpus.pulse.tag_trends), each with the cover
+        photos of its most posted places. `tags` is empty when the daily job never wrote them (the page shows its own)."""
+        out = corpus_pulse.tag_trends("dalat")
+        if out is None:
+            return {"as_of": None, "window_days": None, "stale": True, "tags": []}
+        return {**out, "tags": self.tools["trip"].tag_covers(out["tags"])}
+
+    def tag(self, ref: str) -> dict:
+        """One tag split into subtags with place cards: ref = "experience:cloud_hunting", "dish:lau", ... ValueError: unknown."""
+        return self.tools["trip"].tag(ref)
 
     def lodging_suggest(self, q: str, top: int = 0) -> list[dict]:
         return self.tools["planning"].lodging_suggest(q, top)
@@ -358,23 +613,34 @@ class Harness:
             with self.store.lock(jid):
                 session = self.store.get(jid)
                 session.user_id = to_id
-                self.store.save(session)
+                self._save(session)
             moved += 1
         return moved
 
     def request(self, jid: str, request: Request, emit: Emit | None = None, owner: str | None = None) -> dict:
         started = time.monotonic()
         trace: dict = {"t0": started}
+        if request.stage == "decision" and request.operation == "advance":
+            trace["advance_spans"] = {"tools_ms": 0}
+        status = "ok"
         name = f"{request.stage}.{request.operation}"
         if request.operation == "act" and isinstance(request.payload.get("type"), str):
             name += "." + request.payload["type"][:40]
         try:
             response = self._request(jid, request, emit, owner, trace)
         except Exception as exc:
+            status = type(exc).__name__
             if not isinstance(exc, KeyError):
                 self._event(name, trace.get("user_id"), jid, revision=request.expected_revision, error=type(exc).__name__,
                             latency_ms=round((time.monotonic() - started) * 1000), path=trace.get("path"))
             raise
+        finally:
+            if "advance_spans" in trace and not trace.get("replayed"):
+                spans = {key: round(value, 3) for key, value in trace["advance_spans"].items()}
+                logging.getLogger(__name__).info("Harness advance %s", json.dumps({
+                    "journey": jid, "request": request.request_id, "pin": trace.get("advance_pin"),
+                    "status": status, "total_ms": round((time.monotonic() - started) * 1000, 3), **spans,
+                }, separators=(",", ":")))
         if not trace.get("replayed") and name == "planning.confirm" and self.companion is not None:
             self._sync_trip(jid)
         if not trace.get("replayed") and name == "planning.confirm":
@@ -387,6 +653,8 @@ class Harness:
                           "exit": next((c for c in ("skip", "unsure") if c in chips), None)}
             if name == "planning.confirm" and self.companion is not None:
                 props |= self._quality(jid)
+            if name == 'planning.turn' and trace.get('turn_trace'):
+                props |= {'trace_id': trace['turn_trace']['id'], 'turn_trace': trace['turn_trace']}
             self._event(name, trace.get("user_id"), jid, revision=response["revision"], path=trace.get("path"),
                         latency_ms=round((time.monotonic() - started) * 1000), first_ms=trace.get("first_ms"),
                         refined=trace.get("refined"),
@@ -398,15 +666,15 @@ class Harness:
     def _sync_trip(self, jid: str) -> None:
         """The confirmed plan becomes (or updates) the trip; a failure is logged and leaves the confirm committed."""
         try:
-            session = self.store.get(jid)
-            self.companion.sync(jid, session.user_id, session.outputs["planning"])
+            session = self.store.peek(jid)
+            self.companion.sync(jid, session.user_id, deepcopy(session.outputs["planning"]))
         except Exception as exc:
             print(f"trip not synced for {jid}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     def _learn_acts(self, jid: str, acts: list[dict]) -> None:
         """Weak profile evidence (trip.note_acts decides by consent); a failure only loses the learning."""
         try:
-            session = self.store.get(jid)
+            session = self.store.peek(jid)
             if session.user_id and session.sessions.get("trip") and acts:
                 self.tools["trip"].note_acts(session.user_id, session.sessions["trip"], acts)
         except Exception as exc:
@@ -415,7 +683,7 @@ class Harness:
     def _learn_from_plan(self, jid: str) -> None:
         """A confirmed plan: its places were kept in it; places the user dropped saying "dislike" are against."""
         try:
-            session = self.store.get(jid)
+            session = self.store.peek(jid)
             dropped = ((session.snapshots.get("decision") or {}).get("state") or {}).get("dropped") or []
             acts = [{"kind": "dropped", "place_id": d.get("place_id"), "reason": d.get("reason")} for d in dropped]
             acts += [{"kind": "kept_in_plan", "place_id": s["place_id"]} for s in stops_of(session.outputs["planning"])]
@@ -436,7 +704,7 @@ class Harness:
         """Event props for a confirmed plan (Admin tab Chất lượng): hard filters failed / unknown on its places, and
         the plan's robustness. A failure here only loses the props."""
         try:
-            session = self.store.get(jid)
+            session = self.store.peek(jid)
             plan, si = session.outputs["planning"], session.outputs.get("trip") or {}
             return {**self.companion.quality(plan, si), "robustness": (plan.get("robustness") or {}).get("level")}
         except Exception as exc:
@@ -646,8 +914,9 @@ class Harness:
                     planning.apply(session.sessions["planning"], "act", act, lambda *a: None)
                 session.revision += 1
                 session.snapshots["planning"] = planning.snapshot(session.sessions["planning"])
-                self.store.save(session)
+                self._save(session)
             except Exception:
+                self._runtime_tokens[jid] = object()
                 planning.restore(before.snapshots["planning"])
                 raise
         self._event("trip.times", session.user_id, jid, arrive=times.get("arrive"), leave=times.get("leave"))
@@ -655,7 +924,13 @@ class Harness:
 
     def _request(self, jid: str, request: Request, emit: Emit | None, owner: str | None, trace: dict) -> dict:
         with self.store.lock(jid):
-            session = self._get(jid, owner)
+            spans = trace.get("advance_spans")
+            with _advance_span(spans, "load_ms"):
+                # before is read only (compare, roll back from a copy): borrowing it saves one multi-MB deepcopy
+                before = self._get(jid, owner, readonly=True, spans=spans, borrow=True)
+                session = self.store._working(jid)
+            if spans is not None:
+                trace["advance_pin"] = session.corpus_binding.model_dump(mode="json") if session.corpus_binding else None
             trace["user_id"] = session.user_id
             fingerprint = _fingerprint(request)
             receipt = session.receipts.get(request.request_id)
@@ -664,13 +939,12 @@ class Harness:
                     raise Conflict("request_id was already used for another request")
                 if emit:
                     for event in receipt["events"]:
-                        emit(event["event"], event["data"])
+                        emit(event["event"], deepcopy(event["data"]))
                 trace["replayed"] = True
-                return receipt["response"]
+                return deepcopy(receipt["response"])
             if request.expected_revision != session.revision:
                 raise Conflict(f"expected revision {session.revision}, got {request.expected_revision}")
             stage = route(session.stage, request)
-            before = session.model_copy(deep=True)
             events: list[dict] = []
 
             had_trip = "trip" in session.outputs
@@ -698,7 +972,7 @@ class Harness:
                     capture("done", {})
                     result = self._module(session, stage).load(session.sessions[stage])
                 elif request.operation == "advance":
-                    result = self._advance(session)
+                    result = self._advance(session, spans)
                 elif request.operation == "trip":
                     inp = TurnInput.model_validate(request.payload)
                     if inp.kind not in {"deck", "drop", "readback_ok"}:
@@ -708,20 +982,15 @@ class Harness:
                     output = trip.read(session.sessions["trip"], "search_input", {})
                     session.outputs["trip"] = SearchInput.model_validate(self._bound_output(session, output)).model_dump(mode="json")
                     rebased = self._module(session, "decision").rebase(session.sessions["decision"],
-                        {"search_input": session.outputs["trip"], "trip_session": session.sessions["trip"]})
+                        self._decision_input(session))
                     result = {"id": rebased["id"], "view": rebased["view"]}
                     for key in ("decision", "planning"):
                         session.outputs.pop(key, None)
                     session.sessions.pop("planning", None)
                     session.snapshots.pop("planning", None)
                 elif request.operation == "back":
+                    # Navigation changes the displayed stage, never the persisted trip or schedule.
                     session.stage = "decision" if stage == "planning" else "trip"
-                    session.outputs.pop("planning", None)
-                    session.outputs.pop("decision", None)
-                    session.sessions.pop("planning", None)
-                    session.snapshots.pop("planning", None)
-                    if session.stage == "trip":
-                        session.outputs.pop("trip", None)
                     result = self._module(session, session.stage).load(session.sessions[session.stage])
                 else:
                     payload = request.payload
@@ -737,8 +1006,12 @@ class Harness:
                         if texts and "trip" in session.sessions:
                             trace["refined"] = True
                             result = self._refine(session, " ".join(texts), events, capture) or result
-                    if stage == "trip" and request.operation == "turn" and not any(e["event"] == "done" for e in events):
-                        session.outputs.pop("trip", None)
+                    if stage == "trip" and request.operation == "turn":
+                        if not any(e["event"] == "done" for e in events) and request.payload.get("kind") != "show":
+                            session.outputs.pop("trip", None)
+                        if session.outputs.get("trip") != before.outputs.get("trip"):
+                            session.outputs.pop("decision", None)
+                            session.outputs.pop("planning", None)
                     if request.operation in ("act", "turn", "recommend") and stage != "trip":
                         session.outputs.pop("planning", None)
                         if stage == "decision":
@@ -750,15 +1023,28 @@ class Harness:
                         session.outputs["planning"] = result
                 trace["compiled"] = stage == "trip" and not had_trip and "trip" in session.outputs
                 session.revision += 1
-                for name, sid in session.sessions.items():
-                    session.snapshots[name] = self._module(session, name).snapshot(sid)
+                with _advance_span(spans, "snapshot_ms"):
+                    # Back only loads its destination; untouched stages retain their committed snapshots.
+                    names = [session.stage] if request.operation == 'back' else session.sessions
+                    for name in names:
+                        sid = session.sessions[name]
+                        session.snapshots[name] = self._module(session, name).snapshot(sid)
+                if stage == 'planning' and request.operation == 'turn' and not refusal:
+                    current_traces = session.snapshots.get('planning', {}).get('turn_traces') or []
+                    old_traces = before.snapshots.get('planning', {}).get('turn_traces') or []
+                    if current_traces and (not old_traces or current_traces[-1]['id'] != old_traces[-1]['id']):
+                        latest = current_traces[-1]
+                        trace['turn_trace'] = {'id': latest['id'], 'total_ms': latest['total_ms'],
+                                               'spans': [line for line in latest.get('log', []) if line.startswith('t_')]}
                 response = self._view(session, result)
                 session.receipts[request.request_id] = {"fingerprint": fingerprint, "response": response, "events": events,
                                                         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-                self.store.save(session)
+                with _advance_span(spans, "store_ms"):
+                    self._save(session)
             except Exception:
+                self._runtime_tokens[jid] = object()
                 for name, snapshot in before.snapshots.items():
-                    self._module(session, name).restore(snapshot)
+                    self._module(session, name).restore(deepcopy(snapshot))
                 raise
             if emit:
                 for event in events:
@@ -785,8 +1071,7 @@ class Harness:
         if not compiled:
             return None
         session.outputs["trip"] = SearchInput.model_validate(self._bound_output(session, compiled[-1])).model_dump(mode="json")
-        out = self._module(session, "decision").rebase(session.sessions["decision"],
-                                            {"search_input": session.outputs["trip"], "trip_session": session.sessions["trip"]})
+        out = self._module(session, "decision").rebase(session.sessions["decision"], self._decision_input(session))
         rebuilt = {"view": out["view"], "diff": out["diff"]}
         if note := out["diff"].get("text"):  # the reply ends with what happened to the list: "Giữ 22 nơi, thay 2 …"
             capture("say", {"replace": f"{said} {reply} {note}.".replace("  ", " ").strip()})
@@ -797,19 +1082,38 @@ class Harness:
             capture("view", rebuilt)
         return {"id": out["id"], "view": out["view"]}
 
-    def _advance(self, session: Journey) -> dict:
+    def _decision_input(self, session: Journey) -> dict:
+        trip_sid = session.sessions["trip"]
+        snapshot = self._module(session, "trip").snapshot(trip_sid)
+        hidden_ids = snapshot.get("state", {}).get("meta", {}).get("hidden_ids", [])
+        return {"search_input": session.outputs["trip"], "trip_session": trip_sid, "hidden_ids": hidden_ids}
+
+    def _advance(self, session: Journey, spans: dict | None = None) -> dict:
         if session.stage == "trip":
             if "trip" not in session.outputs:
                 raise Conflict("Trip Understanding has not compiled Search Input")
-            payload = {"search_input": session.outputs["trip"], "trip_session": session.sessions["trip"]}
+            payload = self._decision_input(session)
             existing = session.sessions.get("decision")
-            result = self._module(session, "decision").rebase(existing, payload) if existing else self._module(session, "decision").create(payload)
+            decision = self._module(session, "decision")
+            snapshot = session.snapshots.get("decision") or {}
+            unchanged = (snapshot.get("search_input") == session.outputs["trip"]
+                         and snapshot.get("hidden_ids", []) == payload["hidden_ids"])
+            result = decision.load(existing) if existing and unchanged else decision.rebase(existing, payload) if existing else decision.create(payload)
             session.stage = "decision"
+        elif "planning" in session.sessions and "decision" in session.outputs:
+            session.stage = "planning"
+            result = self._module(session, "planning").load(session.sessions["planning"])
         else:
-            output = self._module(session, "decision").apply(session.sessions["decision"], "confirm", {}, lambda *args: None)
-            output = self._bound_output(session, output)
+            with _advance_span(spans, "tools_ms"):
+                decision = self._module(session, "decision")
+            with _advance_span(spans, "decision_handoff_ms"):
+                output = decision.apply(session.sessions["decision"], "confirm", {"for_planning": True}, lambda *args: None)
+                output = self._bound_output(session, output)
             try:
-                result = self._module(session, "planning").create({"decision_output": output})
+                with _advance_span(spans, "tools_ms"):
+                    planning = self._module(session, "planning")
+                with _advance_span(spans, "planning_create_ms"):
+                    result = planning.create({"decision_output": output})
             except TripIncomplete as exc:
                 readback = self._module(session, "trip").read(session.sessions["trip"], "readback", {})
                 raise TripNotReady(exc.missing, readback) from exc

@@ -133,19 +133,25 @@
 
 /* ---- overview ---- */
 .tg-it-ov { width: min(1840px, 100% - 80px); margin: 0 auto; padding: 28px 0 140px; font-size: 1.05rem; }
-.tg-it-map { position: relative; overflow: hidden; background: #ececec; }
+.tg-it-map { position: relative; overflow: hidden; background: var(--tg-bg); }
+.tg-it-map__status { position: absolute; z-index: 6; left: 12px; bottom: 38px; padding: 5px 10px; border: 1px solid var(--tg-line); border-radius: 8px; background: var(--tg-surface); color: var(--tg-ink-2); font-size: 0.74rem; }
+.tg-it-map:focus-visible { outline: 2px solid var(--tg-brand); outline-offset: -2px; }
 .tg-it-map.is-banner { height: clamp(260px, 32vh, 400px); margin-bottom: 26px; border-radius: 26px; border: 1px solid var(--tg-line); }
 .tg-it-map > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.tg-it-basemap { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity 180ms var(--tg-ease); pointer-events: none; }
+.tg-it-basemap.is-ready { opacity: 1; }
+.tg-it-basemap .maplibregl-canvas { position: absolute; left: 0; top: 0; }
+@media (prefers-reduced-motion: reduce) { .tg-it-basemap { transition: none; } }
 .tg-it-pins { position: absolute; inset: 0; pointer-events: none; }
 .tg-it-pin { position: absolute; z-index: 2; translate: -50% -50%; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--tg-surface); color: var(--tg-ink); border: 3px solid var(--tg-pine); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22); font: 700 0.85rem var(--tg-sans); pointer-events: auto; transition: transform 160ms var(--tg-ease), background 150ms; }
 .tg-it-pin:hover, .tg-it-pin.is-hot { z-index: 4; background: var(--tg-pine-soft); transform: scale(1.2); outline: 5px solid var(--tg-pine-soft); }
 .is-main .tg-it-pin { width: 38px; height: 38px; font-size: 0.95rem; }
+.tg .tg-it-map.is-banner .tg-it-zoom { top: 14px; bottom: auto; }
 .tg-it-pin__label { position: absolute; z-index: 5; translate: -50% calc(-100% - 28px); display: grid; gap: 1px; max-width: 240px; padding: 8px 14px; border-radius: 12px; background: var(--tg-surface); color: var(--tg-ink); box-shadow: var(--tg-sh-2); pointer-events: none; animation: tg-pop 160ms var(--tg-ease); }
 .tg-it-pin__label small { font-size: 0.72rem; color: var(--tg-ink-3); }
 .tg-it-pin__label b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.88rem; font-weight: 600; }
-.tg-it-map__credit { position: absolute; z-index: 2; right: 6px; bottom: 4px; padding: 2px 6px; background: rgba(255, 255, 255, 0.88); font-size: 0.65rem; color: var(--tg-ink-2); }
+.tg-it-map__credit { position: absolute; z-index: 2; right: 6px; bottom: 4px; padding: 2px 6px; background: color-mix(in srgb, var(--tg-surface) 94%, transparent); font-size: 0.65rem; color: var(--tg-ink-2); }
 .tg-it-map__out { position: absolute; z-index: 2; left: 10px; bottom: 30px; padding: 3px 9px; border-radius: 6px; background: var(--tg-warn-bg); color: var(--tg-warn); font-size: 0.74rem; }
-.tg-it-stop.is-hot .tg-it-card { border-color: var(--tg-pine); background: var(--tg-pine-soft); }
 .tg-it-map__none { display: grid; place-items: center; height: 100%; }
 .tg-it-map__city { position: absolute; z-index: 2; top: 16px; left: 50%; translate: -50% 0; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; background: var(--tg-surface); border: 1px solid var(--tg-line-2); box-shadow: var(--tg-sh-1); font: 600 0.95rem var(--tg-sans); color: var(--tg-pine); pointer-events: none; }
 .tg-it-map__open { position: absolute; z-index: 2; right: 22px; bottom: 30px; display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 18px; border-radius: 999px; background: var(--tg-surface); box-shadow: var(--tg-sh-2); font-weight: 600; font-size: 0.88rem; transition: transform 200ms var(--tg-ease); }
@@ -206,28 +212,19 @@
 .tg-it-card button, .tg-it-card select, .tg-it-card summary { cursor: pointer; }
 .tg-it-card__top { display: flex; align-items: center; gap: 14px; }
 .tg-it-grip { display: flex; flex-direction: column; align-items: center; justify-content: center; align-self: stretch; flex: none; gap: 4px; width: 22px; color: var(--tg-ink-3); border-radius: 6px; }
-.tg-it-grip span { font: 600 0.78rem var(--tg-mono); color: var(--tg-pine); }
-.tg-it-card:hover .tg-it-grip { background: var(--tg-pine-soft); color: var(--tg-pine); }
 .tg-it-card__photo { display: block; flex: none; width: clamp(104px, 7vw, 132px); aspect-ratio: 1; border-radius: 14px; overflow: hidden; }
 .tg-it-card__photo .tg-photo { width: 100%; height: 100%; }
 .tg-it-card__photo img { -webkit-user-drag: none; user-select: none; transition: transform 500ms var(--tg-ease); }
 .tg-it-card__photo:hover img { transform: scale(1.04); }
 .tg-it-card__info { flex: 1; min-width: 0; }
-.tg-it-card__cat { margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; color: var(--tg-ink-3); letter-spacing: 0.02em; }
 .tg-it-card__info h2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font: 600 clamp(1.15rem, 1.25vw, 1.4rem)/1.3 var(--tg-display); }
-.tg-it-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 8px; }
 .tg-it-card__info h2 button { text-align: left; }
 .tg-it-card__info h2 button:hover { color: var(--tg-pine); }
 .tg-it-rate { display: inline-flex; align-items: center; gap: 4px; font-size: 0.9rem; }
 .tg-it-rate svg { fill: var(--tg-sun); stroke: var(--tg-sun); }
 .tg-it-rate b { font-weight: 700; }
 .tg-it-rate span { font-size: 0.84rem; color: var(--tg-ink-3); }
-.tg-it-sub { display: inline-flex; align-items: center; gap: 5px; font-size: 0.88rem; color: var(--tg-ink-2); white-space: nowrap; }
-.tg-it-sub svg { color: var(--tg-ink-3); }
 .tg-it-card__bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0 0 36px; padding-top: 10px; border-top: 1px solid var(--tg-line); }
-.tg-it-when { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.tg-it-time { font-size: 0.88rem; color: var(--tg-ink-3); }
-.tg-it-time b { font-size: 1.02rem; color: var(--tg-ink); }
 .tg-it-moves { display: flex; gap: 2px; }
 .tg-it-moves button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; color: var(--tg-ink-3); transition: background 150ms, color 150ms; }
 .tg-it-moves button:hover:not(:disabled) { background: var(--tg-pine-soft); color: var(--tg-pine); }
@@ -368,14 +365,7 @@ span.tg-it-stay__ph { display: grid; place-items: center; background: var(--tg-p
 .tg-it-stats.is-day > div + div { border-left: 1px solid var(--tg-line); }
 .tg-it-stats.is-day dt { font-size: 0.8rem; color: var(--tg-ink-3); }
 .tg-it-stats.is-day dd { margin: 0; font: 700 1.05rem var(--tg-sans); color: var(--tg-ink); }
-.tg-it-list { position: relative; padding-left: 34px; }
-.tg-it-list::before { content: ''; position: absolute; left: 11px; top: 14px; bottom: 14px; border-left: 2px dotted var(--tg-line-2); pointer-events: none; }
 .tg-it-stop { position: relative; }
-.tg-it-stop > .tg-it-card::before { content: ''; position: absolute; left: -29px; top: 50%; translate: 0 -50%; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; background: var(--tg-surface); border: 3px solid var(--tg-brand); transition: transform 160ms var(--tg-ease), background 160ms; }
-.tg-it-stop.is-hot > .tg-it-card::before { background: var(--tg-brand); transform: scale(1.35); }
-.tg-it-stop.is-hot .tg-it-card { border-color: var(--tg-brand); background: var(--tg-surface); box-shadow: 0 0 0 1px var(--tg-brand), var(--tg-sh-2); }
-.tg-it-stop.is-stale > .tg-it-card::before { visibility: hidden; }
-.tg-it-leg { justify-content: flex-start; width: fit-content; margin: 0 0 12px; padding: 5px 12px; border-radius: 999px; background: var(--tg-surface); border: 1px solid var(--tg-line); }
 .tg-it-endrow { position: relative; display: grid; gap: 1px; margin: 0 0 20px; padding: 10px 16px; border-radius: 14px; background: var(--tg-surface); border: 1px solid var(--tg-line); }
 .tg-it-endrow small { font-size: 0.8rem; color: var(--tg-ink-3); }
 .tg-it-endrow b { font-weight: 600; font-size: 1rem; }
@@ -395,7 +385,6 @@ span.tg-it-stay__ph { display: grid; place-items: center; background: var(--tg-p
 .tg-it-zoom button:disabled { opacity: 0.3; cursor: default; }
 .tg-it-map.is-pannable { cursor: grab; touch-action: none; }
 .tg-it-pin:hover, .tg-it-pin.is-hot { border-color: var(--tg-brand); }
-@media (prefers-reduced-motion: reduce) { .tg-it-stop > .tg-it-card::before { transition: none; } }
 
 /* D.3 evening check: photo option cards (screens/plan/EveBanner.tsx) */
 .tg-eve { display: grid; gap: 14px; padding: 18px 20px; border: 1px solid var(--tg-warn-line); border-radius: var(--tg-r-l); background: var(--tg-surface); box-shadow: var(--tg-sh-1); animation: tg-eve-in 0.28s var(--tg-ease) both; transition: opacity 0.2s ease, transform 0.2s ease; }
@@ -415,8 +404,25 @@ span.tg-it-stay__ph { display: grid; place-items: center; background: var(--tg-p
 @media (prefers-reduced-motion: reduce) { .tg-eve, .tg-eve__opt { animation: none; transition: none; } .tg-eve.is-leaving { transform: none; } }
 
 /* Eve: arrive / leave time of the confirmed trip; trust card; Nhịp Đà Lạt beside the plan */
-.tg-eve__times-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0 6px; }
-.tg-eve__times-row label { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; color: var(--tg-ink-2); }
-.tg-eve__times-row input { padding: 6px 10px; border: 1px solid var(--tg-line); border-radius: 10px; background: var(--tg-surface); color: var(--tg-ink); font: inherit; }
-.tg-eve__times .tg-faint { margin: 0; font-size: 0.84rem; }
+.tg-eve__times { display: grid; gap: 12px; margin: 0 0 12px; padding: 16px 18px; border-radius: 16px; background: var(--tg-surface); border: 1px solid var(--tg-line); color: var(--tg-ink-2); }
+.tg-eve__times > header { display: flex; align-items: center; gap: 8px; color: var(--tg-ink); }
+.tg-eve__times h3 { margin: 0; font: 600 1rem var(--tg-sans); letter-spacing: 0; }
+.tg-eve__moments { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 380px)); gap: 12px; }
+.tg-eve__moment { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--tg-bg); border: 1px solid var(--tg-line); transition: border-color 160ms, box-shadow 160ms; }
+.tg-eve__moment:focus-within { border-color: var(--tg-ink-3); }
+.tg-eve__moment.is-edited { border-color: var(--tg-brand); box-shadow: 0 0 0 1px var(--tg-brand); }
+.tg-eve__moment-ico { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 50%; background: var(--tg-surface); border: 1px solid var(--tg-line-2); color: var(--tg-ink); }
+.tg-eve__moment.is-edited .tg-eve__moment-ico { color: var(--tg-brand); border-color: var(--tg-brand); }
+.tg-eve__moment > div { display: grid; gap: 4px; min-width: 0; }
+.tg-eve__moment-label { font-size: 0.82rem; font-weight: 600; color: var(--tg-ink-3); }
+.tg-eve__moment small { font-size: 0.78rem; color: var(--tg-ink-3); }
+.tg-eve__times .tg-time { gap: 6px; }
+.tg-eve__times .tg-time b { color: var(--tg-ink-3); font: 700 1.2rem var(--tg-mono); }
+.tg-eve__times .tg-time select { width: auto; min-width: 0; min-height: 38px; padding: 0 12px; border: 1px solid var(--tg-line-2); border-radius: 10px; background: var(--tg-surface); color: var(--tg-ink); font: 700 1.15rem var(--tg-mono); letter-spacing: 0.02em; text-align: center; text-align-last: center; -webkit-appearance: none; appearance: none; transition: border-color 150ms; }
+.tg-eve__times .tg-time select:hover:not(:disabled) { border-color: var(--tg-ink); }
+.tg-eve__times .tg-time select:disabled { opacity: 0.55; cursor: default; }
+.tg-eve__times > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+.tg-eve__times .tg-faint { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 0.84rem; }
+.tg-eve__times .tg-faint svg { flex: none; color: var(--tg-ink); }
+.tg-eve__save { flex: none; animation: tg-pop 200ms var(--tg-ease); }
 .tg-tripside { max-width: 100%; overflow: hidden; }

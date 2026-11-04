@@ -26,10 +26,10 @@ def test_eq_needs_a_firm_undisputed_value():
     assert hard_result(srec("C", features={"setting": "outdoor"}), h("setting", "indoor", "eq"))[0] == "fail"
 
 
-def test_uncertain_value_passes_with_warning_only_outside_safety_groups():
+def test_uncertain_value_is_unknown_in_every_group():
     noise = srec("A", features={"noise": feat("quiet", status="UNCERTAIN")})
     steep = srec("B", features={"steep_or_stairs": feat("absent", status="UNCERTAIN")})
-    assert hard_result(noise, h("noise", "loud")) == ("pass", "uncertain_value")
+    assert hard_result(noise, h("noise", "loud")) == ("unknown", None)
     assert hard_result(steep, h("steep_or_stairs", "present")) == ("unknown", None)
 
 
@@ -50,8 +50,9 @@ def test_screen_statuses_relax_and_warnings():
     unk = Cand(srec("U", features={"noise": "quiet"}, hours=None), "experience")
     for c in (good, bad, unk):
         screen(c, s, days, set())
-    assert (good.status, bad.status, unk.status) == ("main", "excluded", "unverified")
-    assert "uncertain_value:noise" in good.warnings and "hours_unknown" in unk.warnings
+    assert (good.status, bad.status, unk.status) == ("unverified", "excluded", "main")
+    assert any(check["feature"] == "noise" and check["result"] == "unknown" for check in good.checks)
+    assert "hours_unknown" in unk.warnings
     screen(bad, s, days, {("X", "steep_or_stairs")})
     assert bad.status == "main" and [c["feature"] for c in bad.checks if c["kind"] == "hard"] == ["noise"]
 

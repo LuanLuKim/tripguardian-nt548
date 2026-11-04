@@ -17,7 +17,7 @@ export function MiniCalendar({ start, days }: { start: string | null; days: numb
   const move = (d: number) => setAt(new Date(at.getFullYear(), at.getMonth() + d, 1))
   const cells = [...Array(lead).fill(null), ...Array.from({ length: count }, (_, i) => i + 1)]
   return (
-    <section className="tg-cal" aria-label="Lịch">
+    <section className="tg-cal" data-tour="calendar" aria-label="Lịch">
       <header>
         <h3 aria-live="polite">Tháng {at.getMonth() + 1}, {at.getFullYear()}</h3>
         <span>

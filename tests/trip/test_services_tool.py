@@ -96,3 +96,38 @@ def test_real_data_shape_end_to_end(monkeypatch, tmp_path, turn):
     monkeypatch.setattr(services_tool, "service_places", svc.load)
     out = call(turn(), "find_services", kind="thuê xe máy", near_place="Cà Phê Đồi Thông")
     assert [r["name"] for r in out["rows"]] == ["Thuê xe máy Z"] and out["rows"][0]["kind"] == "thuê xe máy"
+
+
+def test_near_the_market_measures_from_the_city_centre(turn):
+    out = call(turn(), "find_services", kind="atm", near_place="chợ Đà Lạt")
+    assert out["anchor"] == "Chợ Đà Lạt" and out["rows"][0]["distance_km"] is not None
+
+
+def test_petrol_pump_is_a_pump_not_a_cafe_that_the_search_found(turn, monkeypatch):
+    rows = [
+        {"fid": "p1", "name": "Petrolimex 61", "lat": 11.95, "lng": 108.44, "group": "utilities", "words": ["cây xăng"],
+         "category": "Trạm xăng", "fetched_at": "2026-10-29T10:00:00+00:00"},
+        {"fid": "p2", "name": "Xíu mại 79 Cây Xăng", "lat": 11.944, "lng": 108.438, "group": "utilities", "words": ["cây xăng"],
+         "category": "Quán ăn nhẹ", "fetched_at": "2026-10-29T10:00:00+00:00"},
+    ]
+    monkeypatch.setattr(services_tool, "service_places", lambda city, group=None: [dict(r) for r in rows])
+    out = call(turn(), "find_services", kind="cây xăng", near_place="0xa:0x1")
+    assert [r["name"] for r in out["rows"]] == ["Petrolimex 61"]
+
+
+def test_repair_shop_goes_by_category_and_a_motorbike_shop_is_not_invented(turn, monkeypatch):
+    rows = [{"fid": "g1", "name": "Xưởng ô tô A", "lat": 11.95, "lng": 108.44, "group": "rental_tour", "words": ["thuê ô tô"],
+             "category": "Xưởng sửa chữa ô tô", "fetched_at": "2026-10-29T10:00:00+00:00"},
+            {"fid": "g2", "name": "Thuê xe B", "lat": 11.95, "lng": 108.44, "group": "rental_tour", "words": ["thuê xe máy"],
+             "category": "Đại lý cho thuê xe máy", "fetched_at": "2026-10-29T10:00:00+00:00"}]
+    monkeypatch.setattr(services_tool, "service_places", lambda city, group=None: [dict(r) for r in rows])
+    out = call(turn(), "find_services", kind="tiệm sửa xe máy", near_place="0xa:0x1")
+    assert [(r["name"], r["category"]) for r in out["rows"]] == [("Xưởng ô tô A", "Xưởng sửa chữa ô tô")]
+
+
+def test_kind_in_names_the_service_a_free_message_asks_for():
+    from trip.agent.services_tool import kind_in
+    assert kind_in("cây xăng trên đường đi Tà Nung") == "cây xăng"
+    assert kind_in("chỗ sửa xe máy gần chợ Đà Lạt") == "sửa xe"
+    assert kind_in("thuê xe máy ở đâu") == "thuê xe máy"
+    assert kind_in("quán cà phê view đẹp") is None

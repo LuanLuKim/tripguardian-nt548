@@ -5,11 +5,16 @@ no `_cards`, so the place carousel never shows them."""
 
 from __future__ import annotations
 
+import json
 import math
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from threading import RLock
 from typing import ClassVar
 
 from agents.assistant import read_tool
-from corpus import service_places
+from corpus import data_root, service_places
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..domain.text import fold
@@ -26,7 +31,12 @@ KINDS = {  # the word the crawl searched -> what the user may call it (folded)
     "thuê ô tô": ("thue o to", "thue xe oto", "thue oto", "thue xe hoi", "thue xe 4 cho"),
     "tour": ("tour", "du lich tron goi"),
     "bến xe": ("ben xe", "xe khach", "nha xe"),
+    "sửa xe": ("sua xe", "sua chua xe", "tiem sua xe", "tiem va xe", "gara", "garage", "bao duong xe", "bao tri xe"),
 }
+UTILITIES = ("ATM", "cây xăng", "bệnh viện", "phòng khám", "hiệu thuốc", "nhà vệ sinh công cộng", "trạm sạc xe điện", "sửa xe")
+# A kind the crawl did not search by name is found by the place's Maps category (nothing is made up: no such category = no rows).
+CATEGORY_OF = {"sửa xe": re.compile(r"sửa chữa|bảo trì|bảo dưỡng"), "cây xăng": re.compile(r"xăng|nhiên liệu")}
+VEHICLE = re.compile(r"\bxe\b|ô tô|mô tô|xe máy", re.I)
 GROUPS = {"utilities": "utilities", "tien ich": "utilities", "rental_tour": "rental_tour", "thue xe": "rental_tour",
           "transport": "transport", "services": None}
 LIMIT_MAX = 10
@@ -59,8 +69,31 @@ def _words(kind: str) -> tuple[list[str], str | None]:
     return hit, None
 
 
+def kind_in(text: str) -> str | None:
+    """The first kind (a KINDS key) a free message names, e.g. "cây xăng trên đường đi Tà Nung"; None when it names none."""
+    return next(iter(kinds_in(text)), None)
+
+
+def kinds_in(text: str) -> list[str]:
+    """Every service kind explicitly named in a free message, without duplicate aliases."""
+    t = f" {fold(text)} "
+    return [word for word, names in KINDS.items()
+            if any(re.search(rf"(?<![a-z0-9]){re.escape(n)}(?![a-z0-9])", t) for n in names)]
+
+
+def _matches(r: dict, word: str) -> bool:
+    """Is this crawled row a `word` place? A word the crawl searched is not enough alone for "cây xăng" (a cafe named
+    "Cây Xăng" came up too) and "sửa xe" was never searched, so those two also go by the Maps category."""
+    cat = r.get("category") or ""
+    if word == "sửa xe":
+        return bool(CATEGORY_OF[word].search(cat) and VEHICLE.search(cat))
+    if word not in (r.get("words") or ()):
+        return False
+    return word not in CATEGORY_OF or bool(CATEGORY_OF[word].search(cat.lower()))
+
+
 def _group(word: str) -> str:
-    return "utilities" if word in list(KINDS)[:7] else "rental_tour" if word in ("thuê xe máy", "thuê ô tô", "tour") else "transport"
+    return "utilities" if word in UTILITIES else "rental_tour" if word in ("thuê xe máy", "thuê ô tô", "tour") else "transport"
 
 
 def _km(a, b) -> float:
@@ -73,6 +106,9 @@ def _anchor(turn, ref: str | None):
     """(label, (lat, lng)) of the near_place or the trip's lodging; None when neither has a point."""
     if ref:
         pid = turn.resolve_place(ref.strip())
+        if pid == "center" and turn.knowledge is not None:  # "gần chợ / trung tâm": the city centre of config/cities.yaml
+            name, lat, lng = turn.knowledge.center
+            return name, (lat, lng)
         if pid is None:
             raise ValueError(f"no place {ref!r} in the corpus (or more than one fits): there is no data for it; say so, do not guess")
         p = turn.catalog.by_id.get(pid)
@@ -93,30 +129,90 @@ def _hours(r: dict) -> list[str] | str:
     return list(r["hours"]) if r.get("hours") else "unknown"
 
 
+@dataclass
+class _Snapshot:
+    rows: list[dict]
+    versions: dict[str, tuple | None]
+    by_word: dict[str, set[int]]
+
+
+_snapshot_lock = RLock()
+_snapshot_source = None
+_snapshots: dict[str | None, _Snapshot] = {}
+_source_groups: dict[str, set[str | None]] = {}
+
+
+def _version(path: Path) -> tuple | None:
+    try:
+        s = path.stat()
+    except FileNotFoundError:
+        return None
+    return s.st_mtime_ns, s.st_ctime_ns, s.st_size, s.st_ino
+
+
+def _detail_path(root: Path, fid: str) -> Path:
+    return root / "gmaps" / "services" / "places" / (fid.replace(":", "_") + ".json")
+
+
+def _service_rows(words: list[str]) -> list[tuple[dict, str]]:
+    """Single-flight snapshots via the public loader; check only matching details on warm reads."""
+    global _snapshot_source, _source_groups
+    root = data_root()
+    listing = root / "gmaps" / "list" / "dalat_svc.json"
+    with _snapshot_lock:
+        source = (root, service_places, _version(listing))
+        if source != _snapshot_source:
+            _snapshots.clear()
+            # A place may be tagged with one group but have queries from another.
+            # Inspect the cheap list once before narrowing the public loader's detail reads.
+            items = json.loads(listing.read_text(encoding="utf-8"))["items"] if source[2] else []
+            _source_groups = {w: {r.get("group") for r in items
+                                  if (w == "sửa xe" and _matches(r, w)) or any(
+                                      q == w or q.startswith(w + " ") for q in r.get("queries") or ())}
+                              for w in KINDS}
+            _snapshot_source = source
+        groups = {g for w in words for g in _source_groups[w]}
+        group = next(iter(groups)) if len(groups) == 1 else None
+        snapshot = _snapshots.get(group)
+        if snapshot is not None:
+            candidates = sorted({i for w in words for i in snapshot.by_word[w]})
+            if any(_version(_detail_path(root, snapshot.rows[i]["fid"])) != snapshot.versions[snapshot.rows[i]["fid"]]
+                   for i in candidates):
+                snapshot = None
+        if snapshot is None:
+            rows = service_places("dalat", group=group)
+            snapshot = _Snapshot(
+                rows, {r["fid"]: _version(_detail_path(root, r["fid"])) for r in rows},
+                {w: {i for i, r in enumerate(rows) if _matches(r, w)} for w in KINDS},
+            )
+            _snapshots[group] = snapshot
+            candidates = sorted({i for w in words for i in snapshot.by_word[w]})
+        # Preserve source order and the first requested matching kind, including stable ranking ties.
+        return [(snapshot.rows[i], next(w for w in words if i in snapshot.by_word[w])) for i in candidates]
+
+
 @read_tool(FindServices, group="services")
 def find_services(turn, inp: FindServices) -> dict:
     words, group = _words(inp.kind)
     if not words:
         return {"error": f"unknown kind {inp.kind!r}; kinds: " + ", ".join(KINDS) + ". There is no data for it; say so."}
     anchor = _anchor(turn, inp.near_place)
-    rows = [r for r in service_places("dalat") if any(w in words for w in r.get("words") or ())]
-    if group is None and len(words) == 1:  # a single kind: only the places that word found
-        rows = [r for r in rows if words[0] in (r.get("words") or ())]
+    rows = _service_rows(words)
     out = []
-    for r in rows:
+    for r, w in rows:
         if r.get("lat") is None or r.get("lng") is None:
             continue
         d = round(_km(anchor[1], (r["lat"], r["lng"])), 1) if anchor else None
-        out.append((d if d is not None else math.inf, -(r.get("rating") or 0) * math.log1p(r.get("reviews") or 0), r, d))
+        out.append((d if d is not None else math.inf, -(r.get("rating") or 0) * math.log1p(r.get("reviews") or 0), r, d, w))
     out.sort(key=lambda t: t[:2])
-    dates = sorted({str(r["fetched_at"])[:10] for _, _, r, _ in out if r.get("fetched_at")})
+    dates = sorted({str(r["fetched_at"])[:10] for _, _, r, _, _ in out if r.get("fetched_at")})
     result = {
         "anchor": anchor[0] if anchor else "unknown (no near_place and no lodging in the trip: distances are unknown)",
-        "rows": [{"name": r["name"], "kind": next((w for w in (r.get("words") or ()) if w in words), r.get("category")),
+        "rows": [{"name": r["name"], "kind": w, "category": r.get("category"),
                   "distance_km": d, "address": r.get("address") or "unknown", "phone": r.get("phone") or "unknown",
                   "website": r.get("website") or "unknown", "hours": _hours(r), "open_status": r.get("status") or "unknown",
                   "rating": r.get("rating"), "reviews": r.get("reviews"), "maps_url": r.get("url")}
-                 for _, _, r, d in out[:inp.limit]],
+                 for _, _, r, d, w in out[:inp.limit]],
         "found": len(out),
         "sources": ["Google Maps"], "crawled": dates[-1] if dates else "unknown",
         "note": "services, not tourist places: do not propose them as stops or plan places; phone / hours may be out of date",

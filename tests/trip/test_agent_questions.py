@@ -43,27 +43,21 @@ def test_the_required_question_schema_requires_agent_wording():
 
 
 @pytest.mark.parametrize("path", ["ask_required", "record_fact"])
-def test_the_agent_repairs_missing_wording_and_the_question_survives_rebuild_and_reload(catalog, cfg, tmp_path, path):
-    if path == "ask_required":
-        bad = call(path, topic="mobility")
-        good = call(path, topic="mobility", question=QUESTION)
-    else:
-        bad = call(path, facts=FACTS, say="Ba ngày nhé.", ask_required="mobility")
-        good = call(path, facts=FACTS, say="Ba ngày nhé.", ask_required="mobility", ask_question=QUESTION)
-    chat = ScriptedChat(reply(bad), reply(good))
+def test_chat_required_call_is_refused_but_valid_facts_survive(catalog, cfg, tmp_path, path):
+    cfg = replace(cfg, discovery=True)
+    args = {"topic": "mobility", "question": QUESTION} if path == "ask_required" else {
+        "facts": FACTS, "say": "Thử khám phá gu nhé.", "ask_required": "mobility", "ask_question": QUESTION}
+    chat = ScriptedChat(reply(call(path, **args)), say("Thử khám phá gu nhé."))
     e = Engine(catalog, cfg, SessionStore(tmp_path), chat, today=lambda: TODAY)
     sid = e.create("first", "nothing")["id"]
     card = run(e, sid, kind="text", text="đi 3 ngày")[-1][1]
-    assert chat.calls == 2  # The first call's error must return to the model in the same turn.
-    errors = [m["content"] for m in chat.seen[1][0] if m["role"] == "tool"]
-    assert len(errors) == 1 and "error" in errors[0].lower() and "question" in errors[0]
-    assert [t["qid"] for t in card["tabs"]] == ["mobility"]
-    assert card["tabs"][0]["question"] == QUESTION
-    session = e.store.get(sid)
-    assert session.card.ask_question == QUESTION
-    assert e._card(session.state, session.card)["tabs"][0]["question"] == QUESTION
+    assert card["qid"] == "conversation"
+    assert "ask_required" not in chat.seen[0][1]
+    assert "mobility" in e._readback(e.store.get(sid).state)["missing"]
+    if path == "record_fact":
+        assert e.store.get(sid).state.days.value == 3
     fresh = Engine(catalog, cfg, SessionStore(tmp_path), ScriptedChat(), today=lambda: TODAY)
-    assert fresh.load(sid)["card"]["tabs"][0]["question"] == QUESTION
+    assert fresh.load(sid)["card"]["qid"] == "conversation"
 
 
 @pytest.mark.parametrize("answer", ["motorbike", "skip"])
@@ -71,7 +65,7 @@ def test_plain_required_tap_opens_next_topic_without_a_model_call(catalog, cfg, 
     chat = ScriptedChat(reply(call("ask_required", topic="mobility", question=QUESTION)), say("Được nhé."))
     e = Engine(catalog, cfg, SessionStore(tmp_path), chat, today=lambda: TODAY)
     sid = e.create("first", "nothing")["id"]
-    run(e, sid, kind="text", text="đi 3 ngày")
+    e.store.get(sid).card = deck.build(e.store.get(sid).state, catalog, cfg, ask="mobility")
     calls = chat.calls
     ev = run(e, sid, kind="deck", answers={"mobility": [answer]})
     assert chat.calls == calls  # a plain tap on a required card waits for no model
@@ -80,8 +74,11 @@ def test_plain_required_tap_opens_next_topic_without_a_model_call(catalog, cfg, 
         assert not state.mobility.known and "mobility" in state.meta.declined
     else:
         assert state.mobility.value == answer and state.mobility.source == "user"
-    tab = ev[-1][1]["tabs"][0]
-    assert tab["kind"] == "required" and tab["qid"] != "mobility"
+    if answer == "skip":
+        assert ev[-1][1]["qid"] == "conversation"  # skipping never opens a required question on its own
+    else:
+        tab = ev[-1][1]["tabs"][0]
+        assert tab["kind"] == "required" and tab["qid"] != "mobility"
 
 
 @pytest.mark.parametrize("text", ["", "Rõ rồi."])
@@ -144,9 +141,10 @@ def test_a_taste_question_stays_in_words_when_one_option_has_no_photo(catalog, c
     assert ask.with_photos(tab, TripState(), catalog, None) == tab
 
 
-@pytest.mark.parametrize("user, shows_confirm", [("tôi thích săn mây", True), ("săn mây có nên đi không?", False),
+@pytest.mark.parametrize("user, shows_confirm", [("tôi thích săn mây", False), ("săn mây có nên đi không?", False),
                                                   ("bạn có đề xuất gì không", False)])
 def test_the_apps_own_confirmation_waits_while_the_user_is_asking(catalog, cfg, tmp_path, user, shows_confirm):
+    cfg = replace(cfg, discovery=True)
     from trip.domain.state import with_meta
 
     e = Engine(catalog, cfg, SessionStore(tmp_path), ScriptedChat(), today=lambda: TODAY)

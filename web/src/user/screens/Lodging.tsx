@@ -11,6 +11,8 @@ import { PlacePhoto, Trust } from '../ui/common'
 import { Pager } from '../ui/Pager'
 import { HeartFill, Icon } from '../ui/icons'
 import { openPlace } from '../ui/PlaceSheet'
+import { Contact } from '../ui/contact'
+import { placeById } from '../../data/store'
 
 // The "Chỗ ở" tab of Lựa chọn: every served stay as a grid like the other groups, nothing asked of the user (Lịch trình
 // suggests stays when the trip still has none). Planning orders them: around the chosen places first (taste, then
@@ -172,6 +174,7 @@ function day(iso: string) {
 // it swaps.
 export function LodgingCard({ c, order, top, on, swap, busy, onPick }: { c: LodgingCandidate; order: number; top: boolean; on: boolean; swap: boolean; busy: boolean; onPick: () => void }) {
   const p = info(c.id) // in the snapshot: photos and a detail sheet
+  const snap = placeById(c.id) // phone and website come from the same served record
   const saved = useUi((u) => u.saved.includes(c.id))
   const rating = p?.rating ?? c.rating
   const trade = c.tradeoffs?.[0]?.text ?? (c.unverified?.length ? `Chưa xác minh: ${c.unverified.join(', ')}` : null)
@@ -207,6 +210,7 @@ export function LodgingCard({ c, order, top, on, swap, busy, onPick }: { c: Lodg
           {loc?.minutes != null && <span className="tg-mono" title="Ước tính">≈ {loc.minutes}′ từ {loc.center}</span>}
           {c.avg_min != null && <span className="tg-mono" title="Ước tính">≈ {fmtMin(c.avg_min)} tới các nơi đã chọn</span>}
           {c.confidence && <Trust level={TRUST[c.confidence.level]} why={c.confidence.reason} />}
+          <Contact id={c.id} phone={snap?.phone} website={snap?.website} />
         </div>
         <div className="tg-pc__act">
           {on ? (

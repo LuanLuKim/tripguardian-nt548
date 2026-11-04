@@ -5,18 +5,27 @@ import { JourneyError } from '../journey'
 export { JourneyError as PlanningError }
 // Lựa chọn starts the first read of this stage the moment it has advanced (see pd/api primeDecision): no resume step, no wait for the route.
 const primed = new Map<string, Promise<JourneyView>>()
-export const primePlanning = (id: string) => {
-  const read = loadJourney(id, 'planning')
+export const primePlanning = (id: string, view?: JourneyView) => {
+  const read = view ? Promise.resolve(view) : loadJourney(id, 'planning')
   read.catch(() => {})
   primed.set(id, read)
   setTimeout(() => primed.delete(id), 30_000)
 }
-export const loadPlanning = async (id: string) => {
+const loading = new Map<string, ReturnType<typeof readPlanning>>()
+export const loadPlanning = (id: string) => {
+  const existing = loading.get(id)
+  if (existing) return existing
+  const request = readPlanning(id).finally(() => { if (loading.get(id) === request) loading.delete(id) })
+  loading.set(id, request)
+  return request
+}
+const readPlanning = async (id: string) => {
   const early = primed.get(id)
   primed.delete(id)
   let j: JourneyView | undefined
   if (early) j = await early.catch(() => undefined) // the full read below reports a real error
-  if (!j) { await resumeJourney(id); j = await loadJourney(id, 'planning') }
+  if (j && !acceptsRevision(id, j.revision)) j = undefined
+  if (!j) j = (await resumeJourney(id, 'planning')).view
   return { ...(j.result as {view: View}), id: j.id, revision: j.revision }
 }
 export const act = async (id: string, a: Action) => { const j = await mutateJourney(id, 'planning', 'act', a); return { ...(j.result as ActResult), revision: j.revision } }

@@ -255,6 +255,33 @@ def pace_kept(run):
     return out
 
 
+_SCHEDULES: dict = {}
+
+
+def _nn_is_worse(run, day_index, nn_order):
+    """Whether the nearest-neighbour order, run through the engine's own clock for that day, is worse than the planned
+    day by the engine's score (violations, then missed meals): a shorter road that drops a meal or misses opening hours
+    is not an alternative to compare against ("the same stops under the same time constraints"). A day where the
+    nearest-neighbour order is as valid as the plan is still judged on the road."""
+    from planning.build import prepare, schedule_trip
+    from planning.lodging import with_booked_base
+    from planning.schedule import simulate
+    from realistic_cases import decision, records
+    from plan_fixtures import FakeLive, fake_matrix, fixed_sun, no_geocode
+
+    cid = run.case.get("id")
+    if not cid:                                         # a hand-made run (unit tests of the check): no engine to ask
+        return False
+    if cid not in _SCHEDULES:
+        trip = prepare(with_booked_base(decision(run.case)), records(), CFG, FakeLive(), no_geocode, fake_matrix, fixed_sun)
+        _SCHEDULES[cid] = schedule_trip(trip)
+    sched = _SCHEDULES[cid]
+    if day_index >= len(sched.ctxs) or set(sched.results[day_index].order) != set(nn_order):
+        return False                                    # the engine laid the day out differently: no verdict, judge the road
+    planned, tried = sched.results[day_index], simulate(list(nn_order), sched.ctxs[day_index])
+    return tried.key[:2] > planned.key[:2]
+
+
 def travel_vs_nn(run):
     """Spec §11 check 9, controller round-3 ruling: compare the same stops under the same time constraints.
     Keep a sunrise/dawn-pinned first stop first and an evening/sunset-pinned last stop last, when the item's
@@ -300,7 +327,7 @@ def travel_vs_nn(run):
             left.remove(nxt)
             here = pts[nxt]
         nn.extend(p for p in last if p not in nn)
-        if stops and tour(stops) > tour(nn) * 1.15 + 5:
+        if stops and tour(stops) > tour(nn) * 1.15 + 5 and not _nn_is_worse(run, d["day"] - 1, nn):
             out.append(f"day {d['day']}: {tour(stops)}′ on the road, nearest-neighbour does {tour(nn)}′")
     return out
 

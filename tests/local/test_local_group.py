@@ -154,3 +154,95 @@ def test_the_city_name_is_dropped_as_a_phrase_not_word_by_word():
     out = check_model([model("Dã quỳ nở tháng 10 đến tháng 11", subject="Dã quỳ Đà Lạt", months=[10, 11])], kept,
                       city_name="Đà Lạt")
     assert out[0]["status"] == "confirmed"
+
+
+def test_months_that_do_not_agree_are_never_merged_into_one_claim():
+    # three seasons chained into "all 12 months" was the commonest wrong claim of the 10-30 labels
+    out = group_claims([row("a.vn", "mùa mưa Đà Lạt kéo dài", subject="Đà Lạt", subject_kind="city", months=range(6, 11)),
+                        row("b.vn", "mùa mưa Đà Lạt kéo dài từ tháng 5", subject="Đà Lạt", subject_kind="city",
+                            months=range(5, 11)),
+                        row("c.vn", "mùa mưa Đà Lạt kéo dài tới tháng 4", subject="Đà Lạt", subject_kind="city",
+                            months=[11, 12, 1, 2, 3, 4])], now=NOW, city_name="Đà Lạt")
+    assert max(len(c["when"]["months"]) for c in out) <= 6
+    wet = next(c for c in out if 7 in c["when"]["months"])
+    assert wet["domains"] == ["a.vn", "b.vn"] and wet["when"]["months"] == [5, 6, 7, 8, 9, 10]
+
+
+def test_the_amount_of_a_claim_is_the_amount_of_the_text_it_shows():
+    out = group_claims([row("a.vn", "mứt dâu giá 80.000 đến 150.000 đồng/kg", subject="mứt dâu tây", subject_kind="dish",
+                            kind="price_norm", lo=80000, hi=150000),
+                        row("b.vn", "giá mứt dâu 80.000 đến 250.000 đồng/kg", subject="mứt dâu tây",
+                            subject_kind="dish", kind="price_norm", lo=80000, hi=250000)], now=NOW, city_name="Đà Lạt")
+    claim = next(c for c in out if c["status"] == "kept")
+    assert (claim["amount_min_vnd"], claim["amount_max_vnd"]) == (80000, 150000) and "150.000" in claim["text"]
+
+
+def test_prices_that_do_not_meet_stay_two_claims():
+    out = group_claims([row("a.vn", "giá buffet 150.000 đến 400.000 đồng", subject="Đà Lạt", subject_kind="city",
+                            kind="price_norm", lo=150000, hi=400000),
+                        row("b.vn", "giá buffet 800.000 đến 900.000 đồng", subject="Đà Lạt", subject_kind="city",
+                            kind="price_norm", lo=800000, hi=900000)], now=NOW, city_name="Đà Lạt")
+    assert len(out) == 2 and {c["status"] for c in out} == {"unverified", "conflict"} or len(out) == 2
+
+
+def test_distances_that_differ_are_not_two_sources_for_one_distance():
+    out = group_claims([row("a.vn", "cách trung tâm khoảng 5–6 km", subject="Thác Datanla", subject_kind="area",
+                            kind="access"),
+                        row("b.vn", "cách trung tâm khoảng 10 km", subject="Thác Datanla", subject_kind="area",
+                            kind="access"),
+                        row("c.vn", "cách trung tâm khoảng 10 km về phía Tây", subject="Thác Datanla", subject_kind="area",
+                            kind="access")], now=NOW, city_name="Đà Lạt")
+    kept = [c for c in out if c["status"] == "kept"]
+    assert len(kept) == 1 and kept[0]["domains"] == ["b.vn", "c.vn"]
+    five = next(c for c in out if c["domains"] == ["a.vn"])
+    assert five["status"] == "conflict"  # the one source that disagrees with two is shown as disputed, never support
+
+
+def test_two_sites_with_the_same_sentence_are_one_source():
+    same = "Con đường dẫn đến tiệm cà phê này khá gian nan và khó đi."
+    out = group_claims([{**row("a.vn", same, subject="Nhà Bên Suối", subject_kind="poi", kind="access"), "quote": same},
+                        {**row("b.vn", same, subject="Nhà Bên Suối", subject_kind="poi", kind="access"),
+                         "quote": same.upper()}], now=NOW, city_name="Đà Lạt")
+    assert len(out) == 1 and out[0]["status"] == "unverified" and out[0]["sources"] == 1
+    assert out[0]["mirrors"] == ["b.vn"]
+
+
+def test_one_page_repeating_a_quote_is_one_piece_of_evidence():
+    out = group_claims([row("a.vn", "Trại Mát cách trung tâm 7km", subject="Trại Mát", subject_kind="area", kind="access",
+                            doc="d1"),
+                        row("a.vn", "Trại Mát cách trung tâm 7km", subject="Trại Mát", subject_kind="area", kind="access",
+                            doc="d1")], now=NOW, city_name="Đà Lạt")
+    assert len(out[0]["evidence"]) == 1
+
+
+def test_a_period_wider_than_the_claim_is_not_the_same_period():
+    out = group_claims([row("a.vn", "hồng treo gió mùa tháng 9 đến 12", subject="hồng treo gió", months=[9, 10, 11, 12]),
+                        row("b.vn", "hồng treo gió chín tháng 10 đến 12", subject="hồng treo gió", months=[10, 11, 12]),
+                        row("c.vn", "hồng treo gió bán quanh năm từ tháng 1", subject="hồng treo gió",
+                            months=range(1, 11))], now=NOW, city_name="Đà Lạt")
+    kept = next(c for c in out if c["status"] == "kept")
+    assert kept["when"]["months"] == [9, 10, 11, 12] and kept["domains"] == ["a.vn", "b.vn"]
+
+
+def test_one_official_page_keeps_only_the_kinds_it_is_the_authority_on():
+    warn = group_claims([row("congan.lamdong.gov.vn", "cấm dừng xe trên đèo", kind="notice", subject="đèo Prenn")],
+                        now=NOW, city_name="Đà Lạt")
+    dish = group_claims([row("lamdong.gov.vn", "đặc sản nổi tiếng của vùng", kind="specialty", subject="atiso",
+                             subject_kind="dish")], now=NOW, city_name="Đà Lạt")
+    nameless = group_claims([row("lamdong.gov.vn", "thành lập năm 1988 để chăm sóc cán bộ", kind="notice",
+                                 subject="Viện Điều dưỡng", subject_kind="poi_unresolved")], now=NOW, city_name="Đà Lạt")
+    assert warn[0]["status"] == "kept" and dish[0]["status"] == "unverified" and nameless[0]["status"] == "unverified"
+
+
+def test_claim_ids_are_the_same_in_every_process():
+    import subprocess, sys, json as _json
+    code = ("import sys; sys.path.insert(0, 'src'); from datetime import datetime, UTC; import json; "
+            "from corpus.local.group import group_claims; "
+            "r = {'doc_id':'d','source_url':'u','domain':'a.vn','retrieved_at':'2026-10-28T00:00:00+00:00',"
+            "'subject_kind':'area','subject':'đồi chè Cầu Đất','subject_id':None,'kind':'access','text':'cách 25 km',"
+            "'quote':'cách 25 km','amount_min_vnd':None,'amount_max_vnd':None,"
+            "'when':{'months':[],'days':[],'hours':'','weather':''},'who':''}; "
+            "print(group_claims([r], now=datetime(2026,10,28,tzinfo=UTC), city_name='Đà Lạt')[0]['claim_id'])")
+    ids = {subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env={"PYTHONHASHSEED": str(s),
+           "PATH": ""}, cwd=str(__import__("pathlib").Path(__file__).resolve().parents[2])).stdout.strip() for s in (1, 2, 3)}
+    assert len(ids) == 1 and "" not in ids

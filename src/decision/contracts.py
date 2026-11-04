@@ -64,6 +64,7 @@ class DecisionOutput(BaseModel):
     corpus_binding: Binding | None = None
     confirmed: list[ConfirmedPlace]
     backup_pool: list[BackupPlace]
+    hidden_ids: tuple[str, ...] = ()
     wishlist: list[dict]
     trip_context: SearchInput
     decision_log: list[dict]

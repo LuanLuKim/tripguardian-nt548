@@ -146,6 +146,15 @@ class SetDayWindow(Strict):
     quote: str = Field(description=QUOTE)
 
 
+class SetStopTime(Strict):
+    """Set the exact start time of ONE stop ("đổi Horizon sang 15:00"). start is HH:MM; this does NOT change
+    the day's window or departure. Refused without saving if the time or any new violation cannot fit."""
+    tool_name: ClassVar[str] = "set_stop_time"
+    place: str = Field(description=PLACE)
+    start: str = Field(description="Exact start in HH:MM, 00:00 through 23:59.")
+    quote: str = Field(description=QUOTE)
+
+
 class SetVisitMinutes(Strict):
     """Change how long the user stays at ONE stop ("ở Langbiang 2 tiếng"). minutes within the range CURRENT CONTEXT gives."""
     tool_name: ClassVar[str] = "set_visit_minutes"

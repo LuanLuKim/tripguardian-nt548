@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -54,7 +54,8 @@ def plan_digest(si: SearchInput) -> str:
     context = {k: v for k, v in context.items() if k not in {"experience", "purpose"}}
     data = {"context": _semantic(context), "hard": _semantic(si.hard_filters),
             "anchors": _semantic(si.anchors), "pace": si.pace.level, "max_leg_min": si.pace.max_leg_min,
-            "activities": _semantic(si.activities), "time_preferences": _semantic(si.time_preferences)}
+            "activities": _semantic(si.activities), "time_preferences": _semantic(si.time_preferences),
+            "excluded_places": sorted(p.place_id for p in si.excluded_places)}
     encoded = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -97,6 +98,8 @@ def build(si: SearchInput) -> Readback:
         return ("CN" if day.weekday() == 6 else f"T{day.weekday() + 2}") + f" {day:%d/%m}"
 
     head = []
+    if c.origin:
+        head.append(part("Xuất phát từ " + c.origin.text, "origin"))
     if c.start_date:
         head.append(part(dates(c.start_date), "start_date"))
         if c.days:
@@ -129,6 +132,12 @@ def build(si: SearchInput) -> Readback:
                     how = {"plane": "bay", "bus": "xe khách", "self": "tự đi"}.get(moment.how, "")
                     reason = (" tới" if how else "tới") if label == "từ" else ("" if how else "về")
                     reason_text = f"{how}{reason} {moment.at[11:16].lstrip('0')}"
+                    if label == "từ" and key == "frame.arrive" and moment.how in {"plane", "bus"}:
+                        ready = datetime.combine(day.date, datetime.strptime(clock, "%H:%M").time())
+                        margin = int((ready - datetime.fromisoformat(moment.at)).total_seconds() // 60)
+                        if margin > 0:
+                            hub = "ra khỏi sân bay" if moment.how == "plane" else "rời bến xe"
+                            reason_text += f", ước tính {margin} phút {hub}"
                     moment_key = "frame.arrive" if label == "từ" else "frame.leave"
                     if sources.get(moment_key, "default") == sources.get(key, "default"):
                         text += f" ({reason_text})"
@@ -209,7 +218,10 @@ def build(si: SearchInput) -> Readback:
             pace.append(part("xen kẽ hoạt động phù hợp với trẻ em", "frame.pattern"))
     group("pace", pace)
 
-    care = []
+    care = [part(f"{rule.member if rule.subject == 'member' else 'Cả nhóm'} ăn "
+                 f"{'thuần chay' if rule.feature == 'vegan_options' else 'chay'} ngày {rule.date:%d/%m}; "
+                 f"chọn quán có món {'thuần chay' if rule.feature == 'vegan_options' else 'chay'}",
+                 source="user") for rule in c.diet_days]
     for hard in si.hard_filters:
         label = HARD_LABEL.get(hard.feature) or "; ".join(dict.fromkeys(e.quote for e in hard.evidence if e.quote))
         if not label and hard.feature == "coach_access":
@@ -233,7 +245,9 @@ def build(si: SearchInput) -> Readback:
         must = sum(a.priority == "must" for a in si.anchors)
         more.append(part(f"Đã chọn {len(si.anchors)} điểm, {must} điểm bắt buộc đến", source="user"))
     for soft in si.soft_weights:
-        label = SOFT_LABEL.get(f"{soft.feature}={soft.value}") or "; ".join(dict.fromkeys(e.quote for e in soft.evidence if e.quote))
+        label = SOFT_LABEL.get(f"{soft.feature}={soft.value}") or {
+            ("heater", "present"): "có máy sưởi", ("cold", "present"): "lạnh",
+        }.get((soft.feature, soft.value)) or "; ".join(dict.fromkeys(e.quote for e in soft.evidence if e.quote))
         if label and soft.weight:
             item = part(("Thích: " if soft.weight > 0 else "Tránh: ") + label.lower(),
                         "soft:" + str(SoftKey(feature=soft.feature, value=soft.value,

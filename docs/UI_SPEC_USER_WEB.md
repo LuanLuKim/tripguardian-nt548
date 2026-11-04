@@ -73,6 +73,10 @@ Hero ảnh Đà Lạt + **một ô nhập tự do** (Enter để bắt đầu; c
 
 ### Trang 3 — Hiểu chuyến đi (`/app/understand`) — trang khó nhất
 
+**Chế độ khám phá (`view.discovery=True`, mặc định tắt, 04/11/2026):** backend là nguồn cờ duy nhất. Lời chào chỉ mở khám phá gu; không hỏi ngày/người/phương tiện/ngân sách trong chat. Ảnh thật dùng `PhotoStage` hiện có, mở khía cạnh chưa rõ; gu/subtag từ hộp tạo chuyến được xem là câu trả lời đầu tiên. Chọn ảnh → một câu gu ngắn, phỏng đoán và sửa được; bỏ qua → không ép câu kế. Cột phải thêm “Gu của chuyến” dùng hàng vé sẵn có, nút Xoá; dữ kiện thiếu ghi “Chưa chia sẻ”, không giục. Giữ vòng đếm nhóm và nút “Tiếp tục đến chọn nơi”; hậu cần còn thiếu và read-back nằm ở cổng trước Lịch trình. Không đổi component, palette hay hộp tạo chuyến. Các mô tả `ask_required` bên dưới là luồng cờ tắt.
+
+Giới hạn cảnh báo khi bổ sung sức khỏe ở cổng sau khi đã chọn nơi: `docs/TRIP_UNDERSTANDING.md` §5.
+
 Không gian trò chuyện theo mẫu người dùng duyệt ngày 15/10/2026, dùng font Be Vietnam Pro, nền sáng trắng/xám, thẻ kính và nút đen đồng nhất homepage. Hành vi phía máy chủ: `docs/TRIP_UNDERSTANDING.md` §4, §18.
 
 ```text
@@ -86,10 +90,10 @@ Không gian trò chuyện theo mẫu người dùng duyệt ngày 15/10/2026, d�
 └──────┴─────────────────┴───────────────────────────┴────────────────────┘
 ```
 
-- Thanh điều hướng icon dùng chung `Sidebar` của homepage. Lịch sử là một menu nền gradient nhạt như thanh điều hướng của các trang khác (mỗi chuyến một hàng icon + tên + dòng phụ, chuyến đang mở là hàng trắng nổi). Dữ liệu dùng `GET /api/harness/trips`, hiển thị ngày/số người/số nơi và stage có thật; không thêm thời gian hay số tin nhắn giả. Tìm theo nội dung thẻ, mở chuyến ở đúng stage; nút `+` tạo chuyến riêng, giữ chuyến cũ trên server. Có trạng thái đang tải, rỗng, không tìm thấy và lỗi/thử lại.
+- Thanh điều hướng icon dùng chung `Sidebar` của homepage. Lịch sử là một menu nền gradient nhạt như thanh điều hướng của các trang khác (mỗi chuyến một hàng icon + tên + dòng phụ, chuyến đang mở là hàng trắng nổi). Dữ liệu dùng `GET /api/harness/trips`, hiển thị stage, ngày/số ngày, số người và thời điểm lưu cuối (`updated_at`) có thật, nhóm Hôm nay / 7 ngày qua / Cũ hơn; không thêm số tin nhắn giả. Tìm theo nội dung thẻ, mở chuyến ở đúng stage; nút `+` tạo chuyến riêng, giữ chuyến cũ trên server. Có trạng thái đang tải, rỗng, không tìm thấy và lỗi/thử lại.
 - **Chat:** chưa có hội thoại thì hiện lời chào theo tên tài khoản (khách dùng lời chào chung) và bốn thẻ gợi ý xếp lệch (Săn mây, Sống chậm, Cả nhà cùng đi, Ăn cho đã): bấm thẻ chỉ điền câu mở đầu vào ô nhắn, người dùng vẫn tự gửi. Khung chat nền xám sáng phẳng (không lưới). Khi bắt đầu kể thì hiện hội thoại, có khung avatar tròn trống (không hình) cạnh lời bot và lời người dùng (không còn thanh tóm tắt `Sửa` phía trên; sửa thông tin ở cột phải). Mục lịch sử không hiện dòng trạng thái khi chuyến còn ở bước tìm hiểu. Phiên mở lại dựng chat từ transcript; thẻ cũ thành chữ. Không đổi SSE, trả lời nhanh, chỉnh vé hay handoff.
-- **Khối "đang tìm hiểu"** (sự kiện `progress`, như khối suy nghĩ của Claude): mỗi việc agent làm là một dòng do code viết ("Đọc tin nhắn của bạn", "Ghi nhận ngày đi", "Hỏi tiếp: phương tiện", tìm web kèm tên miền nguồn); chấm quay khi chạy, ✓ khi xong, hổ phách khi lỗi. Xong lượt thì co lại thành `Đã tìm hiểu N giây ▸`, bấm mở lại được.
-- **Mỗi lượt một câu hỏi** (`docs/TRIP_UNDERSTANDING.md` §5). Câu hỏi bằng chữ của agent là dòng cuối lời nó, ô nhắn mở. Câu hỏi có lựa chọn hiện như một dòng chat đậm (kèm dòng `vì sao` nhạt), dưới là một thẻ (`screens/understand/Ask.tsx`); không còn chồng thẻ nhiều tab. Luôn có lối ra (`Khác` để gõ, `Bỏ qua`). Chọn xong, thẻ co thành `✓ lựa chọn`, rồi agent phản hồi và hỏi câu kế:
+- **Dấu chờ:** chỉ hiện chấm động trong lúc bot đang trả lời, có `role=status` và `aria-busy`; xong lượt thì biến mất. Không hiện dòng tiến trình hay khối trace mở lại; sự kiện backend vẫn giữ.
+- **Mỗi lượt tối đa một câu hỏi** (`docs/TRIP_UNDERSTANDING.md` §5). Câu hỏi bằng chữ của agent là dòng cuối lời nó, ô nhắn mở. Câu hỏi có lựa chọn hiện như một dòng chat đậm (kèm dòng `vì sao` nhạt), dưới là một thẻ (`screens/understand/Ask.tsx`); không còn chồng thẻ nhiều tab. Luôn có lối ra (`Khác` để gõ, `Bỏ qua`). Chọn xong, thẻ co thành `✓ lựa chọn`, rồi agent phản hồi; có thể gợi mở tiếp, không bắt buộc hỏi:
 
 | Thẻ | Khi nào | Hình dạng |
 |---|---|---|
@@ -98,6 +102,8 @@ Không gian trò chuyện theo mẫu người dùng duyệt ngày 15/10/2026, d�
 | Dấu hiệu (`cues`) | Agent đoán một phong cách | `DẤU HIỆU MÌNH SẼ TÌM`: chip có ×, chip đã bỏ gạch ngang (bấm + để thêm lại), `+ thêm dấu hiệu`; `CÓ VÀI KIỂU … KHÁC NHAU`: mỗi kiểu một ảnh thật + tên + số nơi; `Đúng rồi, xem ảnh các kiểu` · `Gửi ảnh mẫu thay vì chọn`; hộp `Nguồn mình đã đọc` (gập) kèm câu cố định "Nguồn web chỉ dùng để hiểu từ … Nơi được gợi ý luôn lấy từ dữ liệu đã kiểm chứng." |
 | Các kiểu (`kinds`) | Sau thẻ dấu hiệu, hoặc ảnh user gửi | Lưới thẻ: một ảnh lớn + hai ảnh nhỏ của các nơi thật, vòng tích khi chọn, tên kiểu, tên vài nơi, số nơi; ô `Gửi ảnh kiểu bạn thích`; `Xong (N)` · `Không kiểu nào giống`. Bấm ảnh mở chi tiết nơi đó |
 | Có phải nơi này? (`photo_pick`) | Ảnh user gửi khớp rõ một nơi | Ảnh + tên nơi (mở chi tiết); `Đúng nơi này` · `Không phải` |
+
+- **Chat gọn**: không nhắc lại thông tin đã nằm ở cột phải; giữ câu xác nhận khi hiểu từ mơ hồ theo một nghĩa cụ thể. Khi chờ chỉ có dấu đang xử lý (`role="status"`, `aria-busy`); hoàn tất không giữ dòng thời gian, bước ghi nhận hay danh sách trace. Trace backend vẫn lưu. Khối món chỉ dành cho món cụ thể người dùng nêu, không cho kiểu quán; chat giữ lối mở thẻ nơi, không in link Maps hay trích thực đơn dài. Chi tiết mở trong sheet nơi khi bấm. Bỏ qua thẻ đáp một câu ngắn, hành vi không đổi; bản đọc lại trước lịch đầu tiên vẫn bắt buộc.
 
 - **Ô nhắn** là một thẻ trắng cố định cuối cột: chữ nhắn ở trên, hàng nút bên dưới (kẹp giấy, ảnh ở trái, gửi ở phải); kẹp giấy (danh sách nơi dạng file, đọc ở trình duyệt), ảnh, kéo-thả, dán; Enter gửi. Dòng nhỏ dưới ô: "Ảnh bạn gửi chỉ dùng trong chuyến này."
 

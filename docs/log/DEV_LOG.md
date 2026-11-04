@@ -29,6 +29,35 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 
 ## Các mục
 
+## home-trending-tags-photos-2026-11-04 — Trending xếp hạng + ảnh, gu bằng tag/subtag, sửa thẻ không ảnh (`docs/CORPUS.md` §Nhịp, `docs/Role_Web_Functional_Design.md` §6)
+
+- file: `src/corpus/pulse/{compute,render,signals}.py`, `config/pulse.yaml`, `src/trip/api/engine.py` (`tag_covers`, `_cover_fit`), `config/tags.yaml`, `web/src/user/home/{Pulse,TagPicker,tagTopics,dialogs}.tsx`, `web/src/user/css/{pulse,tagpick}.css`, `web/src/data/store.ts` (`coversOf`), `web/src/user/pd/{api.ts,decision.tsx}`, `tests/pulse/test_pulse_compute.py`, `tests/trip/test_browse.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/pulse tests/trip/test_browse.py tests/decision/test_hot_label.py`; chụp trang chủ và hộp thoại bằng Playwright với tài khoản dev (cột phải, bấm "Tạo chuyến đi", bấm một ô tag rồi một chip)
+### Hiện tại (2026-11-04)
+- hành vi: (1) mục `trend` = điểm 0–100 trên TikTok, đà 7 ngày, tỉ lệ review mới so với lịch sử của nơi, điểm Maps tăng, số site nhắc; bỏ chỗ ở và thuê xe; khối Trending vẽ tối đa 4 nơi có ảnh + một sự kiện, không "Xem thêm", không con số. (2) Hộp thoại "Kể mình nghe chuyến đi" có lưới ô ảnh tag xu hướng, chạm ô thì hiện subtag; ảnh bìa tag theo `cover_scenes`, `dish:*` ra ảnh món. (3) Thẻ Lựa chọn không có ảnh: lý do thứ nhất, câu trả lời của chat (`sendText`) và Readback thay view mà không đăng ký ảnh cảnh của thẻ (chỉ các đường `act` / `loadDecision` / `gotoPage` / `searchList` có); thứ hai, `covers.json` (16/10) có ảnh bìa không nằm trong `photo_allow.json` (28/10) nên `coversOf` loại hết (658 nơi có ảnh được phép nhưng bìa cũ không nằm trong danh sách; 337 nơi không có ảnh nào được phép vẫn hiện khung chờ, đúng luật không ảnh có người). Nay cả hai đường đều đăng ký ảnh cảnh, và `coversOf` lấy tối đa 4 ảnh của danh sách thay cho bìa không được phép.
+- quyết định (chủ dự án 2026-11-04): Trending không "Xem thêm", không con số clip / đánh giá; tag và subtag dùng ở hộp thoại tạo chuyến.
+### Trước đó (2026-10-30)
+- hành vi: Trending có thẻ số + "Xem thêm", chip tĩnh ở hộp thoại tạo chuyến.
+
+## tag-subtag-2026-10-30 — Tag, subtag hay danh sách: chọn đúng lúc (Tìm hiểu và Lựa chọn)
+
+- file: `src/corpus/tags/` (`kinds`, `split`), `config/tags.yaml` (`policy`), `src/trip/domain/tag_policy.py`, `src/trip/infrastructure/browse.py`, `src/trip/agent/{knowledge_tools,prompt,tools}.py`, `src/trip/api/{blocks,engine}.py` (`_tag`, `tags_block_wins`), `src/decision/{kinds,assistant,tool_schemas}.py` (`group_list`), `src/bench/assistant.py` (`level:`), `config/bench_assistant_tags.yaml`, `web/src/user/tags/{Subtags,TagStage,tree,env}.ts(x)`, `web/src/user/css/tags.css`, `src/trip/domain/covers.py`, `src/harness/{dispatch,session,pgstore}.py`, `web/src/user/screens/Understand.tsx`, `understand/{Turn,Blocks,Ask}.tsx`, `tu/types.ts`; docs `docs/superpowers/specs/2026-10-30-tag-subtag.md`
+- cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv -q tests/tags tests/trip tests/decision tests/bench tests/harness`; `cd web && node_modules/.bin/tsc -b`; ảnh `frontend_images/2026-10-30/subtag-v3/`; thêm `tests/trip/test_covers.py`, `tests/trip/test_tag_stage.py`, `tests/harness/test_corpus_binding.py`
+
+### Hiện tại (2026-10-30, chiều: sân khấu tag -> subtag -> nơi)
+- hành vi: tag, subtag và nơi là ba cấp của MỘT sân khấu ảnh (`StageFrame` + `StageRing`), mở ngay khi lượt có block `tags`; chat chỉ còn dòng gập mở lại đúng cấp và giỏ. Thẻ tag / subtag = ảnh bìa lớn dạng chồng bài; bấm thẻ giữa đi xuống một cấp (~450 ms, `transform`/`opacity`, reduced-motion = mờ dần) không gọi model, không thêm lượt chat; đường dẫn, Back, Esc / Backspace lên một cấp, nhớ vị trí vòng mỗi cấp.
+- hành vi: cấp con đọc bằng `GET read/trip/stage?block=<sig>&path=<ref>/<ref>` (`Engine.tag_stage` -> `Browse.stage`, chỉ đọc, `state.hard` và nơi ẩn áp dụng); block `tags` giữ `criteria` để mở lại; con của thẻ ra giữa được đọc và tải ảnh trước. Mỗi cấp mỗi thẻ một ảnh bìa riêng (`domain/covers.assign`, cả ở block lẫn ở `tag_stage`).
+- hành vi: chọn nhiều: giỏ qua mọi cấp, chip *N đã chọn* trên thẻ chồng; chọn nơi = turn `like` với `qid: stage` (nơi trong danh sách sân khấu, qua `admissible`; ghi anchor `want` như trước); *Thích cả kiểu này* = turn `wish` ghi `KindWish` mềm (`wishes.kinds`, các nơi của nút; Quyết định đọc như kind wish, không lọc cứng). Web xếp hàng `like` / `wish` khi một lượt khác đang chạy (không bỏ). `Engine._tag` / `Browse.tag` còn cho transcript cũ.
+- hành vi (lỗi lượt mơ hồ 1 phút 30): không phải mô hình hay `kinds`. Trên harness vừa khởi động, `GET /api/harness/trips` (cột lịch sử) khôi phục MỌI hành trình của tài khoản, mỗi hành trình ghim một bản corpus cũ nên mở cả bộ engine của bản đó dưới một khóa chung `_corpus_lock`; mọi request cần `_module` (cả `GET sessions/<id>` trước lượt đầu của chat mới) đứng chờ khóa đó 75–98 s. Sửa: `Harness.summaries` đọc bản lưu (`Store.read`, không sao chép sâu) và lấy `selected` từ snapshot Decision, không khôi phục module; `_module` mở một bản corpus mới dưới khóa riêng của bản đó, bản đang chạy không bao giờ phải chờ.
+
+### Trước đó (2026-10-30, trưa)
+- hành vi: `browse_tags` quyết định hình dạng bằng số chiều câu đã nêu (nhóm Maps, `must`, món, text): 0 chiều và ≥ 40 nơi hợp lệ -> tag (các hướng lớn); 1 chiều chia được -> subtag; ≥ 2 chiều, ít nơi, chia yếu hoặc khối y hệt vừa hiện (2 khối gần nhất) -> danh sách phẳng; kết quả có `mode` và `why`. Block `tags` có `level`, `sig`, `title`.
+- hành vi: bấm hàng tag gửi lượt `tag` (không gọi model): server mở subtag của tag (hoặc dải nơi nếu không chia được) với `state.hard` và nơi bị ẩn; tag đã bấm không được mời lại. Bấm hàng subtag mở `PlaceStage`.
+- hành vi: lượt có block `tags` đóng thẻ ảnh (drill) cùng chủ đề, và web không tự mở `PhotoStage` phủ khối (lỗi cũ: lớp phủ chặn click). Nơi trong block dùng được nút Thích.
+- hành vi: trợ lý Lựa chọn có tool `group_list(tab)` chia một tab dài bằng `corpus.tags.split` (không đổi giao diện); `browse_tags` bị ẩn khỏi trợ lý này.
+- hành vi: tag (kinds) bỏ feature `home: false` ("Decor ấm cúng"); lượt có block `tags` không thêm khối món do dữ liệu chuẩn bị ("gợi ý" bị đọc nhầm là món); `PhotoStage` không tự mở khi cùng lượt có dải nơi.
+- hành vi: trang chủ không dùng tag; endpoint `/api/harness/tags/trending` vẫn còn.
+
 ## selfhost-vllm-2026-10-29 — Gateway nhiều upstream Gemma, thử vLLM trên 2080 Ti
 
 - file: `scripts/model_gateway.py`, `scripts/models_ctl.sh`, `scripts/vllm_server.sh`, `scripts/vllm_patch_sm75.py`, `tests/test_model_gateway.py`, `logs/vllm/load_test.py`
@@ -863,3 +892,49 @@ _không có_
 - đo `covered_tools` (terra, 1 lượt mỗi cấu hình, 30 tin cũ + followup/shown/multi): `write` p50 4,66 s, 1,13 call/lượt, followup 4/6; `all` p50 5,27 s, 1,37 call/lượt, followup 5/6; chênh 1 ca nằm trong nhiễu nên giữ `write`.
 - guard trên Cloudflare Clef: 0 chặn nhầm, nhưng R1-R6 recall 0,837 (CLEF_TIMEOUT_S=2) / 0,907 (10 s), dưới 0,95; 3-4 câu R1/R2/R3 cho xác suất 0,0 (mô hình khác, không phải độ trễ). Chưa đổi ngưỡng.
 - ledger `.superpowers/sdd/2026-10-29-asst-bench/progress.md`; bench cuối terra so với sol chưa chạy (9router tắt).
+
+## password-reset-2026-10-30 — Quên mật khẩu bằng mã gửi email (`docs/ACCOUNTS.md` §2c)
+
+- file: `src/mailer/`, `config/mail.yaml`, `migrations/007_password_reset.sql`, `src/accounts/service.py` (`forgot`, `reset_password`, `ResetError`), `src/harness/{server,__main__}.py`, `web/src/user/screens/{AuthReset,AuthEmailForm,Auth,AuthMascot}.tsx`, `web/src/user/{account.ts,css/auth.css}`, `web/public/img/auth/mood/mail.webp`, `tests/{mailer,accounts/test_password_reset.py}`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/harness tests/accounts tests/mailer tests/db` (cần `TEST_DATABASE_URL`); `tsc -b` trong `web`; ảnh ở `frontend_images/2026-10-30/auth-reset/`; migration `007` phải được áp (`python -m db migrate`) và harness khởi động lại trước khi bật; thiếu `SMTP_*` thì tính năng tự tắt
+### Hiện tại (2026-10-30)
+- hành vi: `POST /api/auth/password/forgot` trả cùng một 200 cho mọi email, gửi mã 6 số (HMAC, 10 phút, 60 giây giữa hai lần, 5 lần/giờ/email, 10 lần/giờ/địa chỉ) qua SMTP trong luồng riêng; `password/reset` kiểm mã (5 lần sai thì chết), đặt mật khẩu, kết thúc mọi phiên, đăng nhập và xóa chờ 8-lần-sai; chưa có SMTP thì 503 và web ẩn "Quên mật khẩu?".
+- hành vi: web có bảng hai bước trong thẻ đăng nhập (email, rồi 6 ô mã + mật khẩu mới) với linh vật theo trạng thái, thêm dáng cầm phong thư.
+
+### Trước đó (2026-10-14)
+- hành vi: không có quên mật khẩu; email đăng ký không được xác nhận.
+
+## place-web-pace-2026-10-30 — `place_web` SearXNG nhanh hơn, không captcha (`docs/CORPUS.md`)
+
+- file: `src/corpus/crawl/tiktok/place_web.py` (`ENGINES`, `Pace`, `search` trả thêm `refused`), `tests/crawl/tiktok/test_place_web.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/crawl/tiktok/test_place_web.py` (20 test)
+### Hiện tại (2026-10-30)
+- hành vi: engine chỉ `yahoo,yandex`; nhịp tự giảm tới sàn 1,5 s khi sạch, nhân đôi khi engine bắt đầu từ chối. 4 luồng ~75 truy vấn/phút (trước ~28), 0 lần bị chặn.
+- quyết định (chủ dự án): giữ việc ẩn chat trống trong sidebar Lịch sử (`understand/History.tsx`, `isBlank`).
+
+### Trước đó (2026-10-30)
+- hành vi: engine `bing,yahoo,yandex,duckduckgo`, nghỉ cố định `--pause 5`, ~28 truy vấn/phút với 4 luồng.
+
+## web-places-searxng-2026-10-30 — giá vé / giờ qua SearXNG, chưa qua gate (`docs/CORPUS.md`)
+
+- file: `src/corpus/crawl/web/places.py`, `src/corpus/observe/search/__init__.py` (gate v8: `generic_name`, `closed_nearby`, `searxng_hours`, `web_searxng`), `tests/crawl/web/test_web_places.py`, `tests/observe/search/test_search_observe.py`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/crawl/web tests/observe/search tests/aggregate`; nhãn ở `.superpowers/sdd/2026-10-30-corpus-fill/labels_web_places_searxng*.json`
+### Hiện tại (2026-10-30)
+- hành vi: 697 truy vấn fee/hours hỏi qua SearXNG, 0 chặn. Bằng chứng SearXNG có basis riêng `web_searxng`, aggregate bỏ qua (fail closed) vì 3 vòng gán nhãn đều dưới Wilson LB 0,85 (tốt nhất 0,819).
+
+### Trước đó (2026-10-30)
+- hành vi: giá vé / giờ chỉ từ snippet Google và tài liệu web; gsearch bị captcha.
+
+## space3d-web-2026-11-04 — tab "Khám phá 3D" trong "Xem chi tiết" (`docs/Role_Web_Functional_Design.md` §6)
+
+- file: `web/src/user/ui/Space3d.tsx`, `web/src/user/ui/PlaceSheet.tsx`, `web/src/user/ui/icons.tsx`, `web/src/user/css/app.css`, `web/space3d/`, `web/scripts/build_space3d.mjs`, `web/scripts/shots_space3d.mjs`, `web/scripts/test_space3d_scroll.mjs`
+- cách kiểm chứng: `node web/scripts/shots_space3d.mjs <base> check` (ảnh toàn cảnh + điểm dừng, thoát lỗi khi console có lỗi); `node web/scripts/test_space3d_scroll.mjs <base> <slug>` (lăn chuột đi đúng thứ tự, lăn nhẹ quay về, hai đầu tuyến giữ nguyên, toàn cảnh xoay và phóng được); `tsc -b`
+### Hiện tại (2026-11-04)
+- hành vi: một viewer chung tự host (three 0.170 + 8 kit + `station`, không CDN) nạp `places/<slug>.json` lúc chạy; 29 nơi trong `web/space3d/places.json`. Toàn cảnh: kéo xoay, lăn phóng, viên hướng dẫn kiểu đĩa xoay, nút "Bắt đầu tham quan". Sau khi bắt đầu, lăn chuột kéo camera theo tuyến (`web/space3d/scroll.js`), thứ tự điểm giữ nguyên, không có nút Tiếp / Trước; thẻ kính xếp dọc có đường tuyến chạy theo độ lăn, chấm bấm được. Máy chậm tự tắt GTAO.
+
+## perf-quality-2026-11-04 — đọc nhanh, lịch không ngày trống, không chặn vì chưa rõ (`docs/PLANNING.md`, `docs/ARCHITECTURE.md`)
+
+- file: `src/harness/{dispatch,session,pgstore,__main__}.py`, `src/planning/{layout,build,schedule,validate,ghosts,diet,overload,safety,places,engine,recommendations}.py`, `web/server.mjs`, `scripts/prod_journey_e2e.py`, tests harness/planning tương ứng
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/{harness,planning,trip,decision,corpus,bench}`; `python -m planning evaluate`; trình duyệt signed-in trên tên miền prod
+### Hiện tại (2026-11-04)
+- hành vi: Deploy prod 04/11 18:10. Harness: `Store.peek` (bản sao nông) cho metadata; Planning load/read render trên writer ngoài journey lock + kiểm revision/dấu runtime (bỏ fork; mở lại Lịch trình 2–8 s → 25–160 ms); `before` của request là bản mượn; danh sách chuyến chỉ lấy trường cần từ Postgres + cache theo `updated_at` (lạnh 3,7–13,7 s → 1,5 s, nóng 0,01 s); làm nóng 30 chuyến 48 h gần nhất sau restart; `web/server.mjs` nén JSON qua tunnel (Lựa chọn 557 KB → 61 KB, 1,4 s → 0,3 s). Planning: ghim mặt trời không áp cho quán ăn; dời nơi sang ngày trống tính theo `_as_laid`; ghim ngày không giữ được = bỏ + báo, không vi phạm; ngày chay chỉ chặn khi `fail`, chưa rõ/ô trống thành `diet_unknown`/`diet_meal_open`; ngân sách không chặn (`NO_BUDGET_CAP`, cảnh báo `budget_over`); quá tải hết hạn thêm hướng `kept` chốt được; ô ăn gợi ý mờ có quán (bữa sáng); cảnh báo an toàn chưa rõ gộp một dòng/nơi; bỏ chữ thô `plan_excluded`. Test: planning 1150/8 nền, harness 455, trip 1451, decision 596/1 nền, corpus 125, bench 115; planning evaluate 10/10 (trước 9/10).

@@ -12,6 +12,8 @@
 .tg-trade .is-best { font-weight: 700; color: var(--tg-pine); }
 .tg-trade__note { padding: 10px 16px 14px; font-size: 0.78rem; }
 .tg-cond { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--tg-surface); border: 1px solid var(--tg-line); margin-bottom: 18px; font-size: 0.84rem; color: var(--tg-ink-2); }
+.tg-cond ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tg-cond .tg-link { justify-self: start; margin-top: 2px; font-size: 0.82rem; font-weight: 600; color: var(--tg-ink-2); }
 .tg-cond li { display: flex; gap: 8px; align-items: flex-start; }
 .tg-cond svg { flex: none; margin-top: 2px; }
 .tg-cond .is-warn { color: var(--tg-warn); font-weight: 600; }

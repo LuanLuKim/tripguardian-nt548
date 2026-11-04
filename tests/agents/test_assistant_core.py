@@ -1,10 +1,13 @@
 """The shared assistant core: registry, per-turn cards, history window, last_shown."""
 
+import asyncio
 from typing import ClassVar
 
+import pytest
+from langchain_core.messages import AIMessageChunk
 from pydantic import BaseModel, ConfigDict
 
-from agents.assistant import Registry, TurnCore, action_tool, context_block, last_shown, read_tool, window
+from agents.assistant import LoopHost, Registry, TurnCore, action_tool, context_block, last_shown, read_tool, run_loop, window
 
 
 class Ping(BaseModel):
@@ -112,3 +115,42 @@ def test_last_shown_keeps_the_last_two_turns_with_their_query():
     out = last_shown(tr, lambda i: i.upper())
     assert [e["turn"] for e in out] == [2, 5] and out[0]["names"] == ["B", "C"] and out[0]["tool"] == "find_places"
     assert "tool" not in out[1]
+
+
+@pytest.mark.parametrize("stage", ["trip", "decision", "planning"])
+def test_last_assistant_call_executes_actions_but_never_another_read_or_model_call(stage):
+    reg = Registry()
+
+    @read_tool(Ping, registry=reg)
+    def ping(turn, inp):
+        turn.reads.append(inp.q)
+        return {"q": inp.q}
+
+    @action_tool(stage, Act, registry=reg)
+    def act(turn, inp):
+        turn.written = True
+        return {"ok": True}
+
+    class Turn(TurnCore, LoopHost):
+        assistant = True
+
+        def run(self, name, args):
+            return self.tool(name).run(self, args)
+
+    turn = Turn(stage, {"assistant"}, registry=reg)
+    turn.reads, turn.written = [], False
+    seen = []
+
+    async def chat(messages, tools, on_say):
+        seen.append({t.name for t in tools})
+        assert len(seen) <= 2, "the action must not add a third model call"
+        calls = [("ping", '{"q":"first"}')] if len(seen) == 1 else [
+            ("ping", '{"q":"forbidden last read"}'), ("act", "{}")]
+        return AIMessageChunk(content="", tool_call_chunks=[
+            {"id": f"c{len(seen)}-{i}", "name": name, "args": args, "index": i}
+            for i, (name, args) in enumerate(calls)])
+
+    asyncio.run(run_loop(chat, [{"role": "user", "content": "keep my facts"}], turn, lambda _: None, 6))
+    assert turn.written
+    assert turn.reads == ["first"]
+    assert len(seen) == 2 and seen[1] == {"act"}

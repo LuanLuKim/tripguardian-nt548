@@ -56,13 +56,18 @@ export function warmPhotos(urls: (string | null | undefined)[], ms: number): Pro
 // The browser picks the thumbnail for small slots and the original for large or dense screens (`sizes`).
 // A missing thumbnail falls back to the original, a missing original to the placeholder.
 export function Photo({ photo, alt, className, credit = false, eager = false, sizes = '(max-width: 600px) 92vw, 320px' }: { photo: Cover | undefined; alt: string; className?: string; credit?: boolean; eager?: boolean; sizes?: string }) {
-  const [fail, setFail] = useState(0)
+  const [failure, setFailure] = useState({ src: photo?.src, step: 0 })
+  if (failure.src !== photo?.src) setFailure({ src: photo?.src, step: 0 })
+  const fail = failure.src === photo?.src ? failure.step : 0
   const thumb = photo && fail === 0 ? thumbOf(photo.src) : null
   const wide = !!thumb && photo!.w > THUMB_W // narrower originals: the thumbnail is the same size, only lighter
+  const missing = fail > 1 || !photo
+  const label = photo ? 'Chưa tải được ảnh' : alt ? `Chưa có ảnh của ${alt}` : 'Chưa có ảnh'
   return (
     <figure className={`tg-photo ${className ?? ''}`}>
-      {fail > 1 || !photo ? <div className="tg-photo__ph" role="img" aria-label={alt} /> : <img src={thumb ?? photo.src} srcSet={wide ? `${thumb} ${THUMB_W}w, ${photo.src} ${photo.w}w` : undefined} sizes={wide ? sizes : undefined} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" onError={() => setFail(thumb ? 1 : 2)} />}
-      {credit && photo && <figcaption className="tg-photo__credit">Ảnh: {photo.credit}</figcaption>}
+      {missing ? <div className="tg-photo__ph" role="img" aria-label={label} style={{ display: 'grid', placeItems: 'center', padding: '16px', textAlign: 'center', color: 'var(--tg-ink)' }}><span>{label}</span></div> : <img src={thumb ?? photo.src} srcSet={wide ? `${thumb} ${THUMB_W}w, ${photo.src} ${photo.w}w` : undefined} sizes={wide ? sizes : undefined} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" onError={() => setFailure({ src: photo.src, step: thumb ? 1 : 2 })} />}
+      {credit && photo && !missing && <figcaption className="tg-photo__credit">Ảnh: {photo.credit}</figcaption>}
+      {photo?.year && !missing && <small className="tg-photo__year" title="Ảnh cũ hơn 3 năm, chỉ dùng cho khung cảnh ngoài trời">Ảnh {photo.year}</small>}
     </figure>
   )
 }

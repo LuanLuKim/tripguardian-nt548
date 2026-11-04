@@ -1,0 +1,71 @@
+/* tag -> subtag -> place on one photo stage (web/src/user/tags/): the chat keeps a single fold line (ask.css .tg-stage__reopen),
+   the stage is the ring of ask.css with big cards that read as piles ("there is more inside"). Tokens only; transform and
+   opacity are the only things that animate. */
+.tg-sub { display: grid; gap: 8px; max-width: 520px; min-width: 0; }
+.tg-sub__row { width: 100%; }
+.tg-sub__row > span:nth-child(2) { flex: 1; min-width: 0; }
+.tg-sub__row > svg { flex: none; color: var(--tg-ink-3); }
+.tg-stage__photo { position: relative; }
+
+/* head: back, breadcrumb */
+.tg-stage__back { position: absolute; top: 0; left: 0; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: color-mix(in srgb, var(--tg-surface) 16%, transparent); color: var(--tg-surface); transition: background-color 0.16s ease, transform 0.2s var(--tg-ease); }
+.tg-stage__back:hover { background: color-mix(in srgb, var(--tg-surface) 28%, transparent); transform: translateX(-2px); }
+.tg-stage__back:focus-visible { outline: 2px solid var(--tg-surface); outline-offset: 3px; }
+.tg-crumbs { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 4px; margin-top: -2px; font-size: 0.88rem; color: color-mix(in srgb, var(--tg-surface) 78%, transparent); }
+.tg-crumbs > span { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.tg-crumbs button, .tg-crumbs b { max-width: 220px; overflow: hidden; padding: 2px 6px; border-radius: 8px; font: inherit; white-space: nowrap; text-overflow: ellipsis; }
+.tg-crumbs button { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--tg-surface) 35%, transparent); text-underline-offset: 3px; transition: background-color 0.16s ease; }
+.tg-crumbs button:hover { background: color-mix(in srgb, var(--tg-surface) 16%, transparent); }
+.tg-crumbs button:focus-visible { outline: 2px solid var(--tg-surface); outline-offset: 1px; }
+.tg-crumbs b { font-weight: 650; color: var(--tg-surface); }
+
+/* a pile: two more cards peek out above the front one (box-shadow, so it moves with the card and costs nothing) */
+.tg-stage__ring.is-tree { margin-top: 34px; }
+.tg-stage__card.is-deck { box-shadow: 0 -14px 0 -5px color-mix(in srgb, var(--tg-surface) 88%, transparent), 0 -27px 0 -12px color-mix(in srgb, var(--tg-surface) 58%, transparent), var(--tg-sh-2); }
+.tg-stage__card.is-deck.is-front { box-shadow: 0 -14px 0 -5px var(--tg-surface), 0 -27px 0 -12px color-mix(in srgb, var(--tg-surface) 66%, transparent), 0 30px 80px color-mix(in srgb, var(--tg-night) 40%, transparent); }
+.tg-stage__card.is-deck.is-on { box-shadow: 0 0 0 3px var(--tg-surface), 0 0 0 6px var(--tg-ink), 0 -22px 0 -3px color-mix(in srgb, var(--tg-surface) 80%, transparent), 0 30px 80px color-mix(in srgb, var(--tg-night) 40%, transparent); }
+.tg-stage__badge { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px 4px 8px; border-radius: 999px; background: var(--tg-ink); color: var(--tg-surface); font-size: 0.82rem; font-weight: 600; animation: tg-pop 0.28s var(--tg-ease) both; }
+.tg-stage__wish { position: absolute; top: 10px; left: 10px; display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 12px 0 10px; border-radius: 999px; background: color-mix(in srgb, var(--tg-surface) 92%, transparent); color: var(--tg-ink); font-size: 0.85rem; font-weight: 600; box-shadow: var(--tg-sh-1); opacity: 0; translate: 0 -4px; transition: opacity 0.2s ease, translate 0.2s var(--tg-ease), background-color 0.16s ease, color 0.16s ease; }
+.tg-stage__card.is-front .tg-stage__wish, .tg-stage__wish:focus-visible, .tg-stage__wish.is-on { opacity: 1; translate: 0 0; }
+.tg-stage__wish:hover { background: var(--tg-surface); }
+.tg-stage__wish.is-on { background: var(--tg-ink); color: var(--tg-surface); }
+.tg-stage__wish:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+@keyframes tg-pop { from { opacity: 0; scale: 0.7; } }
+
+/* a card whose children are still on the way: a soft sweep over the photo, no spinner */
+.tg-stage__card.is-loading .tg-stage__photo::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--tg-surface) 55%, transparent) 50%, transparent 70%); animation: tg-sweep 1s ease-in-out infinite; }
+@keyframes tg-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* level change: the ring folds into the tapped card (leave), the next level fans out of it (enter) */
+.tg-stage__ring.is-tree { --enter: translateY(36px) scale(0.96); }
+.tg-stage__ring.is-tree[data-dir="down"] { --enter: translateX(0) scale(0.7); }
+.tg-stage__ring.is-tree[data-dir="up"] { --enter: translateX(0) scale(1.14); }
+.tg-stage__ring.is-tree .tg-stage__card { animation: tg-ring-in 0.38s var(--tg-ease) backwards; animation-delay: calc(var(--a) * 35ms); }
+@keyframes tg-ring-in { from { opacity: 0; transform: var(--enter); } }
+.tg-stage__ring[data-phase="leave"] { pointer-events: none; }
+.tg-stage__ring[data-phase="leave"] .tg-stage__card { transition-duration: 0.24s; transition-timing-function: cubic-bezier(0.5, 0, 0.9, 0.4); }
+.tg-stage__ring[data-phase="leave"][data-dir="down"] .tg-stage__card:not(.is-front) { transform: translateX(0) scale(0.7); opacity: 0; }
+.tg-stage__ring[data-phase="leave"][data-dir="down"] .tg-stage__card.is-front { transform: translateY(-14px) scale(1.07); opacity: 0; transition-delay: 0.05s; }
+.tg-stage__ring[data-phase="leave"][data-dir="up"] .tg-stage__card { transform: translateX(0) scale(0.84); opacity: 0; }
+
+/* the basket: what is picked, across every level */
+.tg-basket { justify-content: space-between; gap: 12px; padding-left: 14px; }
+.tg-basket__items { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 8px 6px 4px; list-style: none; overflow-x: auto; scrollbar-width: none; }
+.tg-basket__items::-webkit-scrollbar { display: none; }
+.tg-basket__items > li { position: relative; flex: none; animation: tg-pop 0.26s var(--tg-ease) both; }
+.tg-basket__thumb { display: block; width: 42px; height: 42px; overflow: hidden; border-radius: 50%; background: var(--tg-pine-soft); box-shadow: 0 0 0 2px var(--tg-surface), 0 0 0 3px var(--tg-line-2); }
+.tg-basket__thumb img, .tg-basket__thumb i { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tg-basket__kind { display: inline-flex; align-items: center; gap: 5px; height: 42px; padding: 0 18px 0 12px; border-radius: 999px; background: var(--tg-pine-soft); color: var(--tg-ink); font-size: 0.88rem; font-weight: 600; white-space: nowrap; }
+.tg-basket__items > li > button { position: absolute; top: -5px; right: -5px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--tg-ink); color: var(--tg-surface); box-shadow: 0 0 0 2px var(--tg-surface); transition: transform 0.16s var(--tg-ease); }
+.tg-basket__items > li > button:hover { transform: scale(1.15); }
+.tg-basket__items > li > button:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg-basket__none { padding: 0 6px; font-size: 0.88rem; color: var(--tg-ink-3); }
+.tg-basket > .tg-btn { flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-stage__ring.is-tree .tg-stage__card { animation: tg-fade-only 0.18s ease both; animation-delay: 0s; }
+  .tg-stage__badge, .tg-basket__items > li { animation: none; }
+  .tg-stage__card.is-loading .tg-stage__photo::after { animation: none; }
+  .tg-stage__wish, .tg-stage__back { transition: none; }
+}
+@keyframes tg-fade-only { from { opacity: 0; } }

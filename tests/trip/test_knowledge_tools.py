@@ -121,3 +121,39 @@ def test_find_dishes_tool_lists_places_from_the_menu_search(turn):
     t.catalog.dishes = lambda q: [{"id": "0xa:0x1", "name": "Cà Phê Đồi Thông", "score": 9, "evidence": [{"source": "menu", "dish": "Bánh căn"}]}]
     out = call(t, "find_dishes", dish="bánh căn")
     assert out["places"][0]["id"] == "0xa:0x1"
+
+
+def test_a_closed_report_hides_the_place_and_is_kept_for_the_data(turn, tmp_path):
+    import json
+    t = turn()
+    out = call(t, "hide_place", id="0xa:0x1", closed=True)
+    assert out["hidden"] is True and t.state.meta.hidden_ids == ("0xa:0x1",)
+    rows = [json.loads(x) for x in (tmp_path / "gaps.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [(r["kind"], r["subject"]) for r in rows] == [("user_report", "0xa:0x1")]
+
+
+def test_same_name_preserves_unproven_numeric_brands_and_word_suffixes(turn):
+    from types import SimpleNamespace
+
+    t = turn()
+    t.catalog.places = [SimpleNamespace(id=pid, name=name) for pid, name in (
+        ("b1", "Cafe 1994"), ("b2", "Cafe 1995"), ("b3", "Cafe 1994 Garden"),
+        ("b4", "Cafe 1994 chi nhánh 2"),
+    )]
+    t.catalog.by_id = {p.id: p for p in t.catalog.places}
+    call(t, "hide_place", id="b1", same_name=True)
+    assert set(t.state.meta.hidden_ids) == {"b1", "b4"}
+
+
+def test_same_name_hides_the_other_branches_of_the_brand(turn):
+    from types import SimpleNamespace
+
+    from trip.agent.knowledge_tools import _stem
+    assert _stem("Lẩu Gà Lá É Tao Ngộ chi nhánh 5") == _stem("Lẩu Gà Lá É - Tao Ngộ cơ sở 2") == "lau ga la e tao ngo"
+    assert _stem("Cafe 1994") != _stem("Cafe 1995")
+    assert _stem("Lẩu Gà Lá É Tao Ngộ 5") == "lau ga la e tao ngo 5"
+    t = turn()
+    base = t.catalog.by_id["0xa:0x1"]
+    t.catalog.places = [*t.catalog.places, SimpleNamespace(id="b2", name=base.name + " 2"), SimpleNamespace(id="b3", name=base.name + " 3")]
+    out = call(t, "hide_place", id="0xa:0x1", same_name=True)
+    assert out["also_hidden"] >= 1 and {"0xa:0x1", "b2", "b3"} <= set(t.state.meta.hidden_ids)

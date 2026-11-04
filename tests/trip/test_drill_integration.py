@@ -1,6 +1,7 @@
 """Part 4 integration and read-only corpus adapters; all data and scores are local."""
 
 import json
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 
@@ -27,6 +28,7 @@ def visual_question():
 
 @pytest.mark.parametrize("action", ["select", "skip"])
 def test_visual_drill_survives_reload_and_the_agent_reads_its_answer(big, cfg, tmp_path, action):
+    cfg = replace(cfg, discovery=True)
     looks = FakeLooks({cue: [(p, .2) for p in ids(1, 41)]
                        for cue in ("sương", "trong", "hoàng hôn", "bình minh")})
     chat = ScriptedChat(reply(call("ask_user", questions=[visual_question()])), say("Rõ rồi."))
@@ -46,9 +48,12 @@ def test_visual_drill_survives_reload_and_the_agent_reads_its_answer(big, cfg, t
     engine.turn(sid, TurnInput(kind="deck", answers={tab["qid"]: [picked]}), lambda *_: None)
     st = engine.store.get(sid).state
     assert st.drills[0].status == ("skipped" if action == "skip" else "done")
-    # Code writes the choice and reuses the stored photos; the agent reads the answer once.
-    assert chat.calls == before_calls + 1 == 2 and len(looks.calls) == photo_calls
-    assert [(t["qid"], t["kind"]) for t in engine.load(sid)["card"]["tabs"]] == [("confirm.early", "confirm")]
+    # A choice reaches the agent; a skip closes without a model or another automatic question.
+    assert chat.calls == before_calls + (action == "select") and len(looks.calls) == photo_calls
+    if action == "select":
+        assert engine.load(sid)["card"]["qid"] == "conversation"  # Time confirmation waits at the gate.
+    else:
+        assert engine.load(sid)["card"]["qid"] == "conversation"
     assert "drill" not in [t.kind for t in deck.build(st, big, cfg).tabs]
     assert drill.note(st, "săn mây", 3).drills == st.drills
     if action == "select":
@@ -250,7 +255,6 @@ def test_a_cached_drill_is_closed_when_new_hard_limits_remove_its_places(big, cf
 
 
 def test_a_broad_taste_gets_its_photo_card_from_config_and_it_comes_before_the_agents_question(big, cfg, tmp_path):
-    from dataclasses import replace
     cfg = replace(cfg, drills={"săn mây": {"header": "Kiểu săn mây", "question": "Săn mây kiểu nào?", "variants": [
         variant(label, cue) for label, cue in (("Sương sớm", "sương"), ("Trời trong", "trong"), ("Hoàng hôn", "hoàng hôn"))]}})
     looks = FakeLooks({cue: [(p, .2) for p in ids(1, 41)] for cue in ("sương", "trong", "hoàng hôn")})
@@ -270,7 +274,6 @@ def test_a_broad_taste_gets_its_photo_card_from_config_and_it_comes_before_the_a
 
 
 def test_a_taste_without_enough_photos_closes_its_drill(big, cfg, tmp_path):
-    from dataclasses import replace
     cfg = replace(cfg, drills={"săn mây": {"header": "Kiểu săn mây", "question": "Săn mây kiểu nào?",
                                            "variants": [variant("Sương sớm", "sương"), variant("Trời trong", "trong")]}})
     st = drill.note(TripState(), "muốn săn mây", 1)
@@ -280,7 +283,7 @@ def test_a_taste_without_enough_photos_closes_its_drill(big, cfg, tmp_path):
 
 
 def test_photos_answered_in_words_are_not_shown_again(big, cfg, tmp_path):
-    from dataclasses import replace
+    cfg = replace(cfg, discovery=True)
     cfg = replace(cfg, drills={"săn mây": {"header": "Kiểu săn mây", "question": "Săn mây kiểu nào?", "variants": [
         variant(label, cue) for label, cue in (("Sương sớm", "sương"), ("Trời trong", "trong"))]}})
     looks = FakeLooks({cue: [(p, .2) for p in ids(1, 41)] for cue in ("sương", "trong")})
@@ -290,7 +293,7 @@ def test_photos_answered_in_words_are_not_shown_again(big, cfg, tmp_path):
     engine.turn(sid, TurnInput(kind="text", text="muốn săn mây"), lambda *_: None)
     assert engine.load(sid)["card"]["tabs"][0]["kind"] == "drill"
     engine.turn(sid, TurnInput(kind="text", text="tùy, chỗ nào cũng được"), lambda *_: None)
-    assert [(t["qid"], t["kind"]) for t in engine.load(sid)["card"]["tabs"]] == [("confirm.early", "confirm")]
+    assert engine.load(sid)["card"]["qid"] == "conversation"  # Time confirmation waits at the gate.
     assert engine.store.get(sid).state.drills[0].status == "skipped"
 
 

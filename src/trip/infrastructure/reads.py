@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Callable
 from zoneinfo import ZoneInfo
 
+from corpus.retrieval import read_span
 from corpus.ontology import load as load_ontology
 from corpus.serving import feature as served_feature
 
@@ -160,67 +161,68 @@ class Reads:
         """Knowledge.find plus: near_place (a place id; near_km radius, default assistant.near_km), price_max (VND; the
         lowest price a place states must not pass it; a place with no price is left out and counted in no_price),
         sort fit | distance | reputation | price, exclude [ids], page (1 = first). ValueError on a bad value."""
-        k, cfg = self.k, self.k.cfg
-        core = {key: v for key, v in criteria.items() if key not in FIND_KEYS}
-        sort = criteria.get("sort") or "fit"
-        if sort not in SORTS:
-            raise ValueError(f"sort must be one of {list(SORTS)}")
-        price_max = criteria.get("price_max")
-        if price_max is not None and (isinstance(price_max, bool) or not isinstance(price_max, (int, float)) or price_max <= 0):
-            raise ValueError("price_max must be a number of VND above 0")
-        page = criteria.get("page", 1)
-        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
-            raise ValueError("page must be an integer from 1")
-        exclude = set(criteria.get("exclude") or ())
-        if not all(isinstance(x, str) for x in exclude):
-            raise ValueError("exclude must be a list of place ids")
-        origin = None
-        if (ref := criteria.get("near_place")) is not None:
-            origin = self._point(str(ref))
-            exclude.add(str(ref))
-            km = float(criteria.get("near_km") or cfg.near_km)
-            core["near"] = [origin[0], origin[1], km]
-        elif core.get("near"):
-            origin = (float(core["near"][0]), float(core["near"][1]))
-        if sort == "distance" and origin is None:
-            raise ValueError("sort distance needs near_place or near")
-        found = k.retrieval.find(core, limit=cfg.find_pool)
-        hits = [h for h in found.hits if h.place_id not in exclude and self._fits(h.place_id, state)]
-        no_price = 0
-        if price_max is not None:
-            kept = []
-            for h in hits:
-                price, _ = unit_price(h.card)
-                if price is None:
-                    no_price += 1
-                elif price <= price_max:
-                    kept.append(h)
-            hits = kept
-        rows = [(h, self._sort_key(h, sort, origin)) for h in hits]
-        if sort != "fit":
-            rows.sort(key=lambda r: r[1])
-        size = limit or k.data_places
-        window = rows[(page - 1) * size: page * size]
-        places = []
-        for h, _ in window:
-            card = {"id": h.place_id, **h.card}
-            if origin is not None and (p := k.catalog.by_id.get(h.place_id)) and p.lat is not None:
-                card["km_line"] = round(_km(origin, (p.lat, p.lng)), 1)
-            if (price := unit_price(h.card))[0] is not None:
-                card["price_from"] = price[0]
-            places.append(card)
-        if sort == "distance" and places:
-            places = self._by_minutes(origin, places)
-        if sort == "fit":
-            best = hits[0].score if hits else 0.0
-            ranked = [h.place_id for h in hits if best <= 0 or h.score >= k.cards_ratio * best][(page - 1) * size:][:k.cards_max]
-        else:
-            ranked = [p["id"] for p in places][:k.cards_max]
-        out = {"places": places, "maybe": sum(self._fits(h.place_id, state) and h.place_id not in exclude for h in found.maybe),
-               "unknown": found.unknown, "ranked": ranked, "page": page, "more": len(rows) > page * size, "total": len(rows)}
-        if price_max is not None:
-            out["no_price"] = no_price
-        return out
+        with read_span("reads"):
+            k, cfg = self.k, self.k.cfg
+            core = {key: v for key, v in criteria.items() if key not in FIND_KEYS}
+            sort = criteria.get("sort") or "fit"
+            if sort not in SORTS:
+                raise ValueError(f"sort must be one of {list(SORTS)}")
+            price_max = criteria.get("price_max")
+            if price_max is not None and (isinstance(price_max, bool) or not isinstance(price_max, (int, float)) or price_max <= 0):
+                raise ValueError("price_max must be a number of VND above 0")
+            page = criteria.get("page", 1)
+            if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+                raise ValueError("page must be an integer from 1")
+            exclude = set(criteria.get("exclude") or ())
+            if not all(isinstance(x, str) for x in exclude):
+                raise ValueError("exclude must be a list of place ids")
+            origin = None
+            if (ref := criteria.get("near_place")) is not None:
+                origin = self._point(str(ref))
+                exclude.add(str(ref))
+                km = float(criteria.get("near_km") or cfg.near_km)
+                core["near"] = [origin[0], origin[1], km]
+            elif core.get("near"):
+                origin = (float(core["near"][0]), float(core["near"][1]))
+            if sort == "distance" and origin is None:
+                raise ValueError("sort distance needs near_place or near")
+            found = k.retrieval.find(core, limit=cfg.find_pool)
+            hits = [h for h in found.hits if h.place_id not in exclude and self._fits(h.place_id, state)]
+            no_price = 0
+            if price_max is not None:
+                kept = []
+                for h in hits:
+                    price, _ = unit_price(h.card)
+                    if price is None:
+                        no_price += 1
+                    elif price <= price_max:
+                        kept.append(h)
+                hits = kept
+            rows = [(h, self._sort_key(h, sort, origin)) for h in hits]
+            if sort != "fit":
+                rows.sort(key=lambda r: r[1])
+            size = limit or k.data_places
+            window = rows[(page - 1) * size: page * size]
+            places = []
+            for h, _ in window:
+                card = {"id": h.place_id, **h.card}
+                if origin is not None and (p := k.catalog.by_id.get(h.place_id)) and p.lat is not None:
+                    card["km_line"] = round(_km(origin, (p.lat, p.lng)), 1)
+                if (price := unit_price(h.card))[0] is not None:
+                    card["price_from"] = price[0]
+                places.append(card)
+            if sort == "distance" and places:
+                places = self._by_minutes(origin, places)
+            if sort == "fit":
+                best = hits[0].score if hits else 0.0
+                ranked = [h.place_id for h in hits if best <= 0 or h.score >= k.cards_ratio * best][(page - 1) * size:][:k.cards_max]
+            else:
+                ranked = [p["id"] for p in places][:k.cards_max]
+            out = {"places": places, "maybe": sum(self._fits(h.place_id, state) and h.place_id not in exclude for h in found.maybe),
+                   "unknown": found.unknown, "ranked": ranked, "page": page, "more": len(rows) > page * size, "total": len(rows)}
+            if price_max is not None:
+                out["no_price"] = no_price
+            return out
 
     def _sort_key(self, hit, sort: str, origin) -> tuple:
         if sort == "distance":

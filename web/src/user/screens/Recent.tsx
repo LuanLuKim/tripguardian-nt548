@@ -15,7 +15,7 @@ export function Recent() {
   const when = (iso: string) => new Date(iso).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' })
   return (
     <Page>
-      <header className="tg-head"><div><p className="tg-kicker">Thư viện của bạn</p><h1>Đã xem gần đây</h1><p>Nơi và chủ đề bạn mở gần đây, theo tài khoản.</p></div></header>
+      <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Thư viện của bạn</p><h1>Đã xem gần đây</h1><p>Nơi và chủ đề bạn mở gần đây, theo tài khoản.</p></div></header>
       {recent.length === 0 ? <Empty art={<ArtCup />} title="Chưa xem gì gần đây" body="Mở một chủ đề hoặc xem chi tiết một nơi, nó sẽ hiện ở đây." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/')}>Về Dành cho bạn</button>} /> : (
         <ul className="tg-recent">
           {recent.map((r) => {

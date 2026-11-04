@@ -12,7 +12,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import date
 
-from .dates import FULL_DATE, RANGE, UNTIL, relative_dates
+from .dates import FULL_DATE, RANGE, UNTIL, activity_date, relative_dates
 from .state import MAX_TRIP_DAYS
 from .text import fold
 
@@ -161,15 +161,51 @@ FRIEND_GROUP = r"nhom|ca nhom|ca doan|doan|tui tui|tui minh|bon minh|chung minh"
 # a head count said in the traveller's words: "nhóm mình 6 đứa", "nhà mình 5 người", "hai đứa mình", "6 bạn"
 _PARTY_SUBJECT = re.compile(
     r"\b(?:" + FRIEND_GROUP + r"|gia dinh|nha|chung toi|bon toi|tui toi)(?:\s+(?:minh|toi|tui|em|ta))?\s+(" + COUNT + r")\s*"
-    r"(?:dua|nguoi|ng|ban|thanh vien|anh chi em)\b(?!\s+(?:nho|con|be|tre)\b)")
+    r"(?:dua|nguoi|ng|ban|thanh vien|anh chi em)\b(?!\s+(?:nho|con|be|tre|lon)\b)")
 _PARTY_SELF = re.compile(r"\b(" + COUNT + r")\s*dua\s+(?:minh|toi|tui|em)\b")
 _COUPLES = re.compile(r"\b(?:(" + COUNT + r")\s+)?vo chong\b")
 _KIDS = re.compile(r"\b(" + COUNT + r")\s*(?:con|be|chau|nhoc|em be|tre|dua nho|dua con|dua be)\b")
 _ELDER = re.compile(r"\b(?:bo me|ba me|ong ba|ba ngoai|ong ngoai|ba noi|ong noi)\b")
 
 
+_ADULTS = re.compile(r"\b(" + COUNT + r"|mot)\s*(?:nguoi lon|nguoi)\s+lon\b|\b(" + COUNT + r"|mot)\s+nguoi lon\b")
+_KIDS_ALSO = re.compile(r"\b(?:(" + COUNT + r"|mot)\s+)?(?:be|em be|tre em|tre nho|nhoc|con|chau)\b(?:\s+\d{1,2}\s*tuoi)?")
+_AGED = re.compile(r"\b(?:me|bo|ba|ong|co|chu|bac|chau|con)\s+\d{1,3}\s*tuoi\b")
+
+
 def _count(word: str) -> int:
-    return int(word) if word.isdigit() else COUNT_WORD[word]
+    return int(word) if word.isdigit() else COUNT_WORD.get(word, 1)  # "mot" = 1
+
+
+def _absent_relative(low: str, match: re.Match) -> bool:
+    """Negation belongs to this relative's clause, not a different person across a separator."""
+    before = re.split(r"[,;.!?]|\b(?:va|nhung)\b", low[:match.start()])[-1]
+    after = re.split(r"[,;.!?]|\b(?:va|nhung)\b", low[match.end():])[0]
+    return bool(NEGATION.search(before) or re.match(r"\s*(?:khong|chang|ko|k)\s+(?:di|tham gia)\b", after))
+
+
+def _adults_and_more(low: str) -> tuple[int, int, int] | None:
+    """"2 người lớn, bé 6 tuổi và mẹ 65 tuổi": the adults counted are not the party. (total, start, end) when more people
+    than the adults are named (each child or aged relative as one), else None. The total is a guess: the card asks."""
+    adults = _ADULTS.search(low)
+    if adults is None:
+        return None
+    more, spans = 0, [adults.span()]
+    for k in _KIDS_ALSO.finditer(low):
+        if not k[1] and k[0] in ("con", "chau"):  # folded "còn" is not a child without a count or age
+            continue
+        if _absent_relative(low, k):
+            continue
+        more += _count(k[1]) if k[1] else 1
+        spans.append(k.span())
+    for a in _AGED.finditer(low):
+        if _absent_relative(low, a):
+            continue
+        if not any(x < a.end() and a.start() < y for x, y in spans):  # "bé 6 tuổi" was counted as a child already
+            more += 1
+            spans.append(a.span())
+    n = _count(adults[1] or adults[2])
+    return (n + more, min(a for a, _ in spans), max(b for _, b in spans)) if more and 2 <= n + more <= 20 else None
 
 
 def party_size(low: str) -> tuple[int, int, int, bool] | None:
@@ -177,10 +213,16 @@ def party_size(low: str) -> tuple[int, int, int, bool] | None:
 
     Said outright ("nhóm mình 6 đứa", "5 người", "hai đứa mình") it is the user's own number. A household sum
     ("vợ chồng + 2 bé" = 4) is only a guess the card asks to confirm: nobody said the total, and "2 con" may be grown up."""
+    pair = re.search(r"\b(?:hai|2)\s+(?:me con|bo con|cha con|anh em|chi em)\b|\b(?:minh|toi|tui)\s+va\s+ban\b(?!\s+be)", low)
+    if (pair and not _absent_relative(low, pair) and not re.search(r"\b\d{1,2}\s*(?:nguoi|ng)\b", low)
+            and not re.search(r"\b(?:va|cung|voi)\b", re.split(r"[,;.!?]|\bdi\b", low[pair.end():])[0])):
+        return 2, pair.start(), pair.end(), False
     if m := _PARTY_SUBJECT.search(low) or _PARTY_SELF.search(low):
         n = _count(m[1])
         if 1 <= n <= 20:
             return n, m.start(), m.end(), False
+    if more := _adults_and_more(low):
+        return (*more, True)
     if m := re.search(r"\b(\d{1,2})\s*(?:nguoi|ng)\b", low):
         return int(m[1]), m.start(), m.end(), False
     couple = _COUPLES.search(low)
@@ -205,6 +247,29 @@ def prepass(text: str, today: date) -> Prepass:
     def add(field, value, m, op="set", inferred=False, group=0):
         out.append(Proposal(field, op, value, raw[m.start(group):m.end(group)], inferred))
 
+    for m in re.finditer(r"\b(\d{1,2})\s*(?:h|gio)(?:\s*(\d{2}))?\s*(sang|chieu|toi)?\s*(?:(?:moi|minh)\s+)?(?:bat dau(?:\s+choi)?|moi ngay\s+(?:minh\s+)?day di)\b", low):
+        hour, minute = int(m[1]), int(m[2] or 0)
+        if m[3] in {"chieu", "toi"} and hour < 12:
+            hour += 12
+        if hour <= 23 and minute <= 59 and not NEGATION.search(low[max(0, m.start() - 24):m.start()]):
+            add("checkin_at", f"{hour:02d}:{minute:02d}", m)
+            if "moi ngay" in m[0]:
+                add("frame.day_start", f"{hour:02d}:{minute:02d}", m)
+
+    for m in re.finditer(r"\bkhong\s+(?:co\s+)?(?:luu y(?:\s+(?:suc khoe|gi))?|gi\s+can\s+luu y)\b", low):
+        add("care", "none", m)
+
+    daily_range = re.search(r"\b(?:moi ngay|ca hai ngay)\s+di\s+tu\s+(\d{1,2})h\s+den\s+(\d{1,2})h\b", low)
+    daily = daily_range or re.search(r"\b(?:sang\s+)?(\d{1,2})h\s+di\s*[,;]?\s*(?:toi\s+)?(\d{1,2})h\s+ve\b", low)
+    local_stay = re.search(r"\b(?:o|tu|ve)\s+(?:homestay|khach san|cho o|nha nghi)\b", low)
+    intercity = re.search(r"\b(?:xe khach|may bay|ha canh|xuat phat tu|ve (?:sai gon|tp.?hcm|ha noi))\b", low)
+    if daily and (daily_range or local_stay or not intercity):
+        start, end = int(daily[1]), int(daily[2])
+        if 0 <= start < end <= 23:
+            for field, hour in (("checkin_at", start), ("frame.day_start", start),
+                                ("checkout_at", end), ("day_end", end)):
+                add(field, f"{hour:02d}:00", daily)
+
     for resolved in relative_dates(low, raw.lower(), today):
         a, b = resolved.span
         out.append(Proposal(resolved.field, "set", resolved.value, raw[a:b]))
@@ -220,7 +285,13 @@ def prepass(text: str, today: date) -> Prepass:
             span_days = (d2 - d1 + 1, m.start(), m.end())
             taken.append(m.span())
             break
+    for m in FULL_DATE.finditer(low):
+        quote = raw[m.start():m.end()]
+        if activity_date(raw, quote) and not re.search(r"\b(?:an chay|thuan chay|vegan)\b", low):
+            clause = next((c.strip() for c in re.split(r"[,;.!?\n]", raw) if quote in c), quote)
+            out.append(Proposal("unmapped", "add", clause, clause))
     singles = [(m, d) for m in FULL_DATE.finditer(low) if not any(a <= m.start() < b for a, b in taken)
+               and not activity_date(raw, raw[m.start():m.end()])
                and (d := _on(int(m[1]), int(m[2]), m[3], today))]
     if singles and span_days is None:
         (m, start), *rest = singles
@@ -246,7 +317,8 @@ def prepass(text: str, today: date) -> Prepass:
         else:
             for m in re.finditer(r"(?<!/)\b(\d{1,2})\s*(?:ngay|n)\b|\b(hai|ba|bon|nam|sau|bay)\s+ngay\b(?!\s*\d)", low):
                 n = int(m[1]) if m[1] else NUMBER[m[2]]
-                if not duration_negated(m) and 1 <= n <= MAX_TRIP_DAYS:
+                partial = re.match(r"\s+(?:kia|con lai|do|nay)\b", low[m.end():])
+                if not duration_negated(m) and not partial and 1 <= n <= MAX_TRIP_DAYS:
                     add("days", n, m)
                     break
             if not any(p.field == "days" for p in out):
@@ -267,6 +339,9 @@ def prepass(text: str, today: date) -> Prepass:
                 add("nights", n, m)
                 if not any(p.field == "days" for p in out) and n < MAX_TRIP_DAYS:
                     add("days", n + 1, m, inferred=True)
+    if len(singles) == 1 and not span_days and re.search(r"\bchi ranh\s+tu\s+\d{1,2}\s*(?:h|gio)\b.*\bden\s+\d{1,2}\s*(?:h|gio)\b", low):
+        m = singles[0][0]
+        add("days", 1, m)
     if span_days and not any(p.field == "days" for p in out):
         n, a, b = span_days
         out.append(Proposal("days", "set", n, raw[a:b]))
@@ -278,9 +353,10 @@ def prepass(text: str, today: date) -> Prepass:
     if (party := party_size(low)) is not None:
         n, a, b, guessed = party
         out.append(Proposal("people", "set", n, raw[a:b], guessed))
-    for m in re.finditer(r"\b(\d+(?:[.,]\d+)?)\s*(k|nghin|ngan|tr|trieu|cu)\b", low):
-        n = float(m[1].replace(",", "."))
-        add("budget_vnd", int(n * (1000 if m[2] in ("k", "nghin", "ngan") else 1_000_000)), m)
+    for m in re.finditer(r"\b(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(k|nghin|ngan|tr|trieu|cu|dong|vnd)\b", low):
+        full = m[2] in ("dong", "vnd")
+        n = float(re.sub(r"[.,]", "", m[1]) if full else m[1].replace(",", "."))
+        add("budget_vnd", int(n * (1 if full else 1000 if m[2] in ("k", "nghin", "ngan") else 1_000_000)), m)
         after = re.split(r"[.,;!?\n]", low[m.end():m.end() + 40])[0]
         before = re.split(r"[.,;!?\n]", low[max(0, m.start() - 25):m.start()])[-1]
         hits = []  # (start, end, scope) in the text

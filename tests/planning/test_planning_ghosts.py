@@ -51,12 +51,21 @@ def lunch_of(slots):
 def test_an_unknown_hard_filter_empties_the_pool_unless_it_says_flag():
     _, recs, d = setup()
     veg = {"feature": "vegetarian_options", "op": "eq", "value": "yes"}
-    for hf in (veg, {**veg, "unknown_policy": "exclude"}, {"feature": "fit.wheelchair", "op": "eq", "value": "present"},
-               {"feature": "fit.wheelchair", "op": "eq", "value": "present", "unknown_policy": "flag"}):
+    for hf in (veg, {**veg, "unknown_policy": "exclude"}):
         d["trip_context"]["hard_filters"] = [hf]
         assert pool(recs, d, CFG) == [], hf
     d["trip_context"]["hard_filters"] = [{**veg, "unknown_policy": "flag"}]
     assert {p.id for p in pool(recs, d, CFG)} == {"r1", "r2", "k1"}
+
+
+def test_unknown_safety_fit_stays_eligible_and_unverified_regardless_of_policy():
+    _, recs, d = setup()
+    for policy in (None, "exclude", "flag"):
+        d["trip_context"]["hard_filters"] = [{"feature": "fit.wheelchair", "op": "eq", "value": "good",
+                                               "unknown_policy": policy}]
+        candidates = pool(recs, d, CFG)
+        assert {p.id for p in candidates} == {"r1", "r2", "k1"}
+        assert candidates.unverified == {pid: ["fit.wheelchair"] for pid in ("r1", "r2", "k1")}
 
 
 def test_a_flagged_unknown_filter_marks_the_suggestion_unverified():

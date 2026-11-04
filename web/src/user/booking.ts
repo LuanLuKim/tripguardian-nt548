@@ -20,7 +20,9 @@ export interface WayOption {
   tradeoff?: string | null
 }
 export interface Journey {
-  origin: [number, number]; dest: [number, number]; dest_is_centre: boolean; way: 'inbound' | 'outbound'; day: string | null
+  // origin/dest are null and options empty when the backend cannot place the typed origin (reason 'unknown_origin').
+  origin: [number, number] | null; dest: [number, number] | null; dest_is_centre?: boolean; way: 'inbound' | 'outbound'; day: string | null
+  origin_text?: string; reason?: 'unknown_origin'
   options: WayOption[]
 }
 
@@ -32,7 +34,7 @@ const get = async <T>(path: string, params: Record<string, string | number | und
   return res.json()
 }
 
-export const readJourneyWay = (p: { lat: number; lng: number; date?: string | null; way: 'inbound' | 'outbound'; dest_lat?: number | null; dest_lng?: number | null }) =>
+export const readJourneyWay = (p: { lat?: number | null; lng?: number | null; origin?: string; date?: string | null; way: 'inbound' | 'outbound'; dest_lat?: number | null; dest_lng?: number | null }) =>
   get<Journey>('journey', p)
 export const readStayOffers = (p: { fid: string; check_in: string; nights: number }) =>
   get<{ offers?: Offer[] }>('booking/offers', { kind: 'stay', ...p }).then((r) => r.offers ?? [])

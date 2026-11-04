@@ -16,13 +16,14 @@ from .serving import run as serving_run
 from . import judge
 from .crawl.gmaps import qc as gmaps_qc
 from .observe import gmaps as gmaps_observe, official as official_observe, reports as reports_observe, tiktok as tiktok_observe
-from .observe.gmaps import photos as gmaps_photo_observe
+from .observe.gmaps import photos as gmaps_photo_observe, visit_observe as gmaps_visit_observe
 from .crawl.common.files import now
 
 STEPS = (
     ("gmaps qc", lambda city: gmaps_qc.run(city)),
     ("gmaps observe", lambda city: gmaps_observe.run(city)),
     ("gmaps photo_observe", lambda city: gmaps_photo_observe.run(city)),
+    ("gmaps visit_observe", lambda city: gmaps_visit_observe.run(city)),
     ("tiktok observe", lambda city: tiktok_observe.run(city)),
     ("official observe", lambda city: official_observe.run(city)),
     ("reports observe", lambda city: reports_observe.run(city)),

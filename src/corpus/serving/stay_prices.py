@@ -6,7 +6,7 @@ other sources' prices ride along as `cross_check`. A stay no source priced is no
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from ..crawl.common.files import data_dir, now, write_json
 from ..crawl.common.lodging import latest
@@ -20,10 +20,12 @@ def path(city: str):
     return data_dir() / "serving" / "stay_prices" / f"{city}.json"
 
 
-def publish(city: str) -> dict:
+def publish(city: str, today: date | None = None) -> dict:
+    """Newest priced observation per (fid, stay date, nights), without stays that have already started."""
+    today = (today or date.today()).isoformat()
     per_source = {s: latest(s, city) for s in SOURCES}
     items = []
-    for key in sorted({k for rows in per_source.values() for k in rows}):
+    for key in sorted({k for rows in per_source.values() for k in rows if k[1] >= today}):
         priced = [(s, per_source[s][key]) for s in SOURCES
                   if key in per_source[s] and per_source[s][key].get("price_total_vnd")]
         if not priced:

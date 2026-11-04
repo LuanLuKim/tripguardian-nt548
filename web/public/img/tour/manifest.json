@@ -1,0 +1,92 @@
+{
+ "wave": {
+  "model": "cx/gpt-6.1-terra",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: waving hello with one raised paw, big warm smile, bright open eyes.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:25:33+00:00"
+ },
+ "walk_a": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: walking to the right in a side three-quarter view, facing right, left foot stepping forward, small arms swinging, cheerful.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:27:19+00:00"
+ },
+ "walk_b": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: walking to the right in a side three-quarter view, facing right, right foot stepping forward, small arms swinging the other way, cheerful.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:26:44+00:00"
+ },
+ "point": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: standing and facing slightly right, one paw stretched out to the right pointing at something, friendly smile, eyes looking where it points.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:27:16+00:00"
+ },
+ "point_up": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: one paw raised and pointing diagonally up to the upper right, head tilted up, eyes looking up, friendly smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:27:51+00:00"
+ },
+ "wow": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: amazed and delighted, mouth open in a small round O, eyes wide and sparkling, both paws raised near the cheeks.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:28:05+00:00"
+ },
+ "wink": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: winking one eye with a cheeky little smile, one paw raised in a small thumbs up.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:28:31+00:00"
+ },
+ "love": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: holding a small pink heart in both paws, eyes closed in a warm smile, two tiny hearts floating near it.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:28:55+00:00"
+ },
+ "cheer": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: celebrating, jumping with both paws up, holding a small party popper, a few colorful confetti pieces around it, big open smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:29:15+00:00"
+ },
+ "bow": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, full body centered), transparent background, no text, no letters, no scenery, new pose: bowing politely forward with both paws together in front, eyes closed in a gentle thankful smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-10-31T01:29:48+00:00"
+ }
+}

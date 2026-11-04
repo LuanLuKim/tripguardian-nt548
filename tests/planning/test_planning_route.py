@@ -153,3 +153,20 @@ def test_cached_heuristic_matches_uncached_search(monkeypatch):
         expected = order_day(ids, cx)
     assert expected.method == "heuristic"
     assert order_day(ids, cx) == expected
+
+
+@pytest.mark.parametrize("shift", range(5))
+def test_the_order_is_never_worse_than_nearest_neighbour_or_the_given_seed(shift):
+    """More stops than seeded_exact_n: the local search starts from the better of the seed and nearest neighbour, so by the
+    engine's own key (violations, missed meals, end + penalty) the answer can never be worse than either. A late opener
+    makes the nearest-neighbour order invalid, so the guarantee is not just about the road."""
+    from planning.route import _nearest_neighbour
+    pos = {f"p{i}": (i * 5 + shift) % 7 for i in range(7)}
+    recs = [rec(pid, 1, 1, visit=(10, 20, 30)) for pid in pos]
+    recs[shift] = rec(f"p{shift}", 1, 1, visit=(10, 20, 30), hours=all_days("13:00", "20:00"))
+    cx = day_ctx(recs, start_node="h", extra_nodes=["h"], travel=line_travel({"h": -1, **pos}, scale=3))
+    ids = sorted(pos)
+    nn = simulate(_nearest_neighbour(ids, cx), cx)
+    for seed in (ids, list(reversed(ids)), sorted(ids, key=pos.get), _nearest_neighbour(ids, cx)):
+        r = order_day(ids, cx, seed=list(seed))
+        assert r.key <= nn.key and r.key <= simulate(list(seed), cx).key

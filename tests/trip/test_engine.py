@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -13,8 +14,8 @@ from trip.infrastructure.sessions import SessionStore
 
 @pytest.fixture
 def make(catalog, cfg, tmp_path):
-    def build(chat=None, root=tmp_path):
-        return Engine(catalog, cfg, SessionStore(root), chat or ScriptedChat(error=AgentError("down")),
+    def build(chat=None, root=tmp_path, discovery=False):
+        return Engine(catalog, replace(cfg, discovery=discovery), SessionStore(root), chat or ScriptedChat(error=AgentError("down")),
                       today=lambda: date(2026, 10, 2))
     return build
 
@@ -84,18 +85,17 @@ def test_a_turn_records_facts_then_asks_in_words_with_no_card(make):
 def test_the_agent_sees_the_state_and_the_tools_it_may_call(make):
     chat = ScriptedChat(reply(fact("days", "3", "3 ngày"), text="Rõ rồi, bạn đi cùng ai?"), say(""),
                         reply(fact("companions", "friends", "bạn bè", op="add"), text="Ghi nhận nhé."), say(""))
-    e = make(chat)
+    e = make(chat, discovery=True)
     sid = e.create("first", "nothing")["id"]
     run(e, sid, kind="text", text="đi 3 ngày")
     run(e, sid, kind="text", text="bạn bè")
     messages, tool_names = chat.seen[2]
     assert tool_names == ["record_fact", "resolve_relative_date", "add_days", "weekday_date", "date_of",
-                          "search_places", "search_features", "ask", "ask_user", "ask_required",
+                          "search_places", "search_features", "ask", "ask_user",
                           "suggest_directions"]  # part 4: the remedy ladder (dish / kind ride on record_fact)
     context = next(m["content"] for m in messages if m["content"].startswith("CURRENT CONTEXT"))
     import json
-    assert list(json.loads(context.removeprefix("CURRENT CONTEXT\n"))["still_needed"]) == [
-        "trip", "companions", "mobility", "care", "pace", "budget", "lodging"]
+    assert "still_needed" not in json.loads(context.removeprefix("CURRENT CONTEXT\n"))
     assert '"phase": "chat"' in context and '"stuck": false' in context
     assert [m["role"] for m in messages[1:-2]] == ["assistant", "assistant", "user", "assistant"]
     assert e.store.get(sid).state.companions.value == frozenset({"friends"})
@@ -126,7 +126,7 @@ def test_one_flow_a_reply_that_asks_nothing_keeps_the_text_box(make):
                         reply(fact("unmapped", "bồn tắm", "bồn tắm", op="add")),  # an unmapped wish ...
                         say("Mình ghi lại mong muốn có bồn tắm."),                     # ... said back, asking nothing
                         say("Đà Lạt tháng 12 khá lạnh."))                              # a plain reply: no ask either
-    e = make(chat)
+    e = make(chat, discovery=True)
     sid = e.create("first", "nothing")["id"]
     first = run(e, sid, kind="text", text="đi Đà Lạt")[-1][1]
     assert first["qid"] == "conversation"  # the agent asked in words
@@ -136,7 +136,7 @@ def test_one_flow_a_reply_that_asks_nothing_keeps_the_text_box(make):
         if text.endswith("?"):
             assert card["qid"] == "conversation" and card["input"] == "text", text
         else:
-            assert card["tabs"][0]["kind"] == "required", text
+            assert card["qid"] == "conversation", text
     assert e.store.get(sid).state.meta.phase == "chat"
 
 
@@ -255,14 +255,14 @@ def test_the_user_declining_gets_a_plain_text_reply_and_no_forced_question(make)
 
 def test_the_agent_is_told_what_is_still_needed_and_the_view_says_when_next_is_allowed(make):
     chat = ScriptedChat(reply(fact("days", "3", "3 ngày"), text="Đi cùng ai?"))
-    e = make(chat)
+    e = make(chat, discovery=True)
     sid = e.create("first", "nothing")["id"]
     ev = run(e, sid, kind="text", text="đi 3 ngày")
     context = next(m["content"] for m in chat.seen[0][0] if m["content"].startswith("CURRENT CONTEXT"))
     # A required answer inferred by the prepass still waits for user confirmation.
     import json
-    needed = json.loads(context.split("\n", 1)[1])["still_needed"]
-    assert list(needed) == ["trip", "companions", "mobility", "care", "pace", "budget", "lodging"]
+    assert "still_needed" not in json.loads(context.split("\n", 1)[1])
+    needed = ["trip", "companions", "mobility", "care", "pace", "budget", "lodging"]
     view = next(d for n, d in ev if n == "state")["understanding"]
     assert view["ready"] is True and [m["target"] for m in view["missing"]] == list(needed)
 
@@ -546,11 +546,11 @@ def test_a_correction_in_a_later_turn_updates_the_budget_scope_even_if_the_agent
 def test_a_correction_of_something_known_records_nothing_new_and_stays_in_chat(make):
     chat = ScriptedChat(reply(fact("days", "3", "3 ngày"), text="Rõ rồi."), say(""),
                         reply(fact("days", "3", "3 ngày")), say(""))  # recorded again, nothing new
-    e = make(chat)
+    e = make(chat, discovery=True)
     sid = e.create("first", "nothing")["id"]
     run(e, sid, kind="text", text="đi 3 ngày")
     ev = run(e, sid, kind="text", text="đúng rồi 3 ngày nha")
-    assert ev[-1][1]["tabs"][0]["kind"] == "required"  # nothing asked: the app opens the next missing topic
+    assert ev[-1][1]["qid"] == "conversation"  # Missing logistics wait for the gate.
     assert e.store.get(sid).state.meta.idle_streak == 1  # an adaptive turn that added nothing
 
 
@@ -654,14 +654,13 @@ def test_a_turn_that_writes_facts_and_no_reply_says_what_was_written(make):
 def test_an_agent_required_card_shows_its_question_with_real_chips(make):
     # the agent chooses the required topic to ask now; the app builds its card from the bank
     chat = ScriptedChat(reply(call("ask_required", topic="companions", question="Bạn đi cùng những ai?"), text="Mình chưa xếp được nhóm này."))
-    e = make(chat)
+    e = make(chat, discovery=True)
     sid = e.create("first", "nothing")["id"]
     run(e, sid, kind="text", text="mình muốn đi với anh họ")
     s = e.store.get(sid)
-    assert s.card.kind == "deck" and [t.qid for t in s.card.tabs] == ["companions"]
-    tab = s.card.tabs[0]
-    assert tab.question == "Bạn đi cùng những ai?"
-    assert {o.id for o in tab.options} >= {"friends", "parents", "other"}
+    assert s.card.qid == "conversation"
+    assert "ask_required" not in chat.seen[0][1]
+    assert "companions" in e._readback(s.state)["missing"]
 
 
 def test_a_group_wish_circled_for_three_turns_gets_the_card_the_agent_asks_for(make):
@@ -672,16 +671,16 @@ def test_a_group_wish_circled_for_three_turns_gets_the_card_the_agent_asks_for(m
                               text="Gia đình là có người lớn tuổi không, hay toàn người trẻ?"),
                         reply(call("ask_required", topic="companions", question="Bạn đi cùng những ai?"), text="Mình hỏi bằng thẻ cho rõ nhé."),
                         say("Rõ rồi, đi với bạn bè nhé."))
-    e = make(chat)
+    e = make(chat, discovery=True)
     sid = e.create("first", "nothing")["id"]
     run(e, sid, kind="text", text="mình muốn đi với anh họ")
     run(e, sid, kind="text", text="kiểu gia đình á")
     run(e, sid, kind="text", text="vẫn chưa rõ nữa")
     s = e.store.get(sid)
-    assert s.card.kind == "deck" and [t.qid for t in s.card.tabs] == ["companions"]
-    assert s.card.tabs[0].question == "Bạn đi cùng những ai?"
-    assert s.state.meta.followups == 0  # the required card ends the run of the agent's own questions
-    run(e, sid, kind="deck", answers={"companions": ["friends"]})
+    assert s.card.qid == "conversation"
+    assert "companions" in e._readback(s.state)["missing"]
+    # The gate, not a chat questionnaire, collects an unambiguous party.
+    run(e, sid, kind="deck", answers={"companions.who": ["friends"], "companions.people": "2"})
     assert e.store.get(sid).state.companions.value == frozenset({"friends"})
 
 

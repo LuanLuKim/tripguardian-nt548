@@ -1,0 +1,33 @@
+# Local knowledge (docs/CORPUS.md, Tri thức bản địa): thresholds and word lists of the `corpus.local` gate. Patterns are
+# matched against text folded to lower case without diacritics. Nothing here names a place's facts, only kinds of noise.
+gate:
+  window_chars: 800        # a claim's subject must be named in the quote, the page title, or this many characters of the page before the quote end
+  subject_cover: 0.6       # share of the subject's own words found there (a lone word must be found)
+  min_extra_words: 2       # a claim's text must say at least this many words beyond its subject (else it only repeats the name); numbers always count
+  filler_words: [mua, hoa, loai, mon, nhieu, dac, san]   # words that add nothing to a subject's name
+  epithets:                # a nickname or slogan is not a fact about when, where or how
+    - "thanh pho (ngan hoa|suong mu|nghi duong|mong mo|tinh yeu|hoa)"
+    - "thu do\\b"
+    - "la phoi (xanh|cua)"
+    - "menh danh"
+    - "duoc vi (nhu|von)"
+    - "thien duong"
+    - "hon ngoc"
+    - "(mien|xu|vung dat) (dat|so) "
+    - "(hoa|canh|sac) .{0,12}(no|khoe sac|dep|ruc ro) quanh nam"   # "hoa nở quanh năm": hype, not a season
+  vague_words: [khu, vuc, trung, tam, noi, day, dia, diem, quan, thanh, pho, nha, hang, phia, xung, quanh, ben, gan, tai,
+                mua, nang, gio]   # "mưa" alone is not a subject; "Đà Lạt" is, for a rain tip
+  vague_starts: [nhung, cac, mot, moi, nay, do, kia, khi, neu, de, vi, luc, truoc, sau]   # "những quả màu vàng", "Khi phát hiện cây ngã…": a phrase, not a name
+  vague_ends: [nay, do, kia, day, nhau]   # "Tuyến đường sắt này", "nơi đó": a pronoun phrase, the name is elsewhere
+  max_subject_words: 9     # a longer subject, or one with a comma (a list of things), is a sentence or a list, not a name
+  price_filler: [dao, dong, tu, den, khoang, gia, vnd, d, nguoi, luot, kg, ngay, gio, phut, trung, binh, thuong, tuy, theo, mua, nay, hien]   # words that make a price claim "a price of what?" when nothing else is left
+official_alone_kinds: [notice, event, avoid, if_rain, access, price_norm]   # a single .gov.vn page keeps only these kinds; a specialty or a tip needs a second site
+official_alone_subjects: [city, area, phenomenon, poi]   # and only about a place we know or the city; a name nobody resolved (poi_unresolved) or a dish needs a second site
+topic:
+  min_mentions: 2          # a Document counts as about the city when its title names the city or its text does this many times
+  markers:                 # other names that put a page in the city's region (city name itself is always a marker)
+    dalat: [lâm đồng, langbiang, lạc dương, đơn dương, tuyền lâm, cầu đất, xuân hương, prenn, datanla, trại mát, liên khương, đức trọng, lâm viên]
+verify:                    # entailment of a kept candidate by the Extractor (corpus.local.verify), docs/CORPUS.md
+  parallel: 16             # concurrent calls; the LAN Gemma lane budget of this task is at most 20
+  context_before: 900      # characters of the chunk shown before the quote
+  context_after: 200

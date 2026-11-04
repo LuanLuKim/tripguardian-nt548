@@ -136,8 +136,8 @@ export function stageKeys(e: KeyboardEvent<HTMLDivElement>, panel: RefObject<HTM
   }
 }
 
-export function StageFrame({ leaving, kicker, question, why, onClose, onKeyDown, panel, children }: {
-  leaving: boolean; kicker: string; question: string; why?: string | null
+export function StageFrame({ leaving, kicker, question, why, crumbs, onBack, onClose, onKeyDown, panel, children }: {
+  leaving: boolean; kicker: string; question: string; why?: string | null; crumbs?: ReactNode; onBack?: () => void
   onClose: () => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void
   panel: RefObject<HTMLDivElement | null>; children: ReactNode
 }) {
@@ -150,7 +150,9 @@ export function StageFrame({ leaving, kicker, question, why, onClose, onKeyDown,
     <div className="tg-stage__veil" aria-hidden="true" onClick={() => onClose()} />
     <div ref={panel} className="tg-stage__panel" role="dialog" aria-modal="true" aria-labelledby="tg-stage-q" tabIndex={-1}>
       <header className="tg-stage__head">
+        {onBack && <button type="button" className="tg-stage__back" aria-label="Quay lại" onClick={onBack}><Icon name="chevronLeft" size={18} /></button>}
         <span className="tg-stage__kicker"><Icon name="image" size={15} />{kicker}</span>
+        {crumbs}
         <h3 id="tg-stage-q">{question}</h3>
         {why && <p>{why}</p>}
         <button type="button" className="tg-stage__x" aria-label="Để sau" onClick={() => onClose()}><Icon name="x" size={18} /></button>
@@ -160,10 +162,13 @@ export function StageFrame({ leaving, kicker, question, why, onClose, onKeyDown,
   </div>, document.body)
 }
 
-export interface StageCard { id: string; photo: string | null; alt: string; title: string; line: ReactNode; on: boolean; pick: ReactNode; pickLabel: string }
+// deck: drawn as a pile (there is more inside); badge / extra: small things over the photo; loading: a shimmer while its children load
+export interface StageCard { id: string; photo: string | null; alt: string; title: string; line: ReactNode; on: boolean; pick: ReactNode; pickLabel: string
+  deck?: boolean; badge?: ReactNode; extra?: ReactNode; loading?: boolean }
 
-export function StageRing({ cards, at, setAt, busy, label, multi, prevLabel, nextLabel, hint, onFront, onPick }: {
+export function StageRing({ cards, at, setAt, busy, label, multi, tree, prevLabel, nextLabel, hint, onFront, onPick }: {
   cards: StageCard[]; at: number; setAt: Dispatch<SetStateAction<number>>; busy: boolean; label: string; multi?: boolean
+  tree?: { phase: 'idle' | 'leave'; dir: 'down' | 'up' } // the tag stage: a level swaps for the next with a short fold and fan
   prevLabel: string; nextLabel: string; hint: string; onFront: (i: number) => void; onPick: (i: number) => void
 }) {
   const ring = useRef<HTMLDivElement>(null)
@@ -185,13 +190,13 @@ export function StageRing({ cards, at, setAt, busy, label, multi, prevLabel, nex
     return () => el.removeEventListener('wheel', turn)
   }, [cards.length, setAt])
   return <>
-    <div ref={ring} className="tg-stage__ring" role="listbox" aria-label={label} aria-multiselectable={multi}>
+    <div ref={ring} className={`tg-stage__ring ${tree ? 'is-tree' : ''}`} data-phase={tree?.phase} data-dir={tree?.dir} role="listbox" aria-label={label} aria-multiselectable={multi}>
       {cards.map((c, i) => {
         const d = i - at
-        return <div key={c.id} role="option" aria-selected={c.on} className={`tg-stage__card ${d === 0 ? 'is-front' : ''} ${c.on ? 'is-on' : ''}`}
+        return <div key={c.id} role="option" aria-selected={c.on} className={`tg-stage__card ${d === 0 ? 'is-front' : ''} ${c.on ? 'is-on' : ''} ${c.deck ? 'is-deck' : ''} ${c.loading ? 'is-loading' : ''}`}
           style={{ '--d': d, '--a': Math.abs(d), '--n': i, ...(Math.abs(d) > 2 ? { '--far': 'hidden' } : {}) } as CSSProperties}
           onClick={() => (d === 0 ? onFront(i) : setAt(i))}>
-          <div className="tg-stage__photo">{c.photo ? <CardImg src={c.photo} alt={c.alt} draggable={false} /> : <span>Chưa có ảnh</span>}</div>
+          <div className="tg-stage__photo">{c.photo ? <CardImg src={c.photo} alt={c.alt} draggable={false} /> : <span>Chưa có ảnh</span>}{c.badge}{c.extra}</div>
           <div className="tg-stage__body">
             <b>{c.title}</b>
             {c.line}
@@ -203,21 +208,21 @@ export function StageRing({ cards, at, setAt, busy, label, multi, prevLabel, nex
       {at > 0 && <button type="button" className="tg-stage__nav is-prev" aria-label={prevLabel} onClick={() => setAt(at - 1)}><Icon name="chevronLeft" size={20} /></button>}
       {at < cards.length - 1 && <button type="button" className="tg-stage__nav is-next" aria-label={nextLabel} onClick={() => setAt(at + 1)}><Icon name="chevronRight" size={20} /></button>}
     </div>
-    <div className="tg-stage__dots" aria-hidden="true">{cards.map((c, i) => <i key={c.id} className={`${i === at ? 'is-at' : ''} ${c.on ? 'is-on' : ''}`} />)}</div>
+    {cards.length <= 14 && <div className="tg-stage__dots" aria-hidden="true">{cards.map((c, i) => <i key={c.id} className={`${i === at ? 'is-at' : ''} ${c.on ? 'is-on' : ''}`} />)}</div>}
     <p className="tg-stage__hint"><span className="tg-stage__mouse"><Icon name="mouse" size={18} /></span>{hint} · {at + 1}/{cards.length}</p>
   </>
 }
 
 // A photo question: real places of each kind on cards, the middle one in front, the screen behind blurred.
-export function PhotoStage({ deck, busy, onAnswer, onText }: {
-  deck: Deck; busy: boolean
+export function PhotoStage({ deck, busy, onAnswer, onText, autoOpen = true }: {
+  deck: Deck; busy: boolean; autoOpen?: boolean
   onAnswer: (answers: DeckAnswers, shown: string) => void
   onText: (text: string) => void
 }) {
   const tab = deck.tabs[0]
   const options = tab.options.filter(o => !['other', 'skip'].includes(o.id))
   useEffect(() => preloadPhotos(options.map(o => o.photo?.url)), [deck]) // eslint-disable-line react-hooks/exhaustive-deps
-  const { open, setOpen, leaving, close } = useStage(true)
+  const { open, setOpen, leaving, close } = useStage(autoOpen)
   const [at, setAt] = useState(() => Math.max(0, Math.floor((options.length - 1) / 2)))
   const [chosen, setChosen] = useState<string[]>(() => options.filter(o => o.prefilled).map(o => o.id))
   const [typed, setTyped] = useState('')

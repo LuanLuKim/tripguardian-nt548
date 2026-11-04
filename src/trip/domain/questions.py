@@ -43,7 +43,7 @@ QUIZ_FIELD: dict[str, str | None] = {
 FIELD_LABEL = {"days": "số ngày", "nights": "số đêm", "companions": "người đi cùng", "mobility": "phương tiện di chuyển",
                "start_date": "ngày đi", "purpose": "mục đích chuyến đi", "soft": "sở thích",
                "crowd_tolerance": "độ đông", "pace": "nhịp độ", "budget_vnd": "ngân sách", "novelty": "đi chỗ quen hay thử cái mới",
-               "arrival_mode": "cách tới Đà Lạt", "checkin_at": "giờ nhận phòng và trả phòng", "unmapped": "ý này"}
+               "arrival_mode": "cách tới Đà Lạt", "checkin_at": "giờ hoạt động", "checkout_at": "giờ kết thúc hoạt động", "day_end": "giờ kết thúc mỗi ngày", "frame.day_start": "giờ bắt đầu mỗi ngày", "unmapped": "ý này"}
 
 
 def pending_fields(qid: str) -> list[str]:

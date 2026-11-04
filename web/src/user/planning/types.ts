@@ -11,7 +11,7 @@ export interface Warning {
 export type DropReason = 'far' | 'crowded' | 'pricey' | 'dislike' | 'visited'
 export type Pace = 'slow' | 'normal' | 'packed'
 
-// Backend Item kinds (src/planning/model.py): visit | travel | wait | free | rest | meal_free (travel carries its buffer as note "+N"; rest note "home" = rest at the lodging).
+// Backend Item kinds (src/planning/model.py): travel separates road_min and buffer_min; legacy travel uses note "+N"; rest note "home" = rest at the lodging.
 export interface ItineraryItem {
   kind: 'visit' | 'travel' | 'wait' | 'free' | 'buffer' | 'rest' | 'meal_free'
   start: string
@@ -21,6 +21,8 @@ export interface ItineraryItem {
   from?: string
   to?: string
   mode?: string
+  road_min?: number | null
+  buffer_min?: number | null
   note?: string
 }
 
@@ -58,7 +60,17 @@ export interface TimeRecommendation {
   period?: string
   windows?: [string, string][]
   alternatives: { id: string; name: string; activity: string | null; trial_visit: [string, string];
-    requires_relayout: boolean; cost_unknown: boolean }[]
+    requires_relayout: boolean; cost_unknown: boolean; warnings?: Warning[] }[]
+}
+
+// Empty-slot suggestions from src/planning/ghosts.py; day is 0-based and times are minutes.
+export interface Ghost {
+  day: number
+  kind: string
+  start: number
+  end: number
+  items: { place_id: string; name: string; price_vnd: number | null; detour_min: number;
+    note?: string; unverified?: string[]; hours_unknown?: boolean }[]
 }
 
 export interface Robustness {
@@ -83,7 +95,7 @@ export interface VariantLodging {
 // src/planning/backup.py backups(): a stand-in per place that may fail on its day, and what to drop first when late.
 export interface Backups {
   places: { day: number; place_id: string; name: string; reasons: string[]; text: string; none_text: string | null;
-    alternatives: { id: string; name: string; minutes_rough: number | null; for_this: boolean; reason: string | null }[] }[]
+    alternatives: { id: string; name: string; minutes_rough: number | null; for_this: boolean; reason: string | null; warnings?: Warning[] }[] }[]
   on_delay: { day: number; place_id: string; name: string }[]
 }
 
@@ -220,6 +232,7 @@ export interface View {
   time_suitability?: TimeSuitabilityDay[] | null
   recommendations?: TimeRecommendation[] | null
   suggestions?: Suggestions
+  ghosts?: Ghost[]
   metrics?: Variant['metrics'] | null
   robustness?: Robustness | null
   backups?: Backups | null

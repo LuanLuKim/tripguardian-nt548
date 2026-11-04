@@ -128,11 +128,16 @@ class Looks:
         if (kept := self._scored.get(key)) is not None:
             return kept
         out = self._score(cues, scope)
-        if out:
-            if len(self._scored) >= 512:
-                self._scored.clear()
-            self._scored[key] = out
+        if out is None:
+            return []
+        if len(self._scored) >= 512:
+            self._scored.clear()
+        self._scored[key] = out
         return out
+
+    def cached_scores(self, cues: list[str], within: set[str]) -> list[tuple[str, float]] | None:
+        """None means not prepared yet; an empty list is a completed search without evidence."""
+        return self._scored.get((tuple(cues), frozenset(self._scope(within))))
 
     def kept_scores(self) -> dict:
         """The cached scores as plain data (scopes stored once each), for `python -m trip drills` to save."""
@@ -150,20 +155,20 @@ class Looks:
             self._scored[(tuple(e["cues"]), scopes[e["scope"]])] = [(p, float(v)) for p, v in e["scores"]]
         return len(saved.get("entries", []))
 
-    def _score(self, cues: list[str], scope: set[str]) -> list[tuple[str, float]]:
+    def _score(self, cues: list[str], scope: set[str]) -> list[tuple[str, float]] | None:
         if self.retrieval is not None:
             try:
                 hits = self.retrieval.semantic(", ".join(cues), within=scope, mode="vibe")
             except (OSError, RuntimeError) as error:
                 self._error = f"{type(error).__name__}: {error}"
-                return []
+                return None
         elif self.ready():
             ix = self._ix
             vec = ix.embed_text(", ".join(cues))
             hits = [h for h in ix.search_photos(vec, within=scope)
                     if h.score >= ix.cfg["search"]["min_text_photo"]]
         else:
-            return []
+            return None
         scores = {}
         for hit in hits:
             if hit.place_id in scope:

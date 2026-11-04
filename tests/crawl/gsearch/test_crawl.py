@@ -114,5 +114,20 @@ def test_searches_signed_in_on_the_maps_account_by_default():
 
 
 def test_public_api_names():
-    assert set(gsearch.__all__) == {"ENGINE", "Serp", "SerpResult", "crawl", "load", "parse_serp", "run",
-                                    "search_pages", "to_search_page"}
+    assert set(gsearch.__all__) == {"ENGINE", "Serp", "SerpResult", "crawl", "key", "load", "panel", "parse_serp", "places",
+                                    "run", "search_pages", "to_search_page"}
+
+
+def test_a_saved_403_page_is_not_a_cached_answer(tmp_path, monkeypatch):
+    import importlib
+    from datetime import UTC, datetime
+    crawl = importlib.import_module("corpus.crawl.gsearch.crawl")
+    monkeypatch.setattr(crawl, "city_dir", lambda city: tmp_path)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "blocked.html").write_text("<title>Error 403 (Forbidden)!!1</title>", encoding="utf-8")
+    (tmp_path / "raw" / "empty.html").write_text("<div id=rso></div>", encoding="utf-8")
+    at = datetime.now(UTC).isoformat()
+    lines = [{"at": at, "query": "a", "page": 1, "n": 0, "raw": "raw/blocked.html"},
+             {"at": at, "query": "b", "page": 1, "n": 0, "raw": "raw/empty.html"}]
+    (tmp_path / "results.jsonl").write_text("\n".join(json.dumps(r) for r in lines), encoding="utf-8")
+    assert {r["query"] for r in crawl.load("dalat").values()} == {"b"}

@@ -42,16 +42,19 @@ function guess(v: View, a: Action): View | null {
   if (pick ? on === picked : !picked || on === v.locked.includes(id)) return null // nothing changes, or a lock on a place that is not in the trip: let the server answer
   const mark = (c: Card): Card => (c.id === id ? { ...c, ...(pick ? { chosen: on } : { locked: on }) } : c)
   const cards = (list: Card[]) => list.map(mark)
+  const selected = pick ? (on ? [...v.selected, id] : v.selected.filter((x) => x !== id)) : v.selected
   return {
     ...v,
-    ...(pick ? { selected: on ? [...v.selected, id] : v.selected.filter((x) => x !== id) } : { locked: on ? [...v.locked, id] : v.locked.filter((x) => x !== id) }),
+    selected,
+    feasibility: { ...v.feasibility, totals: { ...v.feasibility.totals, places: selected.length } },
+    ...(!pick ? { locked: on ? [...v.locked, id] : v.locked.filter((x) => x !== id) } : {}),
     groups: v.groups.map((g) => ({ ...g, cards: cards(g.cards) })),
     unverified: { ...v.unverified, cards: cards(v.unverified.cards) },
   }
 }
 
 // One Place Decision stage per journey: the backend holds the state, the page only shows its view.
-export function DecisionProvider({ children }: { children: ReactNode }) {
+export function DecisionProvider({ children, active = true }: { children: ReactNode; active?: boolean }) {
   const { trip, dispatch } = useTrip()
   const id = trip.decisionId
   const [view, setView] = useState<View | null>(null)
@@ -70,7 +73,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
 
   // Background schedule: after each change settles, ask the harness what the current selection would get.
   const refreshPreview = useCallback(() => {
-    if (!id) return
+    if (!id || !active) return
     const mine = ++seq.current
     setPreview({ status: 'building' })
     setTimeout(() => {
@@ -80,23 +83,23 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
         () => { if (mine === seq.current) setPreview({ status: 'idle' }) },
       )
     }, DEBOUNCE_MS)
-  }, [id])
+  }, [id, active])
 
   useEffect(() => {
+    seq.current++
     setGate(null)
     setView(null)
     setPreview({ status: 'idle' })
-    if (!id) return
+    if (!id || !active) return
     let live = true
     const origin = location.pathname + location.search
     const FIRST_SCREEN = 8 // cards of the open tab that are on view at once
-    const WARM_MS = 500 // longest the list waits for its pictures: on a slow line it shows anyway
+    const WARM_MS = 500 // cap background photo warmup; never delay rendering the cards
     api.loadDecision(id).then(
-      async (r) => {
+      (r) => {
         if (!live) return
         const first = r.view.groups.find((g) => g.id === getUi().tab) ?? r.view.groups.find((g) => g.id !== 'anchors')
-        await warmPhotos((first?.cards ?? []).slice(0, FIRST_SCREEN).map((c) => info(c.id)?.photos[0]?.src), WARM_MS)
-        if (!live) return
+        void warmPhotos((first?.cards ?? []).slice(0, FIRST_SCREEN).map((c) => info(c.id)?.photos[0]?.src), WARM_MS)
         if (r.recoveredHandoff && origin === location.pathname + location.search) {
           dispatch({ type: 'set', patch: { journeyId: r.id, decisionId: r.id, planningId: r.id } })
           go('/plan')
@@ -117,7 +120,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
     return () => {
       live = false
     }
-  }, [id, tick, dispatch, refreshPreview])
+  }, [id, active, tick, dispatch, refreshPreview])
 
   const act = useCallback(
     async (a: Action) => {
@@ -202,7 +205,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
         type: 'set',
         patch: { selected: out.confirmed.map((c) => c.id), locked: out.confirmed.filter((c) => c.role !== 'selected').map((c) => c.id), planningId: created.id },
       })
-      primePlanning(created.id)
+      primePlanning(created.id, created)
       go('/plan')
       return true
     } catch (e) {
@@ -219,7 +222,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
             if (rb.missing?.length && origin === location.pathname + location.search) { setGate({ readback: rb, missing: rb.missing, key: Date.now() }); setError(null); opened = true }
           } catch { /* fall through to the message */ }
         }
-        if (!opened) setError(e.status === 409 ? 'Các nơi đã chọn chưa đủ để xếp thành lịch trọn vẹn. Bạn thử thêm hoặc đổi vài nơi nhé.' : 'Chưa xếp lịch được lúc này. Bạn thử lại sau ít giây nhé.')
+        if (!opened) setError(e.status === 409 && /\s/.test(e.detail.trim()) ? e.detail : 'Chưa xếp lịch được lúc này. Bạn thử lại sau ít giây nhé.')
       } else setError(explainError(e, OFFLINE))
       return false
     } finally {
@@ -245,7 +248,7 @@ export function DecisionProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={{ view, diff, error, busy, preview, act, say, toPlan, reload: () => setTick((t) => t + 1), more, loadingMore }}>{children}
-      {id && gate && <ReadbackSheet key={gate.key} id={id} initial={gate.readback} missing={gate.missing} onClose={() => setGate(null)} onAdvance={toPlan} onView={next => { setView(next); dispatch({ type: 'set', patch: { planningId: null } }); refreshPreview() }} />}
+      {id && gate && <ReadbackSheet key={gate.key} id={id} initial={gate.readback} missing={gate.missing} onClose={() => setGate(null)} onAdvance={toPlan} onView={next => { api.withPhotos({ view: next }); setView(next); dispatch({ type: 'set', patch: { planningId: null } }); refreshPreview() }} />}
     </Ctx.Provider>
   )
 }

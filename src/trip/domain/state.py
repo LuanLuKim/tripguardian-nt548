@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 import re
 from datetime import date
+from datetime import date as CalendarDate
 from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field as PydanticField, model_validator
@@ -102,6 +103,40 @@ class Field(Frozen, Generic[T]):
         """Said or chosen by the user: only the user changes it. A value the user took away (known is False) locks
         nothing: a later statement of the trip writes it again."""
         return self.known and self.source == "user" and self.status == "confirmed"
+
+
+class DietRequest(Frozen):
+    feature: Literal["vegetarian_options", "vegan_options"] = "vegetarian_options"
+    subject: Literal["group", "member", "unspecified"] = "unspecified"
+    member: str | None = None
+    day: int | None = PydanticField(default=None, ge=1, le=99)
+    date: CalendarDate | None = None
+    solar_day: int | None = PydanticField(default=None, ge=1, le=31)
+    solar_month: int | None = PydanticField(default=None, ge=1, le=12)
+    solar_year: int | None = None
+    lunar_day: int | None = PydanticField(default=None, ge=1, le=30)
+    lunar_month: int | None = PydanticField(default=None, ge=1, le=12)
+    lunar_year: int | None = None
+    evidence: tuple[Evidence, ...]
+
+
+class DietDay(Frozen):
+    date: date
+    feature: Literal["vegetarian_options", "vegan_options"] = "vegetarian_options"
+    subject: Literal["group", "member"]
+    member: str | None = None
+    scope: Literal["eating"] = "eating"
+    op: Literal["eq"] = "eq"
+    value: Literal["yes"] = "yes"
+    strength: Literal["mandatory"] = "mandatory"
+    unknown_policy: Literal["exclude"] = "exclude"
+    evidence: tuple[Evidence, ...]
+
+    @model_validator(mode="after")
+    def _evidenced(self):
+        if not self.evidence or (self.subject == "member" and not self.member):
+            raise ValueError("a dated diet needs evidence and an identified member")
+        return self
 
 
 class TimePreference(Frozen):
@@ -259,6 +294,7 @@ class Ambiguous(Frozen):
 
 class Meta(Frozen):
     soft_skips: int = 0
+    diet_stalled: bool = False
     rushed: bool = False
     companion_hints: tuple[tuple[str, str], ...] = ()
     conflicts: tuple[str, ...] = ()
@@ -357,6 +393,14 @@ class Wishes(Frozen):
     like: tuple[LikeWish, ...] = ()
 
 
+class ExcludedPlace(Frozen):
+    """A real place the user asked to leave out; not a ban on their own selection."""
+    place_id: str
+    name: str
+    source: Source
+    evidence: tuple[Evidence, ...] = ()
+
+
 class TripState(Frozen):
     @model_validator(mode="before")
     @classmethod
@@ -382,7 +426,7 @@ class TripState(Frozen):
     checkin_at: Field[str] = Field[str]()   # the hour the user wants to start on the first day (lodging check-in)
     checkout_at: Field[str] = Field[str]()  # and to be done on the last day (lodging check-out)
     day_end: Field[str] = Field[str]()
-    origin: Field[Base] = Field[Base]()  # where the trip starts (home city), picked from a search
+    origin: Field[Base] = Field[Base]()  # where the trip starts (home city): user's words or a picked search result
     arrival_mode: Field[ArrivalMode] = Field[ArrivalMode]()
     inbound: Field[Transit] = Field[Transit]()  # the coach / flight to the city on the first day
     outbound: Field[Transit] = Field[Transit]()  # and back on the last day
@@ -398,11 +442,14 @@ class TripState(Frozen):
     liked_groups: Field[tuple[Group, ...]] = Field[tuple[Group, ...]]()  # in the order the user said them
     anchors: tuple[Anchor, ...] = ()
     signals: tuple[Signal, ...] = ()
+    diet_requests: tuple[DietRequest, ...] = ()
+    diet_days: tuple[DietDay, ...] = ()
     hard: tuple[Hard, ...] = ()
     activities: dict[str, Activity] = {}
     time_preferences: tuple[TimePreference, ...] = ()
     soft: dict[str, Field[Weight]] = {}
     visited: tuple[str, ...] = ()
+    excluded_places: tuple[ExcludedPlace, ...] = ()
     unmapped: tuple[Unmapped, ...] = ()
     vibes: tuple[Vibe, ...] = ()
     drills: tuple[Drill, ...] = ()
@@ -432,6 +479,17 @@ def apply(state: TripState, u: Update) -> TripState:
     """One validated change. Raises ValueError (pydantic ValidationError included) when the value does not fit."""
     status = "confirmed" if u.source == "user" and u.confidence == "high" else "unknown"
     f = u.field
+    if state.diet_requests and u.op != "remove":
+        feature = (u.value.get("feature") if f == "hard" and isinstance(u.value, dict) else
+                   {"vegetarian": "vegetarian_options", "vegan": "vegan_options"}.get(u.value)
+                   if f == "signal" and isinstance(u.value, str) else None)
+        if feature:
+            quote = (u.evidence.quote or "").casefold()
+            scoped = any(r.feature == feature and any(
+                e.turn == u.evidence.turn and quote and quote in (e.quote or "").casefold()
+                for e in r.evidence) for r in state.diet_requests)
+            if scoped:
+                return state
     if f.startswith("frame.") or f == "drive_day_min":
         key = f.removeprefix("frame.")
         if key not in TripFrame.model_fields:
@@ -490,6 +548,12 @@ def apply(state: TripState, u: Update) -> TripState:
             state = state.model_copy(update={"month_part": _kind("month_part")()})  # "cuối" was said of the old month
         if f == "days" and state.nights.known and state.nights.value > u.value:
             state = state.model_copy(update={"nights": _kind("nights")()})  # said of the longer trip
+        if f in {"budget_vnd", "budget_scope", "budget_unlimited"} and u.source == "user":
+            if "budget" in state.meta.declined:
+                state = state.model_copy(update={key: _kind(key)() for key in
+                                                 ("budget_vnd", "budget_scope", "budget_unlimited")})
+            state = with_meta(state, declined=tuple(k for k in state.meta.declined
+                                                   if k not in {"budget", f}))
         state = state.model_copy(update={f: new})
         if f == "lodging":  # a booked lodging is the trip's base too: distances start there
             state = apply(state, u.model_copy(update={"field": "lodging_booked", "value": "yes"}))
@@ -725,6 +789,7 @@ class Context(Frozen):
     day_end: str | None
     budget_vnd: int | None = None  # VND per person per day (domain/budget.py); None when the amount cannot be split
     budget_intent: BudgetIntent | None = None
+    diet_days: tuple[DietDay, ...] = ()
     experience: Literal["first", "returning"] | None = None
     origin: Base | None = None
     arrival_mode: ArrivalMode | None = None
@@ -804,6 +869,7 @@ class SearchInput(Frozen):
     activities: dict[str, Activity] = {}
     time_preferences: tuple[TimePreference, ...] = ()
     vibes: tuple[VibeRef, ...] = ()
+    excluded_places: tuple[ExcludedPlace, ...] = ()
 
 
 from .frame import CompiledFrame, TripFrame

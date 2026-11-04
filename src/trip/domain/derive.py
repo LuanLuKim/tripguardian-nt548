@@ -7,10 +7,11 @@ words do not fix (who else comes, where exactly to stay) is left for the questio
 """
 
 import re
+from datetime import date
 
 from ..infrastructure.catalog import Catalog
 from .logistics import CITY
-from .state import Base, Evidence, TripState, Update, apply, apply_drafts, pending_signals
+from .state import MAX_TRIP_DAYS, Base, Evidence, TripState, Update, apply, apply_drafts, pending_signals
 from .text import fold, squash
 
 CENTRE = re.compile(r"\b(trung tam|center|centre|central|downtown)\b")
@@ -24,11 +25,41 @@ DERIVED = "derived:companions"
 
 
 def derive(state: TripState, catalog: Catalog, turn: int) -> TripState:
-    return _care(_lodging(_people(state, turn), catalog, turn), turn)
+    return _pet(_care(_lodging(_people(_duration(state, turn), turn), catalog, turn), turn), turn)
+
+
+def _pet(state: TripState, turn: int) -> TripState:
+    tool = "derived:companion:pet"
+    present = "pet" in (state.companions.value or ())
+    hard = tuple(h for h in state.hard if present or not any(e.tool == tool for e in h.evidence))
+    state = state.model_copy(update={"hard": hard})
+    if not present or any(h.feature == "pets" for h in hard):
+        return state
+    quote = next((e.quote for e in state.companions.evidence if e.quote), None)
+    return apply(state, Update(field="hard", op="add", value={"feature": "pets", "op": "ne", "value": "not_allowed",
+                                                              "unknown_policy": "flag"},
+                               source="user", confidence="high", evidence=Evidence(turn=turn, quote=quote, tool=tool)))
+
+
+def _duration(state: TripState, turn: int) -> TripState:
+    if state.days.known or not (state.frame.arrive.locked and state.frame.leave.locked):
+        return state
+    start = date.fromisoformat(state.frame.arrive.value.at[:10])
+    end = date.fromisoformat(state.frame.leave.value.at[:10])
+    days = (end - start).days + 1
+    if not 1 <= days <= MAX_TRIP_DAYS or (state.start_date.known and state.start_date.value != start):
+        return state
+    evidence = state.frame.arrive.evidence + state.frame.leave.evidence
+    for field, value in (("start_date", start), ("days", days)):
+        if not getattr(state, field).known:
+            state = apply(state, Update(field=field, value=value, source="user", confidence="high",
+                                        evidence=Evidence(turn=turn, quote="; ".join(e.quote for e in evidence if e.quote),
+                                                          tool="derived:journey_dates")))
+    return state
 
 
 def _people(state: TripState, turn: int) -> TripState:
-    who = frozenset(state.companions.value or ()) if state.companions.known else frozenset()
+    who = frozenset(state.companions.value or ()) - {"pet"} if state.companions.known else frozenset()
     n = PARTY.get(who) if state.companions.source == "user" else None
     derived = state.people.known and all(e.tool == DERIVED for e in state.people.evidence)
     if derived and n != state.people.value:  # the party changed after the count was derived from it

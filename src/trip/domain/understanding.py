@@ -140,7 +140,8 @@ def view(state: TripState, catalog: Catalog, cfg: Settings) -> dict:
     readback = None
     if not missing_fields:
         si = compile_search_input(state, cfg.arrival_buffer_min, cfg.coach_min_people,
-                                  entry_min=cfg.entry_min, defaults=FrameDefaults(**cfg.frame))
+                                  entry_min=cfg.entry_min, defaults=FrameDefaults(**cfg.frame),
+                                  departure_buffer_min=cfg.departure_buffer_min)
         rb = build_readback(si)
         readback = {**rb.model_dump(mode="json"), "ok": state.meta.readback_digest == rb.digest}
     return {

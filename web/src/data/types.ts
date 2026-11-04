@@ -124,6 +124,8 @@ export interface Place {
   lat: number
   lng: number
   address: string | null
+  phone?: string | null // identity.phone / identity.website of the served record, absent when unknown
+  website?: string | null
   mapsUrl: string | null
   rating: number | null
   reviewCount: number | null

@@ -3,7 +3,7 @@
 from bisect import bisect_left
 
 from corpus.serving import conf, feature
-from requirements import applicable
+from requirements import applicable, safety_requirement
 
 from .diversify import display_group
 from .model import Cand
@@ -66,6 +66,21 @@ def preference_fit(rec: dict, soft_weights: list[dict], activity=None) -> tuple[
                        for w in soft_weights if w.get("weight")])
     fit, _, matches = preference(rec, ws, activity)
     return fit, matches
+
+
+def pet_access_priority(rec: dict, companions: list[str]) -> int:
+    """Public sort tier: backed pet permission first for pet trips; unknown stays eligible."""
+    if "pet" not in companions:
+        return 0
+    f = feature(rec, "pets")
+    allowed = (f is not None and f["value"] == "allowed" and f["status"] in {"VERIFIED", "OUTDATED"}
+               and f.get("evidence") and f["n"] > 0 and "not_allowed" not in f["distribution"])
+    return 0 if allowed else 1
+
+
+def safety_priority(c: Cand) -> int:
+    """Evidence tier, separate from taste score; missing safety evidence is not a proven failure."""
+    return int(any(x["result"] == "unknown" and x["feature"] != "pets" and safety_requirement(x) for x in c.checks))
 
 
 def _price_norm(rec: dict, cfg) -> float:

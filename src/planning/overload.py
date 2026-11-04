@@ -4,9 +4,16 @@ next place until everything fits, then give back any dropped place that still fi
 never enters a place's score: prices only order the `cost` direction, and a place with no known price is never dropped
 by it."""
 
+import logging
 import multiprocessing as mp
+from types import SimpleNamespace
 import os
+import pickle
 import signal
+import tempfile
+import time
+from pathlib import Path
+from multiprocessing.connection import wait
 from dataclasses import asdict, replace
 from functools import partial
 
@@ -18,11 +25,14 @@ from .timefit import describe as time_description
 from .traits import visit_minutes
 
 DIRECTIONS = ("fit", "travel", "cost")
-LABEL = {"main": "Lịch của bạn", "fit": "Giữ nơi hợp gu nhất", "travel": "Ít đi lại", "cost": "Tiết kiệm"}
+LABEL = {"main": "Lịch của bạn", "fit": "Giữ nơi hợp gu nhất", "travel": "Ít đi lại", "cost": "Tiết kiệm",
+         "kept": "Giữ các nơi đã xếp vừa"}
 TRADEOFF = {"fit": "có thể phải đi xa hơn và tốn hơn để giữ nơi hợp gu",
             "travel": "có thể bỏ nơi bạn thích nhưng nằm xa các nơi còn lại",
-            "cost": "có thể bỏ nơi bạn thích nhưng tốn tiền hơn"}
-GAIN = {"fit": "giữ những nơi khớp gu bạn nhất", "travel": "ít ngồi xe nhất", "cost": "rẻ nhất"}
+            "cost": "có thể bỏ nơi bạn thích nhưng tốn tiền hơn",
+            "kept": "bỏ các nơi không còn chỗ, mỗi nơi có lý do"}
+GAIN = {"fit": "giữ những nơi khớp gu bạn nhất", "travel": "ít ngồi xe nhất", "cost": "rẻ nhất",
+        "kept": "chốt được ngay với lịch đã kiểm"}
 ORDINAL = {2: "thứ hai", 3: "thứ ba", 4: "thứ tư"}
 ALONE_MIN = 15              # spec section 7: "các nơi khác cách khách sạn < 15′", the dropped place off on its own
 EXTEND_STEP = 15            # extend offers go up in quarter hours, to extend_max_min
@@ -30,7 +40,8 @@ OVERRUN = {"day_window", "departure"}   # a day past its end or its departure: o
 NEUTRAL_UTILITY = 1.0       # composer.selection_utilities' value for a place with no utility and no soft weights
 UNAVAILABLE = {"protected": "Các nơi còn lại đều là nơi bạn chắc chắn đi, không bỏ được nơi nào.",
                "unpriced": "Các nơi còn lại chưa có giá, không xét để tiết kiệm.",
-               "no_gain": "Bỏ thêm nơi theo hướng này cũng không làm lịch vừa."}
+               "no_gain": "Bỏ thêm nơi theo hướng này cũng không làm lịch vừa.",
+               "timeout": "Chưa tìm xong phương án trong thời gian cho phép; giữ kết quả đã kiểm tra."}
 
 
 def _short(trip, sched: Schedule) -> int:
@@ -66,17 +77,20 @@ def _hm(minutes: int) -> str:
 
 class _Runs:
     """schedule_trip once per kept set within one plan_or_directions call: the directions often try the same sets.
-    The call count lives in shared memory (`counter`), so a forked child adds its schedule_trip calls to the parent's."""
+    Fork workers share a counter; spawn workers return local counts through their result pipe."""
 
     def __init__(self, trip, counter=None):
         self.trip, self.memo = trip, {}
-        self.counter = counter if counter is not None else mp.Value("i", 0)
+        self.counter = counter if counter is not None else mp.get_context(_PROCESS_CONTEXT).Value('i', 0)
 
     @property
     def calls(self) -> int:
-        return self.counter.get_obj().value             # raw read: never waits on a lock a killed child still holds
+        return self.counter.get_obj().value if hasattr(self.counter, 'get_obj') else self.counter.value
 
     def count(self) -> None:
+        if not hasattr(self.counter, 'get_lock'):
+            self.counter.value += 1       # spawn workers return independent counts through their result pipe
+            return
         lock = self.counter.get_lock()
         if lock.acquire(timeout=1):                     # a child killed mid-increment must not hang the others
             try:
@@ -202,38 +216,51 @@ def _direction(trip, run: _Runs, direction, protected, values):
     return kept, dropped, sched, why
 
 
-_FORK_WAIT_S = 120          # a forked task that has not answered by then is worked out here instead
+_FORK_WAIT_S = 20          # one budget for the entire batch, never per child
+_PROCESS_CONTEXT = "spawn"  # never inherit an open LanceDB / torch runtime from the server
 
 
-def _in_children(tasks: dict) -> dict:
-    """{name: task()} with each task run in its own forked process at once (fork: the trip and the memo are inherited,
-    only the answers are pickled back; the work is deterministic, so only where it runs changes). A child that fails or
-    stays silent is simply absent: the caller works that task out itself. Children are not daemons: the longer-day
-    child forks its two widest trials (_extend)."""
-    if os.name != "posix" or "fork" not in mp.get_all_start_methods():
-        return {}
-    ctx, procs = mp.get_context("fork"), {}
-    for name, task in tasks.items():
-        rx, tx = ctx.Pipe(duplex=False)
-        proc = ctx.Process(target=_child, args=(tx, task))
-        proc.start()
-        if not _IN_CHILD:
+def _in_children(tasks: dict, *, deadline=None) -> dict:
+    """Collect ready answers in completion order under one deadline; never retry a failed task in the caller."""
+    deadline = min(deadline, time.monotonic() + _FORK_WAIT_S) if deadline is not None else time.monotonic() + _FORK_WAIT_S
+    ctx, procs, got = mp.get_context(_PROCESS_CONTEXT), {}, {}
+    try:
+        for name, task in tasks.items():
+            if time.monotonic() >= deadline:
+                break
+            rx, tx = ctx.Pipe(duplex=False)
+            proc = ctx.Process(target=_file_child, args=(tx, task)) if isinstance(task, Path) else ctx.Process(target=_child, args=(tx, task))
             try:
-                os.setpgid(proc.pid, proc.pid)
-            except OSError:
-                pass                # the child already did it, or already ended
-        tx.close()
-        procs[name] = (proc, rx)
-    got = {}
-    for name, (proc, rx) in procs.items():
-        try:
-            if rx.poll(_FORK_WAIT_S):
-                ok, payload = rx.recv()
-                if ok:
-                    got[name] = payload
-        except Exception:
-            pass
-        finally:
+                proc.start()
+            except Exception:
+                logging.getLogger(__name__).exception("overload worker start failed: %s", name)
+                rx.close()
+                tx.close()
+                continue
+            if not _IN_CHILD and os.name == "posix":
+                try:
+                    os.setpgid(proc.pid, proc.pid)
+                except OSError:
+                    pass
+            tx.close()
+            procs[rx] = (name, proc)
+        pending = set(procs)
+        while pending:
+            ready = wait(pending, timeout=max(0, deadline - time.monotonic()))
+            if not ready:
+                break
+            for rx in ready:
+                pending.remove(rx)
+                try:
+                    ok, payload = rx.recv()
+                    if ok:
+                        got[procs[rx][0]] = payload
+                    else:
+                        logging.getLogger(__name__).warning("overload worker failed: %s: %s", procs[rx][0], payload)
+                except (EOFError, OSError):
+                    logging.getLogger(__name__).warning("overload worker closed without a result: %s", procs[rx][0])
+    finally:
+        for rx, (_, proc) in procs.items():
             rx.close()
             _stop(proc)
     return got
@@ -244,17 +271,27 @@ def _stop(proc) -> None:
     a top-level child leads its own process group, so one kill reaches the whole group; a nested child has no group of
     its own, only itself is killed."""
     try:
-        if _IN_CHILD:
-            if proc.is_alive():
-                proc.kill()
-        else:
-            os.killpg(proc.pid, signal.SIGKILL)     # before any wait: the pid is still ours, so the group is too
+        if not _IN_CHILD and os.name == "posix":
+            os.killpg(proc.pid, signal.SIGKILL)
+        elif proc.is_alive():
+            proc.kill()
     except (ProcessLookupError, PermissionError):
-        pass
-    proc.join(1)
+        if proc.is_alive():
+            proc.kill()
+    proc.join(0.05)
 
 
 _IN_CHILD = False           # True in a forked task: its own children stay in the task's process group
+
+
+def _file_child(tx, path) -> None:
+    def task():
+        with path.open("rb") as stream:
+            trip, main, protected, direction = pickle.load(stream)
+        counter = SimpleNamespace(value=0)
+        answer = _search(trip, main, protected, direction, counter)
+        return answer, counter.value
+    _child(tx, task)
 
 
 def _child(tx, task) -> None:
@@ -267,7 +304,7 @@ def _child(tx, task) -> None:
     _IN_CHILD = True
     try:
         tx.send((True, task()))
-    except BaseException as e:      # reported as "worked out here instead"
+    except BaseException as e:      # the caller keeps only completed, checked answers
         tx.send((False, repr(e)))
     finally:
         tx.close()
@@ -284,7 +321,7 @@ def render_variant(trip, sched: Schedule, vid: str, dropped=(), available=True, 
     values = selection_utilities(trip)
     known = [trip.by_place[p].cost_vnd for p in kept if p in trip.by_place and trip.by_place[p].cost_vnd is not None]
     violations = [asdict(v) for v in sched.violations]
-    confirmable = available and not violations
+    confirmable = available and not violations and not sched.leftover
     return {"id": vid, "objective": vid, "preset": None, "label": LABEL[vid], "gain": GAIN.get(vid), "tradeoff": TRADEOFF.get(vid),
             "kept": kept, "dropped": list(dropped), "available": available, "left_over": list(sched.leftover),
             "unavailable_reason": None if available else UNAVAILABLE[why or "protected"],
@@ -293,13 +330,30 @@ def render_variant(trip, sched: Schedule, vid: str, dropped=(), available=True, 
                         "fit": round(sum(_utility(values, p) for p in kept) / max(1e-9, sum(values.values())), 3)},
             "stars": [], "metrics": m, "violations": violations,
             "status": "available" if confirmable else "unavailable", "confirmable": confirmable,
-            "itinerary": itinerary(days, sched.results), "travel_load": travel_load(days, sched.results),
+            "itinerary": itinerary(days, sched.results, sched.ctxs), "travel_load": travel_load(days, sched.results),
             "time_suitability": time_description(sched.ctxs, sched.results), "recommendations": [],
             "robustness": robustness(sched.ctxs, sched.results, trip.travel.source) if day_parts else None,
             "backups": backups(sched.ctxs, sched.results, trip.decision, trip.by_id) if day_parts else None,
             "warnings": sched.warnings,
             "lodging": {"id": None, "name": None, "price_vnd": None}, "score": [m["travel_min"]],
             "_results": sched.results, "_ctxs": sched.ctxs, "_home": trip.days[0].start_node if trip.days else None}
+
+
+def _holds(trip, run, sides, side, minutes) -> bool:
+    ctxs = [cx if not ok else replace(cx, day=replace(cx.day, start=cx.day.start - minutes)) if side == "start"
+            else replace(cx, day=replace(cx.day, end=min(24 * 60, cx.day.end + minutes)))
+            for ok, cx in zip(sides[side], trip.ctxs)]
+    run.count()
+    return not _over(schedule_trip(replace(trip, ctxs=ctxs)))
+
+
+def _search(trip, main, protected, direction, counter):
+    if _PROCESS_CONTEXT == "spawn":
+        trip = replace(trip, cfg=replace(trip.cfg, direction_workers=1))
+    run = _Runs(trip, counter)
+    run.memo[frozenset(trip.by_place)] = main
+    return _extend(trip, run, main) if direction == "extend" else \
+        _direction(trip, run, direction, protected, selection_utilities(trip))
 
 
 def _extend(trip, run: _Runs, main: Schedule) -> dict | None:
@@ -320,12 +374,7 @@ def _extend(trip, run: _Runs, main: Schedule) -> dict | None:
     sides = {side: [movable(k, cx, side) for k, cx in enumerate(trip.ctxs)] for side in ("start", "end")}
     tried: dict = {}
 
-    def holds(side, minutes) -> bool:
-        ctxs = [cx if not ok else replace(cx, day=replace(cx.day, start=cx.day.start - minutes)) if side == "start"
-                else replace(cx, day=replace(cx.day, end=min(24 * 60, cx.day.end + minutes)))
-                for ok, cx in zip(sides[side], trip.ctxs)]
-        run.count()
-        return not _over(schedule_trip(replace(trip, ctxs=ctxs)))
+    holds = partial(_holds, trip, run, sides)
 
     def fits(side, minutes):
         if (side, minutes) not in tried:
@@ -353,24 +402,41 @@ def plan_or_directions(trip, *, protected=()) -> dict:
     """The plan output for one trip: a fitting trip has one `main` plan and no overload; an overloaded one has up to
     three direction plans (two that keep the same places share one card, `merged`) and the overload card.
     protected: places the session also keeps whatever happens (locked days), on top of composer.must_places."""
-    run = _Runs(trip)
+    deadline = time.monotonic() + max(0, trip.cfg.realistic.get("overload_deadline_s", _FORK_WAIT_S))
+    run = _Runs(trip, SimpleNamespace(value=0) if _PROCESS_CONTEXT == 'spawn' else None)
     main = run(set(trip.by_place))
     if not _over(main):
         v = render_variant(trip, main, "main")
         return {"variants": [v], "overload": None, "ok": v["confirmable"], "warnings": [], "back_to_decision": None,
                 "comparison": [], "leftover": (), "schedule_calls": run.calls}
     protected = (must_places(trip) | set(protected)) & set(trip.by_place)
-    values = selection_utilities(trip)
     out, seen = [], {}
-    # The three directions and the longer-day offer are independent searches from the main schedule: with
-    # direction_workers > 1 each runs in a forked process at once, the longer day does not wait for the directions.
-    tasks = {d: partial(_direction, trip, _Runs(trip, run.counter), d, protected, values)
-             for d in DIRECTIONS[:trip.cfg.direction_workers]} if trip.cfg.direction_workers > 1 else {}
-    if tasks:
-        tasks["extend"] = partial(_extend, trip, run, main)
-    searched = _in_children(tasks) if tasks else {}
+    # Only immutable trip data crosses spawn; no corpus readers, callbacks or inherited native runtime.
+    # Backups need selected / backup records, not the city's entire serving payload.
+    ids = set(trip.by_place) | {p["id"] for p in trip.decision.get("backup_pool", [])}
+    worker_trip = replace(trip, by_id={pid: trip.by_id[pid] for pid in ids if pid in trip.by_id})
+    if _PROCESS_CONTEXT == "spawn":
+        # Pass only tiny file paths to spawn: sending a large Trip through its startup pipe blocks Process.start()
+        # until the fresh interpreter has imported the app, outside the parent's result-wait deadline.
+        root = Path(__file__).resolve().parents[2] / "logs"
+        root.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="overload-", dir=root) as folder:
+            tasks = {}
+            for direction in (*DIRECTIONS, "extend"):
+                path = Path(folder) / direction
+                with path.open("wb") as stream:
+                    pickle.dump((worker_trip, main, protected, direction), stream)
+                tasks[direction] = path
+            answers = _in_children(tasks, deadline=deadline)
+            searched = {name: answer for name, (answer, _) in answers.items()}
+            for _, count in answers.values():
+                run.counter.value += count
+    else:
+        tasks = {d: partial(_search, worker_trip, main, protected, d, run.counter) for d in (*DIRECTIONS, "extend")}
+        searched = _in_children(tasks, deadline=deadline)
+    incomplete = set(tasks) - set(searched)
     for direction in DIRECTIONS:
-        kept, dropped, sched, why = searched.get(direction) or _direction(trip, run, direction, protected, values)
+        kept, dropped, sched, why = searched.get(direction) or (set(trip.by_place), [], main, "timeout")
         key = frozenset(kept)
         if key in seen:
             seen[key].setdefault("merged", []).append(direction)
@@ -381,6 +447,30 @@ def plan_or_directions(trip, *, protected=()) -> dict:
         if direction == "cost":     # spec section 7: "N nơi chưa có giá, không xét"
             seen[key]["unpriced_n"] = sum(p.cost_vnd is None for pid, p in trip.by_place.items()
                                           if pid not in protected)
+    if incomplete and not any(v["available"] for v in out):
+        # Keep the already checked layout as an editable draft, not a claim that all selected / required places fit.
+        from .model import Violation
+
+        placed = {pid for r in main.results for pid in r.order}
+        absent = protected - placed
+        existing = {v.place_id for v in main.violations if v.kind == "anchor"}
+        checked = replace(main, violations=[*main.violations,
+                          *(Violation("anchor", None, pid, 0, False, "an anchor is not in the plan")
+                            for pid in sorted(absent - existing))])
+        draft = render_variant(trip, checked, "main")
+        draft.update(status="available", editable=True, confirmable=False, kept=sorted(trip.by_place),
+                     dropped=[{"place_id": pid, "name": trip.by_place[pid].name, "reason": "chưa xếp xong"}
+                              for pid in main.leftover])
+        out.insert(0, draft)
+        if not checked.violations and main.leftover:
+            # The checked layout is itself a way out the user can take now (spec section 7, "never leave the user
+            # without a confirmable plan"): the places that fit, each one left out named with why and how long it needs.
+            days = len(main.results)
+            why = [{"place_id": pid, "name": trip.by_place[pid].name,
+                    "reason": f"không còn chỗ trong {days} ngày đã kín lịch (cần thêm khoảng "
+                              f"{visit_minutes(trip.by_place[pid], trip.cfg, trip.pace)} phút)"}
+                   for pid in main.leftover]
+            out.insert(1, render_variant(trip, replace(checked, leftover=()), "kept", why, True))
     ranked = [v for v in out if v["available"]]
     for field, better in (("travel_min", min), ("cost_known_vnd", min), ("fit", max)):
         if len(ranked) > 1:
@@ -390,11 +480,14 @@ def plan_or_directions(trip, *, protected=()) -> dict:
                     v["stars"].append(field)
     missing = sum(visit_minutes(trip.by_place[p], trip.cfg, trip.pace) for p in main.leftover) + \
         sum(v.minutes for v in main.violations if v.kind in OVERRUN)
-    extend = searched["extend"] if "extend" in searched else _extend(trip, run, main)
+    extend = searched.get("extend")
+    warnings = [{"code": "overload_deadline", "text": UNAVAILABLE["timeout"], "unfinished": sorted(incomplete)}] if incomplete else []
     overload = {"missing_min": missing, "places": len(trip.by_place),
-                "directions": [{k: x for k, x in v.items() if not k.startswith("_")} for v in out], "extend": extend}
+                "directions": [{k: x for k, x in v.items() if not k.startswith("_")} for v in out], "extend": extend,
+                "incomplete": sorted(incomplete)}
     ok = any(v["confirmable"] for v in out)
     back = None if any(v["available"] for v in out) else \
-        {"reason": "required_places_do_not_fit", "places": sorted(protected), "leftover": list(main.leftover)}
-    return {"variants": out, "overload": overload, "ok": ok, "warnings": [], "comparison": [], "back_to_decision": back,
+        {"reason": "overload_deadline" if incomplete else "required_places_do_not_fit",
+         "places": sorted(protected), "leftover": list(main.leftover)}
+    return {"variants": out, "overload": overload, "ok": ok, "warnings": warnings, "comparison": [], "back_to_decision": back,
             "leftover": main.leftover, "schedule_calls": run.calls}

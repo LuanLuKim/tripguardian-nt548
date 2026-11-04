@@ -9,7 +9,8 @@ from .state import Draft, Drill, Option, SoftKey, TripState
 from .text import fold
 
 TOPICS = ("săn mây", "ngắm đồi", "cà phê", "chill", "chụp ảnh", "thiên nhiên", "cắm trại", "ăn uống", "về đêm", "tâm linh")
-SPECIFIC = re.compile(r"\b(vintage|retro|có (?:nhiều )?(?:sách|view)|sách cũ|view\s+\w+|kiểu hàn|nhà gỗ|rừng thông)\b")
+LEGACY_SPECIFIC = re.compile(r"\b(vintage|retro|có (?:nhiều )?(?:sách|view)|sách cũ|view\s+\w+|kiểu hàn|nhà gỗ|rừng thông)\b")
+SPECIFIC = re.compile(r"\b(vintage|retro|sân vườn|yên tĩnh|ít người|trong nhà|ngoài trời|có (?:nhiều )?(?:sách|view)|sách cũ|view\s+\w+|kiểu hàn|nhà gỗ|rừng thông)\b")
 FEATURES = {"săn mây": ("cloud_hunting",), "ngắm đồi": ("scenic_view",), "chill": ("scenic_view", "cozy_decor"),
             "chụp ảnh": ("photo_spot", "scenic_view"), "thiên nhiên": ("nature",), "cắm trại": ("camping",),
             "về đêm": ("live_music", "night_market", "bar")}
@@ -24,11 +25,11 @@ GROUPS = {"cà phê": {"cafe"}, "ăn uống": {"restaurant", "dessert", "market"
           "về đêm": {"bar", "market"}, "chill": {"cafe", "nature"}}
 
 
-def topics(text: str) -> list[str]:
+def topics(text: str, *, discovery: bool = False) -> list[str]:
     text = unicodedata.normalize("NFC", text).casefold()
     found = []
     for clause in re.split(r"[,;.!?\n]|\b(?:và|rồi|sau đó|nhưng)\b", text):
-        if SPECIFIC.search(clause) or re.search(r"\b(homestay|khách sạn|chỗ ở|resort|hostel|hotel|dorm)\b", clause):
+        if (SPECIFIC if discovery else LEGACY_SPECIFIC).search(clause) or re.search(r"\b(homestay|khách sạn|chỗ ở|resort|hostel|hotel|dorm)\b", clause):
             continue
         for match in HEARD.finditer(clause):
             topic = CANONICAL[match[0]]
@@ -39,9 +40,9 @@ def topics(text: str) -> list[str]:
     return found
 
 
-def note(state: TripState, text: str, turn: int) -> TripState:
+def note(state: TripState, text: str, turn: int, *, discovery: bool = False) -> TripState:
     known = {d.topic for d in state.drills}
-    added = [Drill(topic=t, quote=t, turn=turn) for t in topics(text) if t not in known]
+    added = [Drill(topic=t, quote=t, turn=turn) for t in topics(text, discovery=discovery) if t not in known]
     return state.model_copy(update={"drills": (*state.drills, *added[:max(0, 3 - len(state.drills))])})
 
 
@@ -80,7 +81,7 @@ def refresh(state: TripState, catalog, cfg) -> TripState:
     return state.model_copy(update={"drills": tuple(drills)})
 
 
-def build(state: TripState, catalog, looks, cfg) -> TripState:
+def build(state: TripState, catalog, looks, cfg, *, cached_only: bool = False) -> TripState:
     """Each pending drill without a card gets its photo card from the topic's variants in config/trip.yaml `drills`,
     matched to real corpus photos; a topic with fewer than two variants that have photos is closed as none. No model
     call. Without looks (or variants for the topic) the drill stays as it is."""
@@ -92,10 +93,18 @@ def build(state: TripState, catalog, looks, cfg) -> TripState:
         if d.status != "pending" or d.tab is not None or not spec or looks is None:
             drills.append(d)
             continue
-        options = choose(spec["variants"], d.topic, state, catalog, looks, cfg)
+        if cached_only and hasattr(looks, "cached_scores"):
+            base = {p.id for p in catalog.places if p.category_group in GROUPS.get(d.topic, ())
+                    or any(p.value(f) == "present" for f in FEATURES.get(d.topic, ()))}
+            if any(looks.cached_scores(list(v["cues"]), base) is None for v in spec["variants"][:6]):
+                drills.append(d)
+                continue
+        current = state.model_copy(update={"drills": (*drills, *state.drills[len(drills):])}) if cfg.discovery else state
+        options = choose(spec["variants"], d.topic, current, catalog, looks, cfg)
         drills.append(d.model_copy(update={"tab": Tab(
             qid=f"drill.{d.topic}", kind="drill", header=spec["header"], question=spec["question"],
-            why=f"Vì bạn nói “{d.quote}”.", visual=True, multi=True, options=tuple(options) + exits())})
+            why=f"Vì bạn nói “{d.quote}”." if d.quote else "Thử một góc khác của chuyến đi, bỏ qua cũng được.",
+            visual=True, multi=True, options=tuple(options) + exits())})
                       if options else d.model_copy(update={"status": "none"}))
     return state.model_copy(update={"drills": tuple(drills)})
 
@@ -103,8 +112,45 @@ def build(state: TripState, catalog, looks, cfg) -> TripState:
 def adopt(state: TripState, built: TripState) -> TripState:
     """The cards `build` made (on the state before the agent's turn) moved onto the state after it."""
     done = {d.topic: d for d in built.drills}
+    known = {d.topic for d in state.drills}
     return state.model_copy(update={"drills": tuple(
-        done.get(d.topic, d) if d.status == "pending" and d.tab is None else d for d in state.drills)})
+        done.get(d.topic, d) if d.status == "pending" and d.tab is None else d for d in state.drills)
+        + tuple(d for d in built.drills if d.topic not in known)})
+
+
+def discover(state: TripState, catalog, looks, cfg, turn: int) -> TripState:
+    """Offer one unseen aspect using real photos; no question quota and no invented preference."""
+    state = refresh(state, catalog, cfg)
+    if looks is None or state.meta.rushed or state.meta.soft_skips >= 2:
+        return state
+    # A known taste can arrive after cards were built in the background.
+    answered = set()
+    for field in state.soft.values():
+        if not field.known:
+            continue
+        for evidence in field.evidence:
+            quote = (evidence.quote or "").casefold()
+            for clause in re.split(r"[,;.!?\n]|\b(?:và|rồi|sau đó|nhưng)\b", quote):
+                specific = SPECIFIC.search(clause) or any(
+                    str(v["label"]).casefold() in clause for spec in cfg.drills.values() for v in spec["variants"])
+                if specific:
+                    answered |= {CANONICAL[m[0]] for m in HEARD.finditer(clause)}
+    state = state.model_copy(update={"drills": tuple(
+        d.model_copy(update={"status": "done"}) if d.status == "pending" and d.topic in answered else d
+        for d in state.drills)})
+    state = build(state, catalog, looks, cfg)
+    if any(d.status == "pending" and d.tab is not None for d in state.drills):
+        return state
+    known = {d.topic for d in state.drills} | answered
+    for topic in ("ăn uống", "thiên nhiên", "chill", "cà phê", "chụp ảnh", *TOPICS):
+        if topic in known or topic not in cfg.drills:
+            continue
+        known.add(topic)
+        candidate = state.model_copy(update={"drills": (*state.drills, Drill(topic=topic, quote="", turn=turn))})
+        state = build(candidate, catalog, looks, cfg)
+        if any(d.status == "pending" and d.tab is not None for d in state.drills):
+            return state
+    return state
 
 
 def choose(variants, topic: str, state: TripState, catalog, looks, cfg) -> list[Option]:
@@ -164,12 +210,13 @@ def choose(variants, topic: str, state: TripState, catalog, looks, cfg) -> list[
             ranked.append((len(hits) * hits[0][1], index, label, cues, tuple(writes), hits, reps, axis))
         except (KeyError, TypeError, ValueError):
             continue
+    shown = {o.photo for d in state.drills if d.tab for o in d.tab.options if o.photo} if cfg.discovery else set()
     out, used, chosen_axis = [], set(), None
     for _, index, label, cues, writes, hits, reps, axis in sorted(ranked, key=lambda item: (-item[0], item[1])):
         if chosen_axis is not None and axis != chosen_axis:
             continue
         for pid in reps:
-            if pid not in used and (photo := looks.best_photo(pid)):
+            if pid not in used and (photo := looks.best_photo(pid)) and (pid, photo) not in shown:
                 out.append(Option(id=f"v{index}", label=label, writes=writes, count=len(hits), photo=(pid, photo),
                                   description=f"Ảnh thật tại {catalog.by_id[pid].name}"[:80], cues=cues,
                                   places=tuple(p for p, _ in hits)))

@@ -13,6 +13,17 @@ than in reviews. A place saved with fewer than it now wants, because it stopped 
 end), is fetched again with the new count. Otherwise written once per place; delete photos.json to fetch again.
 A place whose every photo is older than MAX_AGE_YEARS would have no picture at all: its newest STALE_KEEP old photos are
 kept with `stale: true`. They are for the web cover only; every reader of evidence (observe, styles, vectors) skips them.
+
+Aged outdoor photos (env GMAPS_PHOTO_AGED=1, owner 2026-10-30; config/scenes.yaml pick.old): in a sight group (nature, attraction, ...)
+a photo older than MAX_AGE_YEARS but not older than pick.old.max_age_years is kept too (up to AGED_KEEP per place), flagged
+`stale: true` (so no reader of evidence sees it) and `display_old: true` (so `photo_scenes` labels it and a card may show it, only as a
+view / exterior and with its year). Such a place is fetched again once (`aged_years` in photos.json).
+
+Scene pass (env GMAPS_PHOTO_CHIPS=1, the fill-photos track 2026-10-30): a gallery with the first two tabs read still holds category
+chips (interior / exterior / vibe / room ...). Every chip that is not a tab, a video, a menu, a 360 view or the food chips is
+read too, up to CHIP_PHOTOS more photos, and the file records `chips` (a place with that key is not read again). The Maps gallery
+is only there when the account is signed in: a page with no gallery tab and the sign-in link raises LoginRequired (the SID cookie outlives the
+session, 2026-10-30 gmaps_s0 / gmaps_s2), and a run that opened no tab never replaces a photos.json that has photos.
 """
 
 import asyncio
@@ -28,7 +39,7 @@ from ..common.files import author_hash, data_dir, load_config, log_error, now, s
 from ..common.throttle import Throttle
 from .gate import GateThrottle
 from .keywords import category_group
-from .page import CaptchaBlocked, ensure_login, more, open_page
+from .page import SIGN_IN_LINK, CaptchaBlocked, ensure_login, more, open_page
 
 FILE = "photos.json"
 TILE = "a[data-photo-index]"
@@ -69,6 +80,63 @@ def norm(s: str | None) -> str:
 
 
 TABS = ("Mới nhất", "Tất cả")  # newest first; "Mới nhất" holds only recent months, "Tất cả" fills the rest
+CHIPS = bool(os.environ.get("GMAPS_PHOTO_CHIPS"))
+AGED = bool(os.environ.get("GMAPS_PHOTO_AGED"))
+AGED_KEEP = 12  # aged photos kept per place (the labels decide which are views / exteriors)
+CHIP_PHOTOS = 12  # photos read from the category chips on top of the place's wanted count
+CHIP_MAX = 4  # chips read per place
+# chips that are not a scene of the place: the two tabs, video, menu, 360 / street view, food (the menu and dishes are read by `menu`)
+_NOT_SCENE = re.compile(r"^(tất cả|mới nhất|video|thực đơn|menu|thực phẩm|đồ ăn|món|chế độ xem|360)|360", re.I)
+
+
+def aged_rule() -> dict:
+    """config/scenes.yaml pick.old: {"max_age_years", "groups", "scenes"}."""
+    import yaml
+    from ..common.files import ROOT
+    return yaml.safe_load((ROOT / "config" / "scenes.yaml").read_text(encoding="utf-8"))["pick"]["old"]
+
+
+def aged_place(place: dict) -> bool:
+    """Whether the aged-photo rule applies to this place (a sight group of pick.old)."""
+    return AGED and category_group(place.get("category")) in aged_rule()["groups"]
+
+
+def flag_aged_on_disk(root=None) -> dict:
+    """No browser: the cover-only `stale` photos already on disk of sight places, not older than pick.old.max_age_years,
+    get `display_old` (up to AGED_KEEP per place), as a crawl with GMAPS_PHOTO_AGED would have flagged them. Idempotent;
+    `aged_years` is NOT written, so the crawl still fetches such a place once. {"places", "photos"}."""
+    root = root or data_dir() / "gmaps"
+    rule = aged_rule()
+    cutoff = f"{int(now()[:4]) - rule['max_age_years']}-{now()[5:7]}"
+    places = photos = 0
+    for f in sorted((root / "places").glob("*/place.json")):
+        place = json.loads(f.read_text(encoding="utf-8"))
+        pj = f.parent / FILE
+        if category_group(place.get("category")) not in rule["groups"] or not pj.exists():
+            continue
+        doc = json.loads(pj.read_text(encoding="utf-8"))
+        flagged = sum(bool(p.get("display_old")) for p in doc.get("photos", []))
+        new = 0
+        for p in doc.get("photos", []):
+            if (p.get("stale") and not p.get("display_old") and (p.get("month") or "") >= cutoff
+                    and (f.parent / p["file"]).exists() and flagged + new < AGED_KEEP):
+                p["display_old"] = True
+                new += 1
+        if new:
+            write_json(pj, doc)
+            places += 1
+            photos += new
+    return {"places": places, "photos": photos}
+
+
+def scene_chips(labels: list[str]) -> list[str]:
+    """The gallery chips worth a visit for scenes, in page order, deduplicated, at most CHIP_MAX."""
+    out: list[str] = []
+    for label in labels:
+        label = (label or "").strip()
+        if label and label not in out and not _NOT_SCENE.search(label):
+            out.append(label)
+    return out[:CHIP_MAX]
 
 
 async def open_gallery(page: Page, label: str) -> bool:
@@ -131,6 +199,8 @@ async def scrape_photos(ctx: BrowserContext, place: dict, d, n: int, px: int, pe
     try:
         await open_page(page, place["url"], "h1.DUwDvf")
         out, stale, last_id, skipped, by_author, seen = [], [], None, collections.Counter(), collections.Counter(), set()
+        aged = [] if aged_place(place) else None
+        oldest_aged = f"{int(now()[:4]) - aged_rule()['max_age_years']}-{now()[5:7]}" if aged is not None else None
         tabs, complete = [], True
         (d / "photos").mkdir(exist_ok=True)
         for tab in TABS:
@@ -145,15 +215,48 @@ async def scrape_photos(ctx: BrowserContext, place: dict, d, n: int, px: int, pe
                 if t["url"] in seen:
                     continue
                 seen.add(t["url"])
-                last_id = await _one(page, img, place, d, t, px, per_author, last_id, out, skipped, by_author, oldest, stale)
+                last_id = await _one(page, img, place, d, t, px, per_author, last_id, out, skipped, by_author, oldest, stale, aged, oldest_aged)
+        if not tabs:  # no gallery: a signed-out page too (its "Đăng nhập" link renders a few seconds late, after open_page's check)
+            try:
+                await page.bring_to_front()  # a background tab does not run the page's late scripts that draw the link
+                await page.wait_for_selector(SIGN_IN_LINK, state="attached", timeout=10000)
+            except Exception:
+                pass  # no sign-in link: a signed-in place that simply has no gallery
+            else:
+                raise LoginRequired("gmaps")
+        chips = None
+        if CHIPS and tabs:
+            chips = []
+            labels = await page.evaluate("() => [...document.querySelectorAll('button[role=tab][aria-label]')].map(b => b.getAttribute('aria-label'))")
+            for label in scene_chips(labels):
+                if len(out) >= n + CHIP_PHOTOS:
+                    break
+                try:
+                    if not await open_gallery(page, label):
+                        continue
+                    tiles, _ = await list_tiles(page, CHIP_PHOTOS * SCAN_FACTOR)
+                    chips.append(label)
+                    for t in tiles:
+                        if len(out) >= n + CHIP_PHOTOS:
+                            break
+                        if t["url"] in seen:
+                            continue
+                        seen.add(t["url"])
+                        last_id = await _one(page, img, place, d, t, px, per_author, last_id, out, skipped, by_author, oldest, stale, aged, oldest_aged)
+                except (LoginRequired, CaptchaBlocked):
+                    raise
+                except Exception as e:  # a chip that does not open is skipped; the tabs already read stay
+                    skipped[f"chip_error:{type(e).__name__}"] += 1
         complete = complete or len(out) >= n
         if out:
             for ph in stale:  # fresh photos exist: the old ones are not needed
                 (d / ph["file"]).unlink(missing_ok=True)
         else:
             out = stale
+        out = out + (aged or [])
         return {"fetched_at": now(), "wanted": n, "tabs": tabs, "complete": complete, "photos": out,
-                "skipped": dict(skipped), "stale_fallback": True}
+                "skipped": dict(skipped), "stale_fallback": True,
+                **({"aged_years": aged_rule()["max_age_years"]} if aged is not None else {}), **({"chips": chips} if chips is not None else {})}
     finally:
         await page.close()
         await img.close()
@@ -161,7 +264,7 @@ async def scrape_photos(ctx: BrowserContext, place: dict, d, n: int, px: int, pe
 
 async def _one(page: Page, img: Page, place: dict, d, t: dict, px: int, per_author: int, last_id: str | None,
                out: list, skipped: collections.Counter, by_author: collections.Counter, oldest: str,
-               stale: list) -> str | None:
+               stale: list, aged: list | None = None, oldest_aged: str | None = None) -> str | None:
     """Open one tile, keep its photo; returns the viewer's photo id for the next wait."""
     await page.locator(f'{TILE}[data-photo-index="{t["index"]}"]').first.click()
     meta = await viewer_moved(page, last_id)
@@ -172,10 +275,13 @@ async def _one(page: Page, img: Page, place: dict, d, t: dict, px: int, per_auth
         return meta["id"]
     when = month(meta["taken"]) or month(meta["posted"])
     is_old = bool(when and when < oldest)
-    if is_old:
+    keep_aged = bool(is_old and aged is not None and when >= oldest_aged and len(aged) < AGED_KEEP)
+    if is_old and not keep_aged:
         skipped["too_old"] += 1
         if len(stale) >= STALE_KEEP or out:
             return meta["id"]
+    elif keep_aged:
+        skipped["aged_kept"] += 1
     who = author_hash(meta["contributor"]) if meta["contributor"] else None
     if who and by_author[who] >= per_author:
         skipped["same_author"] += 1
@@ -191,6 +297,10 @@ async def _one(page: Page, img: Page, place: dict, d, t: dict, px: int, per_auth
            "kind": "video" if t["video"] else "photo", "author_hash": who,
            "owner": bool(meta["name"]) and norm(meta["name"]) == norm(place.get("name")),
            "posted": meta["posted"], "taken": meta["taken"], "month": when}
+    if keep_aged:
+        aged.append(row | {"stale": True, "display_old": True})
+        by_author[who] += 1
+        return meta["id"]
     if is_old:
         stale.append(row | {"stale": True})
         return meta["id"]
@@ -206,11 +316,16 @@ def want(place: dict, c: dict) -> int:
     return max(n, c.get("photos_per_sight", n)) if category_group(place.get("category")) in sights else n
 
 
-def needs_fetch(f, wanted: int, default: int) -> bool:
-    """No photos.json yet, or one that stopped at a smaller cap than wanted now (a full gallery may hold more)."""
+def needs_fetch(f, wanted: int, default: int, chips: bool = False, aged: int | None = None) -> bool:
+    """No photos.json yet, or one that stopped at a smaller cap than wanted now (a full gallery may hold more); with
+    `chips`, also one whose category chips were not read yet."""
     if not f.exists():
         return True
     doc = json.loads(f.read_text(encoding="utf-8"))
+    if chips and "chips" not in doc:
+        return True
+    if aged and doc.get("aged_years") != aged:  # the aged-photo rule was not applied to this file yet
+        return True
     cap = doc.get("wanted", default)
     if not doc.get("photos") and not doc.get("stale_fallback") and (doc.get("skipped") or {}).keys() & {"too_old", "no_metadata"}:
         return True  # saved empty before the cover fallback existed (every photo old, or the viewer gave nothing): once more
@@ -222,6 +337,8 @@ async def _place(ctx, d, place: dict, n: int, px: int, root, c: dict, throttle: 
         async with throttle:
             try:
                 res = await scrape_photos(ctx, place, d, n, px)
+                if not res["tabs"] and (d / FILE).exists() and json.loads((d / FILE).read_text(encoding="utf-8")).get("photos"):
+                    raise RuntimeError("no gallery tab opened: kept the photos.json that has photos")
                 write_json(d / FILE, res)
                 throttle.success()
                 return
@@ -251,15 +368,18 @@ async def run(city: str, headed: bool = False, profile=open_profile, limit: int 
         doc = json.loads(open(targets, encoding="utf-8").read())
         for t in doc["places"]:
             f = root / "places" / t["dir"] / "place.json"
-            if f.exists() and needs_fetch(f.parent / FILE, doc["wanted"], n):
-                todo.append((f.parent, json.loads(f.read_text(encoding="utf-8"))))
+            if not f.exists():
+                continue
+            place = json.loads(f.read_text(encoding="utf-8"))
+            if needs_fetch(f.parent / FILE, doc["wanted"], n, CHIPS, aged_rule()["max_age_years"] if aged_place(place) else None):
+                todo.append((f.parent, place))
                 wanted_of[f.parent.name] = doc["wanted"]
     else:
       for f in sorted((root / "places").glob("*/place.json")):
         if keep is not None and f.parent.name not in keep:
             continue
         place = json.loads(f.read_text(encoding="utf-8"))
-        if needs_fetch(f.parent / FILE, want(place, c), n):
+        if needs_fetch(f.parent / FILE, want(place, c), n, False, aged_rule()["max_age_years"] if aged_place(place) else None):
             todo.append((f.parent, place))
     todo = todo[:limit] if limit is not None else todo
     if shard:  # one process per shard, each with its own browser (one Python process caps ~8 tabs)

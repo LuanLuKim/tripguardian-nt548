@@ -86,6 +86,8 @@ def parse(field: str, raw: str, catalog: Catalog) -> Any:
             return Base(text=raw)
         a = anchor_for(raw, catalog)
         return Base(place_id=a.place_id if a.state == "matched" else None, text=raw)
+    if field == "origin" and not raw.lstrip().startswith("{"):
+        return Base(text=raw.strip())
     if field in ("origin", "lodging"):  # a row picked from a search: {"text", "lat", "lng", "province"?, "kind"?, "id"?}
         v = json.loads(raw)
         return Base(place_id=v.get("id") if v.get("kind") in ("corpus", "live") else None, text=v["text"],

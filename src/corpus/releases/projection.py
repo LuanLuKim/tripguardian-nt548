@@ -66,7 +66,8 @@ def projection(release_id: str, city: str, records: list[dict], output_root: Pat
                        "desc": (v.get("desc") or "")[:220]} for v in mapping if (v.get("llm") or {}).get("relevance") == "yes"][:6] if isinstance(mapping, list) else []
         place = {"id": pid, "name": identity["name"], "category": identity.get("category"), "group": group,
                  "lat": identity.get("lat"), "lng": identity.get("lng"), "address": identity.get("address"),
-                 "mapsUrl": identity.get("url") or raw.get("url"), "rating": raw.get("score"), "reviewCount": raw.get("reviews"),
+                 "mapsUrl": identity.get("url") or raw.get("url"),
+                 "phone": identity.get("phone"), "website": identity.get("website"), "rating": raw.get("score"), "reviewCount": raw.get("reviews"),
                  "hoursText": raw.get("hours") or [], "googleStatus": raw.get("status"), "attributes": raw.get("attributes") or [],
                  "kind": "experience", "asOf": intel.get("as_of"), "voices": intel.get("voices"), "coverage": intel.get("coverage") or {},
                  "hours": op.get("hours"), "closure": op.get("closure"), "priceRange": op.get("price_range"),

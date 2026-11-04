@@ -1,6 +1,5 @@
 import pytest
 
-from agents import ToolError
 from decision import Data, Engine, Store, Tools, load_settings
 from fixtures import hard, si, srec
 
@@ -10,12 +9,12 @@ from fixtures import hard, si, srec
     ("steep_or_stairs", "present", {}),
     ("parking", "hard", {"parking": "hard"}),
 ])
-def test_user_selected_corpus_lodging_still_checks_trip_requirements(feature, value, features):
+def test_user_selected_corpus_lodging_preserves_explicit_choice(feature, value, features):
     record = srec("stay", group="stay", category="Khách sạn", features=features)
     engine = Engine(Data([record]), load_settings(), Store(None))
     view = engine.create(si(hard_filters=[hard(feature, value)]).model_dump(mode="json"))
-    with pytest.raises(ValueError, match="requirement"):
-        engine.act(view["id"], {"type": "set_lodging", "lodging": {"kind": "corpus", "id": "stay"}})
+    out = engine.act(view["id"], {"type": "set_lodging", "lodging": {"kind": "corpus", "id": "stay"}})
+    assert out["view"]["lodging"]["chosen"]["id"] == "stay"
 
 
 def test_eating_requirement_does_not_apply_to_accommodation_selection():
@@ -26,7 +25,7 @@ def test_eating_requirement_does_not_apply_to_accommodation_selection():
 
 
 @pytest.mark.parametrize("features", [{"steep_or_stairs": "present"}, {}])
-def test_rebased_requirements_block_lodging_handoff_without_losing_selection(features):
+def test_rebased_requirements_preserve_lodging_through_handoff(features):
     records = [srec("cafe", features={"steep_or_stairs": "absent"}),
                srec("stay", group="stay", category="Khách sạn", features=features)]
     engine = Engine(Data(records), load_settings(), Store(None))
@@ -36,21 +35,16 @@ def test_rebased_requirements_block_lodging_handoff_without_losing_selection(fea
     engine.act(sid, {"type": "set_lodging", "lodging": {"kind": "corpus", "id": "stay"}})
     tools.rebase(sid, {"search_input": si(hard_filters=[hard("steep_or_stairs", "present")]).model_dump(mode="json")})
 
-    assert tools.read(sid, "draft", {})["output"] is None
-    with pytest.raises(ToolError, match="lodging requirement") as error:
-        tools.apply(sid, "confirm", {}, lambda *_: None)
-    assert error.value.status == 409
-    assert engine.store.get(sid).output is None
+    assert tools.read(sid, "draft", {})["output"]["lodging"]["id"] == "stay"
+    out = tools.apply(sid, "confirm", {}, lambda *_: None)
+    assert out["lodging"]["id"] == "stay"
+    assert out["confirmed"][0]["id"] == "cafe"
+    assert engine.store.get(sid).output is not None
     assert engine.load(sid)["view"]["selected"] == ["cafe"]
     assert engine.load(sid)["view"]["lodging"]["chosen"]["id"] == "stay"
 
-    # The recovery read still supplies context to browse replacement lodging.
-    assert tools.read(sid, "draft", {"any": True})["output"]["lodging"]["id"] == "stay"
-    engine.act(sid, {"type": "clear_lodging"})
-    assert tools.apply(sid, "confirm", {}, lambda *_: None)["confirmed"][0]["id"] == "cafe"
 
-
-def test_booked_corpus_lodging_also_checks_current_requirements_at_handoff():
+def test_booked_corpus_lodging_is_preserved_at_handoff():
     records = [srec("cafe", features={"steep_or_stairs": "absent"}),
                srec("stay", group="stay", category="Khách sạn")]
     engine = Engine(Data(records), load_settings(), Store(None))
@@ -60,6 +54,6 @@ def test_booked_corpus_lodging_also_checks_current_requirements_at_handoff():
                       hard_filters=[hard("steep_or_stairs", "present")])
     sid = tools.create({"search_input": search_input.model_dump(mode="json")})["id"]
     engine.act(sid, {"type": "select", "place_id": "cafe"})
-    assert tools.read(sid, "draft", {})["output"] is None
-    with pytest.raises(ToolError, match="lodging requirement"):
-        tools.apply(sid, "confirm", {}, lambda *_: None)
+    assert tools.read(sid, "draft", {})["output"] is not None
+    out = tools.apply(sid, "confirm", {}, lambda *_: None)
+    assert out["trip_context"]["context"]["lodging"]["place_id"] == "stay"

@@ -21,6 +21,7 @@ from ..categories import defaults as category_defaults
 from ..ontology import Feature, Ontology
 from ..serving import dishes as menu
 from .card import DAYS, FIRM, card
+from .trace import read_span
 
 FIT = "fit."
 FIT_VALUES = ("good", "bad", "conditional")
@@ -157,7 +158,10 @@ class _Cache:
         self.best = np.zeros(n, dtype=np.uint16)
         self.avoid = np.zeros(n, dtype=np.uint16)
         self.dishes: list[tuple[str, ...]] = []  # dish statements as written (corpus.serving.dishes.rows_of)
-        self.dish_blob = {False: [], True: []}   # per place, folded (no accents) / accent-kept names, " | " apart
+        self.dish_blob: dict[tuple[int, bool], str] = {}
+        self._dish_keys: dict[tuple[str, bool], str] = {}
+        self._dish_lock = threading.Lock()
+
         for i, pid in enumerate(ids):
             rec = region.record(pid) or {}
             hours = (rec.get("operation") or {}).get("hours") or {}
@@ -180,10 +184,21 @@ class _Cache:
                         bits[i] |= 1 << m
             names = tuple(t for _, texts in menu.rows_of(rec) for t in texts)  # menu dishes, a dish-named eatery, orders
             self.dishes.append(names)
-            for accented, blobs in self.dish_blob.items():
-                blobs.append(" " + " | ".join(menu.key_for(x, accented) for x in names) + " ")
         self.seg = {d: tuple(np.array(x, dtype=dt) for x, dt in zip(cols, (np.int64, np.int32, np.int32)))
                     for d, cols in seg.items()}
+
+    def dish_text(self, index: int, accented: bool) -> str:
+        key = (index, accented)
+        with self._dish_lock:
+            if key not in self.dish_blob:
+                names = []
+                for text in self.dishes[index]:
+                    nk = (text, accented)
+                    if nk not in self._dish_keys:
+                        self._dish_keys[nk] = menu.key_for(text, accented)
+                    names.append(self._dish_keys[nk])
+                self.dish_blob[key] = " " + " | ".join(names) + " "
+            return self.dish_blob[key]
 
     def eq_mask(self, region, fid: str, value: str) -> np.ndarray:
         key = (fid, value)
@@ -246,10 +261,11 @@ def _candidates(region, c: _Cache, q: Criteria) -> np.ndarray:
         mask &= c.first_open <= _minutes(q.opens_by)
     if q.dish is not None:
         wanted, accented = menu.phrases(q.dish)
-        blobs = c.dish_blob[accented]
         keep = np.flatnonzero(mask)
         mask = np.zeros(c.n, dtype=bool)
-        mask[[i for i in keep if any(f" {w} " in blobs[i] for w in wanted)]] = True
+        for i in keep:
+            blob = c.dish_text(int(i), accented)
+            mask[i] = any(f" {w} " in blob for w in wanted)
     return mask
 
 
@@ -262,42 +278,46 @@ def find(region, criteria: Criteria, *, limit: int = 8, semantic: Callable | Non
          release_id: str | None = None) -> FindResult:
     """Places of `region` that pass `criteria`, best first. `semantic(text, within=ids, limit=k)` ranks the filtered set
     when `criteria.text` is given; it is never called for an empty set."""
-    c = _cache(region)
-    alive = _candidates(region, c, criteria)
-    uncertain = np.zeros(c.n, dtype=bool)
-    unmeasured = np.zeros(c.n, dtype=bool)
-    dead = np.zeros(c.n, dtype=bool)
-    for fid, value in criteria.must:
-        col, eq = region.feature(fid), c.eq_mask(region, fid, value)
-        unc_eq = col.uncertain & eq
-        dead |= col.exists & ~((col.firm & eq) | unc_eq)
-        unmeasured |= ~col.exists
-        uncertain |= unc_eq
-    alive &= ~dead
-    unknown = int((alive & unmeasured).sum())
-    alive &= ~unmeasured
-    score = c.voices_score.copy()
-    prefer_hit: list[tuple[str, np.ndarray]] = []
-    for fid, value in criteria.prefer:
-        col = region.feature(fid)
-        match = col.firm & c.eq_mask(region, fid, value)
-        score += np.where(match, np.where(col.conf > 0, col.conf, NO_CONF_BONUS), 0.0)
-        prefer_hit.append((f"{fid}={value}", match))
-    month_hit = None
-    if criteria.month is not None:
-        month_hit = (c.best >> criteria.month) & 1 == 1
-        score += MONTH_BONUS * month_hit - MONTH_BONUS * (((c.avoid >> criteria.month) & 1) == 1)
+    entry = _CACHES.get(id(region))
+    with read_span("warm", cache_hit=int(entry is not None and entry[0]() is region)):
+        c = _cache(region)
+    with read_span("filter"):
+        alive = _candidates(region, c, criteria)
+        uncertain = np.zeros(c.n, dtype=bool)
+        unmeasured = np.zeros(c.n, dtype=bool)
+        dead = np.zeros(c.n, dtype=bool)
+        for fid, value in criteria.must:
+            col, eq = region.feature(fid), c.eq_mask(region, fid, value)
+            unc_eq = col.uncertain & eq
+            dead |= col.exists & ~((col.firm & eq) | unc_eq)
+            unmeasured |= ~col.exists
+            uncertain |= unc_eq
+        alive &= ~dead
+        unknown = int((alive & unmeasured).sum())
+        alive &= ~unmeasured
+        score = c.voices_score.copy()
+        prefer_hit: list[tuple[str, np.ndarray]] = []
+        for fid, value in criteria.prefer:
+            col = region.feature(fid)
+            match = col.firm & c.eq_mask(region, fid, value)
+            score += np.where(match, np.where(col.conf > 0, col.conf, NO_CONF_BONUS), 0.0)
+            prefer_hit.append((f"{fid}={value}", match))
+        month_hit = None
+        if criteria.month is not None:
+            month_hit = (c.best >> criteria.month) & 1 == 1
+            score += MONTH_BONUS * month_hit - MONTH_BONUS * (((c.avoid >> criteria.month) & 1) == 1)
     text_hit: set[int] = set()
     scope = np.flatnonzero(alive)
-    if criteria.text and semantic is not None and len(scope):
-        best: dict[str, float] = {}
-        for h in semantic(criteria.text, within={region.ids[i] for i in scope}, limit=max(limit * 4, 32)):
-            best[h.place_id] = max(best.get(h.place_id, 0.0), h.score)
-        for pid, s in best.items():
-            i = region.index.get(pid)
-            if i is not None and alive[i]:
-                score[i] += s
-                text_hit.add(i)
+    with read_span("semantic", requested=int(bool(criteria.text))):
+        if criteria.text and semantic is not None and len(scope):
+            best: dict[str, float] = {}
+            for h in semantic(criteria.text, within={region.ids[i] for i in scope}, limit=max(limit * 4, 32)):
+                best[h.place_id] = max(best.get(h.place_id, 0.0), h.score)
+            for pid, s in best.items():
+                i = region.index.get(pid)
+                if i is not None and alive[i]:
+                    score[i] += s
+                    text_hit.add(i)
 
     def hits(idx: np.ndarray) -> tuple[FindHit, ...]:
         out = []
@@ -315,8 +335,9 @@ def find(region, criteria: Criteria, *, limit: int = 8, semantic: Callable | Non
             out.append(FindHit(pid, float(score[i]), tuple(matched), card(region.record(pid))))
         return tuple(out)
 
-    return FindResult(hits(np.flatnonzero(alive & ~uncertain)), hits(np.flatnonzero(alive & uncertain)), unknown,
-                      release_id)
+    with read_span("card"):
+        return FindResult(hits(np.flatnonzero(alive & ~uncertain)), hits(np.flatnonzero(alive & uncertain)), unknown,
+                          release_id)
 
 
 # ---------------------------------------------------------------------------

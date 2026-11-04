@@ -12,7 +12,7 @@ TOOL_ACCESS = {
     'decision': {'decision.candidates': 'read', 'decision.compare': 'read', 'decision.evidence': 'read',
                  'decision.turn': 'write', 'decision.act': 'write', 'decision.confirm': 'write'},
     'planning': {'planning.variants': 'read', 'planning.diagnostics': 'read',
-                 'planning.propose': 'read', 'planning.turn': 'write'},
+                 'planning.propose': 'read', 'planning.turn': 'write', 'planning.set_stop_time': 'write'},
 }
 
 

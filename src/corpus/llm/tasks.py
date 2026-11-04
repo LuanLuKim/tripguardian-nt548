@@ -150,10 +150,19 @@ class Task:
     def render(self, **fields) -> str:
         return self.prompt.format(**fields)
 
-    async def ask(self, client, model: str, images: list[bytes] = (), temperature: float | None = None, **fields) -> dict:
+    async def ask(self, client, model: str, images: list[bytes] = (), temperature: float | None = None,
+                  max_tokens: int | None = None, frequency_penalty: float | None = None,
+                  presence_penalty: float | None = None, attempts: int | None = None, **fields) -> dict:
         """images: JPEG bytes sent after the prompt, in order (the model reads images, docs/LLM_PROVIDER.md).
-        temperature overrides the task's for this call (a retry after a looping answer)."""
+        Sampling/token overrides are local to this call; attempts=1 bounds an item-isolation retry.
+        Penalties use standard OpenAI/vLLM request fields, not provider-specific extra_body options."""
         temp = self.temperature if temperature is None else temperature
+        tokens = self.max_tokens if max_tokens is None else max_tokens
+        limit = ATTEMPTS if attempts is None else attempts
+        if limit < 1 or tokens < 1:
+            raise ValueError("attempts and max_tokens must be positive")
+        sampling = {k: v for k, v in (("frequency_penalty", frequency_penalty),
+                                      ("presence_penalty", presence_penalty)) if v is not None}
         content = self.render(**fields)
         if not self.role.guided:
             content += ("\n\nAnswer with exactly one JSON object and nothing else. It must match this JSON schema:\n"
@@ -166,14 +175,14 @@ class Task:
         reasoning = ({"reasoning_effort": effort} if effort else {})
         cache = (self.role.cache_key(self.name) if effort else {})
         attempt = runaways = 0
-        while attempt < ATTEMPTS:
+        while attempt < limit:
             attempt += 1
             current = pick(model)  # model may be a pool "a,b,c": a model out of quota rests, the next one answers
             try:
                 if self.role.guided:
                     r = await client.chat.completions.create(
                         model=current, messages=[{"role": "user", "content": content}],
-                        temperature=temp, max_tokens=self.max_tokens, stream=True,
+                        temperature=temp, max_tokens=tokens, stream=True, **sampling,
                         response_format={"type": "json_schema", "json_schema": {
                             "name": self.name, "schema": self.schema, "strict": True}}, **reasoning,
                         **({"extra_body": {**(self.extra_body or {}), **cache}} if (self.extra_body or cache) else {}))
@@ -184,7 +193,7 @@ class Task:
                     text = ""
                     s = await client.chat.completions.create(
                         model=current, messages=[{"role": "user", "content": content}],
-                        temperature=temp, max_tokens=self.max_tokens, stream=True, **reasoning,
+                        temperature=temp, max_tokens=tokens, stream=True, **sampling, **reasoning,
                         **({"extra_body": cache} if cache else {}))
                     async for chunk in s:
                         if chunk.choices and chunk.choices[0].delta.content:
@@ -195,16 +204,16 @@ class Task:
                     answer["_model"] = current  # which model of the pool answered
                 return answer
             except BadBody:
-                if attempt == ATTEMPTS:
+                if attempt == limit:
                     raise
                 await asyncio.sleep(RETRY_S * 2 ** (attempt - 1))
             except Runaway:
                 runaways += 1
-                if runaways >= RUNAWAYS:
+                if runaways >= RUNAWAYS or attempt == limit:
                     raise
             except (json.JSONDecodeError, SchemaError):
                 # guided decoding now and then loops on whitespace until max_tokens cuts the JSON; a new call is fine
-                if attempt == ATTEMPTS:
+                if attempt == limit:
                     raise
             except (openai.RateLimitError, openai.APIConnectionError, openai.APITimeoutError,
                     openai.InternalServerError, openai.BadRequestError) as e:  # a passing 500 from the server
@@ -213,11 +222,11 @@ class Task:
                 rest = _quota_rest(e)
                 if rest is not None:  # this model's account is spent: rest it, the pool's next model goes on
                     _REST[current] = time.monotonic() + rest
-                    if "," in model:
+                    if "," in model and (attempts is None or attempt < limit):
                         attempt -= 1  # not this call's fault; pick() raises OutOfQuota when all rest
                         continue
                 # the key's 40 concurrent calls are shared with other runs; wait for a free slot
-                if attempt == ATTEMPTS:
+                if attempt == limit:
                     raise
                 await asyncio.sleep(RETRY_S * 2 ** (attempt - 1))
         raise OutOfQuota(model)  # the last attempts all hit spent accounts
@@ -1383,6 +1392,20 @@ Text:
 )
 
 
+# The same facts read from Google result snippets instead of a place's own site (corpus.observe.search): a snippet is a
+# short excerpt of someone else's page, often a list of many places, so the amount must stand next to this place's name.
+SEARCH_OBSERVE = replace(OFFICIAL_OBSERVE, name="search_observe", prompt=OFFICIAL_OBSERVE.prompt.replace(
+    """You read part of the official website of a place in {city}, Vietnam, and list what it states about
+visiting THIS place: entry ticket prices, other fees, opening hours and the last admission time. Only what the text
+says; never guess.""",
+    """You read Google search result snippets (address, title and an excerpt of a web page, blog or news article
+each) found for a place in {city}, Vietnam, and list what they state about visiting THIS place: entry ticket prices,
+other fees, opening hours and the last admission time. Only what the text says; never guess. An excerpt that lists
+several places: take an amount or time only when it is written next to the name of THIS place. A price quoted for a
+tour, a booking site's package or another place is not this place's entry ticket.""").replace(
+    "Page: {url}", "Source: {url}"))
+
+
 # Benchmark users (python -m bench, docs/plans/BENCH.md): a model plays one traveller whose trip it knows in full.
 USER_SIM_CODES = (
     "What the codes in the JSON mean: mobility motorbike = you ride your own motorbike, car = your own car; companions solo = alone, partner = your partner, friends, kids = young children, "
@@ -1626,6 +1649,85 @@ Text:
 {text}""",
 )
 
+# Local knowledge, second look (docs/CORPUS.md, Tri thức bản địa): a claim the gate and the grouping would keep is read
+# once more against each of its quotes in their page context; a quote that does not state it is dropped from its evidence.
+LOCAL_VERIFY_PROBLEMS = ["none", "subject_not_in_passage", "other_place_or_topic", "nickname_or_slogan",
+                         "different_thing", "number_mismatch", "not_stated", "too_vague"]
+LOCAL_VERIFY = Task(
+    name="local_verify",
+    role=EXTRACTOR,
+    max_tokens=400,
+    schema={
+        "type": "object",
+        # no free-text "reason": with it Gemma loops on whitespace in a third of the calls (probe 2026-10-30)
+        "properties": {"problem": {"type": "string", "enum": LOCAL_VERIFY_PROBLEMS}},
+        "required": ["problem"],
+        "additionalProperties": False,
+    },
+    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    prompt="""You check one claim about travel in {city}, Vietnam, against the web page passage it was taken from. The
+claim must be stated by the passage itself, about the named subject, in {city}. Be strict: a visitor will rely on it.
+
+Page: {title}
+Claim kind: {kind}
+Subject: {subject} ({subject_kind})
+Claim: {text}
+Months: {months}   Amount (VND): {amount}   Days: {days}   Hours: {hours}   Weather: {weather}
+
+Passage (the quote is between << and >>):
+{passage}
+
+Answer problem = none only when ALL of these hold:
+- the quote, read in its passage, states the claim, and the claim's months, amount, distance and days are what the passage
+  gives for THIS subject (not for a neighbouring item, another dish, a room price, another season);
+- the subject named is what the passage is talking about at the quote;
+- the passage is about {city} or its surroundings (not another city or region, not health, fashion or other topics);
+- the claim is practical (when, where, how much, how to get there, what to do or avoid, what a place is known for), not
+  only a nickname or slogan for the city or a place ("thành phố ngàn hoa", "lá phổi xanh", "thiên đường").
+Do not be pedantic: months one month off, a rounded amount, a range that contains the claim's value, or "nổi tiếng" /
+"đặc sản" stated by the passage are fine.
+Otherwise answer the first problem that applies:
+subject_not_in_passage (the passage is not about the subject at the quote), other_place_or_topic,
+nickname_or_slogan (only a nickname, slogan or empty praise), different_thing (the quote states another item, venue or
+topic than the claim), number_mismatch (the passage gives clearly different months, amount or distance for this subject),
+not_stated (the quote does not say it), too_vague (no visitor could act on it).""",
+)
+
+# Local knowledge, third look: the grouped claim (text, months, amount) against ALL its quotes at once. The row check
+# cannot see that two quotes are about different things; this one can.
+LOCAL_VERIFY_CLAIM_PROBLEMS = ["none", "different_things", "months_differ", "amount_or_distance_differ", "vague_or_hype",
+                               "subject_mismatch", "not_stated"]
+LOCAL_VERIFY_CLAIM = Task(
+    name="local_verify_claim",
+    role=EXTRACTOR,
+    max_tokens=400,
+    schema={
+        "type": "object",
+        "properties": {"problem": {"type": "string", "enum": LOCAL_VERIFY_CLAIM_PROBLEMS}},
+        "required": ["problem"],
+        "additionalProperties": False,
+    },
+    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    prompt="""A claim about travel in {city}, Vietnam was built from quotes of several web pages. Decide if one claim
+stands on ALL of its quotes. A visitor will rely on it, so be strict.
+
+Claim kind: {kind}
+Subject: {subject} ({subject_kind})
+Claim: {text}
+Months: {months}   Amount (VND): {amount}
+
+Quotes:
+{quotes}
+
+Answer problem = none only when EVERY quote states this same claim about this same subject, and the claim's months and
+amount are what the quotes give. Otherwise answer the first problem that applies:
+different_things (the quotes are about different items, venues, dishes, tours or situations),
+months_differ (the quotes give clearly different months or seasons), amount_or_distance_differ (the quotes give clearly
+different prices or distances), vague_or_hype (the claim is only praise, a slogan or a description a visitor cannot act
+on: "weather is ideal all year", "crispy pancake"), subject_mismatch (a quote is not about the subject), not_stated
+(a quote does not say it).""",
+)
+
 
 # Trip profile audit (docs/TRIP_UNDERSTANDING.md §17): the Judge reads a sample of active profile entries with their
 # evidence; any verdict but ok lowers the entry to weak and is logged for a person (trip.infrastructure.profile_audit).
@@ -1705,6 +1807,103 @@ Claim: this eatery serves the dish "{dish}", because the reviewer says: "{quote}
 - not_serves: the review says the dish is missing / sold out / bad enough to avoid, or it is about another place, or
   the word is not a dish (a drink brand, a room item, a person).
 - unsure: anything else, such as a wish, a comparison with other places, a friend's order, or a vague mention.
+Give a one-sentence reason.
+
+Review: {passage}""",
+)
+
+
+VISIT_OBSERVE = Task(
+    name="visit_observe",
+    role=EXTRACTOR,
+    max_tokens=2500,
+    schema={
+        "type": "object",
+        "properties": {"items": {"type": "array", "items": {"type": "object", "properties": {
+            "ref": {"type": "integer"},
+            "quote": {"type": "string"},
+            "kind": {"type": "string", "enum": ["own_stay", "advised_stay", "travel", "wait", "other_place",
+                                                "whole_trip", "part_of_visit", "capacity", "clock_or_date", "not_a_stay"]}},
+            "required": ["ref", "quote", "kind"], "additionalProperties": False}}},
+        "required": ["items"],
+        "additionalProperties": False,
+    },
+    # Review snippets that hold a duration (corpus.observe.gmaps.visit). The model only says what each duration is
+    # about; code reads the minutes from the quote (corpus.observe.visit_time) and keeps own_stay / advised_stay.
+    prompt="""You read snippets of Google Maps reviews of one place in {city}, Vietnam. Each snippet holds a number of
+minutes / hours or a phrase such as "nửa ngày". For a travel product that plans how long a visit lasts, decide what
+each duration is about, using only the snippet.
+
+Place: {name} ({category})
+
+For every duration that tells how long people stay AT THIS PLACE, or answers something else clearly, return one item:
+- ref: the snippet number.
+- quote: the shortest exact words of the snippet that hold that one duration and say what it is for (copy them; do
+  not translate, shorten words or fix spelling; one duration per quote; keep "khoảng", "tầm", "hơn" with the number).
+- kind:
+  own_stay: how long the reviewer (or their group) spent at this place for the whole visit: touring, walking around,
+    playing, sitting, eating, a treatment or session they had here ("đi hết khoảng 2 tiếng", "mình chơi ở đây 3 tiếng",
+    "ngồi 1 tiếng", "massage 90 phút", "dạo một vòng mất 30 phút").
+  advised_stay: how long the reviewer says visitors should or usually need here ("nên dành 2 tiếng", "tham quan
+    khoảng 1 tiếng là đủ", "đi hết cả ngày mới hết").
+  travel: getting to the place or between places ("cách trung tâm 20 phút đi xe", "leo lên mất 10 phút" to reach it).
+  wait: queueing, waiting for food / a table / a ride / check-in, or a delay ("đợi 40 phút mới có đồ ăn").
+  other_place: the duration is about a different place, a tour package or the whole area.
+  whole_trip: the length of the whole trip or the day's itinerary across several places ("đi Đà Lạt 3 ngày", "cả ngày
+    đi mấy điểm"), or the stay at a hotel.
+  part_of_visit: one step or part of the visit, not the visit ("20 phút làm nguội", "15p nghe lý thuyết", "chụp ảnh
+    5 phút", "xem show 30 phút" inside a longer visit).
+  capacity: what people COULD do or enjoy, not how long the visit takes ("có thể chơi cả ngày không chán", "ngồi cả
+    ngày cũng được", "hoàn hảo để thư giãn cả ngày", "ở cả ngày vẫn chưa hết", "mang đồ ăn vào chơi cả ngày").
+  clock_or_date: a clock time, opening hours, an age or a date ("8h sáng", "mở đến 21h", "từ 6h").
+  not_a_stay: anything else (something that happened to the reviewer, such as staff searching for a lost item for 3
+    hours; a treatment length quoted as a price list item the reviewer did not take; a duration of a product, a ride,
+    a climb up to a viewpoint or a single activity inside a longer visit; a guess about others).
+  Use own_stay / advised_stay only when the words give the length of the whole visit, or of the stay in the place.
+- A duration with no number or no unit ("rất lâu", "vài tiếng", "ở đây hoài") is not returned at all.
+- A snippet may give several items, or none. Return only items you are sure of; leave out anything unclear.
+Answer {{"items": []}} when no snippet qualifies.
+
+Examples:
+"Đi dạo một vòng quanh vườn hết khoảng 2 tiếng, nhiều chỗ chụp ảnh" -> own_stay "hết khoảng 2 tiếng".
+"Từ trung tâm chạy xe tầm 40 phút là tới, vào trong đi hết 1 tiếng" -> travel "tầm 40 phút"; own_stay "đi hết 1 tiếng".
+"Đợi 30 phút mới có chỗ ngồi" -> wait "Đợi 30 phút".
+"Quán mở từ 7h đến 22h" -> clock_or_date "7h đến 22h".
+"Nên dành nửa ngày để tham quan hết các khu" -> advised_stay "dành nửa ngày".
+"Đi Đà Lạt 3 ngày 2 đêm, ghé đây chiều" -> whole_trip "3 ngày 2 đêm".
+Snippets:
+{snippets}""",
+)
+
+
+VISIT_VERIFY = Task(
+    name="visit_verify",
+    role=EXTRACTOR,
+    max_tokens=300,
+    schema={
+        "type": "object",
+        "properties": {"verdict": {"type": "string", "enum": ["supports", "contradicts", "insufficient"]},
+                       "reason": {"type": "string"}},
+        "required": ["verdict", "reason"],
+        "additionalProperties": False,
+    },
+    # Second read of one duration the first read kept (corpus.observe.gmaps.visit_observe): one review, one claim.
+    prompt="""You check one claim about how long a visit to a place takes against one Google Maps review of it. Decide
+from the review only.
+
+Place: {name} ({category})
+Claim: a visit to this place takes about "{quote}" (the time the reviewer spent here, or the time they say visitors
+need here).
+
+- supports: the review says the reviewer spent that time at this place, or that visitors should spend / need / are done
+  in that time, for the visit as a whole ("đi hết 2 tiếng", "nên dành nửa ngày", "tham quan khoảng 1 tiếng là đủ",
+  "chơi cả ngày ở đây", "ăn dâu 30 phút" when that was the visit).
+- contradicts: the review gives a different time for the visit.
+- insufficient: anything else, such as a duration of travelling to the place or of queueing / waiting; of one ride,
+  step, lesson, climb or show inside a longer visit; of something that happened to the reviewer (staff helping, a delay);
+  of a different place, a tour or the whole trip; a clock time or opening hours; or what people COULD do without saying
+  how long the visit takes ("có thể chơi cả ngày không chán", "ngồi cả ngày cũng được", "hoàn hảo để thư giãn cả ngày",
+  "ở đây cả ngày vẫn chưa hết"); a guess or a wish.
 Give a one-sentence reason.
 
 Review: {passage}""",

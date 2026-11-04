@@ -10,8 +10,8 @@ from .settings import Settings
 from .settings import load as load_settings
 from .tools import Tools, create_engine
 from .contracts import DecisionOutput, EvidenceInput, PlaceEvidence
-from .rank import preference_fit
+from .rank import pet_access_priority, preference_fit
 from .screen import hard_check
 
 __all__ = ["Data", "DecisionOutput", "EvidenceInput", "PlaceEvidence", "Engine", "Settings", "Store", "Tools", "create_engine", "eval_search_input",
-           "eval_trips", "hard_check", "load_settings", "preference_fit", "run_pipeline"]
+           "eval_trips", "hard_check", "load_settings", "pet_access_priority", "preference_fit", "run_pipeline"]

@@ -1,0 +1,1139 @@
+# Production journey cases (scripts/prod_journey_e2e.py, schema src/bench/prod_cases.py).
+# One case = one traveller: the hidden truth, how they talk, which places they pick, how they edit the plan,
+# and what "satisfied" means. Dates are in the future of the 2026-11-03 baseline run.
+# Group ids follow config/decision.yaml tabs: meal snack cafe nature garden camping sights culture fun night spa market.
+cases:
+
+  - id: solo_f_cafe_photo
+    title: "Nữ đi một mình, lần đầu, cà phê và chụp ảnh, đi xe khách và Grab"
+    axes: [solo_female, first_time, coach_from_hcm, taxi, photo, cafe, two_days]
+    persona: "Nữ 26 tuổi, nhẹ nhàng, viết có dấu, câu ngắn, hay dùng 'nha', 'ạ'."
+    truth: {days: 2, start: 2026-11-14, people: 1, companions: [solo], mobility: walk, arrive: bus, origin: TP.HCM,
+            start_hour: "09:00", pace: slow, budget_vnd: 700000, wants: [cà phê view đẹp, chụp ảnh check-in], notes: "đi taxi Grab, không thuê xe"}
+    chat:
+      - {text: "Mình là nữ đi Đà Lạt một mình 2 ngày 14-15/11, đi xe khách từ TP.HCM lên, ở đó đi Grab thôi. Mình thích cà phê view đẹp với chụp ảnh check-in nha, sáng 9h mình bắt đầu đi.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [cafe, nature, sights, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: một mình, people: một mình, start_hour: sáng 9h mình bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Lịch đúng 2 ngày 14-15/11 cho một người"
+        - "Có ít nhất 2 quán cà phê hoặc điểm chụp ảnh trong lịch"
+        - "Có nói rõ cách tới/về bằng xe khách từ TP.HCM hoặc nói chưa có dữ liệu xe"
+        - "Di chuyển trong thành phố không giả định xe máy tự lái"
+        - "Ngày 1 bắt đầu khoảng 9h"
+
+  - id: solo_m_trek_cloud_nodiac
+    title: "Nam một mình, sinh viên, xe máy từ TP.HCM, săn mây và trekking, gõ không dấu"
+    axes: [solo_male, student_budget, motorbike_self_drive, no_diacritics, trek, cloud_hunt, three_days]
+    persona: "Nam 21 tuổi sinh viên, gõ không dấu, viết tắt, ngắn gọn, hay dùng 'dc', 'k'."
+    truth: {days: 3, start: 2026-11-20, people: 1, companions: [solo], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "07:00", pace: packed, budget_vnd: 250000, wants: [san may, trekking, dau bep an re], notes: "sinh vien ngan sach rat it"}
+    chat:
+      - {text: "minh di 1 minh 3 ngay 20-22/11 tu sai gon len bang xe may. sinh vien nen ngan sach rat it, tam 250k 1 ngay. thich san may voi trekking, 7h sang xuat phat", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, groups: [camping, nature, meal, market]}
+    edits:
+      - {op: set_day_window, day: 2, start: "05:00", end: "17:00", verify: day_window}
+    expect:
+      chat_evidence: {companions: 1 minh, people: 1 minh, start_hour: 7h sang xuat phat}
+      stated: [trip, companions, mobility, budget]
+      start_hour: "07:00"
+      criteria:
+        - "Lịch 3 ngày 20-22/11 cho một người đi xe máy"
+        - "Có săn mây hoặc trekking vào buổi sáng sớm đúng ý"
+        - "Quán ăn là chỗ rẻ hợp sinh viên, không phải nhà hàng cao cấp"
+        - "Ngày dậy sớm săn mây không kéo dài quá 12 tiếng"
+        - "Không có chữ thô hoặc mã trong lịch"
+
+  - id: couple_honeymoon_luxury
+    title: "Cặp trăng mật, ô tô có tài xế, cao cấp, spa nghỉ dưỡng, tới tối"
+    axes: [honeymoon, luxury, car_with_driver, spa, late_start, three_days]
+    persona: "Cặp mới cưới, nói lịch sự, câu dài vừa, hay hỏi 'có chỗ riêng tư không'."
+    truth: {days: 3, start: 2026-12-05, people: 2, companions: [partner], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "13:00", end_hour: "14:00", pace: slow, budget_vnd: 3000000, wants: [spa nghỉ dưỡng, bữa tối lãng mạn, chụp ảnh cưới], notes: "ô tô có tài xế riêng"}
+    chat:
+      - {text: "Vợ chồng mình đi trăng mật Đà Lạt 3 ngày từ 5/12, có xe ô tô riêng kèm tài xế, tối đa thoải mái, ngân sách cao cấp khoảng 3 triệu một người một ngày. Mình muốn spa nghỉ dưỡng và bữa tối lãng mạn, ngày đầu 1 giờ chiều mới bắt đầu.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, groups: [spa, meal, cafe, nature]}
+    edits:
+      - {op: add_backup, verify: present}
+    expect:
+      chat_evidence: {companions: Vợ chồng, pace: spa nghỉ dưỡng, people: Vợ chồng, start_hour: ngày đầu 1 giờ chiều}
+      stated: [trip, companions, mobility, pace, budget]
+      start_hour: "13:00"
+      criteria:
+        - "Lịch 3 ngày từ 5/12 cho hai người, nhịp thong thả"
+        - "Có ít nhất một spa hoặc nơi nghỉ dưỡng và một bữa tối đáng nhớ"
+        - "Quán ăn và nơi chơi phù hợp mức chi cao cấp, không toàn chỗ bình dân"
+        - "Ngày đầu bắt đầu khoảng 13h"
+        - "Mỗi ngày không quá 4 nơi"
+
+  - id: couple_weekend_streetfood_crowd
+    title: "Cặp đôi cuối tuần đông, 1 đêm, ẩm thực đường phố, nói tránh đông nhưng đi đúng cuối tuần"
+    axes: [couple, one_night, weekend_crowd, street_food, market, contradiction, motorbike]
+    persona: "Cặp bạn trẻ, vui, thêm 'á', 'nha', câu ngắn."
+    truth: {days: 2, start: 2026-11-21, people: 2, companions: [partner], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "10:00", pace: normal, budget_vnd: 500000, wants: [bánh tráng nướng, nem nướng, chợ đêm, tránh chỗ quá đông], dishes: [bánh tráng nướng, nem nướng]}
+    chat:
+      - {text: "Tụi mình 2 người đi 21-22/11 qua đêm, chạy xe máy từ Sài Gòn, thích ăn vặt đường phố với đi chợ đêm, bánh tráng nướng với nem nướng á.", kind: opening}
+      - {text: "Mà tụi mình hơi ngại chỗ đông quá, cuối tuần chắc đông lắm hen", kind: contradiction}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [market, meal, snack, cafe]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {people: 2 người}
+      start_hour: "10:00"
+      stated: [companions, mobility]
+      criteria:
+        - "Lịch 2 ngày 21-22/11 cho hai người đi xe máy"
+        - "Có bánh tráng nướng hoặc nem nướng từ quán có thật trong lịch"
+        - "Có chợ hoặc chợ đêm vào buổi tối"
+        - "Có nhắc cuối tuần đông và gợi ý giờ giảm đông hoặc có thêm thời gian chờ"
+        - "Giá hợp ngân sách vừa phải"
+
+  - id: friends6_bbq_party_teen
+    title: "Nhóm 6 bạn, ô tô, quán nướng và cà phê, gõ teencode câu dài"
+    axes: [friends_group, car, long_message, teencode, bbq, weekend]
+    persona: "Nhóm bạn 22 tuổi, nói teencode, 'ae', 'oke', 'dc', 'k', câu dài nhiều ý trong một tin."
+    truth: {days: 2, start: 2026-11-14, people: 6, companions: [friends], mobility: car, arrive: self, origin: TP.HCM,
+            pace: normal, budget_vnd: 600000, wants: [quán nướng, cafe chill, chụp hình]}
+    chat:
+      - {text: "ae oi 6 dua tui minh di dalat 14-15/11, di o to 7 cho tu sg len, muon an nuong an lau voi cafe chill chup hinh, k thich leo doc nhieu, ngan sach tam 600k/nguoi/ngay nha", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, groups: [meal, cafe, fun, nature]}
+    edits:
+      - {op: move_first, day: 2}
+    expect:
+      chat_evidence: {companions: 6 dua tui minh, people: 6 dua}
+      stated: [companions, mobility, budget]
+      criteria:
+        - "Lịch 2 ngày 14-15/11 cho nhóm 6 người đi ô tô"
+        - "Có ít nhất một quán nướng hoặc lẩu cho nhóm đông"
+        - "Có quán cà phê chụp hình"
+        - "Không có nơi phải leo dốc nhiều"
+        - "Số người 6 được ghi đúng, không bị 2"
+
+  - id: friends8_camping_cloud
+    title: "Nhóm 8 người, cắm trại săn mây, dậy sớm có chủ đích, ô tô 16 chỗ"
+    axes: [friends_group, camping, cloud_hunt, early_start, minibus, one_night]
+    persona: "Trưởng nhóm 30 tuổi, hướng dẫn rõ ràng, viết có dấu, hơi dài, có số liệu."
+    truth: {days: 2, start: 2026-11-27, people: 8, companions: [friends], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "14:00", pace: normal, wants: [cắm trại, săn mây, nướng ngoài trời], notes: "xe 16 chỗ, uống bia được"}
+    chat:
+      - {text: "Nhóm mình 8 người đi Đà Lạt 27-28/11, thuê xe 16 chỗ từ TP.HCM. Muốn cắm trại một đêm, sáng hôm sau săn mây. Chiều thứ sáu 2 giờ bọn mình tới nơi.", kind: opening}
+    sim_replies: 2
+    pick: {mode: few, n: 3, groups: [camping, nature, meal]}
+    edits: []
+    expect:
+      chat_evidence: {people: 8 người}
+      stated: [trip, companions, mobility]
+      start_hour: "14:00"
+      criteria:
+        - "Lịch 2 ngày 27-28/11 cho 8 người"
+        - "Có điểm cắm trại hoặc săn mây, săn mây vào sáng sớm ngày 2 là có chủ đích"
+        - "Nơi chọn hợp nhóm 8 người, xe 16 chỗ vào được hoặc có nói chưa rõ"
+        - "Ngày 1 bắt đầu khoảng 14h"
+        - "Không lấp lịch bằng điểm xa vô lý khi chỉ chọn 3 nơi"
+
+  - id: family_toddler_nobar_nostairs
+    title: "Gia đình có bé 2 tuổi, tránh dốc bậc thang cho xe đẩy, không bar, ô tô riêng"
+    axes: [family_toddler, stroller, no_stairs, no_bar, car_private, three_days]
+    persona: "Mẹ trẻ 30 tuổi, cẩn thận, viết có dấu, hỏi nhiều về an toàn cho bé."
+    truth: {days: 3, start: 2026-11-20, people: 3, companions: [kids, baby], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: slow, budget_vnd: 900000, care: [steps], max_per_day: 3, wants: [chỗ cho bé chơi, đi chậm, nghỉ trưa cho bé], notes: "bé 2 tuổi, xe đẩy"}
+    chat:
+      - {text: "Nhà mình 3 người gồm vợ chồng và bé 2 tuổi, đi Đà Lạt 3 ngày 20-22/11 bằng ô tô nhà. Bé còn đi xe đẩy nên tránh chỗ nhiều bậc thang và dốc, tuyệt đối không đến quán bar. Mỗi ngày đi nhẹ nhàng thôi, trưa cho bé ngủ.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [fun, nature, garden, meal, cafe], avoid_groups: [night]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: vợ chồng và bé 2 tuổi, pace: đi nhẹ nhàng, people: 3 người}
+      start_hour: "09:00"
+      stated: [companions, mobility, pace, care]
+      hard: [no_bar, no_stairs]
+      criteria:
+        - "Không có bar hoặc quán rượu trong lịch"
+        - "Không có nơi nhiều bậc thang hoặc dốc đã được xác nhận trong lịch"
+        - "Mỗi ngày không quá 3 nơi, có nghỉ trưa"
+        - "Lịch 3 ngày 20-22/11 cho 3 người"
+        - "Có ít nhất một nơi thân thiện với trẻ nhỏ"
+
+  - id: family_kid8_selfdrive
+    title: "Gia đình 4 người bé 8 tuổi, tự lái ô tô từ TP.HCM, vườn và thú"
+    axes: [family_kid_6_10, car_self_drive, garden, animals, two_days, weekend]
+    persona: "Bố 38 tuổi, nói gọn, thực tế, viết có dấu."
+    truth: {days: 2, start: 2026-11-21, people: 4, companions: [kids], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "10:00", pace: normal, budget_vnd: 800000, wants: [vườn dâu, trang trại thú, chỗ chơi cho bé 8 tuổi]}
+    chat:
+      - {text: "Nhà mình 4 người, 2 vợ chồng với 2 bé 8 và 10 tuổi, tự lái ô tô từ TP.HCM lên, đi 21-22/11. Các bé thích động vật với vườn dâu. 10h sáng thứ bảy tới.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [fun, garden, nature, meal]}
+    edits:
+      - {op: add_backup, verify: present}
+    expect:
+      chat_evidence: {companions: 2 vợ chồng với 2 bé, people: 4 người, start_hour: 10h sáng thứ bảy tới}
+      stated: [companions, mobility, trip]
+      start_hour: "10:00"
+      criteria:
+        - "Lịch 2 ngày 21-22/11 cho 4 người đi ô tô"
+        - "Có ít nhất 2 nơi hợp trẻ 8-10 tuổi như vườn, thú, khu vui chơi"
+        - "Có bãi đỗ ô tô hoặc không bị nơi chỉ đi xe máy"
+        - "Ngày 1 bắt đầu khoảng 10h"
+        - "Bữa ăn ở quán hợp gia đình"
+
+  - id: elderly_slow_family
+    title: "Gia đình có ông bà 70 tuổi đi chậm, ô tô tài xế, tránh bậc thang, ăn tối sớm"
+    axes: [elderly, slow_walker, no_stairs, driver, early_dinner, three_days]
+    persona: "Con gái 35 tuổi lo cho bố mẹ, viết có dấu, rõ ràng."
+    truth: {days: 3, start: 2026-12-05, people: 5, companions: [parents, kids], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:30", pace: slow, budget_vnd: 700000, care: [steps], max_per_day: 3, wants: [chỗ dễ đi, ghế ngồi nghỉ, ăn tối sớm trước 18h], notes: "ông bà 70 tuổi đi chậm, bé 6 tuổi"}
+    chat:
+      - {text: "Nhà mình 5 người gồm ông bà 70 tuổi đi chậm, vợ chồng mình và bé 6 tuổi, đi 5-7/12 bằng xe ô tô có tài xế. Chọn chỗ ít bậc thang ít dốc nhé, ông bà ăn tối sớm trước 6 giờ chiều. Sáng 9 rưỡi mới bắt đầu.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [nature, garden, sights, meal, cafe]}
+    edits:
+      - {op: set_pace, level: slow, verify: none}
+    expect:
+      chat_evidence: {companions: 'ông bà 70 tuổi đi chậm, vợ chồng mình và bé 6 tuổi', pace: đi chậm, people: 5 người, start_hour: Sáng 9 rưỡi}
+      stated: [companions, mobility, pace, care, trip]
+      hard: [no_stairs]
+      start_hour: "09:30"
+      criteria:
+        - "Lịch 3 ngày 5-7/12 cho 5 người, có người già đi chậm"
+        - "Không có nơi nhiều bậc thang hoặc đường dài đã xác nhận"
+        - "Bữa tối bắt đầu sớm, khoảng trước 18h"
+        - "Mỗi ngày không quá 3 nơi và có nghỉ trưa"
+        - "Ngày 1 bắt đầu khoảng 9h30"
+
+  - id: wheelchair_mother
+    title: "Mẹ ngồi xe lăn đi cùng con, hai người, xe có tài xế, 2 ngày"
+    axes: [wheelchair, mobility_limit, car_driver, two_people, hard_constraint, two_days]
+    persona: "Con trai 33 tuổi, trực tiếp, hỏi rõ về lối đi xe lăn, viết có dấu."
+    truth: {days: 2, start: 2026-11-14, people: 2, companions: [parents], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "10:00", pace: slow, budget_vnd: 800000, care: [wheelchair], max_per_day: 3, wants: [chỗ xe lăn vào được, ít đi bộ], notes: "mẹ ngồi xe lăn"}
+    chat:
+      - {text: "Mình đi cùng mẹ, mẹ ngồi xe lăn, hai mẹ con đi Đà Lạt 14-15/11 bằng ô tô có tài xế. Cần chỗ xe lăn vào được, không có bậc thang, đi bộ ít. 10h sáng bắt đầu.", kind: opening}
+    sim_replies: 2
+    pick: {mode: few, n: 3, groups: [nature, sights, meal, cafe]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: đi cùng mẹ, people: hai mẹ con, start_hour: 10h sáng bắt đầu}
+      stated: [companions, mobility, care, trip]
+      hard: [wheelchair, no_stairs]
+      start_hour: "10:00"
+      criteria:
+        - "Không có nơi đã xác nhận xe lăn không vào được hoặc có nhiều bậc thang"
+        - "Nơi chưa có bằng chứng về xe lăn được nói là chưa rõ, không khẳng định đi được"
+        - "Lịch 2 ngày 14-15/11 cho 2 người, nhịp chậm"
+        - "Ngày 1 bắt đầu khoảng 10h"
+        - "Không bịa thông tin lối xe lăn"
+
+  - id: biz_trip_halfday
+    title: "Đi công tác, chỉ rảnh nửa ngày, đi một mình bằng Grab, cà phê và một điểm gần"
+    axes: [business, half_day, one_day, solo, taxi, short_window]
+    persona: "Nam 40 tuổi bận, cực ngắn gọn, có dấu."
+    truth: {days: 1, start: 2026-11-18, people: 1, companions: [solo], mobility: walk, arrive: plane, origin: Hà Nội,
+            start_hour: "14:00", end_hour: "19:00", pace: slow, budget_vnd: 1000000, wants: [cà phê yên tĩnh, một điểm gần trung tâm], notes: "đi Grab, chỉ rảnh từ 14h đến 19h"}
+    chat:
+      - {text: "Đi công tác Đà Lạt, bay từ Hà Nội, 18/11 chỉ rảnh từ 2h chiều đến 7h tối. Cà phê yên tĩnh với 1 điểm gần trung tâm thôi, đi Grab.", kind: opening}
+    sim_replies: 1
+    pick: {mode: few, n: 2, groups: [cafe, sights]}
+    edits:
+      - {op: set_day_window, day: 1, start: "14:00", end: "19:00", verify: day_window}
+    expect:
+      chat_evidence: {end_hour: 7h tối, start_hour: 2h chiều}
+      stated: [trip, companions, mobility]
+      start_hour: "14:00"
+      criteria:
+        - "Lịch chỉ 1 ngày 18/11, từ khoảng 14h đến 19h"
+        - "Có 1 quán cà phê yên tĩnh và 1 điểm gần trung tâm"
+        - "Không có nơi quá xa để kịp trong 5 tiếng"
+        - "Không gán nhầm là chuyến nhiều ngày"
+        - "Không đòi thêm nơi ở khi đi trong ngày"
+
+  - id: pets_dog_two_days
+    title: "Đi với chó, 2 người, ô tô, cà phê cho phép thú cưng"
+    axes: [pet, couple, car, two_days, hard_constraint]
+    persona: "Cặp 28 tuổi yêu chó, nói thân mật, có dấu."
+    truth: {days: 2, start: 2026-11-21, people: 2, companions: [partner, pet], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 700000, wants: [quán cà phê cho chó vào, đi dạo thiên nhiên], notes: "mang theo 1 chú chó"}
+    chat:
+      - {text: "Mình đi với bạn trai và bé cún nhà mình, 21-22/11, ô tô từ Sài Gòn. Muốn quán cà phê cho chó vào và chỗ đi dạo thoải mái với cún nha.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 4, groups: [cafe, nature, garden]}
+    edits:
+      - {op: add_backup, verify: present}
+    expect:
+      chat_evidence: {companions: bạn trai và bé cún, people: Mình đi với bạn trai}
+      start_hour: "09:00"
+      stated: [companions, mobility]
+      hard: [pets]
+      criteria:
+        - "Không có nơi đã xác nhận cấm thú cưng trong lịch"
+        - "Nơi chưa rõ chính sách thú cưng được nói chưa rõ, không khẳng định cho chó vào"
+        - "Lịch 2 ngày 21-22/11 cho 2 người và 1 chú chó"
+        - "Có chỗ cà phê hoặc đi dạo hợp với chó"
+        - "Không bịa quán cho chó vào"
+
+  - id: veg_whole_trip_friends
+    title: "Nhóm 3 bạn ăn chay cả chuyến, xe máy, 3 ngày, ràng buộc cứng"
+    axes: [vegetarian_whole_trip, friends, motorbike, hard_constraint, three_days]
+    persona: "Bạn 25 tuổi ăn chay trường, nói rõ ràng, có dấu."
+    truth: {days: 3, start: 2026-11-20, people: 3, companions: [friends], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "08:00", pace: normal, budget_vnd: 400000, care: [vegetarian], wants: [quán chay, cà phê, ngắm cảnh], real_places: [Tiệm chay Nấm Lá Hoa], notes: "cả nhóm ăn chay trường cả chuyến"}
+    chat:
+      - {text: "Nhóm mình 3 người ăn chay trường cả chuyến, đi Đà Lạt 3 ngày 20-22/11 bằng xe máy. Bữa nào cũng phải là quán chay nhé. Có quán Tiệm chay Nấm Lá Hoa không bạn?", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, include: [Tiệm chay Nấm Lá Hoa], groups: [meal, cafe, nature]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {people: 3 người}
+      start_hour: "08:00"
+      stated: [companions, mobility, care]
+      hard: [vegetarian]
+      criteria:
+        - "Mọi quán ăn trong lịch là quán chay hoặc có món chay đã xác nhận"
+        - "Tiệm chay Nấm Lá Hoa có trong thẻ và trong lịch"
+        - "Không có quán thịt/nướng/lẩu trong lịch"
+        - "Lịch 3 ngày 20-22/11 cho 3 người đi xe máy"
+        - "Bữa ăn không bị bỏ trống khi không có quán chay phù hợp, nói rõ nếu thiếu"
+
+  - id: veg_one_day_family
+    title: "Mẹ ăn chay riêng ngày 22/11, nhà 4 người, ô tô tài xế"
+    axes: [vegetarian_one_day, family, car_driver, three_days, partial_constraint]
+    persona: "Chị 40 tuổi, kể chuyện dài dòng một chút, có dấu."
+    truth: {days: 3, start: 2026-11-20, people: 4, companions: [kids, parents], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: slow, budget_vnd: 900000, care: [vegetarian], wants: [ngày 22/11 mẹ ăn chay, đi chậm], real_places: [Ẩm thực chay Hoàng Nhi], notes: "mẹ chỉ ăn chay vào ngày 22/11 (rằm), các ngày khác ăn bình thường"}
+    chat:
+      - {text: "Nhà chị 4 người gồm chị, chồng, bé 6 tuổi và mẹ chồng 65 tuổi, đi Đà Lạt 20-22/11 ô tô thuê tài xế. Mẹ đi chậm và ngày 22/11 là ngày rằm nên mẹ ăn chay cả ngày hôm đó, hai ngày kia ăn bình thường nha.", kind: opening}
+      - {text: "Em ơi có quán chay Hoàng Nhi không, mẹ nghe nói quán này.", kind: place_real}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, include: [Ẩm thực chay Hoàng Nhi], groups: [meal, cafe, nature, garden]}
+    edits:
+      - {op: set_day_window, day: 3, start: "09:00", end: "16:00", verify: day_window}
+    expect:
+      chat_evidence: {companions: bé 6 tuổi và mẹ chồng, people: 4 người}
+      start_hour: "09:00"
+      stated: [companions, mobility, care, trip]
+      criteria:
+        - "Ngày 22/11 các bữa ăn là quán chay hoặc có món chay đã xác nhận"
+        - "Hai ngày kia không bị ép toàn quán chay nếu người dùng không yêu cầu"
+        - "Lịch 3 ngày 20-22/11 cho 4 người"
+        - "Nhịp chậm vì có người già và bé nhỏ"
+        - "Gợi ý nơi không phù hợp bé 6 tuổi hoặc người 65 tuổi bị tránh"
+
+  - id: allergy_peanut_no_alcohol
+    title: "Dị ứng đậu phộng, kiêng rượu, cặp đôi 2N1Đ"
+    axes: [allergy, no_alcohol, couple, one_night, hard_constraint, honesty_unknown]
+    persona: "Cặp 29 tuổi, người nam dị ứng, viết có dấu, hỏi nghiêm túc về dị ứng."
+    truth: {days: 2, start: 2026-11-14, people: 2, companions: [partner], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 600000, wants: [quán ăn an toàn đậu phộng, không rượu bia], notes: "anh ấy dị ứng đậu phộng nặng và cả hai kiêng rượu bia"}
+    chat:
+      - {text: "Mình đi với chồng, 14-15/11 ô tô nhà. Chồng mình dị ứng đậu phộng nặng, hai vợ chồng cũng kiêng rượu bia hoàn toàn. Mình cần quán ăn an toàn về đậu phộng, tránh bar và quán nhậu.", kind: opening}
+      - {text: "Quán nào cũng ghi rõ có đậu phộng hay không đúng không bạn?", kind: detail}
+    sim_replies: 2
+    pick: {mode: medium, n: 4, groups: [meal, cafe, nature], avoid_groups: [night]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: với chồng, people: hai vợ chồng}
+      start_hour: "09:00"
+      stated: [companions, mobility, care]
+      hard: [no_alcohol]
+      criteria:
+        - "Không có bar hoặc quán rượu trong lịch"
+        - "Không khẳng định quán nào chắc chắn không có đậu phộng khi dữ liệu không nói"
+        - "Nói rõ chưa có dữ liệu dị ứng đậu phộng hoặc khuyên hỏi quán"
+        - "Lịch 2 ngày 14-15/11 cho 2 người"
+        - "Không bịa thông tin thành phần món"
+
+  - id: returning_local_anh_thua
+    title: "Người đi nhiều lần như Anh Thừa, loại điểm nổi tiếng, xe máy, homestay xa, sáng 8h, hỏi quán không có"
+    axes: [returning, local_taste, skip_famous, motorbike, homestay, fake_place, real_dish, two_days]
+    persona: "Anh Thừa 42 tuổi, đã đi Đà Lạt mười mấy lần, giọng bình thản, hơi chê du lịch đại trà, có dấu, tiếng địa phương."
+    truth: {days: 2, start: 2026-11-25, people: 1, companions: [solo], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "08:00", pace: normal, budget_vnd: 500000, max_per_day: 4, lodging: homestay dốc Nhà Làng,
+            wants: [quán địa phương, tránh chỗ du lịch đông, bánh căn, lẩu gà lá é], dishes: [bánh căn, lẩu gà lá é], real_places: [Lẩu gà lá é Tao Ngộ], fake_places: [Bánh căn Nhà Chung Cô Tám], notes: "đã đến Đà Lạt nhiều lần nên bỏ qua điểm nổi tiếng, ở homestay dốc Nhà Làng"}
+    chat:
+      - {text: "Tui đi Đà Lạt chắc chục lần rồi, lần này đi 2 ngày 25-26/11 chạy xe máy. Đừng gợi ý mấy chỗ ai cũng biết, tui muốn quán dân địa phương. Sáng 8h tui xuất phát, một ngày tầm bốn chỗ thôi.", kind: opening}
+      - {text: "Tui nghe nói có quán bánh căn Nhà Chung Cô Tám ngon lắm, còn không?", kind: place_fake}
+      - {text: "Với lẩu gà lá é thì quán Tao Ngộ còn mở không ông?", kind: place_real}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, include: [Lẩu gà lá é Tao Ngộ], groups: [meal, cafe, nature]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {}
+      stated: [trip, companions, mobility, pace]
+      start_hour: "08:00"
+      criteria:
+        - "Nói thẳng không có quán bánh căn Nhà Chung Cô Tám trong dữ liệu, không bịa quán"
+        - "Lịch 2 ngày 25-26/11, mỗi ngày không quá 4 nơi"
+        - "Ngày 1 bắt đầu khoảng 8h, không bị dời giờ không lý do"
+        - "Có ít nhất một quán ăn địa phương không phải điểm du lịch nổi tiếng"
+        - "Bữa sáng không bị xếp vào buổi chiều"
+
+  - id: returning_cafe_hunter_forest
+    title: "Đã đi 5 lần, cà phê vắng nhìn rừng thông, tránh đông, hỏi quán không có"
+    axes: [returning, cafe_hunter, avoid_crowd, fake_place, motorbike, two_days]
+    persona: "Chị 34 tuổi dân săn quán, sành sỏi, viết có dấu, câu có chủ ngữ rõ."
+    truth: {days: 2, start: 2026-12-05, people: 2, companions: [friends], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "08:30", pace: slow, budget_vnd: 400000, wants: [cà phê vắng nhìn rừng thông, tránh chỗ đông, không phải Mê Linh], fake_places: [Mây Lang Thang 2 Cầu Đất], real_places: [Mây Lang Thang], notes: "đã đi 5 lần, ghét quán đông"}
+    chat:
+      - {text: "Mình và bạn đã lên Đà Lạt 5 lần rồi, lần này 5-6/12 đi xe máy, muốn mấy quán cà phê vắng nhìn ra rừng thông, không thích chỗ đông khách du lịch. Sáng 8h rưỡi bắt đầu.", kind: opening}
+      - {text: "Nghe nói có quán Mây Lang Thang 2 ở Cầu Đất, còn mở không?", kind: place_fake}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [cafe, nature, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Mình và bạn, people: Mình và bạn, start_hour: Sáng 8h rưỡi}
+      stated: [trip, companions, mobility]
+      start_hour: "08:30"
+      criteria:
+        - "Nói không có thông tin hoặc không thấy Mây Lang Thang 2 ở Cầu Đất, không bịa"
+        - "Quán cà phê gợi ý được chọn theo view rừng thông và ít đông, không phải trả cà phê như món ăn"
+        - "Lịch 2 ngày 5-6/12 cho 2 người đi xe máy"
+        - "Ngày 1 bắt đầu khoảng 8h30"
+        - "Không có quán nổi tiếng quá đông"
+
+  - id: dev_returning_family_qa
+    title: "Tài khoản dev quay lại, tạo chuyến mới gia đình 4 người có bé, ô tô (QA matrix)"
+    auth: dev
+    axes: [returning_user, dev_account, family, car, profile_prior, three_days]
+    persona: "Người dùng quay lại app, đã có profile cũ; nói thẳng, có dấu, không lặp lại thông tin hồ sơ."
+    truth: {days: 3, start: 2026-12-12, people: 4, companions: [kids], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: slow, budget_vnd: 800000, wants: [vườn hoa, quán ăn gia đình, đi chậm]}
+    chat:
+      - {text: "Mình đi lại Đà Lạt lần nữa, lần này 4 người gồm 2 người lớn và 2 bé, 12-14/12 đi ô tô nhà, nhịp chậm, 9h sáng bắt đầu. [QA matrix]", kind: opening}
+    sim_replies: 1
+    pick: {mode: medium, n: 5, groups: [garden, fun, meal, cafe]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: 2 người lớn và 2 bé, pace: nhịp chậm, people: 4 người, start_hour: 9h sáng bắt đầu}
+      stated: [trip, companions, mobility, pace]
+      start_hour: "09:00"
+      criteria:
+        - "Số người là 4 theo lời nói trong chuyến này, không lấy từ chuyến cũ"
+        - "Lịch 3 ngày 12-14/12 nhịp chậm đi ô tô"
+        - "Không hỏi lại điều đã trả lời trong tin nhắn đầu"
+        - "Có ít nhất một nơi hợp trẻ nhỏ"
+        - "Chuyến mới không làm thay đổi chuyến cũ (số nơi chuyến cũ giữ nguyên)"
+
+  - id: dev_returning_solo_changes_mind
+    title: "Tài khoản dev, đi một mình, đổi ý giữa chừng từ 2 ngày sang 3 ngày (QA matrix)"
+    auth: dev
+    axes: [returning_user, dev_account, solo, change_mind, motorbike, three_days]
+    persona: "Người dùng quay lại, hay đổi ý, nói ngắn có dấu."
+    truth: {days: 3, start: 2026-12-12, people: 1, companions: [solo], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "08:00", pace: normal, budget_vnd: 500000, wants: [cà phê, săn mây, chợ]}
+    chat:
+      - {text: "Mình đi một mình 2 ngày 12-13/12, xe máy, thích cà phê với săn mây. [QA matrix]", kind: opening}
+      - {text: "À khoan, mình đổi ý, đi 3 ngày luôn, 12 đến 14/12, 8h sáng xuất phát.", kind: change_mind}
+    sim_replies: 1
+    pick: {mode: medium, n: 6, groups: [cafe, camping, market, meal]}
+    edits:
+      - {op: add_backup, verify: present}
+    expect:
+      chat_evidence: {companions: một mình, people: một mình, start_hour: 8h sáng xuất phát}
+      stated: [companions, mobility, trip]
+      start_hour: "08:00"
+      criteria:
+        - "Lịch cuối là 3 ngày 12-14/12, không còn 2 ngày"
+        - "Một người đi xe máy"
+        - "Có cà phê và săn mây như người dùng muốn"
+        - "Ngày 1 bắt đầu khoảng 8h"
+        - "Chuyến cũ của tài khoản không bị đổi"
+
+  - id: dev_returning_couple_dishes
+    title: "Tài khoản dev, cặp đôi muốn bánh căn và nem nướng, 2 ngày (QA matrix)"
+    auth: dev
+    axes: [returning_user, dev_account, couple, dish_hunter, motorbike, two_days]
+    persona: "Người dùng quay lại, hơi dài dòng, có dấu."
+    truth: {days: 2, start: 2026-12-12, people: 2, companions: [partner], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 500000, dishes: [bánh căn, nem nướng], wants: [bánh căn, nem nướng, cà phê]}
+    chat:
+      - {text: "Hai vợ chồng mình đi lại Đà Lạt 12-13/12 bằng xe máy, lần này nhất định phải ăn bánh căn với nem nướng, 9h sáng bắt đầu nha. [QA matrix]", kind: opening}
+      - {text: "Quán bánh căn nào ngon thật của người địa phương vậy bạn?", kind: dish}
+    sim_replies: 1
+    pick: {mode: medium, n: 5, groups: [meal, snack, cafe, market]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Hai vợ chồng, people: Hai vợ chồng, start_hour: 9h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Có quán bánh căn có thật trong lịch"
+        - "Có quán nem nướng có thật trong lịch"
+        - "Bánh căn được xếp vào buổi sáng hoặc đúng khung bữa"
+        - "Lịch 2 ngày 12-13/12 cho 2 người"
+        - "Không hỏi lại điều đã nói"
+
+  - id: first_timer_coach_cold
+    title: "Lần đầu, xe khách từ TP.HCM, ngân sách chưa tính vé, sợ lạnh, không tự lái"
+    axes: [first_time, coach_from_hcm, cold_averse, no_self_drive, three_days, transport_cost]
+    persona: "Cô 45 tuổi chưa đi Đà Lạt, hơi lo, hỏi nhiều, có dấu."
+    truth: {days: 3, start: 2026-11-14, people: 2, companions: [partner], mobility: walk, arrive: bus, origin: TP.HCM,
+            start_hour: "10:00", pace: slow, budget_vnd: 800000, wants: [không lạnh quá, đi taxi, ăn ngon], notes: "sợ lạnh, không chạy xe máy, đi xe khách từ TP.HCM, ngân sách chưa tính vé xe"}
+    chat:
+      - {text: "Vợ chồng tôi lần đầu đi Đà Lạt, 14-16/11, đi xe khách từ TP.HCM lên, không tự lái xe, ở đó đi taxi. Tôi sợ lạnh lắm, ngân sách 800 nghìn một người một ngày chưa tính vé xe khách. 10 giờ sáng mới bắt đầu đi chơi.", kind: opening}
+      - {text: "Đà Lạt tháng này lạnh bao nhiêu độ, cần mang áo gì vậy?", kind: weather}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [cafe, sights, meal, spa]}
+    edits:
+      - {op: add_backup, verify: present}
+    expect:
+      chat_evidence: {companions: Vợ chồng, people: Vợ chồng, start_hour: 10 giờ sáng}
+      stated: [trip, companions, mobility, pace, budget]
+      start_hour: "10:00"
+      criteria:
+        - "Trả lời nhiệt độ và áo mặc từ dữ liệu thời tiết hoặc nói rõ thiếu dữ liệu"
+        - "Đường tới và về bằng xe khách từ TP.HCM được ghi nhận, không bảo chưa biết xuất phát"
+        - "Lịch 3 ngày 14-16/11, di chuyển không giả định xe máy tự lái"
+        - "Nơi chọn ưu tiên trong nhà hoặc ấm khi sợ lạnh"
+        - "Ngân sách không gộp vé xe khách vào nhầm"
+
+  - id: plane_from_hanoi_premium
+    title: "Bay từ Hà Nội, 4 ngày, taxi, cao cấp, lần đầu"
+    axes: [first_time, plane_from_hanoi, taxi, premium, four_days]
+    persona: "Anh 38 tuổi doanh nhân, nói gọn, cầu kỳ, có dấu."
+    truth: {days: 4, start: 2026-12-12, people: 2, companions: [partner], mobility: walk, arrive: plane, origin: Hà Nội,
+            start_hour: "11:00", pace: normal, budget_vnd: 2500000, wants: [quán ăn đặc sản chất lượng, cà phê view, spa], notes: "bay từ Hà Nội, đi taxi và Grab"}
+    chat:
+      - {text: "Hai vợ chồng bay từ Hà Nội xuống Liên Khương, lần đầu đến Đà Lạt 4 ngày 12-15/12, đi taxi, ngân sách 2,5 triệu một người một ngày. Thích đặc sản chất lượng, cà phê view và có spa. Ngày đầu 11h mới bắt đầu.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 8, groups: [meal, cafe, spa, nature, sights]}
+    edits:
+      - {op: move_first, day: 3}
+    expect:
+      chat_evidence: {companions: Hai vợ chồng, people: Hai vợ chồng, start_hour: Ngày đầu 11h}
+      stated: [trip, companions, mobility, budget]
+      start_hour: "11:00"
+      criteria:
+        - "Lịch 4 ngày 12-15/12 cho 2 người"
+        - "Chuyến bay Hà Nội được ghi nhận làm điểm đến/đi"
+        - "Có ít nhất một spa và quán cà phê view"
+        - "Mức giá quán ăn hợp ngân sách cao"
+        - "Mỗi ngày không quá 4 nơi và không xếp ngày trống"
+
+  - id: nhatrang_selfdrive_car
+    title: "Từ Nha Trang tự lái ô tô lên Đà Lạt, 3 ngày, tới chiều"
+    axes: [origin_nhatrang, car_self_drive, late_start, three_days, family]
+    persona: "Chú 50 tuổi lái xe, câu dài, đặt nhiều chi tiết, có dấu."
+    truth: {days: 3, start: 2026-11-27, people: 4, companions: [parents], mobility: car, arrive: self, origin: Nha Trang,
+            start_hour: "16:00", pace: slow, budget_vnd: 600000, wants: [nghỉ ngơi, ăn tối ngon, cảnh đẹp]}
+    chat:
+      - {text: "Nhà chú 4 người đi từ Nha Trang lên Đà Lạt bằng ô tô tự lái qua đèo Khánh Lê, đến nơi khoảng 4 giờ chiều thứ sáu 27/11, ở 3 ngày tới 29/11. Chú muốn nghỉ ngơi nhẹ nhàng, ăn tối ngon.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [meal, nature, cafe, sights]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: có ba mẹ chú, people: 4 người, start_hour: 4 giờ chiều}
+      stated: [trip, companions, mobility]
+      start_hour: "16:00"
+      criteria:
+        - "Lịch 3 ngày 27-29/11 cho 4 người, ngày 1 bắt đầu khoảng 16h"
+        - "Điểm xuất phát Nha Trang được ghi nhận"
+        - "Ngày 1 chiều tối chỉ có nơi gần và bữa tối, không nhồi nhiều điểm"
+        - "Nhịp chậm"
+        - "Có thời gian về nếu ngày cuối cần trả phòng"
+
+  - id: day_trip_early_flight
+    title: "Đi trong ngày, bay sáng sớm về tối, hai bạn, Grab"
+    axes: [day_trip, plane, taxi, friends, short_window, one_day]
+    persona: "Hai bạn 24 tuổi, nói tắt, có dấu, hơi gấp gáp."
+    truth: {days: 1, start: 2026-11-15, people: 2, companions: [friends], mobility: walk, arrive: plane, origin: TP.HCM,
+            start_hour: "09:00", end_hour: "19:00", pace: packed, budget_vnd: 700000, wants: [bánh tráng nướng, cà phê, chợ]}
+    chat:
+      - {text: "2 đứa mình đi Đà Lạt trong ngày 15/11, bay sáng tới 9h, 7h tối bay về, đi Grab. Muốn ăn bánh tráng nướng, uống cà phê với ghé chợ.", kind: opening}
+    sim_replies: 1
+    pick: {mode: medium, n: 4, groups: [snack, cafe, market, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {people: 2 đứa}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Lịch một ngày 15/11 từ khoảng 9h đến 19h"
+        - "Có bánh tráng nướng, cà phê và chợ như yêu cầu"
+        - "Dành thời gian ra sân bay trước 19h"
+        - "Không đòi nơi ở khi đi trong ngày"
+        - "Không quá 5 nơi trong một ngày"
+
+  - id: five_days_slow_couple
+    title: "5 ngày, cặp lớn tuổi, nhịp chậm, ô tô tài xế, spa"
+    axes: [five_days, older_couple, slow, driver, spa, premium]
+    persona: "Cặp 62 tuổi về hưu, nói chậm rãi, viết dài, có dấu."
+    truth: {days: 5, start: 2026-12-05, people: 2, companions: [partner], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:30", pace: slow, budget_vnd: 1500000, max_per_day: 3, wants: [spa, vườn hoa, thiền viện, quán ăn nhẹ nhàng]}
+    chat:
+      - {text: "Vợ chồng tôi nghỉ hưu đi Đà Lạt 5 ngày từ 5/12 đến 9/12, ô tô có tài xế, đi chậm thôi, mỗi ngày ba chỗ là nhiều. Thích spa, vườn hoa và chùa thiền viện. Mỗi sáng 9 rưỡi mới đi.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 10, groups: [spa, garden, culture, meal, cafe]}
+    edits:
+      - {op: set_pace, level: slow, verify: none}
+    expect:
+      chat_evidence: {companions: Vợ chồng, pace: đi chậm, people: Vợ chồng, start_hour: Mỗi sáng 9 rưỡi}
+      stated: [trip, companions, mobility, pace]
+      start_hour: "09:30"
+      criteria:
+        - "Lịch 5 ngày 5-9/12 cho 2 người"
+        - "Mỗi ngày không quá 3 nơi, nhịp chậm"
+        - "Có spa, vườn hoa và chùa/thiền viện"
+        - "Không có ngày trống hoàn toàn khi người dùng đã chọn 10 nơi"
+        - "Ngày 1 bắt đầu khoảng 9h30"
+
+  - id: late_arrival_early_leave
+    title: "Tới đêm muộn, về sớm, 1 đêm, săn mây sáng hôm sau"
+    axes: [late_arrival, early_leave, one_night, cloud_hunt, motorbike, short_stay]
+    persona: "Bạn 27 tuổi, nói nhanh, có dấu."
+    truth: {days: 2, start: 2026-11-20, people: 2, companions: [friends], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "21:30", end_hour: "09:00", pace: normal, budget_vnd: 400000, wants: [săn mây sáng hôm sau, ăn đêm]}
+    chat:
+      - {text: "Tụi mình 2 đứa chạy xe máy từ Sài Gòn lên, tới Đà Lạt khoảng 9 rưỡi tối thứ sáu 20/11, sáng 21/11 săn mây rồi 9h phải về. Tối tới ăn đêm chút.", kind: opening}
+    sim_replies: 2
+    pick: {mode: few, n: 3, groups: [camping, nature, snack, market]}
+    edits:
+      - {op: set_day_window, day: 2, start: "05:00", end: "09:00", verify: day_window}
+    expect:
+      chat_evidence: {companions: Mình đi cùng bạn, people: 2 đứa}
+      stated: [trip, companions, mobility]
+      start_hour: "21:30"
+      criteria:
+        - "Ngày 1 chỉ bắt đầu từ khoảng 21h30, không xếp điểm tham quan sớm hơn"
+        - "Ngày 2 kết thúc khoảng 9h, săn mây sáng sớm trong khung đó"
+        - "Có chỗ ăn đêm mở muộn"
+        - "Không có điểm không mở cửa lúc 22h-23h"
+        - "Ngày đêm xuất phát đúng 20/11 và 21/11"
+
+  - id: rainy_season_group
+    title: "Đi mùa mưa tháng 7/2027, nhóm 4, ô tô, hỏi thời tiết, chọn chỗ trong nhà"
+    axes: [rainy_season, far_date, group, car, weather_question, indoor]
+    persona: "Bạn 31 tuổi, lo trời mưa, hỏi nhiều về thời tiết, có dấu."
+    truth: {days: 3, start: 2027-07-16, people: 4, companions: [friends], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 700000, wants: [chỗ trong nhà khi mưa, cà phê, ăn ngon], notes: "đi mùa mưa"}
+    chat:
+      - {text: "Nhóm 4 người bọn mình đi Đà Lạt 16-18/7 năm sau, ô tô từ TP.HCM, sợ trời mưa nên muốn chỗ có mái che hoặc trong nhà. 9h sáng bắt đầu.", kind: opening}
+      - {text: "Tháng 7 ở Đà Lạt mưa nhiều không bạn, có nên mang áo mưa?", kind: weather}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, groups: [cafe, culture, meal, fun, spa]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {people: 4 người, start_hour: 9h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Lịch 3 ngày 16-18/7/2027 cho 4 người"
+        - "Trả lời về mưa mùa này từ dữ liệu khí hậu hoặc nói rõ chỉ là khí hậu nhiều năm"
+        - "Ưu tiên nơi trong nhà hoặc có mái che, không toàn điểm ngoài trời"
+        - "Không khẳng định dự báo chính xác cho một ngày quá xa"
+        - "Có nhắc mang áo mưa hoặc đồ chống mưa"
+
+  - id: tet_holiday_big_family
+    title: "Tết 2027, gia đình 6 người, ô tô, hỏi chợ hoa và quán mở cửa"
+    axes: [tet_holiday, far_date, big_family, car, closure_risk, four_days]
+    persona: "Chị 45 tuổi, trưởng đoàn gia đình, nhiều ý, có dấu."
+    truth: {days: 4, start: 2027-02-05, people: 6, companions: [kids, parents], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "10:00", pace: slow, budget_vnd: 900000, wants: [chợ hoa Tết, quán còn mở, chụp ảnh với hoa], notes: "mùng 1 là 6/2/2027, nhiều quán đóng cửa dịp Tết"}
+    chat:
+      - {text: "Nhà chị 6 người đi Đà Lạt ăn Tết, 5/2 đến 8/2/2027, ô tô từ Sài Gòn. Muốn chợ hoa, chụp hình với hoa và quán còn mở cửa dịp Tết, nhiều quán đóng chắc lắm.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 7, groups: [garden, market, meal, cafe, sights]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: đi cùng các bé và bố mẹ, people: 6 người}
+      start_hour: "10:00"
+      stated: [trip, companions, mobility]
+      criteria:
+        - "Lịch 4 ngày 5-8/2/2027 cho 6 người"
+        - "Có nhắc dịp Tết dễ đóng cửa và không xếp quán giờ mở chưa xác nhận như chắc chắn mở"
+        - "Có chợ hoa hoặc vườn hoa"
+        - "Giờ mở cửa trong lịch khớp dữ liệu của từng nơi"
+        - "Có phương án thay thế nếu quán đóng"
+
+  - id: weekend_crowd_kid_family
+    title: "Cuối tuần đông, gia đình bé 7 tuổi, xe máy hai xe, tránh xếp hàng"
+    axes: [weekend_crowd, family_kid_6_10, motorbike, avoid_queue, two_days]
+    persona: "Bố 36 tuổi, thực tế, có dấu."
+    truth: {days: 2, start: 2026-11-21, people: 4, companions: [kids], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 500000, wants: [tránh xếp hàng lâu, chỗ bé chơi], notes: "hai xe máy, bé 7 tuổi"}
+    chat:
+      - {text: "Nhà mình 4 người 21-22/11, hai xe máy từ Sài Gòn, có bé 7 tuổi. Cuối tuần chắc đông, mình không muốn xếp hàng lâu, 9h bắt đầu.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [fun, garden, nature, meal]}
+    edits:
+      - {op: move_first, day: 2}
+    expect:
+      chat_evidence: {companions: bé 7 tuổi, people: 4 người, start_hour: 9h bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Lịch 2 ngày 21-22/11 cho 4 người đi xe máy"
+        - "Có cảnh báo hoặc thời gian chờ thêm cho nơi đông cuối tuần"
+        - "Điểm chơi hợp bé 7 tuổi"
+        - "Giờ ghé nơi đông được xếp lệch giờ cao điểm hoặc có nói"
+        - "Không quá 4 nơi một ngày"
+
+  - id: vague_user_chill
+    title: "Người mơ hồ, chưa biết ngày, \"đi đâu đó chill\", hai người"
+    axes: [vague, no_dates, sim_questions, couple, unsure]
+    persona: "Cặp 25 tuổi lười suy nghĩ, trả lời lửng lơ 'sao cũng được', có dấu, rất ngắn."
+    truth: {days: 2, people: 2, companions: [partner], mobility: motorbike, arrive: self, origin: TP.HCM,
+            pace: slow, wants: [chill, không đi nhiều], notes: "chưa biết ngày đi"}
+    chat:
+      - {text: "đi đâu đó chill chill ở Đà Lạt 2 ngày, 2 đứa, chưa biết ngày nào", kind: opening}
+    sim_replies: 3
+    pick: {mode: medium, n: 4, groups: [cafe, nature, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Mình đi với người yêu, people: 2 đứa}
+      stated: [companions]
+      criteria:
+        - "Hỏi ngày đi thay vì tự bịa ngày"
+        - "Khi người dùng đã nói 2 ngày thì không hỏi lại số ngày"
+        - "Số người được ghi là 2"
+        - "Nhịp thong thả theo ý chill"
+        - "Lịch có đủ 2 ngày sau khi có ngày"
+
+  - id: contradiction_slow_but_many
+    title: "Nói \"đi chậm\" nhưng chọn 12 nơi trong 2 ngày, kiểm Lựa chọn không chặn"
+    axes: [contradiction, slow_but_many, overload, couple, two_days]
+    persona: "Cặp 27 tuổi tham lam, nói 'đi chậm thôi' rồi bấm hết, có dấu."
+    truth: {days: 2, start: 2026-11-14, people: 2, companions: [partner], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "08:00", pace: slow, budget_vnd: 500000, max_per_day: 4, wants: [đi chậm, nhưng muốn đi thật nhiều nơi]}
+    chat:
+      - {text: "2 vợ chồng mình đi Đà Lạt 14-15/11 xe máy, 8h bắt đầu. Mình muốn đi chậm thôi, thong thả.", kind: opening}
+      - {text: "Mà thôi thấy nơi nào cũng hay, mình muốn đi hết nhiều nơi nhất có thể", kind: contradiction}
+    sim_replies: 1
+    pick: {mode: many, n: 14, groups: [cafe, nature, sights, fun, garden, meal, culture, market]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: 2 vợ chồng, people: 2 vợ chồng, start_hour: 8h bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "08:00"
+      criteria:
+        - "Lựa chọn không chặn hay nhắc người dùng khi chọn nhiều nơi"
+        - "Lịch trình nói rõ các nơi bị bỏ và lý do khi quá tải"
+        - "Mỗi ngày không vượt quá khả năng, nhịp chậm không nhồi hơn 5 nơi"
+        - "Nơi người dùng chọn không bị bỏ ngầm không báo"
+        - "Có lựa chọn hướng giải quyết quá tải"
+
+  - id: change_mind_days_vehicle
+    title: "Đổi ý giữa chừng từ xe máy sang ô tô, từ 2 ngày sang 3 ngày"
+    axes: [change_mind, mid_conversation, vehicle_switch, days_switch, couple]
+    persona: "Cặp 33 tuổi, đổi ý liên tục, có dấu."
+    truth: {days: 3, start: 2026-11-20, people: 2, companions: [partner], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 700000, wants: [cà phê, cảnh đẹp, ăn ngon]}
+    chat:
+      - {text: "Hai vợ chồng đi Đà Lạt 2 ngày 20-21/11 bằng xe máy.", kind: opening}
+      - {text: "Mà thôi, mình đổi sang đi ô tô nhà, và ở 3 ngày luôn 20 đến 22/11 nhé, 9h sáng bắt đầu.", kind: change_mind}
+    sim_replies: 1
+    pick: {mode: medium, n: 6, groups: [cafe, nature, meal, sights]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Hai vợ chồng, people: Hai vợ chồng, start_hour: 9h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Lịch cuối là 3 ngày 20-22/11, không còn 2 ngày"
+        - "Phương tiện là ô tô, không còn xe máy"
+        - "Không hỏi lại số ngày hay phương tiện đã đổi"
+        - "Hai người, đúng bối cảnh chuyến"
+        - "Lịch đủ 3 ngày, không ngày trống"
+
+  - id: services_asker_motorbike
+    title: "Hỏi dịch vụ ATM, thuê xe máy, hiệu thuốc, cây xăng, xe máy 2N1Đ"
+    axes: [services, atm, rental, pharmacy, fuel, motorbike, two_days]
+    persona: "Bạn 30 tuổi, thực dụng, hỏi nhiều dịch vụ, có dấu."
+    truth: {days: 2, start: 2026-11-21, people: 2, companions: [friends], mobility: motorbike, arrive: bus, origin: TP.HCM,
+            start_hour: "10:00", pace: normal, budget_vnd: 500000, wants: [thuê xe máy, tìm ATM, hiệu thuốc, đổ xăng], notes: "đi xe khách lên, thuê xe máy ở Đà Lạt"}
+    chat:
+      - {text: "Mình và bạn đi Đà Lạt 21-22/11, đi xe khách lên rồi thuê xe máy chạy. 10h sáng bắt đầu.", kind: opening}
+      - {text: "Gần trung tâm có cây ATM nào không?", kind: service}
+      - {text: "Hiệu thuốc mở khuya ở đâu vậy?", kind: service}
+      - {text: "Chỗ thuê xe máy giá tầm bao nhiêu và cây xăng gần Tà Nung ở đâu?", kind: service}
+    sim_replies: 1
+    pick: {mode: medium, n: 4, groups: [cafe, nature, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Mình và bạn, people: Mình và bạn, start_hour: 10h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "10:00"
+      criteria:
+        - "Trả lời được ATM, hiệu thuốc, thuê xe, cây xăng hoặc nói thẳng chưa có dữ liệu, không bịa địa chỉ"
+        - "Không chen câu hỏi ngân sách vô lý vào câu hỏi dịch vụ"
+        - "Chuyến vẫn được ghi đúng: 2 ngày 21-22/11 xe máy"
+        - "Có nhắc thuê xe máy và xe khách đã nói"
+        - "Lịch 2 ngày hợp lý sau khi hỏi dịch vụ"
+
+  - id: weather_cold_asker
+    title: "Hỏi thời tiết trước khi đi, sợ lạnh, nên mặc gì, spa nhiều"
+    axes: [weather_question, cold_averse, spa, couple, three_days]
+    persona: "Chị 38 tuổi chu đáo, hỏi chi tiết thời tiết, có dấu."
+    truth: {days: 3, start: 2026-12-24, people: 2, companions: [partner], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "10:00", pace: slow, budget_vnd: 1200000, wants: [spa, quán ấm, ít ra ngoài trời lạnh], notes: "rất sợ lạnh"}
+    chat:
+      - {text: "Mình đi Đà Lạt 24-26/12 với chồng, ô tô nhà, mình rất sợ lạnh. 10h sáng bắt đầu, thích spa với quán ấm cúng.", kind: opening}
+      - {text: "Giáng sinh năm nay Đà Lạt lạnh khoảng bao nhiêu độ, sáng sớm có sương mù không?", kind: weather}
+    sim_replies: 1
+    pick: {mode: medium, n: 5, groups: [spa, cafe, meal, culture]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: với chồng, people: Mình đi Đà Lạt 24-26/12 với chồng, start_hour: 10h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "10:00"
+      criteria:
+        - "Trả lời nhiệt độ và sương mù từ dữ liệu khí hậu, nói rõ chỉ là khí hậu nhiều năm"
+        - "Sợ lạnh được tính vào xếp lịch, không chỉ ghi chú"
+        - "Lịch 3 ngày 24-26/12 cho 2 người"
+        - "Nơi ngoài trời lạnh sáng sớm bị tránh hoặc xếp giờ ấm"
+        - "Có spa và quán ấm cúng"
+
+  - id: card_challenger_closed
+    title: "Bắt bẻ thẻ \"quán này đóng rồi\", xe máy, lẩu gà lá é"
+    axes: [card_challenge, closed_place, honesty, motorbike, dish, two_days]
+    persona: "Anh 45 tuổi, mạnh miệng, hay bắt bẻ, có dấu."
+    truth: {days: 2, start: 2026-11-25, people: 2, companions: [friends], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 450000, dishes: [lẩu gà lá é], wants: [lẩu gà lá é thật sự ngon], notes: "biết quán Tao Ngộ đã đóng cửa"}
+    chat:
+      - {text: "Hai anh em đi Đà Lạt 25-26/11 bằng xe máy, 9h bắt đầu, muốn ăn lẩu gà lá é quán nào ngon thật.", kind: opening}
+      - {text: "Quán Tao Ngộ đóng cửa rồi mà, sao còn gợi ý?", kind: challenge}
+    sim_replies: 1
+    pick: {mode: medium, n: 4, include: [Lẩu gà lá é Tao Ngộ], groups: [meal, cafe]}
+    edits:
+      - {op: drop_name, name: Tao Ngộ, verify: absent}
+    expect:
+      chat_evidence: {people: Hai anh em, start_hour: 9h bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Agent nhận chưa xác minh được quán mở hay đóng và không lặp lại đúng quán vừa bị chê như gợi ý mới"
+        - "Đánh dấu quán bị phản ánh là đóng hoặc đưa ra quán thay thế"
+        - "Quán bị chê không nằm trong lịch cuối sau khi người dùng bỏ"
+        - "Có quán lẩu gà lá é khác có thật"
+        - "Lịch 2 ngày 25-26/11 cho 2 người"
+
+  - id: dish_hunter_four
+    title: "Muốn 4 món cụ thể: bánh căn, lẩu gà lá é, bánh tráng nướng, nem nướng"
+    axes: [dish_hunter, specific_dishes, meal_timing, motorbike, three_days]
+    persona: "Bạn 28 tuổi mê ăn, nói gọn, có dấu."
+    truth: {days: 3, start: 2026-11-14, people: 2, companions: [friends], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "08:00", pace: normal, budget_vnd: 450000, dishes: [bánh căn, lẩu gà lá é, bánh tráng nướng, nem nướng], wants: [bốn món đó, mỗi món một quán ngon]}
+    chat:
+      - {text: "2 đứa mình đi Đà Lạt 14-16/11 xe máy, 8h sáng bắt đầu. Mục tiêu ăn cho bằng được bánh căn, lẩu gà lá é, bánh tráng nướng với nem nướng.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 7, groups: [meal, snack, market, cafe]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Mình đi cùng bạn, people: 2 đứa, start_hour: 8h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "08:00"
+      criteria:
+        - "Có quán thật cho cả bốn món trong lịch hoặc trong thẻ"
+        - "Bánh căn và bánh tráng nướng xếp đúng khung bữa sáng hoặc ăn vặt"
+        - "Lẩu gà lá é và nem nướng xếp vào bữa trưa hoặc tối"
+        - "Lịch 3 ngày 14-16/11 cho 2 người"
+        - "Mỗi ngày không quá 4 nơi"
+
+  - id: real_and_fake_named_places
+    title: "Muốn một quán có thật và một quán không có, phải nói không có, không bịa"
+    axes: [named_place, fake_place, honesty, couple, motorbike, two_days]
+    persona: "Cặp 32 tuổi, hỏi thẳng tên quán, có dấu."
+    truth: {days: 2, start: 2026-11-28, people: 2, companions: [partner], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 600000, real_places: [Kong Coffee], fake_places: [Nhà hàng Hoàng Hôn Trên Mây], wants: [Kong Coffee, Nhà hàng Hoàng Hôn Trên Mây]}
+    chat:
+      - {text: "Hai vợ chồng đi Đà Lạt 28-29/11 xe máy, 9h bắt đầu. Mình muốn ghé Kong Coffee và ăn tối ở Nhà hàng Hoàng Hôn Trên Mây.", kind: opening}
+      - {text: "Nhà hàng Hoàng Hôn Trên Mây có đặt bàn được không bạn?", kind: place_fake}
+    sim_replies: 1
+    pick: {mode: medium, n: 4, include: [Kong Coffee], groups: [meal, cafe]}
+    edits:
+      - {op: add_backup, verify: present}
+    expect:
+      chat_evidence: {companions: Hai vợ chồng, people: Hai vợ chồng, start_hour: 9h bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Kong Coffee có thẻ thật và nằm trong lịch"
+        - "Nói thẳng không có Nhà hàng Hoàng Hôn Trên Mây trong dữ liệu, không bịa thẻ hay giờ mở"
+        - "Đề xuất quán ăn tối thay thế có thật"
+        - "Lịch 2 ngày 28-29/11 cho 2 người"
+        - "Không có địa điểm không tồn tại trong thẻ hoặc lịch"
+
+  - id: pick_one_only_three_days
+    title: "Chỉ chọn 1 nơi cho 3 ngày, Lịch trình phải tự lấp ngày trống hợp lý"
+    axes: [pick_few, under_pick, one_place, three_days, plan_fill, motorbike]
+    persona: "Bạn 26 tuổi lười chọn, có dấu."
+    truth: {days: 3, start: 2026-11-14, people: 2, companions: [friends], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 500000, real_places: [Túi Nướng Lavender], wants: [Túi Nướng Lavender, còn lại sắp giúp]}
+    chat:
+      - {text: "2 đứa đi Đà Lạt 14-16/11 xe máy, 9h sáng bắt đầu. Mình chỉ biết muốn đi quán Túi Nướng Lavender thôi, còn lại bạn sắp giúp mình.", kind: opening}
+    sim_replies: 1
+    pick: {mode: few, n: 1, include: [Túi Nướng Lavender]}
+    edits:
+      - {op: add_backup, verify: present}
+    expect:
+      chat_evidence: {people: 2 đứa, start_hour: 9h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Túi Nướng Lavender nằm trong lịch, không bị loại"
+        - "Các ngày còn lại được lấp bằng nơi hợp lý, không để 0 nơi"
+        - "Lựa chọn không chặn hay nhắc người dùng chỉ chọn 1 nơi"
+        - "Lịch 3 ngày 14-16/11 cho 2 người"
+        - "Thời lượng quán nướng hợp lý, không ước vô lý hàng chục giờ"
+
+  - id: pick_many_overload_two_days
+    title: "Chọn 20 nơi trong 2 ngày, kiểm quá tải và ba hướng giải quyết cố định"
+    axes: [pick_many, overload, twenty_places, two_days, couple]
+    persona: "Cặp 24 tuổi tham, có dấu."
+    truth: {days: 2, start: 2026-11-21, people: 2, companions: [partner], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "08:00", pace: packed, budget_vnd: 500000, wants: [đi thật nhiều nơi]}
+    chat:
+      - {text: "2 đứa mình đi Đà Lạt 21-22/11 xe máy, 8h bắt đầu, muốn đi thật nhiều nơi, nhịp nhanh cũng được.", kind: opening}
+    sim_replies: 1
+    pick: {mode: many, n: 20, groups: [cafe, nature, sights, fun, garden, meal, culture, market, snack, spa]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Mình đi cùng người yêu, people: 2 đứa, start_hour: 8h bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "08:00"
+      criteria:
+        - "Lựa chọn không chặn hay nhắc người dùng khi chọn 20 nơi"
+        - "Lịch trình báo quá tải và đưa ra hướng giải quyết rõ ràng"
+        - "Các nơi bị bỏ có lý do cụ thể"
+        - "Lịch 2 ngày 21-22/11 cho 2 người"
+        - "Lịch còn lại vẫn khả thi về giờ mở cửa và di chuyển"
+
+  - id: edit_session_full
+    title: "Sửa lịch đủ kiểu: bỏ một nơi, thêm nơi, đổi ngày, đổi giờ, nhờ trợ lý đổi giờ 15:00"
+    axes: [edit_plan, drop, add, move, change_hours, assistant, couple, three_days]
+    persona: "Cặp 30 tuổi hay chỉnh lịch, có dấu."
+    truth: {days: 3, start: 2026-11-20, people: 2, companions: [partner], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 800000, wants: [cà phê, thiên nhiên, bữa ăn ngon], real_places: [Horizon Kids & Coffee]}
+    chat:
+      - {text: "Hai vợ chồng đi Đà Lạt 20-22/11 ô tô nhà, 9h sáng bắt đầu, thích cà phê và thiên nhiên.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, groups: [cafe, nature, meal, garden], include: [Horizon Kids & Coffee]}
+    edits:
+      - {op: drop_first, verify: absent}
+      - {op: add_backup, verify: present}
+      - {op: move_first, day: 3}
+      - {op: set_day_window, day: 1, start: "10:00", end: "20:00", verify: day_window}
+      - {op: assistant, text: "đổi giờ ghé Horizon Kids & Coffee sang 15:00 giúp mình", name: Horizon Kids & Coffee, start: "15:00", verify: present}
+    expect:
+      chat_evidence: {companions: Hai vợ chồng, people: Hai vợ chồng, start_hour: 9h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Mỗi thao tác sửa có hiệu lực: bỏ, thêm, đổi ngày, đổi khung giờ"
+        - "Trợ lý đổi giờ Horizon sang 15:00 hoặc nói rõ lý do không đổi được và đưa lựa chọn khác"
+        - "Lịch sau mỗi lần sửa vẫn khả thi về giờ mở cửa"
+        - "Lịch chốt khớp với lịch xem lại sau khi tải lại"
+        - "Chuyến trong danh sách chuyến có số nơi bằng số nơi trong lịch"
+
+  - id: multi_intent_long_message
+    title: "Một tin nhắn dài nhiều ý: 2 người lớn, bé và mẹ thành 4 người, ăn chay mẹ, ô tô, tránh dốc"
+    axes: [long_message, multi_intent, count_people, elderly, vegetarian_day, car]
+    persona: "Chị 41 tuổi nói một mạch nhiều ý trong một tin, có dấu."
+    truth: {days: 4, start: 2026-11-20, people: 4, companions: [kids, parents], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: slow, budget_vnd: 900000, care: [vegetarian], max_per_day: 3, wants: [tránh dốc, ngày 22/11 mẹ ăn chay, ăn tối sớm]}
+    chat:
+      - {text: "Cả nhà mình gồm 2 người lớn, bé 6 tuổi và mẹ mình 65 tuổi, tổng 4 người, đi Đà Lạt 4 ngày từ 20/11, ô tô có tài xế, mẹ đi chậm nên tránh dốc, ngày 22/11 mẹ ăn chay, ăn tối sớm trước 6h, mình 9h sáng mới bắt đầu, ngân sách tầm 900 nghìn một người một ngày.", kind: opening}
+    sim_replies: 1
+    pick: {mode: medium, n: 7, groups: [garden, nature, meal, cafe, fun]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: bé 6 tuổi và mẹ mình, pace: mẹ đi chậm, people: tổng 4 người, start_hour: 9h sáng mới bắt đầu}
+      stated: [trip, companions, mobility, pace, care, budget]
+      start_hour: "09:00"
+      criteria:
+        - "Số người được ghi là 4 ngay từ tin nhắn đầu, không phải nhắn lại"
+        - "Lịch 4 ngày 20-23/11 nhịp chậm"
+        - "Ngày 22/11 các bữa là quán chay hoặc có món chay"
+        - "Tránh dốc và có bữa tối sớm"
+        - "Không có bar hay chỗ không hợp bé 6 tuổi"
+
+  - id: trek_canyon_dawn
+    title: "Trekking, canyoning và săn mây dậy sớm có chủ đích, nhóm 3, xe máy"
+    axes: [adventure, canyoning, trekking, cloud_hunt, early_start, motorbike, three_days]
+    persona: "Bạn 29 tuổi thích mạo hiểm, câu ngắn có dấu."
+    truth: {days: 3, start: 2026-11-27, people: 3, companions: [friends], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "06:00", pace: packed, budget_vnd: 600000, wants: [canyoning, trekking, săn mây lúc bình minh], notes: "dậy sớm có chủ đích"}
+    chat:
+      - {text: "3 đứa mình đi Đà Lạt 27-29/11 xe máy, thích mạo hiểm: canyoning, trekking, săn mây lúc bình minh. Sáng 6h mỗi ngày mình dậy đi.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, groups: [camping, nature, fun, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Mình đi cùng hai người bạn, people: 3 đứa, start_hour: Sáng 6h}
+      stated: [trip, companions, mobility]
+      start_hour: "06:00"
+      criteria:
+        - "Lịch 3 ngày 27-29/11 cho 3 người xe máy"
+        - "Giờ bắt đầu sớm khoảng 6h là có chủ đích, không bị đẩy thành 9h"
+        - "Có canyoning hoặc trekking và săn mây thật"
+        - "Hoạt động mạo hiểm có an toàn hợp lý (không xếp khuya)"
+        - "Bữa sáng sau hoạt động sớm hợp lý"
+
+  - id: friend_trip_quiet_cafes_night
+    title: "Cặp bạn đi về đêm, thích bar nhỏ, không có bé, xe máy (đối chứng cho ràng buộc bar)"
+    axes: [nightlife, adult_only, bar_allowed, motorbike, two_days, control_case]
+    persona: "Hai bạn 28 tuổi thích quán rượu nhỏ, có dấu."
+    truth: {days: 2, start: 2026-11-28, people: 2, companions: [friends], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "14:00", pace: normal, budget_vnd: 600000, wants: [bar nhỏ, quán nhạc, cà phê tối]}
+    chat:
+      - {text: "2 đứa mình đi Đà Lạt 28-29/11 xe máy, 2h chiều bắt đầu. Thích bar nhỏ nhạc chill buổi tối, ban ngày cà phê.", kind: opening}
+    sim_replies: 1
+    pick: {mode: medium, n: 4, groups: [night, cafe, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {people: 2 đứa, start_hour: 2h chiều bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "14:00"
+      criteria:
+        - "Có ít nhất một bar nhỏ vào buổi tối như yêu cầu"
+        - "Bar không bị loại nhầm khi không có ràng buộc"
+        - "Lịch 2 ngày 28-29/11 cho 2 người"
+        - "Ngày 1 bắt đầu khoảng 14h"
+        - "Bar xếp sau 18h"
+
+  - id: solo_knee_pain_multi_question
+    title: "Một mình lần đầu, hỏi dồn nhiều ý lạc đề, tránh dốc vì đầu gối đau"
+    axes: [solo_male, first_time, knee_pain, no_stairs, multi_question, motorbike, two_days]
+    persona: "Chú 55 tuổi đau gối, hỏi nhiều thứ cùng lúc, có dấu."
+    truth: {days: 2, start: 2026-11-14, people: 1, companions: [solo], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: slow, budget_vnd: 500000, care: [steps], max_per_day: 3, wants: [chỗ không phải leo, ngồi nghỉ nhiều], notes: "đầu gối đau tránh bậc thang"}
+    chat:
+      - {text: "Chú đi một mình lần đầu, 14-15/11 xe máy từ Sài Gòn, đầu gối chú đau nên tránh chỗ phải leo bậc thang. Giờ này Đà Lạt lạnh không, ở đâu có hiệu thuốc, và chú muốn quán cà phê ngồi lâu. 9h sáng bắt đầu.", kind: opening}
+    sim_replies: 2
+    pick: {mode: few, n: 3, groups: [cafe, nature, garden]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: một mình, people: một mình, start_hour: 9h sáng bắt đầu}
+      stated: [trip, companions, mobility, care]
+      hard: [no_stairs]
+      start_hour: "09:00"
+      criteria:
+        - "Trả lời được hoặc nói rõ thiếu dữ liệu cho cả ba câu hỏi: lạnh, hiệu thuốc, quán cà phê"
+        - "Không có nơi nhiều bậc thang đã xác nhận trong lịch"
+        - "Đau gối được tính vào xếp lịch (đi bộ ngắn) chứ không chỉ ghi chú"
+        - "Lịch 2 ngày 14-15/11 cho 1 người"
+        - "Ngày 1 bắt đầu khoảng 9h"
+
+  - id: team_building_coworkers
+    title: "Đồng nghiệp 12 người team building, ô tô, buffet và trò chơi, một đêm"
+    axes: [coworkers, big_group, team_building, minibus, one_night]
+    persona: "Trưởng phòng 40 tuổi tổ chức, câu rõ ràng, có số liệu."
+    truth: {days: 2, start: 2026-11-28, people: 12, companions: [coworkers], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "11:00", pace: normal, budget_vnd: 700000, wants: [buffet nhóm đông, trò chơi, cắm trại nhẹ], notes: "12 người xe 29 chỗ"}
+    chat:
+      - {text: "Phòng mình 12 người đi team building Đà Lạt 28-29/11 bằng xe 29 chỗ từ TP.HCM. Cần chỗ ăn nhóm đông, trò chơi tập thể. 11h trưa tới.", kind: opening}
+    sim_replies: 1
+    pick: {mode: medium, n: 4, groups: [fun, meal, camping, nature]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Phòng mình 12 người đi team building, people: 12 người}
+      stated: [trip, companions, mobility]
+      start_hour: "11:00"
+      criteria:
+        - "Số người là 12, không bị 2 hoặc 4"
+        - "Lịch 2 ngày 28-29/11"
+        - "Chỗ ăn và trò chơi hợp nhóm đông, xe 29 chỗ vào được hoặc nói chưa rõ"
+        - "Ngày 1 bắt đầu khoảng 11h"
+        - "Không toàn quán nhỏ chỉ chứa vài người"
+
+  - id: lunch_only_busy_traveller
+    title: "Chỉ quan tâm ăn uống, ba bữa mỗi ngày, hai ngày, taxi, ngân sách vừa"
+    axes: [food_only, three_meals, taxi, two_days, meal_timing]
+    persona: "Anh 35 tuổi mê ăn, nói rõ ràng, có dấu."
+    truth: {days: 2, start: 2026-11-18, people: 2, companions: [partner], mobility: walk, arrive: plane, origin: Hà Nội,
+            start_hour: "08:00", pace: normal, budget_vnd: 900000, wants: [ba bữa mỗi ngày quán ngon, ít tham quan], notes: "ăn là chính"}
+    chat:
+      - {text: "Mình và vợ bay từ Hà Nội, đi Đà Lạt 18-19/11, đi taxi, mục đích chính là ăn: sáng, trưa, tối đều quán ngon, tham quan ít thôi. 8h sáng bắt đầu.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, groups: [meal, snack, cafe, market]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Mình và vợ, people: Mình và vợ, start_hour: 8h sáng bắt đầu}
+      stated: [trip, companions, mobility]
+      start_hour: "08:00"
+      criteria:
+        - "Mỗi ngày có đủ bữa sáng, trưa, tối với quán thật"
+        - "Bữa sáng ở quán hợp bữa sáng, không xếp bánh căn buổi chiều"
+        - "Lịch 2 ngày 18-19/11 cho 2 người"
+        - "Tham quan ít, không nhồi"
+        - "Ngày 1 bắt đầu khoảng 8h"
+
+  - id: ambiguous_dates_next_weekend
+    title: "Nói ngày mơ hồ \"cuối tuần sau\", agent phải xác nhận ngày, hai người xe máy"
+    axes: [ambiguous_date, relative_date, confirm_guess, couple, motorbike, two_days]
+    persona: "Cặp 26 tuổi nói ngày kiểu quen miệng, có dấu."
+    truth: {days: 2, start: 2026-11-14, people: 2, companions: [partner], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 500000, wants: [cà phê, cảnh đẹp]}
+    chat:
+      - {text: "tụi mình đi Đà Lạt cuối tuần sau, thứ 7 chủ nhật, xe máy từ Sài Gòn, hai người. 9h bắt đầu nha.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 4, groups: [cafe, nature, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Mình đi cùng người yêu, people: hai người, start_hour: 9h bắt đầu}
+      stated: [companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Ngày hiểu là 14-15/11 (thứ 7 và chủ nhật của cuối tuần sau) và có xác nhận hoặc đọc lại"
+        - "Không bịa ngày khác không có căn cứ"
+        - "Lịch 2 ngày cho 2 người xe máy"
+        - "Ngày 1 bắt đầu khoảng 9h"
+        - "Không hỏi lại số người"
+
+  - id: mixed_group_budget_lodging
+    title: "Nhóm 4 bạn, đã đặt khách sạn, ngân sách trung bình, ô tô, lịch quanh khách sạn"
+    axes: [booked_lodging, friends_group, car, medium_budget, three_days]
+    persona: "Bạn 33 tuổi, rõ ràng, có dấu."
+    truth: {days: 3, start: 2026-12-05, people: 4, companions: [friends], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "10:00", pace: normal, budget_vnd: 800000, lodging: Khách sạn Mường Thanh Holiday Đà Lạt, wants: [quán quanh khách sạn, nơi đi buổi tối]}
+    chat:
+      - {text: "4 đứa bạn đi Đà Lạt 5-7/12, ô tô từ TP.HCM, đã đặt phòng ở Khách sạn Mường Thanh Holiday Đà Lạt. Ngân sách trung bình 800k một người một ngày. 10h bắt đầu nha.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 6, groups: [meal, cafe, sights, market]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: 4 đứa bạn, people: 4 đứa bạn, start_hour: 10h bắt đầu}
+      stated: [trip, companions, mobility, budget, lodging]
+      start_hour: "10:00"
+      criteria:
+        - "Nơi ở đã đặt được ghi nhận và lịch bắt đầu/kết thúc quanh khách sạn"
+        - "Không hiện \"Chưa biết nơi ở\" khi đã có khách sạn"
+        - "Lịch 3 ngày 5-7/12 cho 4 người"
+        - "Ngày 1 bắt đầu khoảng 10h"
+        - "Không hỏi lại nơi ở đã nói"

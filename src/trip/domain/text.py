@@ -32,3 +32,14 @@ def language(text: str) -> str:
     en = {"i", "we", "are", "want", "would", "like", "with", "from", "days", "day", "couples", "love",
           "the", "and", "night", "markets", "how", "will", "you", "your", "get", "around", "got", "it", "have"}
     return "en" if sum(w in en for w in words) > max(1, sum(w in vi for w in words)) else "vi"
+
+
+# "không có gì", "không", "bình thường", ...: the whole first clause says there is nothing (to note, to avoid)
+NOTHING = re.compile(r"(?:khong(?: co)?(?: gi)?(?: dac biet| can| luu y| van de| kieng| di ung)*|chang co gi|binh thuong|"
+                     r"khong sao|khong co gi ca|khong co vay)")
+
+
+def says_nothing(text: str) -> str:
+    """The first clause of `text` when it only says there is nothing ("không có gì. Cho tui quán...", "không"); else ''."""
+    first = re.split(r"[.,;!?\n]", text.strip(), maxsplit=1)[0].strip()
+    return first if first and NOTHING.fullmatch(fold(first).strip()) else ""

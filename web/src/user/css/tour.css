@@ -1,0 +1,49 @@
+/* Guided tour: the dimmed page with one lit element, the acorn walking to it, its bubble and the control bar (src/user/tour).
+   The bubble and the "…" are the sign-in screen's (.tg-auth__say / .tg-auth__dots in auth.css); the pet's size is measured by Tour.tsx. */
+.tg-tour { position: fixed; inset: 0; z-index: 2000; pointer-events: none; }
+.tg-tour__block { position: absolute; inset: 0; pointer-events: auto; cursor: default; }
+
+/* the hole in the dim: a box-shadow so one element stays bright; the white ring is a pseudo-element that hides when there is nothing to light */
+.tg-tour__hole { position: absolute; left: 0; top: 0; box-shadow: 0 0 0 100vmax rgba(17, 17, 17, 0.62); will-change: transform; transition: transform 0.42s var(--tg-ease); } /* moves by transform only (GPU); the size snaps, so the huge shadow is not repainted every frame */
+.tg-tour__hole::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.92); transition: opacity 0.3s; }
+.tg-tour__hole[data-empty]::after { opacity: 0; }
+
+.tg-tour__pet { position: absolute; left: 0; top: 0; width: 290px; height: 290px; pointer-events: none; transition: transform 0.52s var(--tg-ease); will-change: transform; }
+.tg-tour__body { position: relative; width: 100%; height: 100%; transform-origin: 50% 92%; will-change: transform; }
+.tg-tour__body img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.14s ease; }
+.tg-tour__body img.is-on { opacity: 1; }
+.tg-tour__shadow { position: absolute; left: 14%; right: 14%; bottom: -2%; height: 11%; border-radius: 50%; background: radial-gradient(rgba(0, 0, 0, 0.5), transparent 70%); }
+.tg-tour__pet[data-phase='walk'] .tg-tour__shadow { opacity: 0.6; }
+
+.tg-tour__say { width: max-content; max-width: 320px; padding: 14px 20px; border-radius: 22px; font-size: 1.05rem; font-weight: 500; line-height: 1.45; animation: tg-tour-pop 0.4s var(--tg-ease) both; } /* own pop: the sign-in one also animates `translate`, which would undo the edge anchoring below */
+@keyframes tg-tour-pop { from { opacity: 0; scale: 0.7; } to { opacity: 1; scale: 1; } }
+.tg-tour__pet[data-edge='l'] .tg-tour__say { left: 0; translate: 0 0; }
+.tg-tour__pet[data-edge='r'] .tg-tour__say { left: auto; right: 0; translate: 0 0; }
+.tg-tour__pet[data-edge='l'] .tg-tour__say::after { left: 110px; }
+.tg-tour__pet[data-edge='r'] .tg-tour__say::after { left: auto; right: 110px; margin-left: 0; margin-right: -7px; }
+
+.tg-tour__pet[data-phase='think'] .tg-tour__body, .tg-tour__pet[data-phase='say'] .tg-tour__body { animation: tg-tour-bob 3.2s ease-in-out infinite; }
+.tg-tour__pet[data-phase='walk'] .tg-tour__body { animation: tg-tour-step 0.36s ease-in-out infinite; }
+.tg-tour__pet[data-celebrate] .tg-tour__body { animation: tg-tour-jump 0.55s var(--tg-ease) 4; }
+@keyframes tg-tour-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -7px; } }
+@keyframes tg-tour-step { 0%, 100% { translate: 0 0; } 50% { translate: 0 -12px; } }
+@keyframes tg-tour-jump { 0%, 100% { translate: 0 0; } 45% { translate: 0 -48px; } }
+
+.tg-tour__bit { position: absolute; border-radius: 2px; animation: tg-tour-bit 1.7s ease-out both; }
+@keyframes tg-tour-bit {
+  0% { translate: 0 0; rotate: 0deg; opacity: 1; }
+  55% { translate: var(--dx) var(--dy); rotate: var(--rot); opacity: 1; }
+  100% { translate: calc(var(--dx) * 1.15) calc(var(--dy) + 360px); rotate: calc(var(--rot) * 1.6); opacity: 0; }
+}
+
+.tg-tour__bar { position: absolute; left: 50%; bottom: 22px; translate: -50% 0; width: min(420px, calc(100vw - 48px)); display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--tg-r-m); background: var(--tg-surface); box-shadow: var(--tg-sh-2); pointer-events: auto; }
+.tg-tour__gap { flex: 1; }
+.tg-tour__skip { padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--tg-ink-3); font: inherit; font-size: 0.92rem; cursor: pointer; }
+.tg-tour__skip:hover { color: var(--tg-ink); background: var(--tg-pine-soft); }
+.tg-tour button:focus-visible { outline: 2px solid var(--tg-brand); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-tour__pet, .tg-tour__hole { transition: none; }
+  .tg-tour__body { animation: none !important; }
+  .tg-tour__bit { display: none; }
+}

@@ -4,21 +4,43 @@ label:
   batch: 4                 # photos per Extractor call
   parallel: null           # concurrent calls; null = what the Extractor role takes (38 on the UIT key under EXTRACTOR_ON_UIT=1; never more than 38 from this repo in total)
   stats_width: 384         # px; blur and brightness are measured on the photo scaled to this width
+appeal:                    # gmaps photo_appeal (observe/gmaps/appeal.py): Extractor beauty + shows_place for the card candidates
+  rank_max: 8              # candidates per place sent in one call (the sharpest, best exposed); the rest order by sharpness
+  px: 640                  # longest side of a photo sent to the model
+  parallel: null           # concurrent calls; null = what the Extractor role takes
 cluster_cos: 0.95          # two photos of one place this similar (SigLIP2 cosine) are one near-duplicate cluster
 pick:
   blur_below: 100          # Laplacian variance (at stats_width) under this is blurry; of 310 sampled photos ~1 % fall below
   dark_below: 55           # mean luminance 0-255 under this is too dark (night shots)
   bright_above: 235        # over this is washed out
   person_free: ["no"]      # a photo is shown as "no people" only when the label is `no` at person_min_confidence or above
-  person_min_confidence: high  # NoPeople rule (owner 2026-10-28, "no photo with a person"): of 22,803 `no` labels 22,600 are high,
-                           # 179 medium, 24 low; medium and low are treated as unknown (a doubtful "no" is dropped, 203 photos)
+  person_min_confidence: medium  # NoPeople rule (owner 2026-10-28, "no photo with a person"; eased 2026-10-30 "chọn tốt nhất, bỏ
+                           # bớt ràng buộc quá siết"): of 22,803 `no` labels 22,600 are high, 179 medium, 24 low; only low is unknown
+  owner_people: true       # owner 2026-10-30: a photo the business posted may show people (its staff, its guests); a visitor's may not
   never_scenes: [crowd, unknown]  # a photo of these scenes is never shown, whatever its person label
-  min_scenes: 3            # a place card wants this many distinct scenes
+  old:                     # owner 2026-10-30: the crawl drops photos older than 3 years (crawl/gmaps/photos.py MAX_AGE_YEARS); for the OUTDOOR
+                           # scenes of a sight a longer-lived photo is still true of the place, so the crawl keeps such photos (photos.json
+                           # `stale` + `display_old`, never read as evidence) up to max_age_years and a card may show them. Interiors, food,
+                           # menus, amenities and every stay keep the 3-year cap. A card shows the photo's year ("Ảnh 2021") on these.
+    max_age_years: 6
+    groups: [attraction, garden_farm, nature, camping, religious, amusement, museum]
+    scenes: [view, exterior]
+  show: 4                  # photos a card gets (cover + 3), best first (owner 2026-10-30: right for the place and the most
+                           # attractive; distinct scenes not required, a restaurant may show only dishes)
+  repeat_penalty: 3        # points (of beauty + shows_place, 2-20) off a photo per photo of its scene already picked:
+                           # variety breaks near ties only
+  min_shows: 3             # a photo the model scored under this for shows_place is off topic and never a card photo (of
+                           # 108 shown at 2 most were a hair dryer, a hand with a glass, leaves on a table; at 3 most were fine)
+  off_kind_min_shows: 6    # a photo of a scene its kind does not list (a stay's breakfast, a shop's sign) is a card photo when the
+                           # model scored shows_place at least this (gmaps photo_appeal); unscored, it is not. A place short of
+                           # min_photos may add a visitor's photo with people on the same score (owner 2026-10-30), never the gallery
+  min_photos: 3            # coverage target: a place card wants this many photos (scripts/photo_targets.py)
   groups:                  # corpus category_group -> the kind of place that picks the scene order
     stay: [stay, rental]
     eat: [restaurant, cafe, dessert, bar]
     sight: [attraction, garden_farm, nature, religious, amusement, museum, camping, golf, tour]
-  scene_order:             # best photo per scene, in this order; a kind of place not named above uses `default`
+  scene_order:             # the scenes that show a place of this kind (others are off topic); the order breaks ties; a kind
+                           # of place not named above uses `default`
     default: [exterior, interior, view, food, drink, amenity, room]
     stay: [room, exterior, view, amenity, interior, bathroom]
     eat: [interior, food, exterior, drink, view]

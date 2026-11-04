@@ -6,11 +6,14 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import date
-from typing import Callable
+from typing import Callable, Sequence
+
+from corpus.retrieval import read_span
 
 from ..domain.coverage import admissible
 from ..domain.state import TripState
 from ..domain.vibes import media_url
+from .browse import Browse
 from .catalog import Catalog
 from .reads import FIND_KEYS, Feeds, Reads
 from .settings import Assistant
@@ -60,6 +63,7 @@ class Knowledge:
         self.perceiver = None  # infrastructure.perceive.Perceiver: photo and link reads (set by api/tools.py)
         self.cfg = cfg or Assistant()  # config/trip.yaml assistant: find_pool, near_km, walk_kmh, max_compare
         self.more = Reads(self, feeds or Feeds.corpus())  # infrastructure/reads.py: the wider read tools
+        self.browse = Browse(self)  # infrastructure/browse.py: broad asks and tags -> subtags
 
     def _admissible(self, pid: str, state: TripState) -> bool:
         place = self.catalog.by_id.get(pid)
@@ -70,15 +74,16 @@ class Knowledge:
         `limit` (data_places) as cards, and `ranked` = the ids for the place cards, in score order while a place has
         at least cards_ratio of the best score, at most cards_max. ValueError when the criteria are not valid.
         Keys of reads.FIND_KEYS (near_place, price_max, sort, exclude, page) are read by reads.Reads.find."""
-        if set(FIND_KEYS) & set(criteria):
-            return self.more.find(criteria, state, limit)
-        found = self.retrieval.find(criteria, limit=max(FIND_POOL, self.cards_max))
-        hits = [h for h in found.hits if self._admissible(h.place_id, state)]
-        best = hits[0].score if hits else 0.0
-        ranked = [h.place_id for h in hits if best <= 0 or h.score >= self.cards_ratio * best][:self.cards_max]
-        places = [{"id": h.place_id, **h.card} for h in hits[:limit or self.data_places]]
-        return {"places": places, "maybe": sum(self._admissible(h.place_id, state) for h in found.maybe),
-                "unknown": found.unknown, "ranked": ranked}
+        with read_span("knowledge"):
+            if set(FIND_KEYS) & set(criteria):
+                return self.more.find(criteria, state, limit)
+            found = self.retrieval.find(criteria, limit=max(FIND_POOL, self.cards_max))
+            hits = [h for h in found.hits if self._admissible(h.place_id, state)]
+            best = hits[0].score if hits else 0.0
+            ranked = [h.place_id for h in hits if best <= 0 or h.score >= self.cards_ratio * best][:self.cards_max]
+            places = [{"id": h.place_id, **h.card} for h in hits[:limit or self.data_places]]
+            return {"places": places, "maybe": sum(self._admissible(h.place_id, state) for h in found.maybe),
+                    "unknown": found.unknown, "ranked": ranked}
 
     def place(self, pid: str) -> dict | None:
         card = self.retrieval.card(pid)
@@ -184,10 +189,21 @@ class Knowledge:
         if read is None:
             return []
         try:
-            shots = sorted(read(pid), key=lambda p: p.get("scene") != first)  # stable: the scene order stays after it
+            # a photo past the 3-year cap (`year`) is a card pick that must show its year: chat cards carry bare urls, so it is left out
+            shots = sorted((p for p in read(pid) if not p.get("year")), key=lambda p: p.get("scene") != first)  # stable: the scene order stays after it
             return [media_url(p["file"]) for p in shots[:MAX_PHOTOS] if p.get("file")]
         except Exception:  # labels unreadable: display falls back to the record photos, never an error in chat
             return []
+
+    def scene_cover(self, pid: str, scenes: Sequence[str]) -> str | None:
+        """The place's best photo of these scenes as a /media url, None when it has none (a tag card's cover)."""
+        read = getattr(self.retrieval, "scene_photos", None)
+        if read is None or not scenes:
+            return None
+        try:
+            return next((media_url(p["file"]) for p in read(pid) if p.get("scene") in scenes and p.get("file") and not p.get("year")), None)
+        except Exception:  # labels unreadable: the card keeps its plain photo
+            return None
 
     def view(self, pid: str, today: date | None = None, liked: bool = False, scene: str | None = None) -> dict | None:
         """A place card in the chat: every field copied from the serving record, null when the record has none."""

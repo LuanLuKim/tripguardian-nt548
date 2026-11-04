@@ -35,3 +35,9 @@ tests/fixtures/tiktok/
 # Local model experiments and training assets are not part of the application pipeline.
 /system_one_model/
 /training/
+
+# prod harness runs from a frozen copy of src (restart_harness.sh)
+/src_live/
+/src_live.new/
+/src_live.old/
+/src_live.bak_*/

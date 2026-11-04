@@ -2,7 +2,7 @@
 
 from requirements import activity_for
 
-from .cards import warning_text
+from .cards import feature_label, warning_text
 
 
 def build(s, res, cfg) -> dict:
@@ -16,11 +16,18 @@ def build(s, res, cfg) -> dict:
         c = res.cands.get(pid)
         if c is None:
             continue
+        constraint_flags = []
+        for check in c.checks:
+            if check["result"] not in {"fail", "unknown"}:
+                continue
+            label = feature_label(check["feature"], cfg).lower()
+            reason = "chưa xác minh được" if check["result"] == "unknown" else "không đáp ứng"
+            constraint_flags.append(f"{c.name}: {reason} {label}; Lịch trình sẽ kiểm tra trước khi xếp nơi này")
         confirmed.append({"id": pid, "name": c.name,
                           "utility": c.score, "utility_source": "decision_score",
                           "role": "anchor" if pid in anchors else "locked" if pid in st.locked else "selected",
                           "visit": c.rec["operation"].get("visit_minutes"),
-                          "flags": [f["text"] for f in c.flags] + [warning_text(w, cfg) for w in c.warnings],
+                          "flags": [f["text"] for f in c.flags] + [warning_text(w, cfg) for w in c.warnings] + constraint_flags,
                           "relaxed": relaxed.get(pid, [])})
     backup, seen = [], set(st.selected)
     for pid in st.selected:
@@ -43,7 +50,7 @@ def build(s, res, cfg) -> dict:
             if activity is not None:
                 activities[pid] = activity
     return {"corpus_binding": si.corpus_binding.model_dump(mode="json") if si.corpus_binding else None,
-            "confirmed": confirmed, "backup_pool": backup, "wishlist": res.view["wishlist"],
+            "confirmed": confirmed, "backup_pool": backup, "hidden_ids": list(s.hidden_ids), "wishlist": res.view["wishlist"],
             "chunk_assignments": dict(st.chunk_assignments),
             "trip_context": si.model_copy(update={'activities': activities}).model_dump(mode="json"), "decision_log": list(s.log),
             "feasibility": res.view["feasibility"], "lodging": st.lodging.model_dump() if st.lodging else None}

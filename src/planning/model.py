@@ -25,6 +25,7 @@ class Place:
     activity: str | None = None
     activity_explicit: bool = False
     meal_kind: str | None = None    # roles.meal_kind: main | breakfast | light | night_meal
+    start_time: int | None = None   # exact start requested by the user
 
 
 @dataclass(frozen=True)

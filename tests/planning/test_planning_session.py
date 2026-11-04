@@ -203,6 +203,7 @@ def test_extend_after_choosing_a_dawn_plan_uses_the_window_before_pull_early(sid
     from planning import Engine
     recs = [spot('hill', CENTRE, 0, hours=None, features={'cloud_hunting': 'present'})]
     d = decision(['hill'], days=2, base={'text': 'home', 'lat': CENTRE[0], 'lng': CENTRE[1]}, leave_at='21:00')
+    d['trip_context']['soft_weights'] = [{'feature': 'cloud_hunting', 'value': 'present', 'weight': 1}]
     e = Engine(recs + LODGING, cfg=CFG, live_cfg=FakeLive(), store=Store(None), geocode_fn=no_geocode,
                matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), background=False)
     created = e.create(d)

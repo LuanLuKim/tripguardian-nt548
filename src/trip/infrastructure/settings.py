@@ -5,10 +5,11 @@ from pathlib import Path
 
 import yaml
 
-ARRIVAL_BUFFER_MIN = 45  # the default of Settings.arrival_buffer_min (config/trip.yaml)
-COACH_MIN_PEOPLE = 9  # the default of Settings.coach_min_people
-
 ROOT = Path(__file__).resolve().parents[3]
+_HUB_MARGINS = yaml.safe_load((ROOT / "config" / "planning.yaml").read_text(encoding="utf-8"))["realistic"]
+ARRIVAL_BUFFER_MIN = int(_HUB_MARGINS["arrive_buffer_min"])
+DEPARTURE_BUFFER_MIN = int(_HUB_MARGINS["leave_buffer_min"])
+COACH_MIN_PEOPLE = 9  # the default of Settings.coach_min_people
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class Assistant:
 
 @dataclass(frozen=True)
 class Settings:
+    discovery: bool = False  # chat leads taste discovery, required questions only at the gate (owner 2026-11-04); off until reviewed
     drill_min: int = 10
     drill_score_min: float = 0.14
     gaps_path: str = "data/trip/gaps.jsonl"
@@ -74,7 +76,8 @@ class Settings:
     required: tuple = ("trip", "companions", "mobility", "care", "pace", "budget", "lodging")
     max_tokens: int = 1500
     coach_min_people: int = COACH_MIN_PEOPLE  # a party this big in its own car needs places a coach or 16-seater reaches
-    arrival_buffer_min: int = ARRIVAL_BUFFER_MIN  # from a coach / flight's arrival to the first stop, and from the last stop to departure
+    arrival_buffer_min: int = ARRIVAL_BUFFER_MIN  # shared hub margins from config/planning.yaml
+    departure_buffer_min: int = DEPARTURE_BUFFER_MIN
     entry_min: int = 30
     frame: dict = field(default_factory=lambda: {"day_start": "08:00", "day_end": "21:00",
                                                "first_start": "14:00", "last_end": "12:00"})
@@ -104,6 +107,10 @@ def load(path: Path = ROOT / "config" / "trip.yaml") -> Settings:
     roads = tuple(raw.pop("entry_roads", None) or ())
     airports = yaml.safe_load((path.parent / "airports.yaml").read_text(encoding="utf-8")) if (path.parent / "airports.yaml").exists() else {}
     raw["required"] = tuple(raw.get("required") or Settings.required)
+    planning_path = path.parent / "planning.yaml"
+    margins = yaml.safe_load(planning_path.read_text(encoding="utf-8"))["realistic"] if planning_path.exists() else _HUB_MARGINS
+    raw["arrival_buffer_min"] = int(margins["arrive_buffer_min"])
+    raw["departure_buffer_min"] = int(margins["leave_buffer_min"])
     return Settings(**raw, entry_roads=roads, airports=tuple(airports.get("airports") or ()), patterns=patterns,
                     assistant=assistant)
 

@@ -10,6 +10,8 @@ import pytest
 from corpus.local import run_extract, run_group
 
 SEC = "Từ tháng 1 đến tháng 2 mai anh đào nở rộ. Ghé Hồ Tuyền Lâm lúc sáng sớm. Ghé Quán Ma Không Có Thật cho vui."
+SEC2 = ("Từ tháng 1 đến tháng 2 mai anh đào nở rộ khắp phố. Ghé Hồ Tuyền Lâm lúc sáng sớm nhé. "
+        "Ghé Quán Ma Không Có Thật cho vui nhé.")
 
 
 @pytest.fixture
@@ -17,11 +19,11 @@ def data(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     docs = tmp_path / "web" / "dalat" / "documents"
     docs.mkdir(parents=True)
-    for did, domain in (("d1", "a.vn"), ("d2", "b.vn")):
+    for did, domain, text in (("d1", "a.vn", SEC), ("d2", "b.vn", SEC2)):   # two sites never copy one sentence
         (docs / f"{did}.json").write_text(json.dumps({
-            "doc_id": did, "source_url": f"https://{domain}/x", "domain": domain, "title": "Mùa hoa",
+            "doc_id": did, "source_url": f"https://{domain}/x", "domain": domain, "title": "Mùa hoa Đà Lạt",
             "retrieved_at": "2026-10-28T00:00:00+00:00", "lang": "vi", "kind": "web",
-            "sections": [{"heading": "Mùa hoa", "text": SEC}]}), encoding="utf-8")
+            "sections": [{"heading": "Mùa hoa", "text": text}]}), encoding="utf-8")
     (tmp_path / "serving").mkdir()
     (tmp_path / "serving" / "places.json").write_text(json.dumps({"records": [
         {"id": "fid:lake", "status": "VERIFIED", "identity": {"name": "Hồ Tuyền Lâm", "lat": 11.9, "lng": 108.4}}]}),
@@ -36,11 +38,14 @@ def claim(subject_kind, subject, kind, text, quote, months=()):
 
 
 async def fake_ask(**fields):
+    tail = " khắp phố" if "khắp phố" in fields["text"] else ""
+    nhe = " nhé" if tail else ""
     return {"claims": [
         claim("phenomenon", "mai anh đào", "season", "mai anh đào nở rộ",
-              "Từ tháng 1 đến tháng 2 mai anh đào nở rộ", [1, 2]),
-        claim("poi", "Hồ Tuyền Lâm", "best_time", "lúc sáng sớm", "Ghé Hồ Tuyền Lâm lúc sáng sớm"),
-        claim("poi", "Quán Ma Không Có Thật", "tip", "cho vui", "Ghé Quán Ma Không Có Thật cho vui"),
+              f"Từ tháng 1 đến tháng 2 mai anh đào nở rộ{tail}", [1, 2]),
+        claim("poi", "Hồ Tuyền Lâm", "best_time", "lúc sáng sớm", f"Ghé Hồ Tuyền Lâm lúc sáng sớm{nhe}"),
+        claim("poi", "Quán Ma Không Có Thật", "tip", "Ghé Quán Ma Không Có Thật cho vui",
+              f"Ghé Quán Ma Không Có Thật cho vui{nhe}"),
         claim("city", "Đà Lạt", "tip", "đi chợ", "Đà Lạt có chợ đêm")]}  # quote not in the page: dropped
 
 

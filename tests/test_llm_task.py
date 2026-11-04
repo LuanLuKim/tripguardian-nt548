@@ -106,24 +106,77 @@ def test_asr_check_retries_warmer_then_without_frames(monkeypatch):
         calls.append((temperature, len(images)))
         if len(calls) < 3:
             raise tasks.Runaway("loop")
-        return {"ok": 1}
+        return {"segments": [{"i": 0, "status": "ok", "text": "x"}], "quality": "good", "screen_text": ["a"]}
 
     monkeypatch.setattr(asr_check.ASR_CHECK.__class__, "ask", lambda self, *a, **k: fake_ask(*a, **k))
-    out = asyncio.run(asr_check.ask_check(None, "m", [b"x"], city="c"))
-    assert out == {"ok": 1, "screen_text": []}
+    out = asyncio.run(asr_check.ask_check(None, "m", [b"x"], 1, city="c"))
+    assert out["screen_text"] == [] and out["segments"][0]["i"] == 0
     assert calls == [(None, 1), (asr_check.RETRY_TEMPERATURE, 1), (asr_check.RETRY_TEMPERATURE, 0)]
 
 
-def test_asr_check_gives_up_after_three_failures(monkeypatch):
+def test_asr_check_gives_up_after_four_failures(monkeypatch):
     from corpus.crawl.tiktok import asr_check
 
+    calls = []
+
     async def fake_ask(client, model, images=(), temperature=None, **fields):
+        calls.append(temperature)
         raise tasks.SchemaError("$: missing screen_text")
 
     monkeypatch.setattr(asr_check.ASR_CHECK.__class__, "ask", lambda self, *a, **k: fake_ask(*a, **k))
     try:
-        asyncio.run(asr_check.ask_check(None, "m", [b"x"], city="c"))
+        asyncio.run(asr_check.ask_check(None, "m", [b"x"], 1, city="c"))
     except tasks.SchemaError:
         pass
     else:
         raise AssertionError("expected SchemaError")
+    assert calls == [None, asr_check.RETRY_TEMPERATURE, asr_check.RETRY_TEMPERATURE, 0.0, 0.0, 0.0]
+
+
+def test_asr_check_last_resort_is_the_unguided_task(monkeypatch):
+    from corpus.crawl.tiktok import asr_check
+
+    guided = []
+
+    async def fake_ask(self, client, model, images=(), temperature=None, **fields):
+        guided.append(self.role.guided)
+        if self.role.guided:
+            raise tasks.Runaway("loop")
+        return {"segments": [{"i": 0, "status": "ok", "text": "x"}], "quality": "good", "screen_text": []}
+
+    monkeypatch.setattr(asr_check.ASR_CHECK.__class__, "ask", fake_ask)
+    out = asyncio.run(asr_check.ask_check(None, "m", [b"x"], 1, city="c"))
+    assert out["quality"] == "good" and guided == [True, True, True, True, False]
+
+
+def test_asr_check_asks_again_when_the_answer_has_other_segments(monkeypatch):
+    from corpus.crawl.tiktok import asr_check
+
+    answers = [[0, 1, 2], [0]]
+
+    async def fake_ask(client, model, images=(), temperature=None, **fields):
+        return {"segments": [{"i": i, "status": "ok", "text": "x"} for i in answers.pop(0)], "quality": "good",
+                "screen_text": []}
+
+    monkeypatch.setattr(asr_check.ASR_CHECK.__class__, "ask", lambda self, *a, **k: fake_ask(*a, **k))
+    out = asyncio.run(asr_check.ask_check(None, "m", [], 1, city="c"))
+    assert [a["i"] for a in out["segments"]] == [0]
+
+
+def test_asr_check_long_transcript_is_checked_in_windows(monkeypatch):
+    from corpus.crawl.tiktok import asr_check
+
+    sent = []
+
+    async def fake_ask(client, model, images=(), temperature=None, segments="", **fields):
+        n = len(segments.splitlines())
+        sent.append(n)
+        return {"segments": [{"i": i, "status": "ok", "text": "x"} for i in range(n)],
+                "quality": "good" if len(sent) == 1 else "partial", "screen_text": ["Sign"] if len(sent) < 3 else []}
+
+    monkeypatch.setattr(asr_check.ASR_CHECK.__class__, "ask", lambda self, *a, **k: fake_ask(*a, **k))
+    segs = [{"start_s": i, "end_s": i + 1, "text": f"t{i}"} for i in range(asr_check.WINDOW * 2 + 5)]
+    out = asyncio.run(asr_check.ask_segments(None, "m", [b"x"], segs, city="c"))
+    assert sent == [asr_check.WINDOW, asr_check.WINDOW, 5]
+    assert [a["i"] for a in out["segments"]] == list(range(len(segs)))
+    assert out["quality"] == "partial" and out["screen_text"] == ["Sign"]

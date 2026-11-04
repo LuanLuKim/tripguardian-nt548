@@ -29,6 +29,7 @@ def cloudflare(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acc")
     monkeypatch.setattr(clef, "load_dotenv", lambda *_: None)
+    monkeypatch.setattr(clef, "_SELF_DOWN_UNTIL", 0.0)  # no pause left over from another test
     for name in ("CLEF_TIMEOUT_S", "CLEF_MODEL", "CLEF_MODEL_ID", "CLEF_BASE_URL", "CLEF_API_KEY"):  # the developer's .env may set these
         monkeypatch.delenv(name, raising=False)
 
@@ -99,3 +100,35 @@ def test_self_hosted_clef_is_used_when_base_url_is_set(cloudflare, monkeypatch):
     assert clef.Judge(Settings()).unsupported("yên tĩnh", "khách muốn: x")
     assert seen[0].full_url == "http://127.0.0.1:30000/v1/clef-flash"
     assert seen[0].get_header("Authorization") == "Bearer gateway-key"
+
+
+def test_cloudflare_answers_when_the_self_hosted_clef_is_down(cloudflare, monkeypatch):
+    seen = []
+    cf = {"result": {"answers": {clef.SUPPORT: {"choice": "B", "probabilities": {"B": 0.95}}}}}
+
+    def urlopen(request, timeout):
+        seen.append(request.full_url)
+        if request.full_url.startswith("http://127.0.0.1"):
+            raise OSError("connection refused")  # self-host down (or the gateway's 502)
+        return Response(None, cf)
+    monkeypatch.setattr(clef.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(clef, "_SELF_DOWN_UNTIL", 0.0)
+    monkeypatch.setenv("CLEF_BASE_URL", "http://127.0.0.1:30000/v1/clef-flash")
+    monkeypatch.setenv("CLEF_API_KEY", "gateway-key")
+    j = clef.Judge(Settings())
+    assert j.unsupported("yên tĩnh", "khách muốn: x")
+    assert seen[0].startswith("http://127.0.0.1") and "api.cloudflare.com" in seen[1]
+    seen.clear()
+    assert j.unsupported("yên tĩnh", "khách muốn: x")  # a down self-host is skipped for a while: no wait per call
+    assert len(seen) == 1 and "api.cloudflare.com" in seen[0]
+
+
+def test_self_hosted_clef_comes_back_after_the_pause(cloudflare, monkeypatch):
+    seen = []
+    body = {"systemone": {"answers": {clef.SUPPORT: {"choice": "B", "probabilities": {"B": 0.95}}}}}
+    monkeypatch.setattr(clef.urllib.request, "urlopen",
+                        lambda request, timeout: seen.append(request.full_url) or Response(None, body))
+    monkeypatch.setattr(clef, "_SELF_DOWN_UNTIL", clef.time.monotonic() - 1)  # the pause is over
+    monkeypatch.setenv("CLEF_BASE_URL", "http://127.0.0.1:30000/v1/clef-flash")
+    assert clef.Judge(Settings()).unsupported("yên tĩnh", "khách muốn: x")
+    assert seen == ["http://127.0.0.1:30000/v1/clef-flash"]

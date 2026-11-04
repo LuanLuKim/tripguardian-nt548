@@ -308,18 +308,20 @@ export function Landing() {
     }
   }, [still])
 
-  // "Lên lịch chuyến của bạn" opens the app as a guest when there is no session yet (no sign-in wall; if the guest
-  // cannot start, /app shows the sign-in page); the questions start there, when the visitor says what the trip is.
+  // "Lên lịch chuyến của bạn" opens the app for someone already signed in (account or guest); with no session it opens
+  // the sign-in screen. The questions start in the app, when the visitor says what the trip is.
   // `asGuest`: a signed-in visitor asked for a fresh guest session instead of their account.
   const begin = async (from: HTMLElement | null, asGuest = false) => {
     if (leaving || starting.current) return
     starting.current = true
     const utm = Object.fromEntries([...new URLSearchParams(location.search)].filter(([k]) => k.startsWith('utm_')))
     track('landing_cta', utm)
-    if (!account || asGuest) {
-      try { await startGuest() } catch { if (asGuest) { starting.current = false; return } }
+    if (asGuest) {
+      try { await startGuest() } catch { starting.current = false; return }
     }
     starting.current = false
+    // Nobody signed in: the way in is the sign-in screen (it also offers the guest session), never straight to the home page.
+    if (!account && !asGuest) { navigate('/app/login'); window.scrollTo(0, 0); return }
     const go = () => { navigate('/app'); window.scrollTo(0, 0) }
     if (still || !canTransition()) return go()
     // the pressed button and its containers stay while everything around them fades (css: .is-keep, .is-from)
@@ -435,7 +437,7 @@ export function Landing() {
               </div>
               <ul className="tg-l3__ticks">
                 <li><Icon name="check" size={14} />Miễn phí</li>
-                <li><Icon name="check" size={14} />Không cần tài khoản</li>
+                <li><Icon name="check" size={14} />Dùng thử không cần tài khoản</li>
                 <li><Icon name="check" size={14} />Chỗ nào cũng có thật</li>
               </ul>
               </div>
@@ -574,7 +576,7 @@ export function Landing() {
 
       <section className="tg-cta tg-rv" id="tg-cta" aria-labelledby="tg-cta-h">
         <div className="tg-cta__img" aria-hidden="true" />
-        <div className="tg-cta__in"><h2 id="tg-cta-h">Bắt đầu chuyến Đà Lạt của bạn.</h2><button type="button" className="tg-btn tg-btn--sun tg-cta__btn" onClick={(e) => void begin(e.currentTarget)}>{cta}</button><p>Miễn phí · Không cần tài khoản · Đăng nhập Google để lưu chuyến</p>{member && <button type="button" className="tg-link tg-cta__guest" onClick={(e) => void begin(e.currentTarget, true)}>Hoặc dùng thử với tư cách khách (phiên mới, tài khoản của bạn giữ nguyên)</button>}</div>
+        <div className="tg-cta__in"><h2 id="tg-cta-h">Bắt đầu chuyến Đà Lạt của bạn.</h2><button type="button" className="tg-btn tg-btn--sun tg-cta__btn" onClick={(e) => void begin(e.currentTarget)}>{cta}</button><p>Miễn phí · Dùng thử được không cần tài khoản · Đăng nhập để lưu chuyến</p>{member && <button type="button" className="tg-link tg-cta__guest" onClick={(e) => void begin(e.currentTarget, true)}>Hoặc dùng thử với tư cách khách (phiên mới, tài khoản của bạn giữ nguyên)</button>}</div>
       </section>
 
       <footer className="tg-lf"><Logo size={26} dark /><span className="tg-lf__sp" /><span>Giờ giấc và quãng đường là ước tính; địa hình theo dữ liệu thật, cây và mái nhà chỉ là biểu tượng. Số liệu theo bản dữ liệu {stats.asOf?.split('-').reverse().join('/')}: {num(stats.places)} nơi, {num(stats.withPhotos)} nơi có ảnh thật.</span></footer>

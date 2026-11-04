@@ -40,6 +40,37 @@ def test_real_decision_and_planning_tools_preserve_selection_on_handoff(tmp_path
     assert view["result"]["view"]["selected"] == ["place-1"]
 
 
+@pytest.mark.parametrize("features", [{}, {"vegetarian_options": "no"}])
+def test_hard_meal_handoff_reaches_planning_without_scheduling_an_unsafe_meal(tmp_path, features):
+    from decision import Data, Engine as DecisionEngine, Store as DecisionStore, Tools as DecisionTools, load_settings
+    from planning import Engine as PlanningEngine, Tools as PlanningTools
+    from harness import Harness, Store
+    from fixtures import hard, si
+    from test_dispatch import Tools as FakeTools, decision, run
+
+    records = [srec("meal", group="restaurant", usable=("meal",), features=features),
+               srec("cafe", group="cafe")]
+    dt = DecisionTools(DecisionEngine(Data(records), load_settings(), DecisionStore(None)))
+    pt = PlanningTools(PlanningEngine(records, cfg=CFG, live_cfg=FakeLive(), geocode_fn=no_geocode,
+        matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), background=False))
+    h = Harness(FakeTools("trip"), dt, pt, Store(tmp_path))
+    v = decision(h)
+    search = si(context={"days": 3}, hard_filters=[hard("vegetarian_options", "yes", "eq")],
+                activities={"meal": "eating"}).model_dump(mode="json")
+    dt.rebase(v["sessions"]["decision"], {"search_input": search})
+    v = run(h, v, "act", "select-meal", {"type": "select", "place_id": "meal"})
+    v = run(h, v, "act", "select-cafe", {"type": "select", "place_id": "cafe"})
+    v = run(h, v, "advance", "to-planning")
+    assert v["stage"] == "planning"
+    assert v["outputs"]["decision"]["confirmed"][0]["relaxed"] == []
+    plan = v["result"]["view"]
+    assert plan["ok"] is False
+    assert plan["back_to_decision"]["reason"] == "no_valid_variant"
+    assert "meal" in plan["back_to_decision"]["places"]
+    assert plan["itinerary"] is None
+    assert plan["variants"] == []
+
+
 def test_real_overload_handoff_offers_tradeoffs_and_confirms_only_valid_drafts(tmp_path):
     from decision import Data, Engine as DecisionEngine, Store as DecisionStore, Tools as DecisionTools, load_settings
     from planning import Engine as PlanningEngine, Tools as PlanningTools

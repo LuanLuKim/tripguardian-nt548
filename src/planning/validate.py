@@ -8,14 +8,14 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 
 from requirements import allowed, hard_result
-from trip import nights as stay_nights
 
+from . import diet, pets
 from .conditions import hazard
 from .feature_ontology import ontology
 from .lodging import price_cap
 from .model import DayResult, Violation
-from .roles import takes_meal_slot
-from .schedule import DayCtx, intervals_for, meal_floor, meals_needed, pin_window
+from .roles import ROLE_SLOTS, takes_meal_slot
+from .schedule import DayCtx, intervals_for, meal_floor, meals_needed, pin_hostable, pin_window
 from .cache import day_key, fingerprint, put, travel_key
 from .settings import Settings
 from .stayprice import age_h
@@ -37,6 +37,54 @@ def release(cx: DayCtx, ids) -> DayCtx:
     if not ids:
         return cx
     return replace(cx, places={**cx.places, **{i: replace(cx.places[i], pins=()) for i in ids if i in cx.places}})
+
+
+def _road_gaps(cx: DayCtx, items: list) -> list[Violation]:
+    """The person cannot be in two places without a road between them: from the day's start node every visit and every
+    leg must begin where the previous one ended, and a day with visits ends at its end node. Re-derived from the
+    timeline alone (a leg's length is checked apart, in `validate`). Rests, waits and meal blocks stay where they are."""
+    d, out = cx.day, []
+    at, until = d.start_node, 0
+    for it in items:
+        overlapped, until = it.start < until, max(until, it.end)     # an overlap is reported once, as an overlap
+        if overlapped and it.kind in {"travel", "visit"}:
+            at = it.to_id if it.kind == "travel" and it.to_id is not None else it.place_id if it.kind == "visit" else at
+            continue
+        if it.kind == "travel":
+            if at is not None and it.from_id is not None and it.from_id != at:
+                out.append(Violation("travel", d.index, it.to_id, 0, False, "the road does not start where the day is"))
+            at = it.to_id if it.to_id is not None else at
+        elif it.kind == "visit":
+            if at is not None and it.place_id != at:
+                out.append(Violation("travel", d.index, it.place_id, 0, False, "no road to this visit"))
+            at = it.place_id
+    if out or at is None or d.end_node is None or at == d.end_node or not any(it.kind == "visit" for it in items):
+        return out
+    return [Violation("travel", d.index, None, 0, False, "no road back to where the day ends")]
+
+
+# The trip's budget never blocks or trims a plan (owner 04/11: the budget is the whole trip's, the plan says what pushes
+# it over and the user decides): the engine passes this instead of budget_vnd, and budget_warnings tells the user.
+NO_BUDGET_CAP = None
+
+
+def budget_warnings(ctxs, results, budget_vnd: int | None) -> list[dict]:
+    """One line per day whose estimated spend per person runs over budget_vnd (VND per person per day, Trip's
+    scalar): by how much, and the stops that cost the most, so the user can drop or swap one of them."""
+    if not budget_vnd:
+        return []
+    out = []
+    for cx, r in zip(ctxs, results):
+        costs = [(cx.places[i.place_id].cost_vnd or 0, cx.places[i.place_id].name) for i in r.items if i.kind == "visit"]
+        spend = sum(c for c, _ in costs)
+        if spend <= budget_vnd:
+            continue
+        top = ", ".join(f"{name} (~{c // 1000}k)" for c, name in sorted(costs, reverse=True)[:2] if c)
+        out.append({"code": "budget_over", "day": cx.day.index, "minutes": 0,
+                    "text": f"Ngày {cx.day.index + 1}: chi phí ước tính ~{spend // 1000}k/người, vượt ngân sách "
+                            f"{budget_vnd // 1000}k khoảng {(spend - budget_vnd) // 1000}k"
+                            + (f"; tốn nhất: {top}. Bạn có thể bỏ hoặc đổi một nơi." if top else ".")})
+    return out
 
 
 def validate(ctxs: list[DayCtx], results: list[DayResult], hard_filters: list, anchors: set,
@@ -86,10 +134,14 @@ def validate(ctxs: list[DayCtx], results: list[DayResult], hard_filters: list, a
             out.append(Violation("day_window", d.index, None, items[-1].end - d.end, False, "the day runs past its end"))
         if items and items[0].start < d.start:
             out.append(Violation("day_window", d.index, None, d.start - items[0].start, False, "starts before the day"))
+        out.extend(_road_gaps(cx, items))
         spend = 0
+        requirements = pets.filters({'hard_filters': hard_filters, 'context': {'companions': ['pet'] if cx.pet else []}})
         meal_slots = set()
         for it in items:
             if it.kind == 'meal_free':
+                # A free meal on a diet day names no place, so nothing failed: diet.warnings tells the user and the
+                # slot's faded suggestions are verified options (owner 04/11: unknown is shown and warned, not blocked).
                 window = cx.cfg.meal_windows.get(it.name)
                 if window and window[0] <= it.start <= window[1] and it.end - it.start >= meal_floor(it.name, cx):
                     if it.name in meal_slots:
@@ -114,6 +166,7 @@ def validate(ctxs: list[DayCtx], results: list[DayResult], hard_filters: list, a
             if takes_meal_slot(p):
                 names = list(cx.cfg.meal_windows)[:cx.cfg.meals_per_day]
                 slot = next((name for name in names if name not in meal_slots
+                             and name in ROLE_SLOTS.get(p.meal_kind, names)
                              and cx.cfg.meal_windows[name][0] <= it.start <= cx.cfg.meal_windows[name][1]), None)
                 if slot is None:
                     out.append(Violation('meal_window', d.index, p.id, 0, False, 'no distinct meal window for this visit'))
@@ -123,15 +176,23 @@ def validate(ctxs: list[DayCtx], results: list[DayResult], hard_filters: list, a
                 out.append(Violation("hours", d.index, p.id, 0, False, "visit outside the opening hours"))
             if why := hazard(p, cx.cond):
                 out.append(Violation("hazard", d.index, p.id, 0, False, f"hazard that day: {why}"))
+            if p.start_time is not None and it.start != p.start_time:
+                out.append(Violation("start_time", d.index, p.id, abs(it.start - p.start_time), False,
+                                     "does not start at the requested time"))
             lo, hi = pin_window(p, cx)
-            if not lo <= it.start <= hi:
+            # a time of day this day cannot reach at all (a sunset lake moved to a morning-only last day) is a wish
+            # given up and told (pin_warnings), not a conflict the user must undo
+            if not lo <= it.start <= hi and pin_hostable(p, cx):
                 out.append(Violation("timed", d.index, p.id, 0, False, "off the time of day its feature needs"))
             if p.id in visited:
                 out.append(Violation("duplicate", d.index, p.id, 0, False, "the place is scheduled twice"))
             visited[p.id] = d.index
             spend += p.cost_vnd or 0
-            for hf in hard_filters:
-                if hf["feature"] not in p.relaxed \
+            for rule in cx.diet_days:
+                if diet.result(p, rule) == "fail":        # evidence it has no such dish; unknown only warns
+                    out.append(Violation("hard", d.index, p.id, 0, False, diet.explanation(rule)))
+            for hf in requirements:
+                if (hf["feature"] == 'pets' or hf["feature"] not in p.relaxed) \
                         and not allowed(p.rec, hf, p.activity, p.kind):
                     verdict = hard_result(p.rec, hf, p.activity, p.kind)[0]
                     out.append(Violation("hard", d.index, p.id, 0, _is_physical(hf["feature"]),
@@ -154,6 +215,8 @@ def lodging_budget(context: dict, lodging: dict | None, cfg: Settings, now: date
     candidates were filtered with). Over budget is information for the user: it never fails a check or drops a stop.
     Unknown price or budget -> None fields and `over_budget` None (unknown is not "within"). None when there is no
     lodging or no night to pay for."""
+    from trip import nights as stay_nights
+
     n = stay_nights(context)
     if not lodging or n <= 0:
         return None

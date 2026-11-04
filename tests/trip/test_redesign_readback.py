@@ -89,7 +89,8 @@ def test_rb2_the_trip_line_names_weekdays_and_the_physical_reason_for_the_hours(
     trip = [l.text for l in lines(st) if l.tab == "trip" and l.kind == "said"]
     assert any("T6 20/11 → CN 22/11" in t for t in trip), trip
     head = next(t for t in trip if "T6 20/11" in t)
-    assert "9:30" in head and "10:45" in head and "16:00" in head  # arrival, ready time, departure
+    # 2026-11-04: inferred airport uses the hub margin; Planning routes the transfer separately.
+    assert "9:30" in head and "10:15" in head and "16:00" in head  # arrival, ready time, departure
 
 
 # ---------- RB3: money the way people say it ----------

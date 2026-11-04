@@ -27,3 +27,12 @@ def test_pack_excludes_private_data_staging_and_inactive_releases(tmp_path):
         assert not script["keep"](Path(name), True), name
     assert script["keep"](Path("data/gmaps/places/F/photos/p.jpg"), True)
     assert not script["keep"](Path("data/gmaps/places/F/photos/p.jpg"), False)
+
+
+def test_projection_carries_served_phone_and_website_only_when_present(tmp_path):
+    from corpus.releases import rebuild
+    inputs(tmp_path)
+    put(tmp_path, "gmaps/places/F/place.json", {"fid": "F", "attributes": [], "phone": "0263 3822 534", "website": "https://example.vn/"})
+    result = rebuild("dalat", tmp_path)
+    place = json.loads((tmp_path / "releases" / result["release_id"] / "projection/serving.json").read_text())["places"][0]
+    assert (place["phone"], place["website"]) == ("0263 3822 534", "https://example.vn/")

@@ -16,6 +16,7 @@ transcript, the second-ASR texts or the prompt change. Prompt: corpus.llm.ASR_CH
 
 import asyncio
 import collections
+import dataclasses
 import difflib
 import hashlib
 import json
@@ -37,22 +38,50 @@ NEGATIONS = {"khong", "chua", "chang", "cha", "dung", "ko", "k", "hong", "hok"}
 
 
 RETRY_TEMPERATURE = 0.5  # greedy decoding loops on the same input every run; a warmer sample usually finishes
+WINDOW = 40  # segments per call: the answer repeats every segment, so a long transcript overruns max_tokens (cut before
+#              screen_text) or the context; each window is checked on its own and the answers are joined
 LOOPS = (Runaway, SchemaError, json.JSONDecodeError)
+# Guided decoding loops on whitespace for some inputs (song lyrics, one-segment clips); the same task with the schema in
+# the prompt instead (role.guided False) answers them. Same prompt, same schema check, same code guard: a last resort.
+UNGUIDED = dataclasses.replace(ASR_CHECK, role=dataclasses.replace(ASR_CHECK.role, guided=False))
 
 
-async def ask_check(client, model, images, **fields) -> dict:
-    """The model's answer. A call that loops or breaks the schema is asked again, warmer with the frames, then warmer
-    without them (frames can trigger the loop). Still failing: the error is raised and the video stays unchecked."""
+class WrongCount(ValueError):
+    """The answer has other segment numbers than the ones asked about."""
+
+
+async def ask_check(client, model, images, count: int, **fields) -> dict:
+    """The model's answer for `count` segments. A call that loops, breaks the schema or answers other segments is asked
+    again, warmer with the frames, then warmer without them (frames can trigger the loop), then cold without them, then the same with the schema in the prompt instead of guided decoding. Still
+    failing: the error is raised and the video stays unchecked."""
     last = None
-    for temp, imgs in ((None, images), (RETRY_TEMPERATURE, images), (RETRY_TEMPERATURE, ())):
+    for task, temp, imgs in ((ASR_CHECK, None, images), (ASR_CHECK, RETRY_TEMPERATURE, images),
+                             (ASR_CHECK, RETRY_TEMPERATURE, ()), (ASR_CHECK, 0.0, ()),
+                             (UNGUIDED, 0.0, images), (UNGUIDED, 0.0, ())):
         try:
-            answer = await ASR_CHECK.ask(client, model, images=imgs, temperature=temp, **fields)
+            answer = await task.ask(client, model, images=imgs, temperature=temp, **fields)
+            if [a["i"] for a in answer["segments"]] != list(range(count)):
+                raise WrongCount(f"asr_check answered segments {[a['i'] for a in answer['segments']]} for {count}")
             if not imgs:
                 answer = {**answer, "screen_text": []}  # nothing was shown: any screen text would be invented
             return answer
-        except LOOPS as e:
+        except LOOPS + (WrongCount,) as e:
             last = e
     raise last
+
+
+async def ask_segments(client, model, images, segments: list[dict], **fields) -> dict:
+    """ask_check over WINDOW segments at a time (one call for a short transcript); the joined answer numbers the
+    segments from 0, keeps the screen text of every window once and rates the whole transcript."""
+    parts = [segments[i:i + WINDOW] for i in range(0, len(segments), WINDOW)]
+    answers = [await ask_check(client, model, images, len(p), segments=segment_lines(p), **fields) for p in parts]
+    if len(answers) == 1:
+        return answers[0]
+    got = [{**a, "i": k * WINDOW + a["i"]}
+           for k, x in enumerate(answers) for a in x["segments"]]
+    qualities = {x["quality"] for x in answers}
+    return {"segments": got, "quality": qualities.pop() if len(qualities) == 1 else "partial",
+            "screen_text": list(dict.fromkeys(t for x in answers for t in x["screen_text"]))}
 
 
 def _client():
@@ -176,11 +205,10 @@ async def run(city: str, shard: tuple[int, int] | None = None) -> dict:
             async with sem:
                 try:
                     images = await asyncio.to_thread(frames, doc.parent / "video.mp4", t["total_s"], doc.parent / "frames")
-                    answer = await ask_check(
-                        client, model, images, city=name, frames=FRAMES, desc=v.get("caption") or "",
+                    answer = await ask_segments(
+                        client, model, images, t["segments"], city=name, frames=FRAMES, desc=v.get("caption") or "",
                         hashtags=hashtags,
-                        places=", ".join(p["name"] for p in places.get(v["video_id"], [])) or "unknown",
-                        segments=segment_lines(t["segments"]))
+                        places=", ".join(p["name"] for p in places.get(v["video_id"], [])) or "unknown")
                     checked = apply(t, answer, model, context=flat((v.get("caption") or "") + " " + hashtags))
                 except Exception as e:
                     errors[0] += 1

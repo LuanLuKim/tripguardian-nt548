@@ -53,6 +53,13 @@ def _get(requirement, key, default=None):
     return requirement.get(key, default) if isinstance(requirement, Mapping) else getattr(requirement, key, default)
 
 
+def safety_requirement(requirement) -> bool:
+    """Safety unknowns remain eligible, never pass evidence checks (owner decision 2026-11-04)."""
+    fid = _get(requirement, "feature")
+    f = ontology().features.get(fid)
+    return fid.startswith("fit.") or bool(f and f.group in {"effort", "suitability"})
+
+
 def scope_allows(requirement, selected: Activity | None) -> bool:
     """The scope part of applicable(): does a requirement apply to a place whose activity is `selected`?"""
     fid = _get(requirement, "feature")
@@ -69,7 +76,12 @@ def scope_allows(requirement, selected: Activity | None) -> bool:
 
 def applicable(rec: dict, requirement, activity: Activity | None = None, role: str | None = None) -> bool:
     selected = activity_for(rec, activity, role)
-    if _get(requirement, "feature") == "wine_tasting_available":
+    fid = _get(requirement, "feature")
+    ont = ontology()
+    if selected == "accommodation" and fid in ont.features:
+        if fid not in ont.stay and not any(item.startswith(fid + "=") for item in ont.stay):
+            return False  # Accommodation cannot carry evidence outside the ontology's stay set.
+    if fid == "wine_tasting_available":
         if activity is not None:
             return selected in {"wine_tasting", "tasting", "alcohol_consumption", "drinking"}
         offered = feature(rec, "wine_tasting_available")
@@ -110,14 +122,12 @@ def hard_result(rec: dict, requirement, activity: Activity | None = None, role: 
         if f["value"] != val:
             return "fail", None
         return ("pass", None) if set(f["distribution"]) <= {val} else ("unknown", None)
-    result = check(rec, fid, val)
-    if (result == "unknown" and f is not None and f["status"] == "UNCERTAIN" and f["value"] != val
-            and val not in f["distribution"] and fid in ontology().features
-            and ontology().features[fid].group not in {"effort", "suitability"}):  # fit.<who> is a safety check too
-        return "pass", "uncertain_value"
-    return result, None
+    return check(rec, fid, val), None
 
 
 def allowed(rec: dict, requirement, activity: Activity | None = None, role: str | None = None) -> bool:
     result, _ = hard_result(rec, requirement, activity, role)
-    return result in {"pass", "not_applicable"} or (result == "unknown" and _get(requirement, "unknown_policy") == "flag")
+    safety_visible = (safety_requirement(requirement) and _get(requirement, "feature") != "pets"
+                      and activity_for(rec, activity, role) != "accommodation")
+    return result in {"pass", "not_applicable"} or (result == "unknown" and (
+        safety_visible or _get(requirement, "unknown_policy") == "flag"))

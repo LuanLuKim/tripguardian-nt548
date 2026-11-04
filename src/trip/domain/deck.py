@@ -16,6 +16,7 @@ class Deck(Frozen):
     total: int = 7
     agent: tuple[Tab, ...] = ()  # checked questions waiting behind the required tabs
     at: Literal["understand", "gate"] = "understand"
+    agent_only: bool = False
     ask: str | None = None  # the required topic the agent chose to ask now (ask_required)
     ask_question: str | None = None  # the agent's own words for that question; the topic's default text is the gate's
 
@@ -134,7 +135,7 @@ def confirm_tabs(state: TripState, catalog: Catalog, cfg: Settings) -> tuple[Tab
 
 
 def build(state: TripState, catalog: Catalog, cfg: Settings, agent=(), at="understand", ask: str | None = None,
-          question: str | None = None) -> Deck:
+          question: str | None = None, *, agent_only: bool = False) -> Deck:
     """The questions the trip still needs. On the Understand screen the deck shows ONE question: the required topic the
     agent chose (`ask`, in the agent's words `question`), else the agent's own follow-up or a pending drill, else a
     confirmation. The app never opens a required topic by itself there: the agent asks it when the talk reaches it,
@@ -165,6 +166,9 @@ def build(state: TripState, catalog: Catalog, cfg: Settings, agent=(), at="under
             ids = {o.label: o.id for o in tab.options}
             checked.append(fresh.model_copy(update={"qid": tab.qid, "options": tuple(
                 o.model_copy(update={"id": ids.get(o.label, o.id)}) for o in fresh.options)}))
+    if agent_only:
+        pending = tuple(t for t in checked if t.qid not in state.meta.declined and t.qid not in state.meta.asked)
+        return Deck(tabs=tuple(best(t) for t in pending[:1]), left=len(missing(state, cfg.required)), agent=pending, agent_only=True)
     drills = tuple(d.tab for d in state.drills if d.status == "pending" and d.tab is not None)
     optional = () if state.meta.soft_skips >= 2 or state.meta.rushed else (
         drills + confirm_tabs(state, catalog, cfg) + tuple(t for t in checked if t.qid not in state.meta.declined

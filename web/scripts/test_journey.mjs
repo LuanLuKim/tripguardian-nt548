@@ -68,6 +68,29 @@ test('concurrent mutations use committed revisions in order', async () => {
   await Promise.all([api.mutateJourney('queue', 'decision', 'act', {a:1}), api.mutateJourney('queue', 'decision', 'act', {a:2})])
   assert.deepEqual(requests.map(r => r.expected_revision), [0,1])
 })
+test('optimistic JSON act refreshes metadata and retries only a revision conflict', async () => {
+  const api = await client(); const calls = []; const id = 'another-tab'
+  globalThis.fetch = async (url, options) => {
+    if (!options) { calls.push(url.endsWith('?view=0') ? 'metadata' : 'view'); return response({...view(calls.length === 1 ? 0 : 1), id}) }
+    const req = JSON.parse(options.body); calls.push(req.expected_revision)
+    return req.expected_revision === 0
+      ? Response.json({error:'expected revision 1, got 0'}, {status:409})
+      : response({...view(2), id})
+  }
+  await api.loadJourney(id, 'decision')
+  assert.equal((await api.mutateJourney(id, 'decision', 'act', {type:'select'})).revision, 2)
+  assert.deepEqual(calls, ['view', 0, 'metadata', 1])
+})
+test('optimistic JSON act never retries a domain conflict', async () => {
+  const api = await client(); const calls = []; const id = 'domain-conflict'
+  globalThis.fetch = async (_url, options) => {
+    calls.push(options ? 'act' : 'view')
+    return options ? Response.json({error:'place is locked'}, {status:409}) : response({...view(), id})
+  }
+  await api.loadJourney(id, 'decision')
+  await assert.rejects(api.mutateJourney(id, 'decision', 'act', {}), e => e.detail === 'place is locked')
+  assert.deepEqual(calls, ['view', 'act'])
+})
 test('stream filters wrong request/stage/revision and waits for final receipt', async () => {
   const api = await client(); const events = []
   globalThis.fetch = async (_url, options) => {
@@ -175,4 +198,49 @@ test('explicit stage entry is scoped to one journey and consumed once without su
   api.requestStageEntry('explicit', 'trip')
   const restarted = await client()
   assert.equal(restarted.consumeStageEntry('explicit'), undefined)
+})
+
+test('target-stage resume never renders an unrelated current stage', async () => {
+  const api = await client(); const calls = []
+  globalThis.fetch = async url => { calls.push(url); return response({...view(4,'planning'),result:{view:{decision:true}}}) }
+  const recovered = await api.resumeJourney('target', 'decision')
+  assert.deepEqual(calls, ['/api/harness/sessions/target?stage=decision'])
+  assert.deepEqual(recovered.view.result, {view:{decision:true}})
+  assert.equal(recovered.view.stage, 'planning')
+})
+
+test('mutation discovers stage and revision from metadata without rendering a view', async () => {
+  const api = await client(); const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push(url)
+    if (!options) return response(view(4,'planning'))
+    assert.equal(JSON.parse(options.body).expected_revision, 4)
+    return response(view(5,'planning'))
+  }
+  await api.mutateJourney('metadata', 'planning', 'confirm')
+  assert.deepEqual(calls, ['/api/harness/sessions/metadata?view=0','/api/harness/sessions/metadata/request'])
+})
+
+test('target-stage recovery keeps the destination receipt while reading an earlier stage', async () => {
+  const api = await client(); const calls = []
+  storage.set('tg.journey.pending.destination', JSON.stringify({request_id:'gate',stage:'trip',operation:'advance',expected_revision:0,payload:{}}))
+  globalThis.fetch = async (url, options) => {
+    calls.push(url)
+    return response({...view(1,'decision'),result:options ? {view:{decision:true}} : {understanding:{days:3}}})
+  }
+  const recovered = await api.resumeJourney('destination','trip')
+  assert.deepEqual(recovered.recoveredView.result, {view:{decision:true}})
+  assert.deepEqual(recovered.view.result, {understanding:{days:3}})
+  assert.deepEqual(calls, ['/api/harness/sessions/destination/request','/api/harness/sessions/destination?stage=trip'])
+})
+
+test('an old replay receipt never hides a mutation committed by another client', async () => {
+  const api = await client()
+  storage.set('tg.journey.pending.replayed', JSON.stringify({request_id:'old-receipt',stage:'trip',operation:'turn',expected_revision:0,payload:{kind:'show'}}))
+  globalThis.fetch = async (_url, options) => response(options
+    ? {...view(1,'trip'),result:{understanding:{days:1}}}
+    : {...view(3,'trip'),result:{understanding:{days:3}}})
+  const recovered = await api.resumeJourney('replayed','trip')
+  assert.equal(recovered.view.revision, 3)
+  assert.deepEqual(recovered.view.result, {understanding:{days:3}})
 })

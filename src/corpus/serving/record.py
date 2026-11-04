@@ -72,12 +72,33 @@ def _fact(value, as_of: date, built: date, key: str) -> dict | None:
 
 def _hours(op: dict, as_of: date, built: date) -> dict | None:
     """Hours fact; official and Maps hours that disagree on a day are UNCERTAIN with Maps' days in `conflict`."""
-    fact = _fact(op.get("hours"), as_of, built, "hours")
+    own = op.get("hours_as_of")  # hours found by Google search carry the day they were read
+    fact = _fact(op.get("hours"), date.fromisoformat(own[:10]) if own else as_of, built, "hours")
     if fact:
         fact["source"] = op.get("hours_source")
         if op.get("hours_conflict"):
             fact["status"], fact["conflict"] = "UNCERTAIN", op["hours_conflict"]
+        if op.get("hours_evidence"):
+            fact["evidence"] = op["hours_evidence"]
+            if not op.get("hours_fact"):  # not (yet) a trusted basis: a guess the planner treats as shaky, never a fact
+                fact["status"], fact["kind"], fact["reason"] = "UNCERTAIN", "estimate", "search_not_a_fact_basis"
     return fact
+
+
+def _entry_fee(fee: dict | None, built: date) -> dict | None:
+    """operation.entry_fee: a fact when the operator's own price (own site, or search evidence of a basis in
+    config/gsearch.yaml `fact_bases`), else an estimate; a price from search carries its evidence and, as a fact, the status of its age."""
+    if not fee:
+        return None
+    kind = "fact" if fee["source"] == "official" or fee.get("fact") else "estimate"
+    out = {**fee, "kind": kind}
+    ev = fee.get("evidence")
+    if ev:
+        out["as_of"] = ev.get("dated") or ev.get("at")
+        if kind == "fact":
+            age = (built - date.fromisoformat(out["as_of"][:10])).days
+            out["status"] = "OUTDATED" if age > _window("price") else "VERIFIED"
+    return out
 
 
 def _price_range(price: dict | None) -> dict | None:
@@ -144,8 +165,7 @@ def build(intel: dict, built: date | None = None, judged: str | None = None, qua
             "hours": _hours(op, as_of, built),
             "price_per_person": _fact(_price_range(price), as_of, built, "price"),
             "price_per_night": _night(op.get("price_night"), built),
-            "entry_fee": {**est["entry_fee"], "kind": "fact" if est["entry_fee"]["source"] == "official" else "estimate"}
-            if est.get("entry_fee") else None,
+            "entry_fee": _entry_fee(est.get("entry_fee"), built),
             "visit_minutes": {**est["visit_minutes"], "kind": "estimate"} if est.get("visit_minutes") else None,
             "booking": features.get("booking_needed"),
             "crowd_by_time": op.get("crowd_by_time"),
@@ -159,14 +179,21 @@ def build(intel: dict, built: date | None = None, judged: str | None = None, qua
     }
 
 
+def observed(f: dict | None) -> bool:
+    """Silence is missing evidence, including legacy records whose reason was overwritten by freshness."""
+    return bool(f) and f.get("reason") != "silence" and not (
+        f.get("n") == 0 and not f.get("evidence") and not f.get("distribution"))
+
+
 def feature(record: dict, fid: str) -> dict | None:
     """The served feature `fid`; "fit.<who>" is how a place fits that companion (details.fit): same shape, so check()
     runs on it too."""
     if fid.startswith("fit."):
         f = (record.get("details") or {}).get("fit", {}).get(fid[4:])
-        return {k: f[k] for k in ("value", "distribution", "status")} if f else None
-    group = load_ontology().features[fid].group
-    return record.get(group, {}).get(fid)
+    else:
+        group = load_ontology().features[fid].group
+        f = record.get(group, {}).get(fid)
+    return f if observed(f) else None
 
 
 def check(record: dict, fid: str, forbidden: str) -> str:

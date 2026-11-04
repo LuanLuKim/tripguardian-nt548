@@ -36,6 +36,8 @@ Chi tiết: `docs/ACCOUNTS.md` §2, §2b, §7.
 
 Chống dò mật khẩu: một email sai 8 lần trong 15 phút thì `429` (`AUTH_FAILS_15MIN`).
 
+Quên mật khẩu (`docs/ACCOUNTS.md` §2c): mã 6 số một lần, hạn 10 phút, chỉ lưu HMAC (khóa suy ra từ `TOKEN_ENC_KEY`); trả lời như nhau cho mọi email; 60 giây giữa hai lần xin, 5 lần mỗi giờ cho một email, giới hạn theo địa chỉ; 5 mã sai thì mã chết; đặt lại xong kết thúc mọi phiên. `SMTP_PASSWORD` nằm trong `.env`; mã không bao giờ vào log (`MAIL_DEV_OUTBOX` bị bỏ qua trên https).
+
 ## 3. Phân quyền dữ liệu
 
 - Mọi `/api/harness/*` cần phiên; ngoại lệ duy nhất là `POST /api/harness/events` cho `page_view` / `landing_cta` ở landing.
@@ -82,7 +84,7 @@ Bộ lọc heuristic và prompt phạm vi giảm rủi ro, không chứng minh c
 
 ## 6. Bí mật và dữ liệu
 
-- Khóa nằm trong `.env` (gitignored cùng `.env.*`, chỉ `.env.example` được commit): `LLM_API_KEY`, `UIT_API_KEY`, `AGENT_API_KEY`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENC_KEY`, `VAPID_PRIVATE_KEY`, `POSTGRES_PASSWORD`, `DATABASE_URL*`. Gọi model theo vai trò, model cụ thể ở config (`docs/LLM_PROVIDER.md`).
+- Khóa nằm trong `.env` (gitignored cùng `.env.*`, chỉ `.env.example` được commit): `LLM_API_KEY`, `UIT_API_KEY`, `AGENT_API_KEY`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENC_KEY`, `VAPID_PRIVATE_KEY`, `SMTP_PASSWORD`, `POSTGRES_PASSWORD`, `DATABASE_URL*`. Gọi model theo vai trò, model cụ thể ở config (`docs/LLM_PROVIDER.md`).
 - `SEARXNG_SECRET` truyền bằng biến môi trường khi `docker run`, không nằm trong `docker/searxng/settings.yml`; SearXNG nghe `127.0.0.1`, `public_instance: false`.
 - Token tunnel Cloudflare nằm ngoài repo (`~/.cloudflared/tripguardian.token`).
 - Gitignored: `/data/`, `.browser/` (profile trình duyệt crawl, có phiên đăng nhập Google), `logs/`, `tests/fixtures/gmaps/`, `tests/fixtures/tiktok/` (trang thật có người dùng thật), `certs/uit-ca-bundle.pem`.
@@ -103,9 +105,9 @@ Bộ lọc heuristic và prompt phạm vi giảm rủi ro, không chứng minh c
 
 Các điểm dưới đây đúng với code hiện tại, chưa có biện pháp trong repo:
 
-1. **Không giới hạn theo địa chỉ IP trong harness.** `per_ip_minute` (`config/security.yaml`) và `AUTH_PER_IP_15MIN` (`src/harness/server.py`) được khai báo nhưng không dùng; harness không đọc header `x-tg-client-ip` mà `web/server.mjs` gửi. Hệ quả: `/api/auth/*` chưa có phiên nên không bị giới hạn 60 req/phút; `POST /api/auth/guest` tạo khách mới không hạn chế nên né được giới hạn theo user; `register` / `login` tốn CPU scrypt và chỉ bị chặn theo email sai mật khẩu, không theo nguồn. Chặn thật sự hiện chỉ ở slot toàn cục (`max_active`, `max_connections`) và Cloudflare.
+1. **Không giới hạn theo địa chỉ IP trong harness, trừ các route đặt lại mật khẩu.** `per_ip_minute` (`config/security.yaml`) và `AUTH_PER_IP_15MIN` (`src/harness/server.py`) được khai báo nhưng không dùng; chỉ `password/forgot` và `password/reset` đọc `x-tg-client-ip` (từ `web/server.mjs`, chỉ tin khi socket là loopback) để giới hạn theo địa chỉ. Hệ quả cho phần còn lại của `/api/auth/*`: `/api/auth/*` chưa có phiên nên không bị giới hạn 60 req/phút; `POST /api/auth/guest` tạo khách mới không hạn chế nên né được giới hạn theo user; `register` / `login` tốn CPU scrypt và chỉ bị chặn theo email sai mật khẩu, không theo nguồn. Chặn thật sự hiện chỉ ở slot toàn cục (`max_active`, `max_connections`) và Cloudflare.
 2. **Chưa có header bảo vệ trình duyệt.** `web/server.mjs` và harness không gửi CSP, `X-Frame-Options` / `frame-ancestors`, HSTS, `Referrer-Policy` (chỉ có `X-Content-Type-Options: nosniff` ở file tĩnh). Nếu Cloudflare thêm thì cấu hình đó nằm ngoài repo.
-3. **Email chưa xác nhận, chưa có quên mật khẩu.** Đăng ký bằng email người khác chiếm trước được tài khoản email đó cho tới khi chủ thật đăng nhập Google (Google nhận lại, gỡ mật khẩu, kết thúc phiên cũ).
+3. **Email chưa xác nhận lúc đăng ký.** Đăng ký bằng email người khác chiếm trước được tài khoản email đó cho tới khi chủ thật đăng nhập Google (Google nhận lại, gỡ mật khẩu, kết thúc phiên cũ) hoặc đặt lại mật khẩu bằng mã gửi về email (kết thúc mọi phiên, người chiếm mất quyền vào).
 4. **Analytics (`:8770`), review (`:8765`) và API module độc lập không có xác thực**, chỉ dựa vào `127.0.0.1` và việc `web/server.mjs` không proxy chúng. Role `admin` có trong DB nhưng không có route admin nào trên harness public.
 5. **Sao lưu Postgres không mã hóa** (`data/backup/pg/<ngày>.sql.gz`, chứa hash phiên và token Google đã mã hóa). Thư mục gốc còn các bản `.env.bak_*` chứa bí mật (gitignored, vẫn nằm trên đĩa).
 6. **Clip và ảnh của bên thứ ba được phục vụ công khai** (`/media/tiktok`, `/media/gmaps`), gồm nội dung của người dùng TikTok / Google.

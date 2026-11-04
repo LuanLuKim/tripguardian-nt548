@@ -283,6 +283,19 @@ def test_summaries_list_only_the_asked_journeys_with_their_places():
     assert out[1]["places"] == [] and out[1]["days"] is None and not out[1]["confirmed"]
 
 
+def test_confirmed_trip_summary_counts_unique_planned_visits():
+    h, _ = make()
+    v = run(h, decision(h), "advance", "to-planning")
+    with h.store.lock(v["id"]):
+        session = h.store.read(v["id"])
+        session.outputs["planning"] = {"itinerary": [
+            {"items": [{"kind": "visit", "place_id": "place-1"}, {"kind": "visit", "place_id": "place-2"}]},
+            {"items": [{"kind": "visit", "place_id": "place-2"}, {"kind": "travel"}]},
+        ]}
+        h.store.save(session)
+    assert h.summaries([v["id"]])[0]["places"] == ["place-1", "place-2"]
+
+
 def test_chat_title_is_the_first_line_the_user_said_cut_short():
     from harness.dispatch import CHAT_TITLE_MAX, chat_title
     assert chat_title([]) is None
@@ -296,6 +309,13 @@ def test_chat_title_is_the_first_line_the_user_said_cut_short():
 def test_summaries_carry_the_chat_title_or_none():
     h, _ = make()
     assert h.summaries([h.create()["id"]])[0]["title"] is None
+
+
+def test_summaries_carry_the_time_of_the_last_save():
+    from datetime import datetime
+    h, _ = make()
+    stamp = h.summaries([h.create()["id"]])[0]["updated_at"]
+    assert stamp is None or datetime.fromisoformat(stamp).tzinfo is not None  # None only for a store with no files
 
 
 U1, U2 = "a" * 32, "b" * 32  # owners the pg conftest inserts (journeys.user_id is a uuid foreign key)

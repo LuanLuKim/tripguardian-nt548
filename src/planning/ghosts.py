@@ -11,20 +11,24 @@ the score; the card only shows it.
 import math
 from bisect import bisect_left, bisect_right
 
-from requirements import allowed, hard_result
+from requirements import allowed, hard_result, safety_requirement
 
+from . import diet, pets
 from .lodging import booked, hard_requirements
 from .places import build_places, windows_on
 from .roles import _text
-from .traits import preference
+from .traits import preference, suggestion_fit, visit_minutes
+from .conditions import hazard
+from .model import Item
 from .travel import km, rough_minutes
 
-SLOT_ROLES = {"breakfast": {"breakfast"}, "lunch": {"main", "breakfast"}, "dinner": {"main", "night_meal"},
+SLOT_ROLES = {"breakfast": {"breakfast"}, "lunch": {"main"}, "dinner": {"main", "night_meal"},
               "free": {"light", None}}
 MEAL_SLOTS = ("breakfast", "lunch", "dinner")
 OPEN_FOR_MIN = 30                       # a place must stay open this long after the slot starts
 SHAKY_HOURS = ("UNCERTAIN", "OUTDATED")
-WANTED_DISH_BONUS = 2.0                 # a wanted dish outweighs a taste fit of two soft weights, or a whole radius of detour
+WANTED_DISH_BONUS = 2.0
+BREAKFAST_DISH_BONUS = 1.0             # as much as one repeat: a breakfast dish wins a breakfast slot over taste alone                 # a wanted dish outweighs a taste fit of two soft weights, or a whole radius of detour
 
 
 class Pool(list):
@@ -32,10 +36,11 @@ class Pool(list):
     unverified: dict                    # place id -> hard filters (flag policy) whose value is unknown for it
     wanted: list                        # (dish, place ids) the user asked for that no chosen place serves
 
-    def __init__(self, places=(), unverified=None, wanted=None):
+    def __init__(self, places=(), unverified=None, wanted=None, fit=None):
         super().__init__(places)
         self.unverified = unverified or {}
         self.wanted = wanted or []
+        self.fit = fit or {}
 
     def __deepcopy__(self, memo):
         # Never changed after pool() builds it: a trial copy of the engine's base (preview_act, make_room) shares it
@@ -77,9 +82,10 @@ def pool(records: list[dict], decision: dict, cfg) -> Pool:
     rl = cfg.realistic
     ctx = decision["trip_context"]["context"]
     chosen = {c["id"] for c in decision["confirmed"]}
-    hard = hard_requirements(decision["trip_context"].get("hard_filters") or [])
+    hard = hard_requirements(pets.filters(decision['trip_context']))
     by_id = {r["id"]: r for r in records}
-    usable = [r for r in records if r["id"] not in chosen and r["identity"].get("category_group") != "stay"
+    hidden = set(decision.get("hidden_ids") or [])
+    usable = [r for r in records if r["id"] not in chosen | hidden and r["identity"].get("category_group") != "stay"
               and (r.get("usable_as") or []) and r["identity"].get("lat") is not None
               and r["identity"].get("lng") is not None]
     mobility = ctx.get("mobility")
@@ -105,16 +111,20 @@ def pool(records: list[dict], decision: dict, cfg) -> Pool:
     picked = [near[i] for i in sorted(near)]
     places, _ = build_places({"confirmed": [{"id": r["id"]} for r in picked], "trip_context": decision["trip_context"]},
                              {r["id"]: r for r in picked}, cfg)
-    kept, unverified = [], {}
+    from .build import breakfast_estimate
+    places = [breakfast_estimate(p, cfg) for p in places]
+    kept, unverified, fit = [], {}, {}
     for p in places:
-        if not all(allowed(p.rec, hf, p.activity, p.kind) for hf in hard):
+        context_fit = suggestion_fit(p, decision["trip_context"])
+        if context_fit is None or not all(allowed(p.rec, hf, p.activity, p.kind) for hf in hard):
             continue
         kept.append(p)
+        fit[p.id] = context_fit
         open_ones = [hf["feature"] for hf in hard
                      if hard_result(p.rec, hf, p.activity, p.kind)[0] == "unknown"]
         if open_ones:
             unverified[p.id] = open_ones
-    return Pool(kept, unverified, _wanted(decision, by_id, chosen))
+    return Pool(kept, unverified, _wanted(decision, by_id, chosen), fit)
 
 
 def _where(cx, node, points: dict):
@@ -151,7 +161,7 @@ def _dishes(p, cfg) -> set:
 
 
 def fill(ctxs, results, places: list, taken: set, dismissed: set, soft: list, points: dict,
-         wanted: list | None = None) -> list[dict]:
+         wanted: list | None = None, *, cover_frame: bool = False) -> list[dict]:
     """One entry per empty meal slot and per long free time: the best three places for it, the first shown faded.
     `wanted` = (dish, place ids) the user asked for and no chosen place serves; default = the pool's own."""
     wanted = getattr(places, "wanted", []) if wanted is None else wanted
@@ -164,6 +174,18 @@ def fill(ctxs, results, places: list, taken: set, dismissed: set, soft: list, po
         radius = rl["suggest_radius_min"]
         used = set(taken)    # places already on a timeline or shown today
         items = list(r.items)
+        # Empty days and unrendered gaps still belong to the user's frame, not to the optimizer's visits.
+        if cover_frame:
+            occupied = sorted((max(cx.day.start, i.start), min(cx.day.end, i.end)) for i in items
+                              if i.end > cx.day.start and i.start < cx.day.end)
+            cursor = cx.day.start
+            for a, b in occupied:
+                if a - cursor >= rl['fill_min_gap']:
+                    items.append(Item('free', cursor, a))
+                cursor = max(cursor, b)
+            if cx.day.end - cursor >= rl['fill_min_gap']:
+                items.append(Item('free', cursor, cx.day.end))
+        items.sort(key=lambda i: (i.start, i.end))
         for k, it in enumerate(items):
             if it.kind == "meal_free" and it.name in MEAL_SLOTS:
                 kind = it.name
@@ -180,9 +202,9 @@ def fill(ctxs, results, places: list, taken: set, dismissed: set, soft: list, po
             for p in places if (before or after) else ():     # no stop to measure from: no ghost
                 if p.id in used or p.id in dismissed or p.meal_kind not in SLOT_ROLES[kind]:
                     continue
-                spans = windows_on(p.hours, cx.day.weekday)
-                if spans is not None and not any(o <= it.start and it.start + OPEN_FOR_MIN <= c for o, c in spans):
+                if not diet.allowed(p, cx) or hazard(p, cx.cond):
                     continue
+                spans = windows_on(p.hours, cx.day.weekday)
                 at = (p.lat, p.lng)
                 legs = [rough(q, at) for q in (before, after) if q]
                 if min(legs) > radius:
@@ -190,17 +212,46 @@ def fill(ctxs, results, places: list, taken: set, dismissed: set, soft: list, po
                 detour = max(0, sum(legs) - direct) if len(legs) == 2 else legs[0]
                 if kind != "free" and detour > rl["meal_detour_max"]:
                     continue
+                duration = min(visit_minutes(p, cx.cfg, cx.pace, cx.prefs), p.visit['short'])
+                inbound = rough(before, at) if before else 0
+                outbound = rough(at, after) if after else 0
+                # The buffer follows a stop; the first slot of a day (breakfast before anything) has none to leave.
+                after_stop = prev is not None and prev != cx.day.start_node
+                start = it.start + inbound + (cx.cfg.buffer_min[cx.pace] if after_stop else 0)
+                if kind == 'free':
+                    end = it.end
+                elif cover_frame:
+                    # The frame's own timeline is fixed: a meal may use the idle time up to the next stop, never overlap it
+                    # (a 30-minute breakfast slot two hours before the first visit still has room for a real place).
+                    end = min(cx.day.end, max(it.end, next((i.start for i in items[k + 1:] if i.kind in ('visit', 'busy')),
+                                                           cx.day.end)))
+                else:
+                    # a meal slot the clock laid past its usual window (breakfast at 09:00) still holds that meal
+                    end = min(cx.day.end, max(it.end, cx.cfg.meal_windows[kind][1] + duration))
+                fixed_start = next((i.start for i in items[k + 1:] if i.kind == 'busy'), end)
+                end = min(end, fixed_start)
+                onward = outbound
+                if not any(max(start, o) + duration + onward <= min(c, end)
+                           for o, c in (spans if spans is not None else [(0, 1440)])):
+                    continue
                 text, dishes = _read(p, cx.cfg)
                 repeat = p.id in shown or bool(dishes & shown_dishes)
                 want = any(p.id in ids or dish in text for dish, ids in wanted)
-                ranked.append((-preference(p, soft) + detour / radius + (1.0 if repeat else 0.0)
-                               - (WANTED_DISH_BONUS if want else 0.0), detour, p))
-            ranked.sort(key=lambda x: (x[0], x[2].id))
+                # a breakfast slot shows a place known for a breakfast dish (bánh căn, phở) before a hotpot that opens early
+                morning = kind == "breakfast" and bool(dishes & set(cx.cfg.realistic["breakfast_dishes"]))
+                ranked.append((-preference(p, soft) - getattr(places, "fit", {}).get(p.id, 0.0)
+                               + detour / radius + (1.0 if repeat else 0.0)
+                               - (WANTED_DISH_BONUS if want else 0.0) - (BREAKFAST_DISH_BONUS if morning else 0.0),
+                               detour, p))
+            ranked.sort(key=lambda x: (any(fid != "pets" and safety_requirement({"feature": fid})
+                                          for fid in unverified.get(x[2].id, [])), x[0], x[2].id))
             top = []
             for _, d, p in ranked[:3]:
                 item = {"place_id": p.id, "name": p.name, "price_vnd": p.cost_vnd, "detour_min": d}
                 if unverified.get(p.id):
                     item["unverified"] = list(unverified[p.id])
+                    if 'pets' in unverified[p.id]:
+                        item['note'] = pets.UNKNOWN_TEXT
                 if spans_unknown(p, cx.day.weekday):
                     item["hours_unknown"] = True
                 top.append(item)

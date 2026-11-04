@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import date
 from typing import Any
 
@@ -25,7 +26,7 @@ from .session import ActionError
 from .settings import to_min
 from .tool_schemas import (AddPlace, Diagnostics, ExtendDays, LocalFacts, LockPlace, MovePlace, Options, PickOption,
                            PreviewEdit, ReadPlan, ReadStop, RemovePlace, ReorderDay, SetDayWindow, SetPace,
-                           SetVisitMinutes, SparePlaces, SwapPlace, Undo, UnlockPlace, WhyHere)
+                           SetStopTime, SetVisitMinutes, SparePlaces, SwapPlace, Undo, UnlockPlace, WhyHere)
 
 NOTE_HEAD = "[note]"
 # Violations an assistant edit never leaves on the plan (also every physical one): the config key `assistant.blocking_violations`
@@ -46,6 +47,7 @@ How to work:
 - Reply in the user's language (Vietnamese unless they write another), warm and short: 1-3 sentences, "mình" and "bạn". No headings, no lists, no emoji.
 - You change the plan ONLY by calling action tools, and only for what the user asked in this message. A question is answered, not acted on. Count the asks in the message and give each its own tool call in the same reply. Never repeat a change that CURRENT CONTEXT already shows.
 - Aliases (P1, P2...) are fixed for this message: they name the stops as CURRENT CONTEXT lists them, even after your edits moved things. Never say an alias to the user: say the place's name.
+- For 'đổi Horizon sang 15:00' or any request for a stop's exact start time, call `set_stop_time`, not `move_place` or `set_day_window`. Do not claim exact times are unsupported or change the day's departure to make them fit.
 - After a change, say what changed in plain words using the tool's effect (which day, which stops, the new times): "mình dời X sang ngày 2, buổi chiều". Never claim a change the result does not show. A result with `error` changed nothing: say honestly why and what the user can do instead.
 - To describe the plan or answer 'có ổn không', call `plan`, `diagnostics` or `stop`. To answer 'tại sao', call `why_here`. To suggest something to add or swap, call `spare_places`. For 'nếu... thì sao', call `preview_edit` first. For facts about a place (hours, price, parking, noise, distance, weather) use the shared read tools. Say only what their results say; nothing in the result means you do not know: say so, never guess.
 - The plan is checked by rules (opening hours, time windows, travel, budget). A result with `error` + `would_break` was refused for a rule that cannot be bent: say which, and offer another day, another order or a place that leaves. A result with `flagged` WAS made: the user's choice stands; tell them plainly what is now flagged (which day runs late, which place is outside its hours) and what would fix it. You never relax or bypass a rule, and you cannot confirm the plan: the user presses Chốt.
@@ -121,6 +123,13 @@ class PlanTurn(LoopHost, TurnCore):
     # ---------- tools ----------
 
     def run(self, name: str, args: dict) -> dict:
+        started = time.perf_counter()
+        try:
+            return self._run(name, args)
+        finally:
+            self.timings.append(f"t_tool_span tool={name} seconds={time.perf_counter() - started:.3f}")
+
+    def _run(self, name: str, args: dict) -> dict:
         """-> the result the model reads next. Never raises: a refused call is an error result."""
         if name not in self.tool_names():
             return {"error": f"unknown tool {name!r}"}
@@ -219,6 +228,12 @@ class PlanTurn(LoopHost, TurnCore):
         name = self.name_of(pid)
         if names_in(quote, name) or POINTER.search(squash(quote)):
             return
+        prefix = squash(name).split()[0] if squash(name) else ""
+        if len(prefix) >= 4 and contains(quote, prefix):
+            matches = {p for p in self.plan_ids() if squash(self.name_of(p)).startswith(prefix + " ")
+                       or squash(self.name_of(p)) == prefix}
+            if matches == {pid}:
+                return
         raise ValueError(f"the user did not name {name!r} or point at it: ask which place they mean")
 
     def day_index(self, day: int) -> int:
@@ -256,8 +271,9 @@ class PlanTurn(LoopHost, TurnCore):
         eff = self.effect(before, view)
         self.view = view
         result = {"done": action["type"], "effect": eff}
-        if new:
-            result["flagged"] = [self.flag(v) for v in new[:4]]
+        remaining = view.get("violations") or []
+        if remaining:
+            result["flagged"] = [self.flag(v) for v in remaining[:4]]
             result["note"] = ("the change is made and these rules are flagged on the plan, which cannot be confirmed until they are "
                               "fixed: say so plainly and offer what fixes them (another day, another order, a wider day window "
                               "or a place that leaves), or undo")
@@ -573,6 +589,14 @@ def set_day_window(turn: PlanTurn, inp: SetDayWindow) -> dict:
     return turn.commit({"type": "set_day_window", "day": turn.day_index(inp.day), "start": inp.start, "end": inp.end})
 
 
+@action_tool("planning", SetStopTime)
+def set_stop_time(turn: PlanTurn, inp: SetStopTime) -> dict:
+    turn.quoted(inp.quote)
+    pid = turn.place(inp.place)
+    turn.named(pid, inp.quote)
+    return turn.commit({"type": "set_stop_time", "place": pid, "start": inp.start})
+
+
 @action_tool("planning", SetVisitMinutes)
 def set_visit_minutes(turn: PlanTurn, inp: SetVisitMinutes) -> dict:
     turn.quoted(inp.quote)
@@ -648,10 +672,9 @@ def evidence_block(turn: PlanTurn):
     binding = s.decision.get("corpus_binding")
     if binding is None:
         return None
-    from corpus.releases import Binding
-    aliases = {k: {"id": a["id"], "name": a["name"]} for k, a in turn.aliases.items() if a["kind"] == "place"}
-    ctx = turn.engine._grounded_context(aliases, turn.text, Binding.model_validate(binding))
-    return ctx or None
+    # Evidence is fetched by the shared read tools when asked, never by an edit's prompt assembly.
+    return {"release_id": binding.get("release_id"), "evidence_status": "not_requested",
+            "note": "Use the shared read tools for place facts; the itinerary is not evidence."}
 
 
 # ---------- messages ----------

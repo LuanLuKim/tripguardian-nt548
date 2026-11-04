@@ -88,13 +88,14 @@ def test_who_travels_along_counts_as_a_wish():
     assert out[0]["id"] == "kid" and out[0]["fit"][0]["text"] == "Hợp trẻ em"
 
 
-def test_a_physical_hard_filter_drops_unknown_and_failing_evidence():
+def test_a_safety_hard_filter_flags_unknown_after_pass_and_drops_failing_evidence():
     hard = [{"feature": "steep_or_stairs", "op": "ne", "value": "present"}]
     stays = [stay("stairs", 1, features={"steep_or_stairs": "present"}), stay("flat", 2),
              stay("level", 3, features={"steep_or_stairs": "absent"})]
     out = candidates(places(), trip(hard=hard), CFG, stays)
-    assert {c["id"] for c in out} == {"level"}
-    assert all(c["unverified"] == [] for c in out)
+    assert [c["id"] for c in out] == ["level", "flat"]
+    assert out[0]["unverified"] == []
+    assert out[1]["unverified"] == ["steep_or_stairs"]
 
 
 CARD = {"polarity": {"noise": ["quiet", "moderate", "loud"], "cleanliness": ["clean", "dirty"],
@@ -161,9 +162,9 @@ def test_the_card_says_how_sure_it_is_from_the_number_of_reviewers():
         assert c["confidence"]["level"] == level and f"{voices} người" in c["confidence"]["reason"]
 
 
-def test_no_budget_known_puts_the_price_in_the_tradeoffs():
+def test_an_unknown_budget_is_never_a_tradeoff_line_but_the_price_still_shows():
     c = only_card(stay("s", 3, night=500000))
-    assert any("500" in t["text"] for t in c["tradeoffs"])
+    assert c["tradeoffs"] == [] and c["price_vnd"] == 500000
 
 
 def test_the_engine_ranks_served_stays_and_leaves_out_one_over_the_cap():

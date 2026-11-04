@@ -137,6 +137,21 @@ def test_nights_and_day_trips():
     ("hai đứa mình đi Đà Lạt", 2, False),
     ("2 vợ chồng + 2 bé đi chơi", 6, True),
     ("vợ chồng mình và 2 con đi Đà Lạt", 4, True),
+    # R4: "2 người lớn" counts the adults only; the child and the aged mother are people too (a guess the card confirms)
+    ("Nhà mình đi 4 ngày, 2 người lớn, bé 6 tuổi và mẹ 65 tuổi đi chậm", 4, True),
+    ("gia đình 2 người lớn, bé 6 tuổi và mẹ 65 tuổi", 4, True),
+    ("đi 2 người lớn và 1 trẻ em", 3, True),
+    ("4 người lớn đi Đà Lạt", 4, False),
+    ("2 người lớn, không đi với mẹ 65 tuổi", 2, False),
+    ("2 người lớn, mẹ 65 tuổi không đi", 2, False),
+    ("2 người lớn, không đi với mẹ 65 tuổi, bé 6 tuổi đi cùng", 3, True),
+    ("2 người lớn, mẹ 65 tuổi đi cùng", 3, True),
+    ("2 người lớn và 2 con 6 tuổi", 4, True),
+    ("2 người lớn và 2 cháu 6 tuổi sinh đôi", 4, True),
+    ("2 người lớn và 3 con 6 tuổi", 5, True),
+    ("2 người lớn 1 bé", 3, True),
+    ("2 người lớn và 1 bé", 3, True),
+    ("2 người lớn còn thích ăn bánh căn", 2, False),
 ])
 def test_party_size_phrases(text, n, guessed):
     people = [p for p in prepass(text, date(2026, 10, 17)).proposals if p.field == "people"]

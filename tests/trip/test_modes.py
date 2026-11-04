@@ -1,3 +1,4 @@
+from dataclasses import replace
 """The user-driven mode bar: chat (plain words, no cards) and quiz (chip cards), sharing one Trip State."""
 
 from datetime import date
@@ -54,6 +55,7 @@ def test_chat_learning_is_visible_to_the_quiz(catalog, cfg, tmp_path):
 
 
 def test_quiz_learning_is_visible_to_the_chat(catalog, cfg, tmp_path):
+    cfg = replace(cfg, discovery=True)
     chat = ScriptedChat(say(""))
     e = make_engine(catalog, cfg, tmp_path, chat)
     sid = e.create("first", "nothing")["id"]
@@ -64,8 +66,7 @@ def test_quiz_learning_is_visible_to_the_chat(catalog, cfg, tmp_path):
     context = next(m["content"] for m in chat.seen[0][0] if m["content"].startswith("CURRENT CONTEXT"))
     assert '"days": {"value": 3' in context
     import json
-    assert list(json.loads(context.removeprefix("CURRENT CONTEXT\n"))["still_needed"]) == [
-        "trip", "companions", "mobility", "care", "pace", "budget", "lodging"]
+    assert "still_needed" not in json.loads(context.removeprefix("CURRENT CONTEXT\n"))
 
 
 def test_two_declines_in_a_row_marks_the_next_turn_stuck(catalog, cfg, tmp_path):

@@ -2,6 +2,7 @@
 or an unmapped wish does to the turn. TurnTools inherits it."""
 
 import json
+import re
 
 from agents.assistant.loop import LoopHost
 
@@ -30,6 +31,43 @@ class TripRules(LoopHost):
 
     def trim(self, text: str) -> str:
         return trim_say(text)
+
+    def finalize_reply(self, text: str) -> str:
+        """Check the final reply after all writes, not the model's pre-tool acknowledgement."""
+        text = trim_say(text)
+        if not text:
+            return text
+        # Never turn an unsaved exclusion into a promise, even when unrelated writes succeeded.
+        exclusion_request = re.search(r"\b(?:bo|loai|dung goi y|dung xep|khong goi y|khong xep)\b", fold(self.text))
+        covered = any(e.turn == self.turn and e.quote and e.quote in self.text
+                      for p in self.state.excluded_places for e in p.evidence)
+        if exclusion_request and re.search(r"\b(?:se khong|khong goi y|khong xep)\b", fold(text)) and (
+                "excluded_place" in self.refused or not covered):
+            text = "Mình chưa áp dụng được yêu cầu loại nơi này vì chưa ghi được địa điểm loại trừ."
+        # A return to lodging carries no evening taste; remove only an unsupported nightlife question.
+        if re.search(r"\b\d{1,2}h\s+ve\b", fold(self.text)) and not re.search(
+                r"\b(?:bar|nhac|buoi toi|ve dem)\b", fold(self.text)):
+            text = " ".join(s for s in re.split(r"(?<=[.!?])\s+", text) if not (
+                "?" in s and re.search(r"\b(?:buoi toi|ve dem|soi dong)\b", fold(s))))
+        from .tools import lookups
+        if not hasattr(self, "_reply_lookups"):
+            self._reply_lookups = lookups(self.text, self.catalog)
+        found = self._reply_lookups
+        for dish in found.get("dishes", ()):
+            name = dish.get("also_named")
+            if name and dish.get("dish_places_with_that_name") == 0 and fold(name) not in fold(text):
+                text = f"Mình không thấy quán {name} trong dữ liệu. " + text
+        # A partial model reply must name the unanswered question rather than silently skip it.
+        questions = [q.strip() for q in self.text.split("?")[:-1] if q.strip()]
+        if len(questions) > 1:
+            topics = ((r"\b(?:lanh|thoi tiet|khi hau)\b", r"\b(?:lanh|thoi tiet|khi hau|nhiet do)\b", "thời tiết"),
+                      (r"\b(?:an gi|mon|an uong)\b", r"\b(?:an|mon|banh|bun|pho|lau)\b", "ăn uống"),
+                      (r"\b(?:di lai|phuong tien)\b", r"\b(?:di lai|phuong tien|taxi|grab|xe buyt|di bo)\b", "đi lại"))
+            for question in questions:
+                for asked, answered, label in topics:
+                    if re.search(asked, fold(question)) and not re.search(answered, fold(text)):
+                        text += f" Về {label}, mình chưa có dữ liệu để trả lời câu hỏi này."
+        return text.strip()
 
     def start_calls(self) -> None:
         self.settled = False

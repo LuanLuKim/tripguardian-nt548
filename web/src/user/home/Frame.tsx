@@ -26,7 +26,7 @@ export function Frame({ path, children }: { path: string; children: ReactNode })
           </div>
         </div>
         {bar && <JourneyBar />}
-        <button type="button" className="tg-hf__new" onClick={() => openCreate()}><Icon name="plus" size={20} />Tạo chuyến đi</button>
+        {path === '' && <button type="button" className="tg-hf__new" data-tour="new-trip" onClick={() => openCreate()}><Icon name="plus" size={20} />Tạo chuyến đi</button>}
       </div>
       <HomeDialogs />
     </div>
@@ -76,7 +76,7 @@ export function Sidebar({ path }: { path: string }) {
     const on = n.to === '/' ? path === '' : path.startsWith(n.to)
     return (
       <li key={n.to}>
-        <Link to={n.to} className={`tg-hf__item ${on ? 'is-on' : ''}`} data-tip={n.label} aria-label={n.label} aria-current={on ? 'page' : undefined}>
+        <Link to={n.to} className={`tg-hf__item ${on ? 'is-on' : ''}`} data-tour={`nav-${n.to === '/' ? 'home' : n.to.slice(1)}`} data-tip={n.label} aria-label={n.label} aria-current={on ? 'page' : undefined}>
           <Icon name={n.icon} size={26} />
           {n.to === '/saved' && saved > 0 && <b className="tg-hf__count" aria-label={`${saved} mục`}>{saved > 99 ? '99+' : saved}</b>}
         </Link>

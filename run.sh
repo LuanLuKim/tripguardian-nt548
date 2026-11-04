@@ -279,6 +279,19 @@ clef_start() {
   echo "[clef] not healthy after 5 min, see logs/clef"
 }
 
+# Prod runs from a frozen copy of src (src_live/, same depth as src/ so Path(__file__).parents[N] still finds the repo
+# root): agents editing the shared tree, and overload spawn workers re-importing planning, never reach live users.
+freeze_src() {
+  rm -rf src_live.new && rsync -a --exclude __pycache__ src/ src_live.new/ || return 1
+  PYTHONPATH="$PWD/src_live.new" $PYTHON -c "import harness, planning.overload, trip, decision, notify" \
+    || { echo "[src] frozen copy does not import: not deploying"; return 1; }
+}
+swap_frozen_src() {
+  rm -rf src_live.old; [ -d src_live ] && mv src_live src_live.old
+  mv src_live.new src_live && rm -rf src_live.old
+  export PYTHONPATH="$PWD/src_live"
+}
+
 prod() {
   if [ ! -f .env ]; then
     echo "Missing .env (copy .env.example and fill in keys)."
@@ -302,10 +315,12 @@ prod() {
   searx_start
   router_start
   clef_start
+  freeze_src || exit 1
   # a deploy runs the new code: whatever answers on the ports now is stopped first
   echo "$PROD_SERVICES" | while IFS='|' read -r name port cmd; do
     stop_one "$name" "$port"
   done
+  swap_frozen_src
   echo "$PROD_SERVICES" | while IFS='|' read -r name port cmd; do
     start_one "$name" "$port" "$cmd"
   done

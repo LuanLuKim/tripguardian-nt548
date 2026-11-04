@@ -103,8 +103,7 @@ def resolve_wishes(trip: dict, data: Data) -> tuple[dict, list[dict]]:
 
 
 def violates(rec: dict, fid: str, forbidden: str) -> bool:
-    f = feature(rec, fid)
-    return bool(f) and f["distribution"].get(forbidden, 0) > 0
+    return hard_result(rec, {"feature": fid, "op": "ne", "value": forbidden})[0] == "fail"
 
 
 def _top_ids(res) -> set[str]:

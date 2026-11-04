@@ -7,7 +7,7 @@ import corpus.crawl.web as web
 
 
 def test_web_phases_registered():
-    assert set(cli.PHASES["web"]) == {"search", "documents"}
+    assert set(cli.PHASES["web"]) == {"search", "documents", "places"}
     assert all(needs_browser is False for _, needs_browser in cli.PHASES["web"].values())
 
 
@@ -24,5 +24,5 @@ def test_public_api_names():
     module = importlib.import_module("corpus.crawl.web")
     assert set(module.__all__) == {"Web", "WebHit", "WebPage", "WebError", "BudgetExhausted", "SearchPage",
                                    "SearchResult", "WebDocument", "validate_public_url", "Query", "seed_queries",
-                                   "slug_queries", "run_search", "run_documents"}
+                                   "slug_queries", "run_search", "run_documents", "places"}
     assert all(hasattr(web, name) for name in module.__all__)

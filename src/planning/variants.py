@@ -1,7 +1,7 @@
 """The plan cards of a trip (spec section 7): one main plan, or -- when the days cannot hold every pick -- up to three
 direction plans that each drop places by one criterion (overload.py), plus the overload card. One prepare() and one
-travel matrix for all of them. A fitting plan that breaks a check is no plan: back to Place Decision with the places
-that broke it. The command line (build_variants / build_lodging_variants) and the session engine read the same cards.
+travel matrix for all of them. A dietary failure retains an editable, unconfirmable draft; other fitting plans that
+break a check go back to Place Decision. The command line and session engine read the same cards.
 """
 
 import live
@@ -50,11 +50,39 @@ def drop_metadata(trip, vid: str, dropped) -> list[dict]:
             for d in dropped]
 
 
+def _hours_block(trip, pid: str) -> bool:
+    """True when no day of the trip has an opening interval of the place inside its window long enough for the place's
+    shortest visit: the place cannot be visited whatever else changes, and "short of time" would be the wrong thing to say."""
+    from .schedule import intervals_for
+    place = trip.by_place[pid]
+    need = place.visit["short"]
+    return not any(min(c, cx.day.end) - max(o, cx.day.start) >= need
+                   for cx in trip.ctxs if cx.day.intensity != "free" for o, c in intervals_for(place, cx))
+
+
+def overload_text(trip, ov: dict, left) -> tuple[str, list[dict]]:
+    """The overload sentence and, per left-over place, why it did not fit. A place whose opening hours never meet a day
+    is named for that; time is claimed short only for the rest (N1/R1: "thiếu 6 giờ" on a trip with 24 free hours)."""
+    if ov.get("incomplete"):
+        return "Chưa tìm xong các hướng đánh đổi; lịch đã kiểm và các nơi chưa xếp vẫn được giữ lại.", [
+            {"place_id": pid, "name": trip.by_place[pid].name, "reason": "search_incomplete"}
+            for pid in left if pid in trip.by_place]
+    why = [{"place_id": pid, "name": trip.by_place[pid].name, "reason": "hours" if _hours_block(trip, pid) else "time"}
+           for pid in left if pid in trip.by_place]
+    closed = [w["name"] for w in why if w["reason"] == "hours"]
+    if why and len(closed) == len(why):
+        return "Không xếp được " + ", ".join(closed) + ": giờ mở cửa không trùng với khung giờ các ngày của bạn", why
+    text = f"Không đủ thời gian cho cả {ov['places']} nơi: thiếu ~{_hours(ov['missing_min'])} giờ"
+    if closed:
+        text += ". " + ", ".join(closed) + " không mở cửa trong khung giờ các ngày của bạn"
+    return text, why
+
+
 def plan_cards(trip, *, protected=()) -> dict:
     """overload.plan_or_directions plus what its readers need around it:
     - back_to_decision names the places (place_id + name) no day had room for;
-    - a fitting main plan that breaks a check (a must place with no data, a hazard, the budget) is no plan: no card,
-      back to Place Decision with the places that broke it (the legacy fail-closed result);
+    - a dietary failure keeps an editable draft; other invalid fitting plans return to Place Decision;
+      no invalid draft is confirmable;
     - fields the web still reads until the plan screen is rebuilt: each card's `dropped_by_plan`, the overload card's
       `text`, `selection_places`, `keep_all_valid` (always False: keeping every pick does not fit)."""
     out = plan_or_directions(trip, protected=protected)
@@ -66,7 +94,8 @@ def plan_cards(trip, *, protected=()) -> dict:
         available = sum(max(0, cx.day.end - cx.day.start) for cx in trip.ctxs)
         ov.update(level="overloaded", estimated=True, needed=available + ov["missing_min"], available=available,
                   binding=[], selection_places=ov["places"], keep_all_valid=False,
-                  text=f"Không đủ thời gian cho cả {ov['places']} nơi: thiếu ~{_hours(ov['missing_min'])} giờ")
+                  text=None)
+        ov["text"], ov["leftover_reasons"] = overload_text(trip, ov, out["leftover"])
     back = out["back_to_decision"]
     violations: list = []
     if back is not None:
@@ -79,7 +108,11 @@ def plan_cards(trip, *, protected=()) -> dict:
             days = {v["day"] for v in violations if v.get("day") is not None}
             places = sorted({pid for k, r in enumerate(main["_results"]) if k in days for pid in r.order})
         back = {"reason": "no_valid_variant", "places": places, "leftover": []}
-        out = {**out, "variants": []}
+        if any(cx.diet_days for cx in main['_ctxs']):
+            main.update(editable=True, confirmable=False)
+            back = None
+        else:
+            out = {**out, "variants": []}
     return {**out, "back_to_decision": back, "violations": violations}
 
 

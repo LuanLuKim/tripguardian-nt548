@@ -123,3 +123,19 @@ def test_the_2026_10_chip_without_a_date_line_reads_dates_from_the_inputs():
     assert h.state == "priced" and h.price_night_vnd == 1045729 and h.dates == "inputs"
     assert dates_match("Thứ 7, 21 thg 11|CN, 22 thg 11", Stay(date(2026, 11, 21), 1, 2))
     assert not dates_match("Thứ 7, 21 thg 11|CN, 23 thg 11", Stay(date(2026, 11, 21), 1, 2))
+
+
+def test_min_stay_page_is_unknown_for_the_nights_asked_not_sold_out():
+    h = gtravel.parse_hotel(text("entity_min_stay"))
+    assert (h.state, h.name, h.min_nights, h.price_night_vnd) == ("min_stay", "Gia Pham Hotel", 2, None)
+    stay = lodging.Stay(date(2026, 11, 7), 1, 2)
+    obs = gtravel.observation({"fid": "a:1", "name": "Gia Pham Hotel"}, stay, h, "u", "Đà Lạt")
+    assert (obs["price_night_vnd"], obs["available"], obs["min_nights"]) == (None, None, 2)
+    lodging.check(obs)
+
+
+def test_a_page_that_never_drew_is_recorded_as_unknown_with_a_note():
+    obs = gtravel.observation({"fid": "a:1", "name": "X"}, lodging.Stay(date(2026, 11, 7), 1, 2),
+                              gtravel.Hotel("pending"), "u", "Đà Lạt")
+    assert (obs["price_night_vnd"], obs["available"], obs["note"]) == (None, None, "not_drawn")
+    lodging.check(obs)

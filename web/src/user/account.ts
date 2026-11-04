@@ -28,7 +28,7 @@ export type Me = {
 export type Account = { kind: 'user' } & Me
 
 export class AccountError extends Error {
-  constructor(public status: number, message: string) { super(message) }
+  constructor(public status: number, message: string, public info: Record<string, unknown> = {}) { super(message) }
 }
 
 const EVENT = 'tg:account'
@@ -143,13 +143,28 @@ export const holdGuest = () => { signingIn = true; setTimeout(() => { signingIn 
 export const signInHref = (next: string) => `/api/auth/google/start?next=${encodeURIComponent(next.startsWith('/') ? next : '/app')}`
 
 // Sign up or sign in with an email and a password; the server answers 400 / 401 / 409 / 429 with a readable `error`.
+// The session cookie is set when this resolves; the caller calls refreshAccount() when it is ready to show the app.
 async function withEmail(path: string, body: Record<string, string>) {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) throw new AccountError(res.status, (await res.json().catch(() => ({}))).error ?? '')
-  await refreshAccount()
 }
 export const registerWithEmail = (email: string, password: string, name: string) => withEmail('/api/auth/register', { email, password, name })
 export const loginWithEmail = (email: string, password: string) => withEmail('/api/auth/login', { email, password })
+
+// Forgotten password (docs/ACCOUNTS.md §2c): a one-time code by email, then a new password. `password_reset` is false
+// when the server has no mail set up; the sign-in page then does not offer the link.
+export const loadAuthOptions = () => fetch('/api/auth/options').then((r): Promise<{ password_reset?: boolean }> => (r.ok ? r.json() : Promise.resolve({}))).then((o) => o.password_reset === true).catch(() => false)
+
+async function postAuth(path: string, body: Record<string, string>) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const out = await res.json().catch(() => ({}))
+  if (!res.ok) throw new AccountError(res.status, out.error ?? '', out)
+  return out as Record<string, number>
+}
+// The answer is the same for every email; `resend_after` (seconds) is when another code may be asked for.
+export const requestResetCode = (email: string) => postAuth('/api/auth/password/forgot', { email })
+// Right code: the new password is set, every older session ends and this browser is signed in (cookie set).
+export const resetPassword = (email: string, code: string, password: string) => postAuth('/api/auth/password/reset', { email, code, password })
 
 // Everything this browser remembers about a trip or a person: a new guest starts from nothing, like a first visit.
 const LOCAL_KEYS = ['tg.trip.v1', 'tg.trips.v1', 'tg.tu.v1', 'tg.saved.v1']

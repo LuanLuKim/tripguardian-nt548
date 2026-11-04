@@ -5,6 +5,7 @@ records built by observation(), which corpus.aggregate reads without knowing the
 """
 
 from .details_gate import amount_in, hour_in  # number checks of a quote, shared with corpus.local
+from .visit_time import bucket, distribution, parse_minutes  # how long a visit lasts, read from a quote
 
 CONTEXT_KEYS = ("time_of_day", "day_type", "weather")
 

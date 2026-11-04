@@ -6,9 +6,11 @@ from planning.build import schedule_trip
 from planning.layout import assign, capacity
 
 
-def trip_of(recs, **kw):
+def trip_of(recs, *, dawn=False, **kw):
     d = decision([r["id"] for r in recs], base={"place_id": None, "text": "home", "lat": CENTRE[0], "lng": CENTRE[1]},
                  **kw)
+    if dawn:
+        d["trip_context"]["soft_weights"] = [{"feature": "cloud_hunting", "value": "present", "weight": 1}]
     return prepared(d, recs)
 
 
@@ -67,7 +69,7 @@ def test_last_day_by_motorbike_keeps_places_near_the_way_out():
 
 def test_a_dawn_day_gets_a_midday_rest_at_the_lodging():
     recs = [spot("c1", CENTRE, 0, hours=None, features={"cloud_hunting": "present"}), spot("c2", CENTRE, 1)]
-    s = schedule_trip(trip_of(recs, days=2))
+    s = schedule_trip(trip_of(recs, days=2, dawn=True))
     day = next(k for k, r in enumerate(s.results) if "c1" in r.order)
     assert s.ctxs[day].day.start < 8 * 60
     assert any(b[2] == "rest" and b[0] >= 11 * 60 for b in s.ctxs[day].day.busy)
@@ -75,7 +77,7 @@ def test_a_dawn_day_gets_a_midday_rest_at_the_lodging():
 
 # ---- beyond the brief: the rulings and known issues this task closes ----
 
-def framed(recs, days, *, busy=None, ends=None, intensity=None):
+def framed(recs, days, *, busy=None, ends=None, intensity=None, dawn=False):
     """A trip with a CompiledFrame: every day 08:00-21:00 unless `ends` says otherwise, busy = {day: [blocks]}."""
     d = decision([r["id"] for r in recs], days=len(days),
                  base={"place_id": None, "text": "home", "lat": CENTRE[0], "lng": CENTRE[1]})
@@ -85,6 +87,8 @@ def framed(recs, days, *, busy=None, ends=None, intensity=None):
                            for a, b, k, w in (busy or {}).get(i, [])],
                   "intensity": (intensity or {}).get(i, "normal")} for i, date in enumerate(days)],
         "arrive": None, "leave": None, "meals": {}}
+    if dawn:
+        d["trip_context"]["soft_weights"] = [{"feature": "cloud_hunting", "value": "present", "weight": 1}]
     return prepared(d, recs)
 
 
@@ -101,7 +105,7 @@ def test_capacity_counts_the_users_blocks_the_meals_and_a_light_day():
 def test_two_dawn_places_take_two_days():
     recs = [spot("h1", CENTRE, 0, hours=None, features={"cloud_hunting": "present"}),
             spot("h2", CENTRE, 1, hours=None, features={"cloud_hunting": "present"})]
-    trip = trip_of(recs, days=2)
+    trip = trip_of(recs, days=2, dawn=True)
     per_day, left = assign(trip, trip.ctxs, sorted(trip.by_place))
     assert not left and sorted(map(len, per_day)) == [1, 1]
 
@@ -133,7 +137,7 @@ def test_a_day_with_no_room_still_shows_its_blocks_and_meals():
 def test_a_dawn_pin_given_up_gives_the_day_its_start_back():
     # A call at the lodging until 07:00 leaves no way to the hill by dawn: the pin goes, and so does the 05:00 start.
     recs = [spot("h1", CENTRE, 3, hours=None, features={"cloud_hunting": "present"}), spot("c2", CENTRE, 1)]
-    trip = framed(recs, ["2026-12-12"], busy={0: [("05:00", "07:00", "call", "lodging")]})
+    trip = framed(recs, ["2026-12-12"], busy={0: [("05:00", "07:00", "call", "lodging")]}, dawn=True)
     s = schedule_trip(trip)
     assert "h1" in s.per_day[0] and s.results[0].unpinned == ("h1",)
     assert s.ctxs[0].day.start == 8 * 60 and not any(b[2] == "rest" for b in s.ctxs[0].day.busy)

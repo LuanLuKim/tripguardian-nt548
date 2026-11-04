@@ -9,7 +9,7 @@ from .places import parse_hours
 DAWN_FIRST = ("cloud_hunting",)
 
 # Role -> the meal slots it may take, in the order it prefers them. A place with no role fits any slot.
-ROLE_SLOTS = {"breakfast": ("breakfast", "lunch"), "main": ("lunch", "dinner"), "night_meal": ("dinner",)}
+ROLE_SLOTS = {"breakfast": ("breakfast",), "main": ("lunch", "dinner"), "night_meal": ("dinner",)}
 
 
 def takes_meal_slot(place) -> bool:
@@ -81,8 +81,8 @@ def meal_kind(rec: dict, cfg) -> str | None:
 
 
 def pin_order(pins: tuple[str, ...], wants: set[str]) -> tuple[str, ...]:
-    """The timed features in the order the plan tries them: the ones the user asked for only; else dawn first (a
-    cloud-hunting hill is a dawn place even when it also has a sunset view)."""
+    """Keep requested times first; dawn requires a wish rather than the place's reputation alone."""
     if wants & set(pins):
-        return tuple(f for f in pins if f in wants)
-    return tuple(sorted(pins, key=lambda f: (f not in DAWN_FIRST, pins.index(f))))
+        chosen = tuple(f for f in pins if f in wants)
+        return tuple(sorted(chosen, key=lambda f: (f not in DAWN_FIRST, pins.index(f))))
+    return tuple(f for f in pins if f not in DAWN_FIRST)

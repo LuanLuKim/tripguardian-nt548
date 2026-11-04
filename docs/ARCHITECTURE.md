@@ -73,7 +73,7 @@ Mỗi giai đoạn là một package độc lập, giao tiếp **chỉ** qua pub
 
 ```text
 corpus   ──►  (không phụ thuộc gì)
-trip     ──►  corpus.serving, corpus.ontology, corpus.snapshot, corpus.index, corpus.releases, corpus.retrieval
+trip     ──►  corpus.serving, corpus.ontology, corpus.snapshot, corpus.index, corpus.releases, corpus.retrieval, corpus.tags
 decision ──►  corpus.serving, corpus.ontology, corpus.snapshot, corpus.releases, corpus.retrieval
 live     ──►  corpus.crawl            (chỉ 3 tên: open_sessions, maps_search, LoginRequired)
 planning ──►  live, decision, trip, corpus.serving, corpus.ontology, corpus.snapshot, corpus.releases, corpus.retrieval
@@ -93,6 +93,9 @@ Agent của module dùng runtime public `agents`; `harness` gọi `Tools` public
 Journey pin public corpus binding qua ba module; restore/copy giữ release và reader version,
 không theo pointer mới. Phiên bản dữ liệu đã pin mà bị dọn khỏi đĩa → fail-closed (không phục vụ dữ liệu khác thay thế), API trả 409 `{"error": "stale_data_version", ...}`; code chưa có thao tác revalidate / pin lại, người dùng tạo lại chuyến. Budget giữ amount/scope/provenance trước quy đổi; unknown và activity
 giữ qua handoff. Retrieval chỉ rank trong scope; bằng chứng đọc riêng từ feature đang phục vụ.
+Release bất biến được xác minh toàn bộ hash ở lần đầu mở mỗi binding trong tiến trình; cache kiểm tra nhanh metadata của manifest và reader version, không lưu kết quả lỗi. Harness giữ tối đa 3 bộ engine theo binding (giữ bộ active), dùng chung một retrieval trong mỗi bộ và restore lại snapshot khi bộ cũ đã bị loại khỏi cache.
+Khi khởi động, Harness làm nóng active và tối đa hai pin khác của journey còn chủ sở hữu được lưu trong 7 ngày gần nhất, ưu tiên mới nhất, trên luồng nền không chặn mở cổng; request cùng binding dùng chung kết quả dựng đang chạy. Warmup lỗi chỉ ghi log, không thay pin hay bỏ xác minh; request mở release hỏng/mất vẫn trả 409.
+HTTP Harness lấy snapshot dưới journey lock, dựng view chỉ đọc ngoài lock, rồi kiểm lại revision, chủ sở hữu, snapshot và dấu runtime trước khi trả; có ghi/rollback/restore đồng thời thì đọc lại. Trip/Decision dùng reader riêng theo journey. Planning (load + read `variants`/`routes`/`lodging`/`suggestions`) render trên chính module writer ngoài journey lock (engine Planning tự giữ khoá phiên; base cold dựng dưới khoá đó), rồi chỉ trả khi revision, chủ sở hữu và dấu runtime không đổi (mọi rollback/restore/eviction đổi dấu) — không fork, vì deep-copy phiên nhiều MB tốn 2–8 s mỗi lần mở. Metadata (`stage`, `revision`, `user_id`, danh sách chuyến, feedback) đọc bằng `Store.peek`: bản sao nông, không request history, không deepcopy; writer vẫn dùng `_working` (bản sao sâu) và `before` của request là bản mượn, rollback restore từ bản sao. `back` chỉ snapshot bước đích, giữ snapshot đã commit của các bước không đổi; mutation cùng module Planning vẫn có thể chờ module lock khi capture cold. Paging Decision và `preview-act` Planning vẫn dùng writer vì cấp trạng thái/token cho thao tác sau. `GET /sessions/{id}?view=0` chỉ lấy metadata đã commit, không restore module hay dựng view. Response có `X-Request-ID`; `Server-Timing` và log cùng ID tách xử lý, serialize, DB, chờ khóa, restore/capture và dựng view theo request, không dùng chung span giữa các request.
 Contract chi tiết ở tài liệu module và `docs/CORPUS.md` §Chuẩn hóa và release offline.
 
 Quanh bốn giai đoạn có ba phần online chỉ ghi dữ liệu người dùng, không bao giờ ghi Place Intelligence: tài khoản (`docs/ACCOUNTS.md`), chế độ Đang đi + Google Calendar + thông báo (`docs/COMPANION.md`), sự kiện và số liệu Admin (`docs/ANALYTICS.md`). Check-in và thông báo không phải bằng chứng về địa điểm.
@@ -118,6 +121,7 @@ Mọi ngưỡng nằm trong `config/`, không trong code:
 | `cities.yaml`, `queries.yaml` | corpus | thành phố, vùng quét, category, trần crawl |
 | `ontology.yaml` | corpus + profile | feature ontology có version (dùng chung id) |
 | `category_defaults.yaml` | corpus | mặc định theo nhóm category cho estimate |
+| `tags.yaml` | corpus (+ trip, harness đọc qua `corpus.tags`) | từ điển tag / subtag, ngưỡng chia nhóm và xếp hạng xu hướng; `docs/PLACE_DECISION.md` §20 |
 | `serving.yaml` | corpus | ngưỡng của serving record |
 | `trip.yaml` | trip | ngân hàng câu hỏi, ngưỡng dừng hỏi |
 | `agents.yaml` | agents | giới hạn call và queue của runtime trong tiến trình |
@@ -136,7 +140,9 @@ Dữ liệu: `data/<nguồn>/` thô và observation, `data/intel/` + `data/servi
 
 Dữ liệu người dùng nằm trong **Postgres** của dự án (container `tripguardian-pg`, `127.0.0.1:5433`; bảng ở `migrations/`, chạy bằng `./run.sh db`): tài khoản, hành trình, event, chuyến đang đi, Calendar, thông báo. Role `tg_app` ghi; `tg_analytics` chỉ đọc và không đọc được bảng chứa bí mật. Avatar nằm ở `data/accounts/avatars/`.
 
-User Web dùng journey chung; harness lưu snapshot các module, revision và receipt trong bảng `journeys` (`docs/AGENT_HARNESS.md` §3). CLI/API module độc lập mirror state vào `data/{trip,decision,planning}/sessions/`. Một act sinh `State` mới; `scope.py` quyết định phần nào phải tính lại.
+User Web dùng journey chung; harness lưu snapshot các module, revision và receipt trong bảng `journeys` (`docs/AGENT_HARNESS.md` §3). Mở, đọc, xem lý do và chuyển bước không xóa output hay session, không làm mất trạng thái chốt; quay lại Lịch trình dùng session hiện có nếu đầu vào không đổi. Chỉ thay dữ liệu ảnh hưởng lịch mới bỏ output chốt để tính lại. Plan khôi phục bối cảnh (kể cả điểm xuất phát) từ `outputs.trip`, không lấy cache browser làm nguồn sự thật. Lưu Đánh giá chỉ kiểm quyền và ghi phản hồi, không khôi phục module/corpus. CLI/API module độc lập mirror state vào `data/{trip,decision,planning}/sessions/`. Một act sinh `State` mới; `scope.py` quyết định phần nào phải tính lại.
+
+Web resume đọc thẳng stage cần hiển thị sau khi replay receipt còn thiếu; luôn đọc lại trạng thái hiện tại vì receipt có thể cũ hơn mutation của thiết bị khác. Các consumer đồng thời của cùng stage dùng chung promise đang chạy, không cache view đã hoàn tất qua mutation. Response chuyển bước được chuyển tới màn đích, chỉ tái dùng khi revision chưa cũ. Điều hướng/ghi dùng metadata để tìm stage/revision, không dựng view không hiển thị. DecisionProvider không tải trên Plan/Đánh giá; Planning bắt đầu đọc sau xác thực, song song snapshot địa điểm. Warm ảnh chạy nền, không chặn hiển thị thẻ.
 
 ---
 

@@ -1,11 +1,12 @@
 import { useEffect, useState, type CSSProperties } from 'react'
+import { useAccount } from '../../account'
 import { json } from '../../journey'
 import { PlacePhoto } from '../../ui/common'
 import { Icon } from '../../ui/icons'
 import { TimeInput } from '../../ui/TimeInput'
 
 // D.3 evening check (docs/PLANNING.md §Đổi lịch tối trước ngày đi): what tomorrow may need to change on the confirmed
-// plan. The server only fills it while eve_replan is on; otherwise GET answers 409 and nothing shows.
+// plan. The server only fills it while eve_replan is on; otherwise GET answers an empty state.
 // Options are photo cards like the Trip Understanding ones (tg-cx__opt); the photo is the place the option moves to or keeps.
 
 export type EveOption = { id: string; place?: string; kind: 'relay' | 'trim' | 'shift' | 'swap_day' | 'backup' | 'drop' | 'keep'; text: string; changed: string[]; shifted: string[] }
@@ -17,18 +18,22 @@ const URL = (id: string) => `/api/harness/sessions/${id}/eve`
 // Eve off: the harness used to answer 409 (read as "nothing to show"), later answers an empty state. Both work; a missing field is read as empty.
 const clean = (s: Partial<EveState> | null): EveState | null => (s ? { pending: s.pending ?? [], notes: s.notes ?? [], undo: !!s.undo } : null)
 
+// Guests get 403 on this route (members only), so it is not asked for them at all.
 export function useEve(journeyId: string | null) {
+  const account = useAccount()
+  const member = !!account && account.kind === 'user' && !account.guest
   const [state, setState] = useState<EveState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    if (!journeyId) return
+    setState(null); setError(null)
+    if (!journeyId || !member) return
     let live = true
     fetch(URL(journeyId)).then((r) => (r.ok ? json<EveState>(r) : null)).then((s) => { if (live) setState(clean(s)) }, () => { if (live) setState(null) })
     return () => { live = false }
-  }, [journeyId])
+  }, [journeyId, member])
   const send = async (operation: 'accept' | 'decline' | 'undo' | 'times', body: Record<string, unknown> = {}): Promise<boolean> => {
-    if (!journeyId) return false
+    if (!journeyId || !member) return false
     setBusy(true); setError(null)
     try {
       const next = await fetch(URL(journeyId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, ...body }) }).then((r) => json<EveState>(r))
@@ -70,19 +75,30 @@ export function EveTimes({ arrive, leave, busy, send }: { arrive: string; leave:
     if (l !== leave) body.leave = l
     setSaved(await send('times', body))
   }
+  const moments = [
+    { key: 'arrive', icon: 'plane' as const, label: 'Đến nơi lúc', note: 'Ngày đầu tiên bắt đầu từ giờ này', value: a, set: (v: string) => { setA(v); setSaved(false) } },
+    { key: 'leave', icon: 'home' as const, label: 'Rời đi lúc', note: 'Ngày cuối cùng kết thúc trước giờ này', value: l, set: (v: string) => { setL(v); setSaved(false) } },
+  ]
   return (
-    <div className="tg-it-note tg-eve__times">
-      <Icon name="clock" size={18} />
-      <div>
-        <b>Giờ đến và giờ về</b>
-        <div className="tg-eve__times-row">
-          <div>Đến nơi lúc <TimeInput label="Đến nơi lúc" value={a} disabled={busy} onChange={(v) => { setA(v); setSaved(false) }} /></div>
-          <div>Rời đi lúc <TimeInput label="Rời đi lúc" value={l} disabled={busy} onChange={(v) => { setL(v); setSaved(false) }} /></div>
-          <button type="button" className="tg-btn tg-btn--soft tg-btn--sm" disabled={busy || !changed || !a || !l} onClick={save}>Lưu giờ</button>
-        </div>
-        <p className="tg-faint">{saved && !changed ? 'Đã lưu. Lịch vẫn giữ nguyên; tối trước ngày đi, TripGuardian kiểm tra lại và hỏi bạn nếu có điểm không còn vừa.' : 'Đổi giờ sau khi đã chốt không tự xếp lại lịch.'}</p>
+    <section className="tg-eve__times" aria-label="Giờ đến và giờ về">
+      <header><Icon name="clock" size={18} /><h3>Giờ đến và giờ về</h3></header>
+      <div className="tg-eve__moments">
+        {moments.map((m) => (
+          <div key={m.key} className={`tg-eve__moment ${m.key === 'arrive' ? (a !== arrive ? 'is-edited' : '') : l !== leave ? 'is-edited' : ''}`}>
+            <span className="tg-eve__moment-ico" aria-hidden="true"><Icon name={m.icon} size={18} /></span>
+            <div>
+              <span className="tg-eve__moment-label">{m.label}</span>
+              <TimeInput label={m.label} value={m.value} disabled={busy} onChange={m.set} />
+              <small>{m.note}</small>
+            </div>
+          </div>
+        ))}
       </div>
-    </div>
+      <footer>
+        <p className="tg-faint" role="status">{changed ? 'Giờ mới chưa lưu. Lịch vẫn giữ nguyên, không tự xếp lại.' : saved ? <><Icon name="check" size={14} /> Đã lưu. Tối trước ngày đi, TripGuardian kiểm tra lại và hỏi bạn nếu có điểm không còn vừa.</> : 'Đổi giờ sau khi đã chốt không tự xếp lại lịch.'}</p>
+        {changed && <button type="button" className="tg-btn tg-btn--primary tg-btn--sm tg-eve__save" disabled={busy || !a || !l} onClick={save}>Lưu giờ</button>}
+      </footer>
+    </section>
   )
 }
 
@@ -127,7 +143,7 @@ export function EveBanner({ state, busy, error, send, arrive, leave }: Props) {
           </section>
         )
       })}
-      {notes.map((n) => <div key={`${n.date}${n.place_id}${n.factor}`} className="tg-it-note" role="status"><Icon name="info" size={18} /><span><b>{n.name} · ngày {n.date.slice(8)}/{n.date.slice(5, 7)}:</b> {n.text}</span></div>)}
+      {notes.map((n, i) => <div key={`${i}:${n.date}${n.place_id}${n.factor}`} className="tg-it-note" role="status"><Icon name="info" size={18} /><span><b>{n.name} · ngày {n.date.slice(8)}/{n.date.slice(5, 7)}:</b> {n.text}</span></div>)}
       {times && <EveTimes key={`${arrive}${leave}`} arrive={arrive!} leave={leave!} busy={busy} send={send} />}
       {state.undo && <button type="button" className="tg-btn tg-btn--ghost tg-btn--sm" disabled={busy} onClick={() => send('undo')}><Icon name="return" size={15} /> Hoàn tác thay đổi vừa chọn</button>}
       {error && <p className="tg-it-diff is-bad" role="alert"><Icon name="warn" size={15} />{error}</p>}

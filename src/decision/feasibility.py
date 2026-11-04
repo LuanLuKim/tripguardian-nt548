@@ -5,6 +5,7 @@ from collections import defaultdict
 from itertools import combinations
 
 from corpus.serving import feature
+from requirements import safety_requirement
 
 from .cards import feature_label, value_label
 from .geo import fmt, km, minutes, point, to_min
@@ -36,7 +37,7 @@ def _areas(chosen: list[Cand]) -> dict[str, tuple[tuple[float, float], list[Cand
 
 
 def _top_experience(rec: dict) -> str | None:
-    exp = rec.get("experience") or {}
+    exp = {fid: f for fid in (rec.get("experience") or {}) if (f := feature(rec, fid)) is not None}
     return max(exp, key=lambda f: (exp[f]["n"], f)) if exp else None
 
 
@@ -217,11 +218,12 @@ def evaluate(chosen: list[Cand], si, days, known_days: bool, anchors: set[str], 
 
     for c in chosen:
         for x in c.checks:
-            if x["kind"] != "hard" or x["result"] == "pass":
+            if x["kind"] != "hard" or x["feature"] == "pets" or x["result"] in {"pass", "not_applicable"}:
                 continue
             fl, vl = feature_label(x["feature"], cfg).lower(), value_label(x["value"], cfg)
             if x["result"] == "unknown":
-                warnings.append(f"{c.name}: chưa xác minh được {fl}, tự kiểm tra trước chuyến")
+                if not safety_requirement(x):
+                    warnings.append(f"{c.name}: chưa xác minh được {fl}, tự kiểm tra trước chuyến")
                 continue
             conflicts.append({"id": f"relax:{c.id}:{x['feature']}", "check": "relax", "physical": False,
                               "title": f"{c.name}: {fl} ({vl})" if x["op"] == "ne" else f"{c.name}: không phải {vl}",

@@ -184,7 +184,9 @@ def test_six_places_of_one_area_are_spread_over_both_days_and_the_plan_is_valid(
 def test_a_sunrise_place_opens_its_day_early_instead_of_failing_the_plan():
     recs = [spot("c1", CENTRE, 0), spot("c2", CENTRE, 1), spot("c3", CENTRE, 2),
             spot("cloud", CENTRE, 3, hours=None, features={"cloud_hunting": "present"})]
-    plan = build(decision([r["id"] for r in recs]), recs)
+    d = decision([r["id"] for r in recs])
+    d["trip_context"]["soft_weights"] = [{"feature": "cloud_hunting", "value": "present", "weight": 1}]
+    plan = build(d, recs)
     assert plan["ok"], plan["violations"]
     day = next(i for i, v in enumerate(visits(plan)) if "cloud" in v)
     assert plan["itinerary"][day]["window"][0] <= "07:00"      # day one too: only a start the user set stays

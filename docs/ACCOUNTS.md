@@ -1,6 +1,6 @@
 # Tài khoản
 
-Đăng nhập (Google, email + mật khẩu), phiên, khách, hồ sơ, avatar, xóa tài khoản và liên kết Google Calendar. Code: `src/accounts/` (public API ở `__init__.py`), HTTP ở `src/harness/server.py`, Postgres ở `src/db/` + `migrations/`. Web: `web/src/user/account.ts`, `screens/Auth.tsx`, `screens/Account.tsx`.
+Đăng nhập (Google, email + mật khẩu, quên mật khẩu bằng mã gửi email), phiên, khách, hồ sơ, avatar, xóa tài khoản và liên kết Google Calendar. Code: `src/accounts/` (public API ở `__init__.py`), gửi thư `src/mailer/`, HTTP ở `src/harness/server.py`, Postgres ở `src/db/` + `migrations/`. Web: `web/src/user/account.ts`, `screens/Auth.tsx`, `screens/Account.tsx`.
 
 ## 1. Quy tắc
 
@@ -35,9 +35,48 @@ POST /api/auth/login    {email, password}         → kiểm hash → cookie →
 - Mật khẩu 8–128 ký tự, lưu **scrypt** (`n=2^14, r=8, p=1`, salt 16 byte, dạng `scrypt$n$r$p$salt$hash`; `users.password_hash`, `migrations/005_password.sql`). Không bao giờ log hay trả lại. Email chuẩn hóa chữ thường, duy nhất (cũng với email của tài khoản Google): trùng thì 409.
 - Đăng nhập sai luôn trả một câu `401 wrong email or password` (email lạ, sai mật khẩu, tài khoản Google không có mật khẩu: như nhau, và email lạ vẫn tốn thời gian băm như email có thật).
 - Chống dò: cùng origin (403 nếu khác); một địa chỉ tối đa 20 lần đăng ký + đăng nhập mỗi 15 phút (`AUTH_PER_IP_15MIN`); một email sai mật khẩu 8 lần trong 15 phút thì chờ (`AUTH_FAILS_15MIN`); quá thì 429.
-- Email **chưa được xác nhận** bằng thư (chưa có kênh gửi thư) và **chưa có quên mật khẩu**. Vì thế khi chính email đó đăng nhập bằng Google (Google đã xác nhận), Google nhận lại tài khoản: gỡ mật khẩu, kết thúc mọi phiên cũ, giữ chuyến và hồ sơ.
+- Email **chưa được xác nhận** lúc đăng ký (chỉ chứng minh được quyền sở hữu khi đặt lại mật khẩu, §2c). Khi chính email đó đăng nhập bằng Google (Google đã xác nhận), Google nhận lại tài khoản: gỡ mật khẩu, kết thúc mọi phiên cũ, giữ chuyến và hồ sơ.
 - Như Google: lần đầu có màn đồng ý điều khoản; khách đang mở được chuyển chuyến sang tài khoản (`auth.guest_adopted`); sự kiện `auth.register` / `auth.login`. Xóa tài khoản xóa luôn `password_hash`.
 - Web: `registerWithEmail` / `loginWithEmail` ở `account.ts`, form hai tab "Đăng nhập" · "Tạo tài khoản" dưới nút Google ở `screens/Auth.tsx`.
+
+## 2c. Quên mật khẩu
+
+```text
+GET  /api/auth/options                       → {password_reset: bool}   web ẩn "Quên mật khẩu?" khi false
+POST /api/auth/password/forgot {email}       → 200 {sent, resend_after: 60, expires_in: 600}   cùng một câu cho mọi email hợp lệ
+POST /api/auth/password/reset  {email, code, password} → 200 {signed_in} + cookie tg_session
+```
+
+```mermaid
+sequenceDiagram
+  participant W as Web
+  participant S as Harness
+  participant M as Mailer
+  W->>S: forgot {email}
+  S->>S: mã 6 số, lưu HMAC, hạn 10 phút
+  S-->>W: 200 như nhau (có hay không có tài khoản)
+  S--)M: thư (luồng riêng) nếu có tài khoản
+  W->>S: reset {email, code, password}
+  S->>S: đúng: đặt mật khẩu, kết thúc mọi phiên
+  S-->>W: 200 + cookie phiên mới
+```
+
+- **Không dò được tài khoản:** `forgot` luôn trả cùng thân 200 và cùng thời gian (thư gửi ở luồng riêng); email chưa có tài khoản vẫn có một dòng `password_resets` (không gửi thư), nên cooldown, giới hạn giờ và giới hạn mã sai giống hệt. Email sai dạng: 400 `email is not valid`.
+- **Mã:** 6 chữ số từ `secrets`, hạn 10 phút (`RESET_MINUTES`), mỗi email một mã còn hiệu lực (xin lại thì thay mã cũ, đặt lại số lần sai). Chỉ lưu `HMAC-SHA256(khóa, email|mã)`; khóa suy ra từ `TOKEN_ENC_KEY` (không có khóa thì tính năng tắt). Không bao giờ log hay in mã; thư thất bại chỉ log tên lỗi.
+- **Giới hạn:** một email chờ 60 giây giữa hai lần xin (`RESET_COOLDOWN_S`) và tối đa 5 lần mỗi giờ (`RESET_PER_HOUR`): quá thì `429 {"error": "wait", "retry_after": giây}`; một địa chỉ tối đa 10 lần xin mỗi giờ (`RESET_ASKS_PER_IP_HOUR`) và 20 lần gửi mã mỗi 15 phút (`RESET_TRIES_PER_IP_15MIN`): quá thì `429 {"error": "too many requests"}`. Địa chỉ lấy từ `x-tg-client-ip` do `web/server.mjs` gửi (chỉ tin khi kết nối đến từ loopback), nếu không thì địa chỉ socket.
+- **Đổi mật khẩu:** mật khẩu cùng luật và cùng scrypt như đăng ký; sai dạng (mã không đủ 6 số, mật khẩu ngoài 8–128 ký tự) là 400 và không tốn lần thử. Mã sai: `400 {"error": "wrong code", "tries_left": n}`; sai lần thứ 5 mã chết (`410 code locked`, cả mã đúng cũng không còn dùng được, phải xin mã mới); mã hết hạn, đã dùng hoặc chưa từng xin: `410 code expired`. Đúng: đặt mật khẩu, mã dùng một lần, **kết thúc mọi phiên của tài khoản**, tạo phiên mới (cùng đường cookie và chuyển chuyến khách như đăng nhập, sự kiện `auth.password_reset`) và xóa thời gian chờ "8 lần sai mật khẩu" của email đó.
+- Tài khoản chỉ có Google cũng đặt được mật khẩu bằng đường này (giữ `google_sub`, từ đó vào được cả hai cách). Khách, tài khoản đã xóa và `status ≠ active` không nhận mã.
+- Lưu trữ: bảng `password_resets (email, user_id?, code_hash, expires_at, tries, sent_at, window_start, requests)` (`migrations/007_password_reset.sql`, `tg_analytics` không đọc được); dòng quá một giờ bị dọn khi có yêu cầu mới; xóa tài khoản xóa dòng của nó. Cùng origin như mọi POST auth (403 nếu khác).
+- **Thư:** `src/mailer/` (`Mailer`, `reset_code_message`, `from_env`), `smtplib` chuẩn: cổng 465 dùng SSL, cổng khác dùng STARTTLS. Thư HTML + text tiếng Việt: mã lớn, hạn 10 phút, "nếu không phải bạn thì bỏ qua", không có liên kết. Chưa cấu hình SMTP: `from_env()` trả `None`, hai route `password/*` trả `503 password reset unavailable`, `GET /api/auth/options` trả `password_reset: false` và web ẩn liên kết.
+
+| Khóa `.env` | Việc |
+|---|---|
+| `SMTP_HOST`, `SMTP_PORT` (mặc định 587) | máy chủ thư; Gmail: `smtp.gmail.com`, `587` |
+| `SMTP_USER`, `SMTP_PASSWORD` | tài khoản gửi; Gmail cần [App Password](https://myaccount.google.com/apppasswords) (bật xác minh 2 bước), không dùng mật khẩu thường |
+| `MAIL_FROM` | địa chỉ gửi (Gmail: chính địa chỉ Gmail đó); tên hiển thị "TripGuardian" ở `config/mail.yaml` |
+| `MAIL_DEV_OUTBOX=1` | chỉ để chạy thử: ghi thư vào `logs/mail_outbox.jsonl` thay vì gửi; bị bỏ qua khi `APP_BASE_URL` là https |
+
+- Web: `loadAuthOptions`, `requestResetCode`, `resetPassword` ở `account.ts`; `screens/AuthReset.tsx` (hai bước trong thẻ đăng nhập: email, rồi mã 6 ô + mật khẩu mới).
 
 Web: `account.ts` đọc `GET /api/harness/me`; mọi lời gọi `/api/harness/*` trả 401 đưa về màn đăng nhập rồi Google trả về đúng trang đang mở.
 
@@ -61,7 +100,7 @@ Prior cho Trip: khi tạo hành trình, `usual_mobility` / `usual_companions` v�
 
 ## 4. Xóa tài khoản
 
-Thu hồi token Google trước, rồi xóa `profiles`, `calendar_links`, `push_subscriptions`, `notification_prefs`, `auth_sessions`, `oauth_states`, `saved_items`, mọi `friendships` và `messages` có người này (cả hai phía), file avatar và mẫu dài hạn của Trip. `users` giữ dòng với `deleted_at`, `status = deleted`, email / tên / nickname / giới thiệu / `google_sub` bị xóa. `journeys`, `events`, `feedback`, `trips`, `notifications` giữ lại với `user_id = NULL`. Đăng nhập lại bằng cùng Google tạo tài khoản mới.
+Thu hồi token Google trước, rồi xóa `profiles`, `calendar_links`, `push_subscriptions`, `notification_prefs`, `auth_sessions`, `oauth_states`, `saved_items`, `password_resets`, mọi `friendships` và `messages` có người này (cả hai phía), file avatar và mẫu dài hạn của Trip. `users` giữ dòng với `deleted_at`, `status = deleted`, email / tên / nickname / giới thiệu / `google_sub` bị xóa. `journeys`, `events`, `feedback`, `trips`, `notifications` giữ lại với `user_id = NULL`. Đăng nhập lại bằng cùng Google tạo tài khoản mới.
 
 ## 5. Liên kết Google Calendar
 

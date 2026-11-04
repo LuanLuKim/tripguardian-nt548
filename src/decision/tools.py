@@ -26,6 +26,7 @@ class StartInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     search_input: SearchInput
     trip_session: str | None = Field(default=None, pattern=r"^[0-9a-f]{12}$")
+    hidden_ids: tuple[str, ...] = ()
 
 
 class Tools:
@@ -42,7 +43,7 @@ class Tools:
     def create(self, payload: dict) -> dict:
         inp = StartInput.model_validate(payload)
         self._check_binding(inp.search_input.corpus_binding)
-        return self.engine.create(inp.search_input.model_dump(mode="json"), inp.trip_session)
+        return self.engine.create(inp.search_input.model_dump(mode="json"), inp.trip_session, hidden_ids=inp.hidden_ids)
 
     def load(self, sid: str) -> dict:
         try:
@@ -70,7 +71,7 @@ class Tools:
         if operation == "confirm":
             permit_tool(self.skill, "decision.confirm")
             try:
-                output = self.engine.confirm(sid)
+                output = self.engine.confirm(sid, for_planning=payload.get("for_planning") is True)
             except NotConfirmable as exc:
                 raise ToolError(409, str(exc)) from None
             return DecisionOutput.model_validate(output).model_dump(mode="json", by_alias=True)
@@ -115,8 +116,15 @@ class Tools:
     def restore(self, snapshot: dict) -> None:
         data = Session.model_validate(snapshot)
         self._check_binding(data.search_input.corpus_binding)
+        try:
+            previous = self.engine.store.get(data.id)
+        except KeyError:
+            previous = None
         self.engine.store.restore(data)
-        self.engine._results.pop(data.id, None)
+        fields = {"search_input", "state", "hidden_ids", "first_shortlist"}
+        if (previous is None or previous.model_dump(include=fields) != data.model_dump(include=fields)
+                or len(previous.history) != len(data.history)):
+            self.engine._results.pop(data.id, None)
 
     def rebase(self, sid: str, payload: dict) -> dict:
         inp = StartInput.model_validate(payload)
@@ -124,17 +132,23 @@ class Tools:
         before = self.load(sid)["view"]
         with self.engine.store.lock(sid):
             s = self.engine.store.get(sid)
+            previous_input, previous_hidden, previous_state = s.search_input, s.hidden_ids, s.state.model_copy(deep=True)
             if s.search_input.context != inp.search_input.context:
                 s.state = s.state.model_copy(update={"chunk_assignments": {}, "free_time": False})
                 s.history = [state.model_copy(update={"chunk_assignments": {}, "free_time": False})
                              for state in s.history]
             s.search_input, s.trip_session, s.output = inp.search_input, inp.trip_session, None
+            if "hidden_ids" in inp.model_fields_set:
+                s.hidden_ids = inp.hidden_ids
             for anchor in inp.search_input.anchors:
                 if anchor.place_id not in s.state.selected:
                     s.state.selected.append(anchor.place_id)
                 if anchor.priority == "must" and anchor.place_id not in s.state.locked:
                     s.state.locked.append(anchor.place_id)
-            self.engine._results.pop(sid, None)
+            current = self.engine._results.get(sid)
+            if (current is None or inp.search_input != previous_input or s.hidden_ids != previous_hidden
+                    or s.state != previous_state):
+                self.engine._results.pop(sid, None)
             self.engine.store.save(s)
         out = self.load(sid)
         return {**out, "diff": diff(before, out["view"], None, rebuilt=True)}

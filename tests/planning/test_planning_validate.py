@@ -15,6 +15,10 @@ def visit(pid, start, end):
     return Item("visit", start, end, place_id=pid, name=pid)
 
 
+def hop(a, b, start, minutes=10):
+    return Item("travel", start, start + minutes, from_id=a, to_id=b)
+
+
 def kinds(violations):
     return sorted(v.kind for v in violations)
 
@@ -73,7 +77,8 @@ def test_an_anchor_that_is_not_in_the_plan_fails():
 def test_a_day_over_the_budget_fails_and_unknown_prices_are_not_counted():
     price = lambda n: {"min_vnd": n, "typical_vnd": n, "max_vnd": n}
     cx = day_ctx([rec("a", 1, 1, price=price(200000)), rec("b", 1, 1, price=price(150000)), rec("c", 1, 1)])
-    res = result(visit("a", 600, 660), visit("b", 700, 760), visit("c", 800, 860))
+    res = result(visit("a", 600, 660), hop("a", "b", 660), visit("b", 700, 760), hop("b", "c", 760),
+                 visit("c", 800, 860))
     assert [(v.kind, v.minutes) for v in run(cx, res, budget=300000)] == [("budget", 50000)]
     assert run(cx, res, budget=400000) == []
 
@@ -100,7 +105,7 @@ def test_the_same_place_twice_fails_but_two_near_duplicates_the_user_kept_pass()
     # near duplicate = the same kind of place (PLACE_DECISION §9.1): a hint to keep one, never a reason to refuse
     cx = day_ctx([rec("a", 1, 1, dup=7), rec("b", 1, 1, dup=7)])
     assert kinds(run(cx, result(visit("a", 600, 660), visit("a", 700, 760)))) == ["duplicate"]
-    assert run(cx, result(visit("a", 600, 660), visit("b", 700, 760))) == []
+    assert run(cx, result(visit("a", 600, 660), hop("a", "b", 660), visit("b", 700, 760))) == []
 
 
 def test_a_non_physical_hard_filter_is_not_marked_physical():

@@ -201,7 +201,6 @@
 .tg-auth__scene { --lx: 0px; --ly: 0px; position: relative; flex: 1; min-height: 520px; border-radius: 24px; overflow: hidden; isolation: isolate; background: linear-gradient(180deg, var(--scene-top), var(--scene-low)); }
 .tg-auth__hill { position: absolute; z-index: -3; left: -24px; right: -24px; bottom: -48px; height: 150px; border-radius: 50%; background: linear-gradient(0deg, var(--meadow-d), var(--meadow-l)); }
 /* the mascot (animated webp) also breathes and sways, leans to the pointer; the ground shadow pulses with it */
-.tg-auth__mascot { position: absolute; left: 50%; bottom: 62px; width: 84%; max-height: 82%; object-fit: contain; transform: translate(calc(-50% + var(--lx)), var(--ly)); transform-origin: 50% 100%; transition: transform 0.35s var(--tg-ease); filter: drop-shadow(0 24px 36px rgba(15, 40, 30, 0.35)); animation: tg-auth-bob 3.6s ease-in-out infinite; }
 .tg-auth__shadow { position: absolute; left: 50%; bottom: 52px; width: 58%; height: 30px; margin-left: -29%; border-radius: 50%; background: rgba(6, 40, 24, 0.35); filter: blur(9px); animation: tg-auth-shadow 3.6s ease-in-out infinite; }
 .tg-auth__cloud { position: absolute; border-radius: 50%; background: rgba(255, 255, 255, 0.7); filter: blur(14px); animation: tg-auth-cloud 18s ease-in-out infinite; }
 .tg-auth__cloud--a { top: 36px; left: -40px; width: 190px; height: 80px; }
@@ -209,14 +208,13 @@
 @keyframes tg-auth-bob { 0%, 100% { margin-bottom: 0; rotate: -1deg; scale: 1 1; } 50% { margin-bottom: 10px; rotate: 1.2deg; scale: 1.015 0.99; } }
 @keyframes tg-auth-shadow { 0%, 100% { opacity: 0.9; scale: 1 1; } 50% { opacity: 0.55; scale: 0.88 1; } }
 @keyframes tg-auth-cloud { 0%, 100% { translate: 0 0; } 50% { translate: 28px -10px; } }
-@media (prefers-reduced-motion: reduce) { .tg-auth__mascot, .tg-auth__shadow, .tg-auth__cloud { animation: none; transition: none; } }
+@media (prefers-reduced-motion: reduce) { .tg-auth__shadow, .tg-auth__cloud { animation: none; transition: none; } }
 .tg-auth__main { padding: 40px 44px; display: grid; align-content: center; gap: 12px; }
 .tg-auth__mark { justify-self: center; width: 48px; height: 48px; object-fit: contain; }
 .tg-auth__main h1 { font-size: 1.8rem; text-align: center; }
 .tg-auth__main > .tg-muted { text-align: center; font-size: 0.9rem; margin-bottom: 4px; }
 .tg-auth__switch { text-align: center; font-size: 0.9rem; color: var(--tg-ink-3); }
 .tg-auth__switch .tg-link { font-weight: 700; color: var(--tg-ink); }
-.tg-auth__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tg-auth__pw { position: relative; display: block; }
 .tg-auth__pw .tg-input { width: 100%; padding-right: 44px; }
 .tg-auth__eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; color: var(--tg-ink-3); }

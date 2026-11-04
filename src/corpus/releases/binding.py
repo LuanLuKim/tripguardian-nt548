@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -52,8 +54,8 @@ def _version(root: Path, name: str) -> str | None:
 
 
 def bind(root: Path, *, region: str | None = None, legacy: bool = False,
-         release_id: str | None = None) -> Binding:
-    """Capture one active release; legacy explicitly pins the standalone reader versions."""
+         release_id: str | None = None, verify: bool = True) -> Binding:
+    """Capture identity; verify=False defers artifacts to resolve_binding, never authorizes reading them."""
     if release_id is not None and legacy:
         raise ValueError("a named release cannot use legacy binding")
     if release_id is not None:
@@ -64,13 +66,20 @@ def bind(root: Path, *, region: str | None = None, legacy: bool = False,
             from ..serving.record import config
             region = config()["default_region"]
         return Binding(region=region, snapshot_version=_version(root, "snapshot"), index_version=_version(root, "index"))
-    manifest = _manifest(path)
+    manifest = _manifest(path) if verify else json.loads((path / "manifest.json").read_bytes())
+    if manifest.get("release_id") != path.name:
+        raise ValueError("release manifest identity mismatch")
     selected = region or manifest["city"]
     if selected != manifest["city"]:
         raise ValueError("release region mismatch")
     return Binding(release_id=manifest["release_id"], region=selected,
                    manifest_sha256=_hash(path / "manifest.json"), snapshot_version=_version(path, "snapshot"),
                    index_version=_version(path, "index"))
+
+
+_verified: OrderedDict[tuple, Path] = OrderedDict()
+_verifying: dict[tuple, threading.Lock] = {}
+_verification_lock = threading.RLock()
 
 
 def resolve_binding(root: Path, binding: Binding) -> Path:
@@ -81,8 +90,25 @@ def resolve_binding(root: Path, binding: Binding) -> Path:
                 raise PinnedVersionMissing(name, version)
         return root
     path = _path(root / "releases", binding.release_id)
-    _manifest(path, binding)
+    stat = (path / "manifest.json").stat()
+    key = (root.resolve(), binding, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
     for name, version in (("snapshot", binding.snapshot_version), ("index", binding.index_version)):
         if version != _version(path, name):
             raise ValueError(f"release {name} version mismatch")
+    with _verification_lock:
+        if key in _verified:
+            _verified.move_to_end(key)
+            return path
+        lock = _verifying.setdefault((root.resolve(), binding), threading.Lock())
+    with lock:
+        with _verification_lock:
+            if key in _verified:
+                _verified.move_to_end(key)
+                return path
+        # Published artifacts are immutable; only successful first-use verification is reusable.
+        _manifest(path, binding)
+        with _verification_lock:
+            _verified[key] = path
+            while len(_verified) > 32:
+                _verified.popitem(last=False)
     return path

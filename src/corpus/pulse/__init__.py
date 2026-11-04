@@ -4,6 +4,7 @@ Offline `build` writes data/<city>/pulse/{generated_at}.json + latest.json (CLI 
 every 24 h); online only reads. Text comes from fixed templates over the items' fields; no model writes it. Public API:
 
     build(city, now=None, root=None) -> snapshot       (offline: read signals, compute, write)
+    tag_trends(city, now=None, root=None) -> {as_of, window_days, stale, tags[]} | None   (home page topics)
     load(city, root=None) -> snapshot | None           (None: the job never ran)
     bulletin(city, now=None, root=None) -> {city, generated_at, stale, sections[{kind, title, items[]}]} | None
     hot(city, now=None, root=None) -> {fid: {label, newest, videos, authors, window_days, as_of}}   (display only)
@@ -17,6 +18,7 @@ from pathlib import Path
 import yaml
 
 from . import compute, render, signals, store
+from .. import tags
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -41,7 +43,9 @@ def build(city: str, now: datetime | None = None, root: Path | None = None) -> d
                 "inputs": {"places": len(sig["places"]), "places_with_videos": len(sig["videos"]),
                            "videos": sum(len(v) for v in sig["videos"].values()), "places_with_reviews": len(sig["reviews"]),
                            "claims": len(sig["claims"])},
-                "items": items}
+                "items": items,
+                # tags ranked by the TikTok clips of the last 30 days at the places that carry them (corpus.tags.trending)
+                "tags": tags.trending(signals.tagged(root or signals.data_root()), sig["videos"], now.date())}
     store.write(city, snapshot, cfg["keep_snapshots"], root)
     return snapshot
 
@@ -100,9 +104,19 @@ def trends(city: str, kind: str | None = None, month: int | None = None, limit: 
     return res
 
 
+def tag_trends(city: str, now: datetime | None = None, root: Path | None = None) -> dict | None:
+    """The tags people post about most in the last 30 days (home page): {as_of, window_days, stale, tags[]}; None when the
+    job never wrote tags or they are older than `hide_after_days` (the page then shows its fixed topics)."""
+    snap = store.load(city, root)
+    if snap is None or not snap.get("tags") or _age_days(snap, now) > config()["hide_after_days"]:
+        return None
+    return {"as_of": snap["day"], "window_days": tags.config()["trend"]["window_days"],
+            "stale": _age_days(snap, now) > config()["stale_after_days"], "tags": snap["tags"]}
+
+
 def run(city: str) -> None:
     snap = build(city)
     print(f"pulse {city}: {snap['counts']} -> {store.pulse_dir(city) / 'latest.json'}")
 
 
-__all__ = ["build", "bulletin", "hot", "load", "run", "trends"]
+__all__ = ["build", "bulletin", "hot", "load", "run", "tag_trends", "trends"]

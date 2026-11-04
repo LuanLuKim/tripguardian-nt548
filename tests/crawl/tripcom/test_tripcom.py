@@ -57,7 +57,8 @@ def test_run_matches_to_the_corpus_and_keeps_the_rest_apart(root, monkeypatch):
     html = page()
     monkeypatch.setattr(lodging, "stay_dates", lambda cfg, today=None: [lodging.Stay(date(2026, 11, 7), 2, 2)])
     stats = tripcom.run("dalat", get=lambda url, t: html, sleep=lambda s: None)
-    assert (stats["calls"], stats["hotels"], stats["matched"], stats["priced"], stats["unmatched"]) == (4, 10, 2, 2, 8)
+    calls = lodging.settings("dalat")["tripcom"]["calls_per_date"]
+    assert (stats["calls"], stats["hotels"], stats["matched"], stats["priced"], stats["unmatched"]) == (calls, 10, 2, 2, 8)
     got = lodging.latest("tripcom", "dalat")
     assert got[("a:1", "2026-11-07", 2)]["price_total_vnd"] == 535200
     assert got[("a:2", "2026-11-07", 2)]["source"] == "tripcom"
@@ -75,5 +76,5 @@ def test_other_dates_than_asked_are_not_a_price(root):
 def test_a_failed_call_is_an_error_not_an_observation(root, monkeypatch):
     monkeypatch.setattr(lodging, "stay_dates", lambda cfg, today=None: [lodging.Stay(date(2026, 11, 7), 2, 2)])
     stats = tripcom.run("dalat", get=lambda url, t: "<html></html>", sleep=lambda s: None)
-    assert stats["errors"] == 4 and stats["matched"] == 0
+    assert stats["errors"] == lodging.settings("dalat")["tripcom"]["calls_per_date"] and stats["matched"] == 0
     assert not (root / "tripcom" / "dalat" / "observations.jsonl").exists()

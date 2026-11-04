@@ -98,7 +98,7 @@ def details_fit(rec: dict, who: list[str], cfg, flags: list) -> float:
     missing data change nothing."""
     cf, total = cfg.details_fit, 0.0
     for x in who:
-        v = (rec.get("details") or {}).get("fit", {}).get(x)
+        v = feature(rec, f"fit.{x}")
         label = companions()[x].vi.casefold() if x in companions() else x
         if v and v["status"] in FIRM:
             if v["value"] == "good":

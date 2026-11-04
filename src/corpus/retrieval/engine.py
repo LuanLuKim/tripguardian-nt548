@@ -29,6 +29,7 @@ from .card import card
 from .find import Criteria, FindResult, find, vocabulary, warm
 from .local import local_knowledge
 from .names import NameHit, NameRecord, search_names
+from .trace import read_span
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +212,7 @@ class RetrievalEngine:
         return card(record) if record else None
 
     def scene_photos(self, place_id: str) -> list[dict]:
-        """The best photo per scene of a place, no people, not blurry, de-duplicated: [{"scene", "photo_id", "file"}], `file`
+        """The card photos of a place, best first (corpus.serving.scenes.pick): [{"scene", "photo_id", "file"}], `file`
         relative to the data directory. [] when the place has no scene labels (the caller keeps the photos it has).
         Display only; labels come from `python -m corpus gmaps photo_scenes` (docs/CORPUS.md, Ảnh Google Maps)."""
         from .. import data_root as data_dir
@@ -230,7 +231,8 @@ class RetrievalEngine:
         """Places that pass structured criteria (a Criteria, or a dict that Criteria.parse validates; ValueError if bad)."""
         if not isinstance(criteria, Criteria):
             criteria = Criteria.parse(criteria, self._ontology)
-        return find(self._region, criteria, limit=limit, semantic=self.semantic, release_id=self.release_id)
+        with read_span("retrieval", release=self.release_id):
+            return find(self._region, criteria, limit=limit, semantic=self.semantic, release_id=self.release_id)
 
     def vocabulary(self) -> dict:
         """The groups, features, values and companions that `find` accepts for this region."""

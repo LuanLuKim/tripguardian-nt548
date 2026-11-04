@@ -14,8 +14,11 @@ export const KIND_LABEL: Record<string, string> = {
   checkin_hint: 'Gợi ý bấm Đã đến ở hai điểm đầu',
   golden_hour: 'Giờ hoàng hôn ở nơi trong lịch',
   weather_change: 'Khi dự báo đổi làm ảnh hưởng nơi ngoài trời',
+  eve_replan: 'Tối trước ngày đi: lịch cần đổi gì',
   post_trip: 'Hỏi thăm sau chuyến',
+  paused: 'Tạm dừng thông báo',
 }
+export const notificationLabel = (kind: string) => KIND_LABEL[kind] ?? 'Thông báo khác'
 
 const send = <T>(method: string, url: string, body: unknown) => fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(json<T>)
 

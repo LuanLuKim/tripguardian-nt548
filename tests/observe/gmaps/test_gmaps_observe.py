@@ -754,3 +754,21 @@ def test_extractor_also_selfhost_adds_the_gateway_endpoint(monkeypatch):
     assert [p[0].name for p in asyncio.run(extract._providers())] == ["lan"]
     monkeypatch.setenv("EXTRACTOR_ALSO_SELFHOST", "1")
     assert [(p[0].name, p[1], p[2]) for p in asyncio.run(extract._providers())] == [("lan", "m", extract.REVIEW_OBSERVE.parallel), ("self", "s", 8)]
+
+
+def test_a_later_visit_fills_only_what_the_first_crawl_lacked(tmp_path):
+    import json as _json
+    from corpus.observe.gmaps import extract
+    raw = {"hours": ["Thứ Hai 07:00–17:00"], "popular_times": [[], [], [], [], [], [], []], "price": None, "tickets": None,
+           "status": "Đang mở"}
+    seen = {"hours": ["Thứ Hai 08:00–18:00"], "popular_times": [["Mức độ đông là 80% lúc 09 giờ."]] * 7,
+            "price": "Giá rẻ", "tickets": "Vé vào cửa\nTrang web chính thức\nMiễn phí", "status": "Bị đóng vĩnh viễn"}
+    (tmp_path / "revisit.json").write_text(_json.dumps({"place": seen, "text": "Mọi người thường dành 1-2 giờ ở đây"}),
+                                           encoding="utf-8")
+    facts = extract.rule_facts(tmp_path, raw, None)
+    assert facts["hours"] == {"mon": [["07:00", "17:00"]]}  # the first crawl's hours stay
+    assert facts["popular_times"]["sun"] == {9: 80}
+    assert facts["price"] == {"level": "cheap"} and facts["tickets"] == {"free": True}
+    assert facts["closure"] == "permanent"
+    assert facts["time_spent"] == {"min_minutes": 60, "max_minutes": 120}
+    assert extract.rule_facts(tmp_path.parent, raw, None)["time_spent"] is None  # no file: nothing added

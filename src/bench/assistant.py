@@ -19,6 +19,9 @@ other file config/bench_assistant_<name>.yaml (not `_guard`) adds cases in the v
         links: ["https://..."]         # optional: added to the text of the last turn
         tool_groups: [places]          # Tool.group of the tools the last turn ran (prepared or called by the model)
         cards: true                    # optional: the last turn shows a card (true) or none (false)
+        tools: [browse_tags]           # optional: tools the last turn must call / must not call (tools_lack)
+        block: tags                    # optional: the last turn sends a result block of this kind (tags | dish | services)
+        level: subtags                 # optional, with block: tags: its level (tags = kinds of places, subtags = groups of one interest)
         photo_sure: false              # a photo turn: false = the reply names no place and asks back; true = it names `place`
         place: "Tên quán"              # with photo_sure: true
         reply_has: ["regex"]           # optional regexes the last reply must / must not match
@@ -139,6 +142,10 @@ class Case:
     reply_lacks: tuple[str, ...] = ()
     blocked: str = ""
     groups: frozenset[str] = frozenset()  # prepared groups (the 30-case metric)
+    tools: frozenset[str] = frozenset()   # tools the last turn must call
+    tools_lack: frozenset[str] = frozenset()  # ... must not call
+    block: str = ""                        # a result block of this kind must come with the last turn ("!tags": must not)
+    level: str = ""                        # with block: tags, the block's level (tags = kinds to open, subtags = groups of one interest)
 
     @property
     def photos(self) -> list[str]:
@@ -162,7 +169,8 @@ def load_cases(paths: list[Path] | None = None) -> list[Case]:
             out.append(Case(str(c.get("id") or f"{f.stem}-{i}"), str(c.get("family") or f.stem.removeprefix("bench_assistant_")),
                             tuple(turns), frozenset(c.get("tool_groups") or ()), c.get("cards"), c.get("photo_sure"),
                             str(c.get("place") or ""), tuple(c.get("reply_has") or ()), tuple(c.get("reply_lacks") or ()),
-                            str(c.get("blocked") or ""), frozenset(c.get("groups") or ())))
+                            str(c.get("blocked") or ""), frozenset(c.get("groups") or ()), frozenset(c.get("tools") or ()),
+                            frozenset(c.get("tools_lack") or ()), str(c.get("block") or ""), str(c.get("level") or "")))
     return out
 
 
@@ -225,6 +233,16 @@ def run_v2(engine, case: Case) -> dict:
         problems.append(f"expected block {case.blocked}")
     if not case.blocked and rule:
         problems.append(f"wrong block {rule[1]}")
+    kinds = {(t.get("block") or {}).get("kind") for t in s.transcript if t.get("turn") == sys_line.get("turn") and t.get("kind") == "block"}
+    if case.tools - set(called):
+        problems.append(f"tool not called: {sorted(case.tools - set(called))}")
+    if case.tools_lack & set(called):
+        problems.append(f"tool called: {sorted(case.tools_lack & set(called))}")
+    if case.block and (case.block.lstrip("!") in kinds) == case.block.startswith("!"):
+        problems.append(f"block {case.block}: got {sorted(k for k in kinds if k)}")
+    levels = {(t.get("block") or {}).get("level") for t in s.transcript if t.get("turn") == sys_line.get("turn") and t.get("kind") == "block"}
+    if case.level and case.level not in levels:
+        problems.append(f"block level {case.level}: got {sorted(k for k in levels if k)}")
     if case.cards is not None and bool(cards) != case.cards:
         problems.append("cards shown" if cards else "no card shown")
     for rx in case.reply_has:

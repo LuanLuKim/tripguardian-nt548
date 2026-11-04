@@ -1,0 +1,123 @@
+/* Lịch trình từng ngày (screens/plan/DayView.tsx + TripMap.tsx): a narrow column of stop cards on a vertical timeline, a large pale map with the day's route.
+   Colors only from tokens: the route, the stop numbers and the picked card use --tg-brand; ends use --tg-ink. `.tg ` keeps these ahead of itinerary.css. */
+
+.tg .tg-it-day { grid-template-columns: clamp(470px, 26vw, 540px) minmax(0, 1fr); }
+.tg .tg-it-day__pane { background: var(--tg-bg); }
+
+/* ---- top of the column: crumb, day tabs ---- */
+.tg .tg-it-day .tg-it-crumb { height: 52px; padding: 0 16px; gap: 10px; font-size: 0.95rem; }
+.tg .tg-it-tabs { justify-content: flex-start; gap: 8px; min-height: 0; padding: 10px 16px; background: var(--tg-bg); }
+.tg .tg-it-tabs [role='tablist'] { flex: 1; min-width: 0; gap: 6px; padding: 2px; overflow-x: auto; scrollbar-width: none; }
+.tg .tg-it-tabs [role='tablist']::-webkit-scrollbar { display: none; }
+.tg .tg-it-tab { display: grid; flex: none; gap: 0; min-height: 0; padding: 6px 14px; border: 1px solid var(--tg-line); border-radius: 12px; background: var(--tg-surface); color: var(--tg-ink-2); text-align: center; transition: background 150ms, color 150ms, border-color 150ms; }
+.tg .tg-it-tab b { font: 700 0.9rem var(--tg-sans); }
+.tg .tg-it-tab small { font-size: 0.74rem; color: var(--tg-ink-3); white-space: nowrap; }
+.tg .tg-it-tab:hover { border-color: var(--tg-ink-3); color: var(--tg-ink); }
+.tg .tg-it-tab[aria-selected='true'] { border-color: var(--tg-ink); background: var(--tg-ink); color: var(--tg-surface); }
+.tg .tg-it-tab[aria-selected='true'] small { color: var(--tg-line-2); }
+.tg .tg-it-tabs .tg-it-round { width: 34px; height: 34px; }
+
+/* ---- the scrolling column ---- */
+.tg .tg-it-day .tg-it-scroll { padding: 18px 16px 20px; }
+.tg .tg-it-dayhead { margin-bottom: 12px; }
+.tg .tg-it-dayhead h1 { margin-bottom: 2px; font-size: 1.7rem; }
+.tg .tg-it-dayhead p { font-size: 0.95rem; }
+.tg .tg-it-dayhead small { font-size: 0.84rem; }
+.tg .tg-it-hint { padding-top: 4px; font-size: 0.78rem; white-space: normal; text-align: right; max-width: 12ch; line-height: 1.25; }
+.tg .tg-it-stats.is-day { margin-bottom: 12px; }
+.tg .tg-it-stats.is-day > div { padding: 8px 12px; }
+.tg .tg-it-stats.is-day dt { font-size: 0.74rem; }
+.tg .tg-it-stats.is-day dd { font-size: 0.95rem; white-space: nowrap; }
+.tg .tg-it-day .tg-cond { gap: 8px; margin-bottom: 14px; padding: 10px 14px; font-size: 0.8rem; }
+
+/* ---- the timeline ---- */
+.tg .tg-it-day .tg-it-list { position: relative; margin: 6px 0 0; padding: 0 0 0 36px; list-style: none; }
+.tg .tg-it-day .tg-it-list::before { content: ''; position: absolute; left: 12px; top: 26px; bottom: 26px; width: 2px; border: 0; border-radius: 2px; background: var(--tg-line-2); pointer-events: none; }
+.tg .tg-it-day .tg-it-stop { position: relative; margin: 0 0 2px; }
+.tg .tg-it-day .tg-it-stop > .tg-it-card::before { content: none; }
+
+.tg .tg-it-endrow { position: relative; display: grid; gap: 1px; margin: 0 0 14px; padding: 9px 14px; border-radius: 14px; background: var(--tg-surface); border: 1px solid var(--tg-line); }
+.tg .tg-it-endrow.is-end { margin: 12px 0 0; }
+.tg .tg-it-endrow small { font-size: 0.76rem; color: var(--tg-ink-3); }
+.tg .tg-it-endrow b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 0.92rem var(--tg-sans); }
+.tg .tg-it-node { position: absolute; left: -32px; top: 50%; width: 18px; height: 18px; box-sizing: border-box; translate: 0 -50%; border-radius: 50%; border: 4px solid var(--tg-ink); background: var(--tg-surface); box-shadow: 0 0 0 3px var(--tg-bg); }
+.tg .tg-it-endrow.is-end .tg-it-node { background: var(--tg-ink); }
+
+/* a stop number on the line: the same number sits on the map */
+.tg .tg-it-dot { position: absolute; left: -35px; top: 12px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--tg-brand); color: var(--tg-surface); font: 700 0.74rem var(--tg-sans); box-shadow: 0 0 0 3px var(--tg-bg); transition: transform 160ms var(--tg-ease), box-shadow 160ms; }
+.tg .tg-it-stop.is-hot .tg-it-dot { transform: scale(1.12); box-shadow: 0 0 0 3px var(--tg-bg), 0 0 0 6px color-mix(in srgb, var(--tg-brand) 24%, transparent); }
+.tg .tg-it-stop.is-stale .tg-it-dot { visibility: hidden; }
+
+/* a free block (meal, rest, wait) and the leg between two stops */
+.tg .tg-it-block { position: relative; margin: 0 0 8px; padding: 8px 12px; gap: 8px; border: 1px dashed var(--tg-line-2); border-radius: 12px; background: transparent; color: var(--tg-ink-2); font-size: 0.82rem; }
+.tg .tg-it-block::before { content: ''; position: absolute; left: -29px; top: 50%; width: 10px; height: 10px; box-sizing: border-box; translate: 0 -50%; border-radius: 50%; background: var(--tg-surface); border: 2px solid var(--tg-line-2); box-shadow: 0 0 0 3px var(--tg-bg); }
+.tg .tg-it-block small { font-size: 0.74rem; }
+.tg .tg-it-leg { display: flex; align-items: center; justify-content: flex-start; gap: 6px; width: auto; margin: 4px 0 8px 2px; padding: 0; border: 0; border-radius: 0; background: none; font-size: 0.78rem; color: var(--tg-ink-3); }
+.tg .tg-it-tail { margin: 6px 0 0; }
+
+/* ---- a stop card ---- */
+.tg .tg-it-day .tg-it-card { display: grid; gap: 10px; padding: 12px; border: 1.5px solid var(--tg-line); border-radius: 16px; background: var(--tg-surface); box-shadow: var(--tg-sh-1); cursor: grab; transition: border-color 160ms, box-shadow 160ms; }
+.tg .tg-it-day .tg-it-card:hover { border-color: var(--tg-line-2); box-shadow: var(--tg-sh-1); }
+.tg .tg-it-day .tg-it-stop.is-hot .tg-it-card { border-color: var(--tg-brand); background: var(--tg-surface); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-brand) 14%, transparent), var(--tg-sh-1); }
+.tg .tg-it-card__top { display: flex; align-items: flex-start; gap: 12px; }
+.tg .tg-it-card__photo { flex: none; width: 64px; aspect-ratio: 1; border-radius: 12px; }
+.tg .tg-it-card__info { flex: 1; min-width: 0; }
+.tg .tg-it-card__when { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: var(--tg-ink-3); }
+.tg .tg-it-card__when b { font-size: 0.82rem; color: var(--tg-ink); }
+.tg .tg-it-card__when .tg-it-grip { align-self: auto; width: auto; margin-left: auto; background: none; color: var(--tg-line-2); }
+.tg .tg-it-day .tg-it-card:hover .tg-it-grip { background: none; color: var(--tg-ink-3); }
+.tg .tg-it-card__info h2 { display: block; margin: 2px 0 1px; overflow: visible; font: 700 1rem/1.3 var(--tg-sans); letter-spacing: 0; }
+.tg .tg-it-card__info h2 button { text-align: left; }
+.tg .tg-it-card__sub { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin: 0; font-size: 0.8rem; color: var(--tg-ink-3); }
+.tg .tg-it-card__sub .tg-it-rate { font-size: 0.8rem; }
+.tg .tg-it-card__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding-top: 10px; border-top: 1px solid var(--tg-line); }
+.tg .tg-it-dur { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; font-weight: 500; color: var(--tg-ink-2); white-space: nowrap; }
+.tg .tg-it-dur svg { color: var(--tg-ink-3); }
+.tg .tg-it-dur em { padding: 1px 7px; border-radius: 999px; background: var(--tg-bg); font-size: 0.7rem; font-style: normal; color: var(--tg-ink-3); }
+.tg .tg-it-acts { gap: 6px; }
+.tg .tg-it-moves button { width: 28px; height: 28px; }
+.tg .tg-it-outline { min-height: 32px; padding: 0 12px; font-size: 0.84rem; }
+.tg .tg-it-day .tg-it-card .tg-it-round { width: 32px; height: 32px; }
+.tg .tg-it-locked { font-size: 0.78rem; color: var(--tg-ink-2); }
+
+/* the rarely used controls fold away under the card */
+.tg .tg-it-more { margin: 0; }
+.tg .tg-it-more > summary { display: flex; align-items: center; gap: 6px; list-style: none; font-size: 0.8rem; color: var(--tg-ink-3); cursor: pointer; }
+.tg .tg-it-more > summary::-webkit-details-marker { display: none; }
+.tg .tg-it-more > summary svg:last-child { margin-left: auto; transition: transform 160ms var(--tg-ease); }
+.tg .tg-it-more[open] > summary svg:last-child { transform: rotate(180deg); }
+.tg .tg-it-more > summary:hover { color: var(--tg-ink); }
+.tg .tg-it-more .tg-it-card__more { display: grid; gap: 8px; margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--tg-bg); }
+.tg .tg-it-more .tg-it-card__more > label { min-height: 0; }
+.tg .tg-it-day .tg-it-card > .tg-it-warn { margin: 0; }
+.tg .tg-it-ghost .tg-it-dot { display: none; }
+
+.tg .tg-it-add { margin: 18px 0 14px; }
+.tg .tg-it-day .tg-it-empty { padding: 22px; border-radius: 16px; font-size: 0.92rem; }
+.tg .tg-it-day .tg-it-small { margin-top: 12px; font-size: 0.78rem; }
+
+/* ---- the map: pale base, thick brand route, white floating labels ---- */
+.tg .tg-it-day__map .tg-it-map { background: var(--tg-surface); }
+.tg .tg-it-map__top { top: 14px; left: 14px; right: 14px; }
+.tg .tg-it-day__map .tg-it-chip { min-height: 36px; padding: 0 14px; font-size: 0.86rem; box-shadow: var(--tg-sh-1); }
+.tg .tg-it-chip.is-label { color: var(--tg-ink); }
+.tg .tg-it-map__note { left: 14px; bottom: 12px; background: color-mix(in srgb, var(--tg-surface) 90%, transparent); }
+
+.tg .is-main .tg-it-pin { width: 30px; height: 30px; border: 3px solid var(--tg-surface); background: var(--tg-brand); color: var(--tg-surface); font-size: 0.8rem; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28); }
+.tg .is-main .tg-it-pin:hover, .tg .is-main .tg-it-pin.is-hot { z-index: 4; border-color: var(--tg-surface); background: var(--tg-brand); transform: scale(1.18); outline: 6px solid color-mix(in srgb, var(--tg-brand) 24%, transparent); }
+.tg .tg-it-end { z-index: 1; width: 18px; height: 18px; border: 4px solid var(--tg-ink); background: var(--tg-surface); box-shadow: 0 0 0 8px color-mix(in srgb, var(--tg-ink) 12%, transparent); }
+.tg .tg-it-end.is-end { background: var(--tg-ink); }
+.tg .tg-it-callout, .tg .tg-it-pin__label { display: grid; gap: 1px; max-width: 230px; padding: 8px 12px; border: 1px solid var(--tg-line); border-radius: 12px; background: var(--tg-surface); box-shadow: var(--tg-sh-2); pointer-events: none; }
+.tg .tg-it-map .tg-it-callout, .tg .tg-it-map .tg-it-pin__label { box-sizing: border-box; grid-template-rows: 17px 15px; align-content: center; animation: none; }
+.tg .tg-it-callout b, .tg .tg-it-pin__label b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 0.86rem var(--tg-sans); }
+.tg .tg-it-callout small, .tg .tg-it-pin__label small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.74rem; line-height: 1.2; color: var(--tg-ink-3); }
+
+.tg .tg-it-zoom { right: 14px; bottom: 38px; border-radius: 12px; }
+.tg .tg-it-zoom button { width: 34px; height: 34px; }
+
+@media (prefers-reduced-motion: reduce) { .tg .tg-it-dot, .tg .tg-it-more > summary svg:last-child { transition: none; } }
+
+/* the footer in the narrow column: the count on its own line, then the buttons */
+.tg .tg-it-day__pane .tg-it-status { flex-wrap: wrap; gap: 8px 10px; padding: 10px 16px 12px; }
+.tg .tg-it-day__pane .tg-it-status > span { flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem; }
+.tg .tg-it-day__pane .tg-it-status > div { flex: 1 1 100%; justify-content: flex-end; }

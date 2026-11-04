@@ -107,6 +107,15 @@ class ComparePlaces(Strict):
     places: list[str] = Field(min_length=2, max_length=3, description="2-3 places: alias, id or name.")
 
 
+class GroupList(Strict):
+    """Group ONE tab's list by kind ("trong tab ăn uống có những kiểu nào?", "chia nhóm giúp mình cho dễ chọn"). Returns
+    the kinds with how many places each holds and a few example places; say them in one or two sentences with the labels
+    and let the user choose, do not pick. Only for a long tab; no groups in the result = the list does not split into
+    clear kinds, say so. Changes nothing."""
+    tool_name: ClassVar[str] = "group_list"
+    tab: str = Field(description="A tab of the screen: its label (as in CURRENT CONTEXT places) or its id.")
+
+
 class TripWish(Strict):
     """The user changes WHAT the trip is, not the list: mood, pace, who goes, days, budget ("chuyến này muốn chill hơn",
     "đi thêm một ngày"). Trip Understanding reads the words and rebuilds the lists; do not say the list has changed."""

@@ -83,6 +83,16 @@ def test_tickets_first_usd_price():
     assert parse_tickets(None) is None and parse_tickets("None") is None
 
 
+def test_tickets_only_the_official_row_is_the_entry_price():
+    free = "Vé vào cửa\nThông tin về những kết quả này\nChùa Linh Ẩn \nTrang web chính thức\nMiễn phí\nVé phổ thông\nEvendo\n4,94 US$\nHuỷ miễn phí"
+    assert parse_tickets(free) == {"free": True}  # was 4,94 US$ of the reseller
+    resellers = "Vé vào cửa\nThông tin về những kết quả này\nKlook\n1,95 US$\nTrip.com\n3,71 US$"
+    assert parse_tickets(resellers) is None  # a tour or combo price is not the entry price
+    late = "Vé vào cửa\nKlook\n1,95 US$\nVườn Thú ZooDoo\nTrang web chính thức\n5,81 US$\nTrip.com\n3,71 US$"
+    assert parse_tickets(late) == {"usd": 5.81}
+    assert parse_tickets("Trang web chính thức\nGọi để biết giá") is None
+
+
 def test_time_spent_line_becomes_a_range_in_minutes():
     from corpus.observe.gmaps.place_rules import parse_time_spent as p
     assert p("Mọi người thường dành tối đa 1 giờ ở đây") == {"min_minutes": 30, "max_minutes": 60}

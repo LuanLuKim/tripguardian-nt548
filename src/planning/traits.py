@@ -43,6 +43,30 @@ def kind_group(place: Place) -> str | None:
     return place.rec["identity"].get("category_group")
 
 
+def suggestion_fit(place: Place, trip_context: dict) -> float | None:
+    """Contextual prior for optional additions only, never a constraint on the user's choices.
+
+    Do not volunteer nightlife for a party with children. Known companion fit ranks the other places;
+    absent or uncertain evidence stays neutral, not an assertion of suitability.
+    """
+    who = set(trip_context["context"].get("companions") or [])
+    who.update(h["feature"][4:] for h in trip_context.get("hard_filters") or []
+               if h["feature"].startswith("fit."))
+    if who & {"kids", "baby"} and (kind_group(place) == "bar" or place.activity == "drinking"):
+        return None
+    score = 0.0
+    for companion in who:
+        fit = (place.rec.get("details") or {}).get("fit", {}).get(companion) or {}
+        if fit.get("status") == "VERIFIED":
+            score += {"good": 1.0, "bad": -2.0, "conditional": -0.5}.get(fit.get("value"), 0.0)
+        fid = {"parents": "elderly", "partner": "couples", "baby": "kids", "kids": "kids",
+               "wheelchair": "wheelchair"}.get(companion)
+        f = feature(place.rec, fid) if fid else None
+        if f and f.get("status") == "VERIFIED":
+            score += {"suitable": 1.0, "unsuitable": -2.0}.get(f.get("value"), 0.0)
+    return score
+
+
 def visit_minutes(place: Place, cfg, pace: str, prefs: dict | None = None) -> int:
     """Use the trip's explicit activity, pace and matching preferences within its estimate range."""
     key = cfg.visit_key[pace]

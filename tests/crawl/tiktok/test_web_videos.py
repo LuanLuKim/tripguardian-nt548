@@ -154,3 +154,34 @@ def test_photo_post_is_not_downloaded(tmp_path, monkeypatch):
 def test_no_web_file_is_a_clear_stop(tmp_path):
     with pytest.raises(SystemExit):
         asyncio.run(web_videos.run("dalat", sessions=fake_sessions()[1]))
+
+
+def put_place_web(tmp_path, *pairs):
+    d = tmp_path / "tiktok" / "place_web"
+    d.mkdir(parents=True, exist_ok=True)
+    d.joinpath("dalat.jsonl").write_text("".join(json.dumps(
+        {"at": "x", "fid": f, "name": "n", "query": "q", "video_id": v, "url": url(v), "title": "t"}) + "\n"
+        for v, f in pairs), encoding="utf-8")
+
+
+def test_place_web_video_gets_the_searched_place_as_candidate(tmp_path, monkeypatch):
+    setup_data(tmp_path, [])  # no tiktok_urls rows: the only video comes from place_web
+    put_place_web(tmp_path, ("7", "f3"), ("8", "f3"))
+    got = []
+    run(monkeypatch, {"7": item("7"), "8": item("8", MAPPED_POI)}, downloads=got)
+    out = {r["video_id"]: r for r in rows(tmp_path / "tiktok" / "web_videos" / "dalat.jsonl")}
+    assert [p["fid"] for p in out["7"]["places"]] == ["f3"] and out["7"]["poi"] is None  # no poi: still judged
+    assert [p["fid"] for p in out["8"]["places"]] == ["f1", "f3"]  # poi mapped place first, then the searched one
+    assert sorted(got) == ["7", "8"]
+
+
+def test_place_web_video_on_disk_is_recorded_without_opening_the_page(tmp_path, monkeypatch):
+    setup_data(tmp_path, ["1"])
+    run(monkeypatch, {"1": item("1", MAPPED_POI)})
+    put_place_web(tmp_path, ("1", "f3"))
+    stats, visited, _ = run(monkeypatch, {})
+    assert visited == [] and stats["recorded_only"] == 1
+    by = place_filter.places_by_video("dalat")
+    assert sorted(p["fid"] for p in by["1"]) == ["f1", "f3"]
+    _, visited, _ = run(monkeypatch, {})  # nothing new the next time
+    assert visited == [] and len(rows(tmp_path / "tiktok" / "web_videos" / "dalat.jsonl")) == 2

@@ -37,7 +37,7 @@ export interface Card {
   suggested: boolean
   top: boolean
   // Best photo per scene, cover first (src/decision/cards.py): no person, not blurry. Empty = the web keeps the place's own photos.
-  photos?: { scene: string; src: string; credit: string; kind: 'gmaps'; w: number; h: number }[]
+  photos?: { scene: string; src: string; credit: string; kind: 'gmaps'; w: number; h: number; year?: number }[]
 }
 
 export interface Group {
@@ -228,5 +228,6 @@ export interface TripSummary {
   people: number | null
   places: string[]
   confirmed: boolean
+  updated_at?: string | null // ISO time of the journey's last save (harness `updated_at`); absent from older harness builds
   title?: string | null // the chat's one-line name: the first thing the user said (harness `chat_title`); absent from older harness builds
 }

@@ -13,6 +13,49 @@ max_travel_min: 90          # travel time from the first center (lodging / base,
 weights: {ctx: 1.0, pref: 2.0, nov: 1.0, exp: 0.3, pop: 0.2, unc: 0.5, price: 0.5, wish: 1.5, rep: 0.3}  # wish: Trip's wishes (decision.wishes); rep: reputation, rating + review volume (docs/PLACE_DECISION.md §8)
 prior_weight: 0.4           # a wish from the long-term profile (source profile) counts 0.4 of one from this trip; this trip's wish on the same feature replaces it (docs/PLACE_DECISION.md §8)
 wish:                       # decision.wishes: how much meeting one wish lifts a place (docs/PLACE_DECISION.md §8)
+  session_learning:
+    enabled: false          # experimental reranker; unsolicited pending stays disabled independently
+    max_lift: 0.18           # bounded rerank delta, never a full preference or uncertainty penalty
+    select_weight: 0.12
+    dislike_weight: 0.12
+    pattern_weight: 0.06
+    shrink: 3.0
+    consistent_min: 2
+    consistent_share: 0.6
+    evidence_prior: 3.0
+    top_k: 3
+    single_scale: 0.1
+    taste_values:            # ontology experience and intentional atmosphere; never access, safety or nuisance
+      scenic_view: [present]
+      cloud_hunting: [present]
+      sunset_view: [present]
+      photo_spot: [present]
+      nature: [present]
+      flower_garden: [present]
+      heritage_architecture: [present]
+      cozy_decor: [present]
+      laptop_friendly: [present]
+      long_stay_chill: [present]
+      live_music: [present]
+      adventure_activity: [present]
+      hiking: [present]
+      animals: [present]
+      local_specialty_food: [present]
+      food_quality: [good]
+      drink_quality: [good]
+      hands_on_workshop: [present]
+      pick_your_own: [present]
+      cultural_show: [present]
+      camping: [present]
+      tasting_available: [present]
+      wine_tasting_available: [present]
+      costume_rental: [present]
+      kids_play_area: [present]
+      noise: [quiet]
+      crowd: [low]
+      setting: [indoor, outdoor, both]
+      outdoor_seating: [present]
+      spacious: [present]
   a: {dish: 0.8, kind: 0.8, vibe: 0.8, like: 0.8, group: 0.4, purpose: 0.25}
   like_min: 0.3             # corpus.serving.similarity at or above this = "giống X"
   purpose:                  # Trip context.purpose -> what it leans to; bond, adventure lean to nothing

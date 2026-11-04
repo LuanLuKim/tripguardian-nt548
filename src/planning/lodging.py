@@ -1,14 +1,14 @@
 """Lodging candidates for the trip (docs/PLANNING.md ⓐ): search area, sieve, rank by taste first, location after.
 
 Candidates are served `stay` records only. User-provided lodging can enter as a booked or manual point.
-Hard requirements retain their unknown policy; physical and suitability checks fail closed.
+Safety unknowns are flagged behind proven fits; evidence of failure is always excluded.
 """
 
 from corpus.serving import feature
 from .feature_ontology import ontology
 from requirements import allowed, hard_result
-from trip import group_budget, nights
 
+from . import pets
 from .places import Place
 from .settings import Settings
 from .stayprice import overlay
@@ -78,30 +78,56 @@ def search_area(by_place: dict[str, Place], mobility: str | None, cfg: Settings)
 
 def price_cap(ctx: dict, nights: int, cfg: Settings) -> int | None:
     """lodging_share of the whole trip's budget, spread over the nights; unknown when the budget is unknown."""
+    from trip import group_budget
+
     budget = group_budget(ctx)
     if budget is None or nights <= 0:
         return None
     return round(budget * cfg.lodging_share / nights)
 
 
-def hard_requirements(hard_filters: list[dict], default: str = "exclude") -> list[dict]:
-    """The trip's hard filters with their unknown policy settled: fit / effort / suitability filters always exclude a
-    place whose value is unknown; any other keeps the filter's own policy, and a missing policy means `default`
-    (exclude: a hard filter is never read as optional unless it says "flag"). The one place that rule lives, for
-    lodging and for suggestions."""
+def hard_requirements(hard_filters: list[dict], default: str = "exclude", *, lodging: bool = False) -> list[dict]:
+    """Flag protected safety uncertainty, never proven failure. Pets retain their accommodation policy."""
     requirements = []
     onto = ontology() if hard_filters else None
     for f in hard_filters:
         fid = f["feature"]
         feature_def = onto.features.get(fid)
-        protected = fid.startswith("fit.") or (feature_def and feature_def.group in {"effort", "suitability"})
-        requirements.append({**f, "unknown_policy": "exclude" if protected else f.get("unknown_policy", default)})
+        protected = (fid.startswith("fit.") or (feature_def and feature_def.group in {"effort", "suitability"})) \
+            and (fid != 'pets' or lodging)
+        policy = ("exclude" if fid == "pets" else "flag") if protected else f.get("unknown_policy", default)
+        requirements.append({**f, "unknown_policy": policy})
     return requirements
 
 
+def warnings(decision: dict, by_id: dict, point: dict | None = None) -> list[dict]:
+    """Report applicable uncertainty or conflicts for explicit lodging without rejecting the user's anchor."""
+    point = booked(decision) if point is None else point
+    if not point or (not point.get("place_id") and point.get("lat") is None):
+        return []
+    pid = point.get("place_id")
+    record = by_id.get(pid) or {}
+    name = record.get("identity", {}).get("name") or point.get("text") or "Chỗ ở đã chọn"
+    out = []
+    for requirement in hard_requirements(pets.filters(decision["trip_context"]), lodging=True):
+        result, _ = hard_result(record, requirement, activity="accommodation")
+        if result not in {"unknown", "fail"}:
+            continue
+        fid = requirement["feature"]
+        if fid == "steep_or_stairs":
+            text = "Chưa rõ có bậc thang" if result == "unknown" else "Có bậc thang theo đánh giá"
+        elif fid == "pets":
+            text = "Chưa rõ có cho mang thú cưng không" if result == "unknown" else "Không đáp ứng yêu cầu về thú cưng theo đánh giá"
+        else:
+            text = "Chưa rõ có đáp ứng lưu ý đã ghi nhận không" if result == "unknown" else "Không đáp ứng lưu ý đã ghi nhận theo đánh giá"
+        out.append({"code": "lodging_requirement", "place_id": pid, "feature": fid, "status": result,
+                    "text": f"{name}: {text}. Vẫn giữ chỗ ở bạn đã chọn; hãy kiểm tra với nơi lưu trú."})
+    return out
+
+
 def sieve(raw: list[dict], hard_filters: list[dict], min_reviews: int) -> list[dict]:
-    """Apply accommodation requirements; flag unknown legacy nonphysical filters and exclude safety unknowns."""
-    requirements = hard_requirements(hard_filters, default="flag")      # legacy lodging filters carry no policy
+    """Exclude proven failures and flag safety uncertainty; pet accommodation remains fail-closed."""
+    requirements = hard_requirements(hard_filters, default="flag", lodging=True)      # legacy lodging filters carry no policy
     out = []
     for c in raw:
         if (c.get("reviews") or 0) < min_reviews:
@@ -183,30 +209,34 @@ def candidates(by_place: dict[str, Place], decision: dict, cfg: Settings, record
     """The pool to rank: the served stays in the search area that pass the hard filters and the trip's price cap,
     the lodging_pool that fit the trip's taste best (nearest first on a tie, so the travel matrix stays small).
     [] when there are no places to anchor a search on or no stay in the area."""
+    from trip import nights
+
     tc = decision["trip_context"]["context"]
     centres = search_area(by_place, tc.get("mobility"), cfg)
     if not centres:
         return []
     cap = price_cap(tc, nights(tc), cfg)
-    hard_filters = decision["trip_context"].get("hard_filters") or []
+    hard_filters = pets.filters(decision["trip_context"])
     pool = [c for c in overlay(sieve([from_record(r) for r in stays_in(list(records), centres)], hard_filters, cfg.min_reviews), tc, cfg)
             if cap is None or c["price_vnd"] is None or c["price_vnd"] <= cap]
     near = shortlist(pool, centres, len(pool))
-    return sorted(near, key=lambda c: -pref_fit(c, decision["trip_context"])[0])[:cfg.lodging_pool]
+    return sorted(near, key=lambda c: (safety_unknown(c, hard_filters), -pref_fit(c, decision["trip_context"])[0]))[:cfg.lodging_pool]
 
 
 def anywhere(decision: dict, cfg: Settings, records: list[dict] = (), limit: int | None = -1) -> list[dict]:
     """The same pool as `candidates` before any place is chosen: no area to search, so every served stay that passes the
     hard filters and the price cap, best taste fit first (rating after, so the list is not arbitrary).
     limit: how many to keep (default lodging_pool; None keeps every one, for the full list of Lựa chọn)."""
+    from trip import nights
+
     tc = decision["trip_context"]["context"]
     cap = price_cap(tc, nights(tc), cfg)
-    hard_filters = decision["trip_context"].get("hard_filters") or []
+    hard_filters = pets.filters(decision["trip_context"])
     stays = [r for r in records if r["identity"].get("category_group") == "stay" and r["identity"].get("lat") is not None
              and r["identity"].get("lng") is not None]
     pool = [c for c in overlay(sieve([from_record(r) for r in stays], hard_filters, cfg.min_reviews), tc, cfg)
             if cap is None or c["price_vnd"] is None or c["price_vnd"] <= cap]
-    pool = sorted(pool, key=lambda c: (-pref_fit(c, decision["trip_context"])[0], -(c.get("rating") or 0)))
+    pool = sorted(pool, key=lambda c: (safety_unknown(c, hard_filters), -pref_fit(c, decision["trip_context"])[0], -(c.get("rating") or 0)))
     return pool if limit is None else pool[:cfg.lodging_pool if limit == -1 else limit]
 
 
@@ -215,6 +245,8 @@ def rank(cands: list[dict], decision: dict, avg_min: dict, cfg: Settings, labels
     """lodging_score = w_pref·pref_fit + w_loc·loc_fit + w_price·price_fit + w_rating·rating_fit, best first, the
     lodging_k best kept. avg_min: candidate id -> mean minutes to the chosen places (None when not routable). Each
     candidate gains `fit` (why it suits), `avg_min` and `score`; keep: how many to return (default lodging_k); a missing value adds 0, it never subtracts."""
+    from trip import nights
+
     tc = decision["trip_context"]["context"]
     cap = price_cap(tc, nights(tc), cfg)
     w = cfg.lodging_weights
@@ -233,8 +265,14 @@ def rank(cands: list[dict], decision: dict, avg_min: dict, cfg: Settings, labels
             rating_fit = min(max((c["rating"] - 3.5) / 1.5, 0.0), 1.0) if c.get("rating") else 0.0
         score = w["pref"] * pref + w["loc"] * loc + w["price"] * price_fit + w["rating"] * rating_fit
         out.append({**c, "fit": why, "avg_min": round(m) if m is not None else None, "score": round(score, 4)})
-    out.sort(key=lambda c: (-c["score"], c["avg_min"] if c["avg_min"] is not None else 1e9))
+    hard = pets.filters(decision["trip_context"])
+    out.sort(key=lambda c: (safety_unknown(c, hard), -c["score"], c["avg_min"] if c["avg_min"] is not None else 1e9))
     return out[:keep or cfg.lodging_k]
+
+
+def safety_unknown(candidate: dict, hard: list[dict]) -> bool:
+    from .safety import unknown_features
+    return bool(unknown_features(candidate.get("rec") or {}, hard, "accommodation"))
 
 
 def progress_event(cands: list[dict], baseline_travel_min: int | None) -> dict:

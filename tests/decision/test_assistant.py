@@ -160,6 +160,26 @@ def test_why_not_changes_nothing_and_hands_the_model_no_score():
     assert e.store.get(sid).state.model_dump() == before and e.store.get(sid).history == []
 
 
+def test_why_not_dropped_place_returns_a_complete_answer_without_constraint_advice():
+    chat = Script(reply(call("why_not", place="C0")), say("Bạn đã bỏ nơi này."))
+    e, sid = start(chat)
+    e.act(sid, {"type": "drop", "place_id": "C0"})
+    turn(e, sid, "sao không thấy Quán Cà Phê Số 0")
+    result = tool_results(chat.seen[1][0])[0]
+    assert result["answer"] == "Bạn đã bỏ nơi này."
+    assert "nới" not in result["answer"] and "giới hạn" not in result["answer"]
+
+
+def test_why_not_unknown_place_returns_actual_reason_as_a_sentence():
+    chat = Script(reply(call("why_not", place="Quán Ăn Bình Dân")), say("Quán đó chưa xác minh."))
+    e, sid = start(chat)
+    turn(e, sid, "sao không thấy Quán Ăn Bình Dân")
+    result = tool_results(chat.seen[1][0])[0]
+    assert result["answer"].endswith(".")
+    assert all(reason.rstrip(".?!…") in result["answer"] for reason in result["reasons"])
+    assert "Bạn đã bỏ" not in result["answer"]
+
+
 def test_compare_returns_the_table_rows():
     chat = Script(reply(call("compare", places=["C0", "C1"])), say("Hai quán khá giống nhau."))
     e, sid = start(chat)
@@ -386,3 +406,37 @@ def test_no_cards_when_the_reply_names_no_returned_place():
     e.trip_reader = lambda trip_session, text: CardReader()
     e.store.get(sid).trip_session = "0123456789ab"
     assert "places" not in [ev for ev, _ in turn(e, sid, "quán đầu mở mấy giờ")]
+
+
+# ---------- group_list: a tab by kind (corpus.tags.split over the tab's places) ----------
+
+def test_group_list_is_registered_and_a_short_tab_gives_no_groups():
+    assert "group_list" in REGISTRY.names("decision", {"assistant"})
+    chat = Script(reply(call("group_list", tab="Cà phê")), say("Danh sách này chưa chia thành kiểu rõ ràng."))
+    e, sid = start(chat)
+    before = e.store.get(sid).state.model_dump()
+    turn(e, sid, "tab cà phê có những kiểu nào")
+    r = tool_results(chat.seen[1][0])[0]
+    assert r["tab"] == "Cà phê" and r["total"] == 7 and r["groups"] == [] and "note" in r  # safety unknown stays listed
+    assert e.store.get(sid).state.model_dump() == before and e.store.get(sid).history == []  # it changes nothing
+
+
+def test_group_list_names_a_tab_that_does_not_exist():
+    chat = Script(reply(call("group_list", tab="không có tab này")), say("Mình không thấy tab đó."))
+    e, sid = start(chat)
+    turn(e, sid, "tab nào có những kiểu nào")
+    assert "error" in tool_results(chat.seen[1][0])[0]
+
+
+def test_kinds_of_splits_a_long_list_by_evidence_and_leaves_a_short_one(tmp_path):
+    from decision.kinds import kinds_of
+    from fixtures import srec
+    recs = {}
+    for g, cat, n in (("cafe", "Quán cà phê", 6), ("restaurant", "Nhà hàng", 5), ("nature", "Đồi", 4), ("attraction", "Điểm tham quan", 4)):
+        for i in range(n):
+            recs[f"{g}{i}"] = srec(f"{g}{i}", name=f"{cat} {i}", group=g, category=cat)
+    got = kinds_of(list(recs), recs, styles={})
+    assert got["axis"] == "category" and got["total"] == 19 and [x["count"] for x in got["groups"]] == [6, 5, 4, 4]
+    assert all(set(x["places"][0]) == {"id"} and len(x["places"]) == 3 for x in got["groups"])
+    assert kinds_of(list(recs)[:8], recs, styles={}) is None  # under min_places
+    assert kinds_of(["nope"] * 20, recs, styles={}) is None  # places without a record are no tags

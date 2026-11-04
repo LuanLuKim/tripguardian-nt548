@@ -33,10 +33,11 @@ def session(search=None, state=None):
 
 def test_shortlist_is_fail_closed_and_grouped():
     v = run(session(), data(), CFG).view
-    assert set(v["shortlist"]) == {"FLAT1", "FLAT2", "CAFE0", "CAFE1", "CAFE2", "CAFE3", "MEAL"}
+    assert set(v["shortlist"]) == {"FLAT1", "FLAT2", "UNK", "CAFE0", "CAFE1", "CAFE2", "CAFE3", "MEAL"}
     assert [g["id"] for g in v["groups"]] == ["meal", "cafe", "nature"]  # tabs in config order (§9.3); FAR is too far: hidden
     assert all(not c["failed"] and not c["unverified"] for g in v["groups"] for c in g["cards"])
-    assert v["unverified"]["count"] == 1 and v["unverified"]["cards"][0]["id"] == "UNK" and not v["unverified"]["open"]
+    assert v["unverified"]["count"] == 0 and v["unverified"]["cards"] == []
+    assert next(c for g in v["groups"] for c in g["cards"] if c["id"] == "UNK")["tradeoffs"][0]["text"] == "Chưa rõ có dốc, nhiều bậc"
     assert v["excluded"]["by_rule"] == [{"rule": "hard:steep_or_stairs", "label": "Điều kiện “dốc, nhiều bậc ≠ có”", "count": 1}]
     assert next(g for g in v["groups"] if g["id"] == "nature")["cards"][0]["why"][0]["text"] == "View đẹp, 3 người nhắc"
 
@@ -73,10 +74,10 @@ def test_month_only_trip_without_days_runs():
     assert v["known_days"] is False and v["days"][0]["weekday"] is None
 
 
-def test_suggested_card_after_gap_answer():
+def test_legacy_gap_answer_does_not_suggest_a_card():
     s = session(state=State(suggest_group="cafe"))
     cards = [c for g in run(s, data(), CFG).view["groups"] for c in g["cards"]]
-    assert [c["id"] for c in cards if c["suggested"]] == [next(c["id"] for c in cards if c["group"] == "cafe")]
+    assert not any(c["suggested"] for c in cards)
 
 
 def test_output_roles_backup_and_context():
@@ -125,7 +126,7 @@ def test_chosen_place_stays_where_it_was_in_the_window():
 def test_hard_filter_still_fail_closed_with_full_ranking():
     v = run(session(), data(), CFG).view
     shown = {c["id"] for g in v["groups"] for c in g["cards"]}
-    assert "STEEP" not in shown and "UNK" not in shown
+    assert "STEEP" not in shown and "UNK" in shown
 
 
 def test_backup_pool_holds_the_top_places_not_the_whole_window():

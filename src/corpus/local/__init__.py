@@ -9,13 +9,15 @@ sol's general claims (source = model) get confirmed / contradicted / unverified 
     check_model(general_claims, claims, city_name=) -> [LocalClaim]   (origin "model": confirmed | contradicted | unverified)
     amounts(text) -> (min, max) | None
     run_extract(city, limit=, docs=, ask=, model=, parallel=) -> stats     (async; CLI `local extract`)
-    run_group(city, general=, now=, map_path=) -> {city, built_at, stats, claims}   (CLI `local group`)
+    run_verify(city, ask=, model=, parallel=, limit=) -> stats    (async; CLI `local verify`: Extractor re-reads each quote of a would-be-kept claim)
+    run_group(city, general=, now=, map_path=, out_dir=) -> {city, built_at, stats, claims}   (CLI `local group`; uses verified.jsonl when present)
+    doc_on_topic(title, texts, city_name, markers) -> bool
 """
 
 from .extract import chunks, extract
-from .gate import gate_claim, months_in
+from .gate import doc_on_topic, gate_claim, months_in
 from .group import amounts, check_model, group_claims
-from .run import local_dir, run_extract, run_group
+from .run import local_dir, run_extract, run_group, run_verify
 
-__all__ = ["amounts", "check_model", "chunks", "extract", "gate_claim", "group_claims", "local_dir", "months_in",
-           "run_extract", "run_group"]
+__all__ = ["amounts", "check_model", "chunks", "doc_on_topic", "extract", "gate_claim", "group_claims", "local_dir", "months_in",
+           "run_extract", "run_group", "run_verify"]

@@ -57,7 +57,7 @@ export function PlaceWalk({ name, steps, onClose }: { name: string; steps: Cover
           </header>
           <div className="tg-walk__stage" aria-live="polite">
             {steps.map((s, i) => <img key={s.src} src={s.src} alt={i === at ? `${name}: ${LABEL[s.scene ?? 'other']}` : ''} aria-hidden={i !== at} className={i === at ? 'is-on' : ''} draggable={false} />)}
-            <div className="tg-walk__cap"><small>{PART[scene]}</small><b>{LABEL[scene]}</b></div>
+            <div className="tg-walk__cap"><small>{PART[scene]}{cur.year ? ` · ảnh ${cur.year}` : ''}</small><b>{LABEL[scene]}</b></div>
           </div>
           <footer>
             <button type="button" className="tg-icon-btn" aria-label="Ảnh trước" disabled={at === 0} onClick={() => { setPlay(false); go(at - 1) }}><Icon name="arrowLeft" size={18} /></button>

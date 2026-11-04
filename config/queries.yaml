@@ -164,20 +164,26 @@ web:                       # SearXNG (docs/CORPUS.md §Nguồn): python -m corpu
   serpapi_monthly: 200     # SerpApi (.env SerpAPI_API_KEY) answers only when every engine is blocked; free plan = 250/month
 lodging_price:             # dated lodging price + availability (docs/CORPUS.md): python -m corpus {gtravel,tripcom} price
   adults: 2                # Google Travel's default party; its ts parameter is built for 2 adults only
-  stays:                   # the date set: next `count` such weekdays after today, `nights` long
+  stays:                   # the date set, in priority order; the first is the probe date every lodging gets looked at on
+    - {weekday: tue, count: 1, nights: 1}         # a weekday first: weekend probes hit "2-night minimum" pages more often
     - {weekday: sat, count: 4, nights: 1}
     - {weekday: fri, count: 2, nights: 2}
     - {weekday: tue, count: 2, nights: 1}
-  top_lodgings: 300        # best-scored lodging of the city's stay list that gets priced
+    - {ahead_days: 30, weekday: sat, nights: 1}     # a month out
+    - {ahead_days: 60, weekday: sat, nights: 1}     # two months out
+    - {holidays: true, within_days: 120, count: 2, nights: 2}   # the next holiday runs of config/holidays.yaml
+  top_lodgings: 2000       # lodging of the city's stay list that gets priced, best score first (all of them)
   fresh_h: 12              # a priced (lodging, date) is looked at again after this many hours
-  no_offer_h: 48           # a lodging with no booking offer is asked again after this many hours
-  max_per_run: 200         # pages per run and source; the oldest pairs go first, the rest wait for the next hour
+  no_offer_h: 48           # a (lodging, date) with no booking offer is asked again after this many hours
+  dead_h: 336              # a lodging with no price on 2 different dates (no OTA listing) is asked again after this many hours
+  max_per_run: 1200        # pages per run and source; coverage first (docs/CORPUS.md), the rest waits for the next hour
+  budget_s: 3000           # a run starts no new page after this many seconds (the loop is hourly)
   tabs: 2                  # at most 2 tabs per source
-  pause_s: [2.0, 5.0]
+  pause_s: [1.5, 4.0]
   match: {max_m: 400, min_score: 0.7, far_m: 1500, far_score: 0.9, margin: 0.1}
   tripcom:                 # Trip.com list page by plain HTTP: ~12 popular hotels per call, shuffled, so several calls per date
     city_ids: {dalat: 5204}
-    calls_per_date: 4
+    calls_per_date: 3          # the list saturates after ~3-4 calls (16 hotels per date, 2026-10-30 probe)
     pause_s: [3.0, 6.0]
     timeout_s: 30
 flight_price:              # flights into the city and back (docs/CORPUS.md §Giá chuyến bay): python -m corpus gflights offers

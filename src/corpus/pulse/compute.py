@@ -16,7 +16,7 @@ import re
 import unicodedata
 from datetime import date, timedelta
 
-KINDS = ("hot", "top", "event", "season", "new", "closed")
+KINDS = ("trend", "hot", "top", "event", "season", "new", "closed")
 EVIDENCE_MAX = 5
 MIN_SUBJECT = 5  # characters of an accent-folded season subject before a video text may be searched for it
 CLOSED = "Bị đóng vĩnh viễn"
@@ -104,6 +104,67 @@ def top(sig: dict, cfg: dict, now: date) -> list[dict]:
                     "evidence": evidence})
     out.sort(key=lambda i: (-len(i["signals"]["sources"]), -i["signals"].get("reviews", {}).get("authors", 0),
                             -i["signals"].get("tiktok", {}).get("authors", 0), i["id"]))
+    return out[:c["max_items"]]
+
+
+def _sat(n: int, cap: int) -> float:
+    """0..1: `n` of `cap`, no more than 1 (a place with 3x the cap is not 3x as hot)."""
+    return min(1.0, n / cap) if cap else 0.0
+
+
+def trending(sig: dict, cfg: dict, now: date) -> list[dict]:
+    """The one ranking the home rail shows (docs/CORPUS.md §Nhịp, "Hạng xu hướng"): every place gets a 0-100 score from
+    the same five signals, so a place talked about on one source is no longer ranked by luck of the interleave.
+
+        score = 100 * sum(weight[k] * part[k]) / sum(weight)       part[k] in 0..1, each saturating at its own cap
+        tiktok         distinct authors of clips in `window_days`           / cap.tiktok
+        tiktok_recent  distinct authors of clips in the last `recent_days`  / cap.tiktok_recent   (momentum: a clip from yesterday says more)
+        reviews        authors of Maps reviews in `window_days` as a share of ALL the place's reviews / cap.reviews
+                       (a big place always has many reviews; only a jump above its own history is a trend)
+        rising         Maps rating_trend == "rising"                        1 or 0
+        web            distinct sites that name the place                   / cap.web
+
+    A place is a candidate only with a real crowd behind it (`min_authors` clip authors or `min_review_authors` review
+    authors); rising and web only add to a score, they never make a place trend alone. Places to stay and vehicle
+    rentals (`exclude_groups`) are not something to visit, so they are not ranked here. `label` names the signal that
+    contributed most, in one short phrase; the numbers stay in `signals`."""
+    c = cfg["trending"]
+    w, cap = c["weights"], c["cap"]
+    out = []
+    for fid, info in sig["places"].items():
+        if info.get("group") in c["exclude_groups"]:
+            continue
+        vids = _videos_in(sig, fid, now, c["window_days"])
+        v_authors = {v["author"] for v in vids}
+        recent = {v["author"] for v in _videos_in(sig, fid, now, c["recent_days"])}
+        revs = _within(sig["reviews"].get(fid) or [], now, c["window_days"])
+        r_authors = {r["author"] for r in revs}
+        if len(v_authors) < c["min_authors"] and len(r_authors) < c["min_review_authors"]:
+            continue
+        rising = info.get("rating_direction") == "rising"
+        domains = sorted(set(sig["web"].get(fid) or ()))
+        parts = {"tiktok": _sat(len(v_authors), cap["tiktok"]), "tiktok_recent": _sat(len(recent), cap["tiktok_recent"]),
+                 "reviews": min(1.0, len(r_authors) / (sig["review_totals"].get(fid) or len(r_authors) or 1) / cap["reviews"]) if r_authors else 0.0, "rising": 1.0 if rising else 0.0,
+                 "web": _sat(len(domains), cap["web"])}
+        score = round(100 * sum(w[k] * parts[k] for k in w) / sum(w.values()))
+        if score < c["min_score"]:
+            continue
+        lead = max(w, key=lambda k: (w[k] * parts[k], -list(w).index(k)))
+        evidence = _video_evidence(vids)
+        if revs:
+            evidence.append({"type": "maps_reviews", "count": len(revs), "from": min(r["date"] for r in revs), "to": max(r["date"] for r in revs)})
+        if rising:
+            evidence.append({"type": "maps_rating_trend", "direction": "rising"})
+        if domains:
+            evidence.append({"type": "web_documents", "domains": domains})
+        out.append({"id": f"trend:{fid}", "kind": "trend", "subject": _place(fid, info),
+                    "signals": {"score": score, "lead": lead, "parts": {k: round(v, 2) for k, v in parts.items()},
+                                "tiktok_authors": len(v_authors), "tiktok_recent_authors": len(recent), "review_authors": len(r_authors),
+                                "rising": rising, "web_domains": len(domains),
+                                "newest": max([v["date"] for v in vids] or [now.isoformat()]), "window_days": c["window_days"]},
+                    "dates": {"from": (now - timedelta(days=c["window_days"])).isoformat(), "to": now.isoformat()},
+                    "evidence": evidence})
+    out.sort(key=lambda i: (-i["signals"]["score"], -i["signals"]["tiktok_authors"], -i["signals"]["review_authors"], i["id"]))
     return out[:c["max_items"]]
 
 
@@ -220,5 +281,5 @@ def _latest_video(sig: dict, key: str, now: date, window: int) -> dict | None:
 
 def build(sig: dict, cfg: dict, now: date, previous: dict | None = None, city_name: str = "") -> list[dict]:
     """All items, in the bulletin's section order."""
-    return (hot(sig, cfg, now) + top(sig, cfg, now) + events(sig, cfg, now, city_name) + seasons(sig, cfg, now, city_name)
+    return (trending(sig, cfg, now) + hot(sig, cfg, now) + top(sig, cfg, now) + events(sig, cfg, now, city_name) + seasons(sig, cfg, now, city_name)
             + new(sig, cfg, now) + closed(sig, cfg, now, previous))

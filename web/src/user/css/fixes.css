@@ -15,8 +15,6 @@
 .tg-td__main { display: grid; gap: 12px; min-width: 0; align-content: start; }
 .tg-td__main > * { margin: 0; }
 
-/* Giờ đến và giờ về: 24-hour selects, label next to the field */
-.tg-eve__times-row > div { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; color: var(--tg-ink-2); }
 .tg-pchip:not(:has(.tg-pchip__ph)) { padding-left: 12px; }
 
 /* a loading screen that takes longer than usual: one calm line under the wait line (ui/SlowHint.tsx) */

@@ -2,26 +2,27 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { useState } from 'react'
 import { fmtMin, fmtVnd, info } from '../../lib'
 import { usePlanning } from '../../planning/planning'
-import type { Backups, CrowdTip, DayConditions, ItineraryDay, TimeRecommendation, TimeSuitabilityDay, Variant } from '../../planning/types'
+import type { Backups, CrowdTip, DayConditions, Ghost, ItineraryDay, TimeRecommendation, TimeSuitabilityDay, Variant } from '../../planning/types'
 import { useUi } from '../../store'
 import { useTrip } from '../../trip'
 import { PlacePhoto } from '../../ui/common'
 import { CountUp } from '../../ui/CountUp'
 import { Icon } from '../../ui/icons'
-import { BLOCK, costText, visits } from './shared'
+import { BLOCK, costText, MEAL_LABEL, visits } from './shared'
 
 // Side cards, notices and dialogs of the itinerary screens (screens/Plan.tsx, screens/plan/*).
 
 export const ADVISORY: Record<string, string> = { storm: 'bão / dông', flood: 'ngập lụt', landslide: 'sạt lở', fire: 'cháy', road_closed: 'đường bị chặn', other: 'khác' }
 
-export function TimeCard({ day, itinerary, timing, suggestions, status, busy, onAdd }: {
-  day: number; itinerary: ItineraryDay | undefined; timing: TimeSuitabilityDay[]; suggestions: TimeRecommendation[];
+export function TimeCard({ day, itinerary, timing, suggestions, ghosts = [], status, busy, onAdd }: {
+  day: number; itinerary: ItineraryDay | undefined; timing: TimeSuitabilityDay[]; suggestions: TimeRecommendation[]; ghosts?: Ghost[];
   busy: boolean; onAdd: (id: string, day: number) => void
   status?: 'pending' | 'ready' | 'unavailable'
 }) {
   const details = timing.find((x) => x.day === day)?.places.filter((p) => p.reasons.length || p.shortened_min) ?? []
   const optional = suggestions.filter((x) => x.day === day).slice(0, 3)
-  if (!details.length && !optional.length && (!status || status === 'ready')) return null
+  const slots = ghosts.filter((x) => x.day === day - 1 && x.items.length)
+  if (!details.length && !optional.length && !slots.length && (!status || status === 'ready')) return null
   return <section className="tg-sidecard" aria-labelledby="tg-time-h">
     <h2 id="tg-time-h"><Icon name="clock" size={18} /> Giờ ghé · Ngày {day}</h2>
     {status === 'pending' && <p className="tg-faint" role="status">Đang tìm hoạt động phù hợp với giờ trống…</p>}
@@ -33,8 +34,18 @@ export function TimeCard({ day, itinerary, timing, suggestions, status, busy, on
     </div>)}
     {optional.map((s, i) => <div className="tg-backup" key={i}>
       <span>{s.text}</span>
-      {s.alternatives.map((a) => <button key={a.id} type="button" className="tg-btn tg-btn--soft tg-btn--sm"
-        disabled={busy} onClick={() => onAdd(a.id, day)}>Thêm {a.name}{a.cost_unknown ? ' · chưa có giá' : ''}</button>)}
+      {s.alternatives.map((a) => <div key={a.id} className="tg-backup">
+        <button type="button" className="tg-btn tg-btn--soft tg-btn--sm"
+          disabled={busy} onClick={() => onAdd(a.id, day)}>Thêm {a.name}{a.cost_unknown ? ' · chưa có giá' : ''}</button>
+        {a.warnings?.map((w, j) => <small key={j} className="tg-faint">{w.text}</small>)}
+      </div>)}
+    </div>)}
+    {slots.map((g, i) => <div className="tg-backup" key={`slot${i}`}>
+      <span>{MEAL_LABEL[g.kind] ?? BLOCK[g.kind] ?? g.kind}</span>
+      {g.items.map((item) => <div key={item.place_id} className="tg-backup">
+        <button type="button" className="tg-btn tg-btn--soft tg-btn--sm" disabled={busy} onClick={() => onAdd(item.place_id, day)}>Thêm {item.name}</button>
+        {item.note && <small className="tg-faint">{item.note}</small>}
+      </div>)}
     </div>)}
     <p className="tg-faint tg-sidecard__mini">Độ phù hợp giờ là ước lượng. Thêm nơi sẽ xếp lại ngày này; bạn có thể hoàn tác.</p>
   </section>
@@ -75,7 +86,9 @@ export function Tradeoff({ variants, busy, active, onPick }: { variants: Variant
 }
 
 // Facts about the date, from live sources and hand-entered notices; no notice is not the same as "all clear".
-export function Conditions({ c, tips }: { c: DayConditions | undefined; tips: CrowdTip[] }) {
+// max: how many lines show before "Xem thêm"; a warning is never folded away.
+export function Conditions({ c, tips, max }: { c: DayConditions | undefined; tips: CrowdTip[]; max?: number }) {
+  const [all, setAll] = useState(false)
   const items: { icon: 'rain' | 'cloud' | 'users' | 'calendar' | 'warn' | 'info' | 'clock'; text: string; warn: boolean }[] = []
   if (c) {
     if (c.weather !== 'none') {
@@ -89,7 +102,15 @@ export function Conditions({ c, tips }: { c: DayConditions | undefined; tips: Cr
     if (c.crowd !== 'normal') tips.slice(0, 2).forEach((t) => items.push({ icon: 'clock', text: t.text, warn: false }))
   }
   if (!c || (!c.advisories.length && c.crowd === 'normal' && !c.closure_risk)) items.push({ icon: 'info', text: 'Chưa có thông báo hay sự kiện ghi nhận cho ngày này (không có nghĩa là chắc chắn bình thường).', warn: false })
-  return <ul className="tg-cond" aria-label="Điều kiện ngày">{items.map((x) => <li key={x.text} className={x.warn ? 'is-warn' : ''}><Icon name={x.icon} size={16} />{x.text}</li>)}</ul>
+  let room = max ?? items.length
+  const shown = all || max === undefined ? items : items.filter((x) => (x.warn ? true : room-- > 0))
+  const folded = items.length - shown.length
+  return (
+    <div className="tg-cond" aria-label="Điều kiện ngày">
+      <ul>{shown.map((x, i) => <li key={`${i}:${x.text}`} className={x.warn ? 'is-warn' : ''}><Icon name={x.icon} size={16} />{x.text}</li>)}</ul>
+      {(folded > 0 || (all && max !== undefined && items.length > max)) && <button type="button" className="tg-link" aria-expanded={all} onClick={() => setAll((v) => !v)}>{all ? 'Thu gọn' : `Xem thêm ${folded} ghi chú`}</button>}
+    </div>
+  )
 }
 
 export function VisitDuration({ place, name, minutes, bounds, manual, disabled, onPreview }: {
@@ -168,17 +189,19 @@ export function Lodging({ onChange }: { onChange: () => void }) {
 
 // Backups of the day on screen: a stand-in for a place that may fail (rain, hours) and what to drop first when late.
 export function BackupCard({ b, day, busy, onSwap }: { b: Backups | undefined; day: number; busy: boolean; onSwap: (place: string, w: string) => void | Promise<void> }) {
-  const items = b?.places.filter((x) => x.day === day) ?? []
+  const items = b?.places.filter((x) => x.day === day && x.alternatives.length > 0) ?? [] // a place with no stand-in has nothing to offer here
   const late = b?.on_delay.find((x) => x.day === day)
+  if (!items.length && !late) return null
   return (
     <section className="tg-sidecard" aria-labelledby="tg-bk-h">
       <h2 id="tg-bk-h"><Icon name="shield" size={18} /> Phương án dự phòng · Ngày {day}</h2>
-      {items.length === 0 && !late && <p className="tg-faint">Ngày này chưa có nơi nào cần dự phòng.</p>}
       {items.slice(0, 3).map((x) => (
         <div key={x.place_id} className="tg-backup">
-          <b>{x.text ? `Nếu ${x.text.toLowerCase()}` : x.name}</b>
-          <span>{x.name}{x.alternatives.length ? ' → ' : ''}{x.alternatives.length ? '' : ` · ${x.none_text ?? 'Không có phương án thay.'}`}</span>
-          {x.alternatives.slice(0, 2).map((a) => <button key={a.id} type="button" className="tg-btn tg-btn--soft tg-btn--sm" disabled={busy} onClick={() => onSwap(x.place_id, a.id)}>Thay bằng {a.name}{a.minutes_rough ? ` (≈${a.minutes_rough}′)` : ''}</button>)}
+          <b>{x.text ? `${x.name}: nếu ${x.text.toLowerCase()}` : x.name}</b>
+          {x.alternatives.slice(0, 2).map((a) => <div key={a.id} className="tg-backup">
+            <button type="button" className="tg-btn tg-btn--soft tg-btn--sm" disabled={busy} onClick={() => onSwap(x.place_id, a.id)}>Thay bằng {a.name}{a.minutes_rough ? ` (≈${a.minutes_rough}′)` : ''}</button>
+            {a.warnings?.map((w, i) => <small key={i} className="tg-faint">{w.text}</small>)}
+          </div>)}
         </div>
       ))}
       {late && <div className="tg-backup"><b>Bị trễ</b><span>Bỏ {late.name} trước, giữ phần còn lại</span></div>}

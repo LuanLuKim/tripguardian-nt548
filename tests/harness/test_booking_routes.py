@@ -59,6 +59,39 @@ def test_journey_route_parses_points_and_date():
             booking_routes.journey_options(bad, fake)
 
 
+@pytest.mark.parametrize("way", ["inbound", "outbound"])
+def test_text_origin_uses_only_a_known_city_point(way):
+    seen = {}
+
+    def fake(origin, day, dest, direction):
+        import journey
+        seen.update(origin=origin, way=direction)
+        return journey.Journey(origin=origin, dest=(11.94, 108.44), dest_is_centre=True,
+                               way=direction, day=None, options=())
+
+    out = booking_routes.journey_options({"origin": "TP.HCM", "way": way}, fake)
+    assert seen == {"origin": (10.7684, 106.6851), "way": way}
+    assert out["options"] == []
+
+
+@pytest.mark.parametrize("text", ["Một nơi chưa rõ", "Nhà gần TP.HCM"])
+def test_unknown_text_origin_does_not_invent_coordinates_or_trips(text):
+    def fail(*args):
+        pytest.fail("an unresolved origin must not request routes")
+
+    out = booking_routes.journey_options({"origin": text, "way": "outbound"}, fail)
+    assert out["origin"] is None and out["options"] == []
+    assert out["origin_text"] == text and out["reason"] == "unknown_origin"
+
+
+def test_explicit_origin_point_wins_over_text():
+    import journey
+    out = booking_routes.journey_options({"origin": "TP.HCM", "lat": "16.46", "lng": "107.59"},
+        lambda o, d, t, w: journey.Journey(origin=o, dest=(11.94, 108.44), dest_is_centre=True,
+                                         way=w, day=None, options=()))
+    assert out["origin"] == [16.46, 107.59]
+
+
 def test_home_city_becomes_a_point_or_nothing():
     from harness import booking_routes
     assert booking_routes.home_point("Huế", lambda q: [{"lat": 16.46, "lng": 107.59, "province": "Thừa Thiên Huế"}]) == {

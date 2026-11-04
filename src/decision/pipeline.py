@@ -1,9 +1,9 @@
-"""Runs ③–⑨ on a session (docs/PLACE_DECISION.md §3) and builds the view the web shows. Everything re-runs on each
-change (~1.4k records are cheap); the session state (chosen / locked / dropped) is what keeps the invariants."""
+"""Runs ③–⑨ on a session (docs/PLACE_DECISION.md §3) and builds the web view. Unchanged source and input reuse
+results; the session state (chosen / locked / dropped) keeps the invariants."""
 
 from collections import Counter
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +20,8 @@ from .filters import label as filter_label, passing
 from .geo import km, point
 from .fit import centers, fit
 from .model import Cand
-from .rank import score
+from .learning import adjustments
+from .rank import pet_access_priority, safety_priority, score
 from .screen import screen
 from .trip_days import trip_days
 from .window import change, pages, window
@@ -114,9 +115,11 @@ class Cands(Mapping):
     compare, why_not, feasibility."""
 
     def __init__(self, region, t, si, days, relaxed, ctrs, profile, cfg, keep: set, missing: list[str],
-                 made: dict[str, Cand] | None = None):
+                 made: dict[str, Cand] | None = None, learned: dict[str, float] | None = None):
         self.region, self.t, self.si, self.days, self.relaxed = region, t, si, days, relaxed
         self.ctrs, self.profile, self.cfg, self.keep = ctrs, profile, cfg, keep
+        self.learned = learned or {}
+        self._adjusted: dict[str, Cand] = {}
         self.missing = set(missing)
         self._made = made if made is not None else {}  # shared by the runs of a session while t.key is the same
 
@@ -140,7 +143,13 @@ class Cands(Mapping):
                 fit(c, self.si, self.days, self.ctrs, self.t.anchor_areas, self.profile, self.cfg)
                 score([c], self.si, self.profile, self.cfg, voices=self.t.voices, wishes=self.t.wishes)
             self._made[pid] = c
-        return self._made[pid]
+        base = self._made[pid]
+        delta = self.learned.get(pid, 0.0)
+        if not delta:
+            return base
+        if pid not in self._adjusted:
+            self._adjusted[pid] = replace(base, parts={**base.parts, "session": delta}, score=round(base.score + delta, 4))
+        return self._adjusted[pid]
 
     def __iter__(self):
         yield from sorted(self.missing)
@@ -151,6 +160,16 @@ class Cands(Mapping):
 
 
 def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
+    if memo is not None:
+        source = (data.region, cfg)
+        if memo.get("source") != source:
+            memo.clear()
+            memo["source"] = source
+        key = (s.search_input.model_dump_json(), s.state.model_dump_json(), s.hidden_ids,
+               len(s.history), s.first_shortlist)
+        hit = memo.get("result")
+        if hit and hit[0] == key:
+            return hit[1]
     si, st = s.search_input, s.state
     si = si.model_copy(update={'activities': {**si.activities, **st.activities}})
     if st.likes:  # "kiếm thêm kiểu này": each liked place is a "giống X" wish, like the ones Trip Understanding read
@@ -168,18 +187,22 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
     anchors = [a.place_id for a in si.anchors if a.place_id not in wish | dropped | stay]  # a dropped anchor is gone
     keep = (set(anchors) | set(st.selected)) - wish - stay
     missing = sorted(p for p in keep if p not in region.index)
-    relaxed = {tuple(x) for x in st.relaxed}
+    relaxed = {tuple(x) for x in st.relaxed
+               if not (x[1] == "pets" and "pet" in si.context.companions)}
 
     ctrs = centers(si, data.by_id, cfg)
     t = frame.table(region, si, st.profile, days, relaxed, ctrs, anchors, keep, len(missing), cfg, memo)
+    learned = adjustments(region, st, si, cfg, memo)
+    cand_key = t.key
+    scores = [round(base + learned.get(pid, 0.0), 4) for pid, base in zip(region.ids, t.score)] if learned else t.score
     made: dict[str, Cand] = {}
     if memo is not None:
         hit = memo.get("cands")
-        if hit and hit[0] == t.key:
+        if hit and hit[0] == cand_key:
             made = hit[1]
         else:
-            memo["cands"] = (t.key, made)
-    cands = Cands(region, t, si, days, relaxed, ctrs, st.profile, cfg, keep, missing, made)
+            memo["cands"] = (cand_key, made)
+    cands = Cands(region, t, si, days, relaxed, ctrs, st.profile, cfg, keep, missing, made, learned)
     rids = region.ids
     live_ix = np.flatnonzero(t.live)
     tab_col = frame.tabs(region, cfg)
@@ -193,7 +216,9 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
     fit_arr = np.array(t.fit)
     kept = np.array([pid in keep for pid in rids], dtype=bool)
     not_kept = ~(kept | np.array([pid in dropped for pid in rids], dtype=bool))
-    free = not_kept & ~np.array([pid in wish for pid in rids], dtype=bool)
+    reported = set(s.hidden_ids) | {p.place_id for p in si.excluded_places}
+    recommendable = ~np.array([pid in reported for pid in rids], dtype=bool)
+    free = not_kept & recommendable & ~np.array([pid in wish for pid in rids], dtype=bool)
     if si.novelty.level == "new":
         free &= ~np.array([pid in visited for pid in rids], dtype=bool)
     # too far from the nearest center (base or city center, and anchors; as fit) is hidden from every tab and the shortlist;
@@ -206,7 +231,7 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
     not_far[far_ix] = False
     free &= not_far
     listed_ix = np.flatnonzero(t.live & free & (status == "main"))  # every place the tabs list
-    listed = [Row(rids[i], t.score[i], t.role[i], dup[i], light[i]) for i in listed_ix]
+    listed = [Row(rids[i], scores[i], t.role[i], dup[i], light[i]) for i in listed_ix]
     diet = dietary.wanted(si, st.profile, st.unmapped)
     tier = dietary.tiers(region, [p for p in [*st.selected, *(r.id for r in listed)] if group_of.get(p) in dietary.TABS], diet)
     # the shortlist's pool; a place the diet excludes is listed in its tab but never shortlisted
@@ -226,16 +251,21 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
             if same:
                 alts[c.id] = [cands[x.id] for x in same[:3]]
 
-    # a tab lists its places by score alone, the user's picks among them; "Hợp nhất" marks its best non-picked
+    # a tab lists its places by diet and pet-access tiers, then score, the user's picks among them; "Hợp nhất" marks its best non-picked
     # places, as many as the shortlist (MMR) took from that tab
     # a user who avoids crowds sees the places Google calls busy after every other one of the tab, whatever their score
     avoid = (st.profile.crowd_tolerance or si.pace.crowd_tolerance) == "avoid"
     busy = (frame.busy_mask(region, sorted({d.day_type for d in days if d.day_type}) or ["weekday", "weekend"], cfg)
             if avoid else None)
     crowded = (lambda pid: bool(busy[region.index[pid]]) if pid in region.index else False) if avoid else (lambda pid: False)  # noqa: E731
+    pet_tier = ({pid: pet_access_priority(region.record(pid), si.context.companions)
+                 for pid in frame.firm_ids(region)("pets", "allowed")} if "pet" in si.context.companions else {})
     ranked: dict[str, list[str]] = {}
-    for c in sorted([*(x for x in chosen if x.id not in anchors), *listed],
-                    key=lambda c: (tier.get(c.id, 1), crowded(c.id), -c.score, c.id)):
+    safety_tier = lambda pid: bool(t.safety_unknown[region.index[pid]]) if pid in region.index else True
+    rank_key = (lambda c: (safety_tier(c.id), tier.get(c.id, 1), crowded(c.id), -c.score, c.id))
+    if pet_tier:
+        rank_key = lambda c: (safety_tier(c.id), tier.get(c.id, 1), pet_tier.get(c.id, 1), crowded(c.id), -c.score, c.id)
+    for c in sorted([*(x for x in chosen if x.id not in anchors), *listed], key=rank_key):
         ranked.setdefault(group_of.get(c.id, "sights"), []).append(c.id)
     picked = {c.id for c in chosen}
     hidden: set[str] = set()
@@ -248,9 +278,8 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
         k = sum(1 for c in reps if group_of.get(c.id) == gid)
         top.update([p for p in ids if p not in picked and tier.get(p, 1) < 2][:k])  # never a place the diet does not fit
     # a wish the user said that some listed place meets always has one in "Hợp nhất" (docs/PLACE_DECISION.md §9.3)
-    top = reserve(top, t.wishes, ranked, picked, lambda p: tier.get(p, 1) < 2, lambda p: t.score[region.index[p]])
+    top = reserve(top, t.wishes, ranked, picked, lambda p: tier.get(p, 1) < 2, lambda p: scores[region.index[p]])
 
-    suggested = next((c.id for c in reps if group_of[c.id] == st.suggest_group), None) if st.suggest_group else None
     want = wanted(si, st.profile)
     labels = cfg.labels["group"]
 
@@ -259,21 +288,22 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
 
     def mk(c: Cand) -> dict:
         args = dict(chosen=c.id in selected_set, locked=c.id in locked_set, anchor=c.id in anchor_set,
-                    alternatives=[(x.id, x.name) for x in alts.get(c.id, [])], suggested=c.id == suggested,
+                    alternatives=[(x.id, x.name) for x in alts.get(c.id, [])], suggested=False,
                     group=group_of.get(c.id, "sights"), top=c.id in top)
         if card_memo is None:
             out = card(c, si, cfg, wanted=want, **args)
-            if (n := dietary.note(tier.get(c.id, 1), diet)):
+            if (n := dietary.note(tier.get(c.id, 1), diet)) and not safety_priority(c):
                 out["tradeoffs"] = [*out["tradeoffs"], {"text": n, "sid": None}]
             return out
         # a card is a pure function of its Cand (shared by the runs of a session while t.key holds), the arguments
         # above and the Search Input parts it reads; a run that changes none of them reuses the card as built
-        key = (args, want, si.activities.get(c.id), si.soft_weights, "budget_vnd" in si.unknowns)
+        key = (args, want, si.activities.get(c.id), si.soft_weights)
+        base = cands._made[c.id]
         hit = card_memo.get(c.id)
-        if hit is None or hit[0] is not c or hit[1] != key:
-            hit = card_memo[c.id] = (c, key, card(c, si, cfg, wanted=want, **args))
-        out = dict(hit[2])
-        if (n := dietary.note(tier.get(c.id, 1), diet)):
+        if hit is None or hit[0] is not base or hit[1] != key:
+            hit = card_memo[c.id] = (base, key, card(base, si, cfg, wanted=want, **args))
+        out = {**hit[2], "score": c.score, "parts": c.parts}
+        if (n := dietary.note(tier.get(c.id, 1), diet)) and not safety_priority(c):
             out["tradeoffs"] = [*out["tradeoffs"], {"text": n, "sid": None}]
         return out
 
@@ -290,8 +320,8 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
                            "page": page, "pages": pages(len(ids), cfg), "page_size": cfg.page_size,
                            "offset": page * cfg.page_size})
 
-    unv_ix = np.flatnonzero(t.live & not_kept & not_far & (status == "unverified"))
-    unverified = sorted((rids[i] for i in unv_ix), key=lambda p: (-t.score[region.index[p]], p))
+    unv_ix = np.flatnonzero(t.live & not_kept & recommendable & not_far & (status == "unverified"))
+    unverified = sorted((rids[i] for i in unv_ix), key=lambda p: (-scores[region.index[p]], p))
     excluded = Counter()
     excl = (status == "excluded") & t.members & ~kept
     for reason, count in t.fails.items():  # failed checks per place, counted as the Counter over c.checks counted them
@@ -341,8 +371,11 @@ def run(s, data: Data, cfg, memo: dict | None = None) -> Result:
                    "hidden": len(hidden)},
         "likes": list(st.likes),
     }
-    return Result(view, cands, {k: [x.id for x in v] for k, v in alts.items()}, group_of, days, shown, ranked, allocation,
-                  t.wishes, lambda pid: mk(cands[pid]), unverified, far, frozenset(hidden))
+    result = Result(view, cands, {k: [x.id for x in v] for k, v in alts.items()}, group_of, days, shown, ranked, allocation,
+                    t.wishes, lambda pid: mk(cands[pid]), unverified, far, frozenset(hidden))
+    if memo is not None:
+        memo["result"] = (key, result)
+    return result
 
 
 def _unmet(res: Result, pid: str, group: str) -> list[str]:
@@ -372,6 +405,8 @@ def why_not(res: Result, pid: str, si, cfg) -> dict:
         reasons.append("Nơi này đang có trong gợi ý")
     elif any(d["id"] == pid for d in v["dropped"]):
         reasons.append("Bạn đã bỏ nơi này")
+    elif any(p.place_id == pid for p in si.excluded_places):
+        reasons.append("Bạn đã yêu cầu không gợi ý nơi này")
     elif any(w["id"] == pid for w in v["wishlist"]):
         reasons.append("Bạn để nơi này trong danh sách mong muốn")
     elif pid in res.hidden:

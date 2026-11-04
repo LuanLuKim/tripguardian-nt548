@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+# Isolated measurement stack; never starts or stops shared services.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+exec .venv/bin/python - "$@" <<'PY'
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
+
+from dotenv import dotenv_values
+import psycopg
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
+import yaml
+
+sys.dont_write_bytecode = True
+ROOT = Path.cwd()
+WORK = ROOT / '.superpowers/sdd/2026-11-03-prod-e2e/local-harness'
+WORK.mkdir(parents=True, exist_ok=True)
+STATE = WORK / 'stack.json'
+PYTHON = str(ROOT / '.venv/bin/python')
+# LOCAL_STACK_SRC / LOCAL_STACK_WEB: run a frozen copy (e.g. src_qa, web_qa) instead of the live tree; defaults unchanged.
+SRC = ROOT / os.environ.get('LOCAL_STACK_SRC', 'src')
+WEB_SERVER = os.environ.get('LOCAL_STACK_WEB', 'web') + '/server.mjs'
+command = sys.argv[1] if len(sys.argv) == 2 else ''
+if command not in ('start', 'stop', 'status'):
+    print('Usage: scripts/local_stack.sh start|stop|status', file=sys.stderr)
+    sys.exit(2)
+lock = (WORK / 'stack.lock').open('w')
+fcntl.flock(lock, fcntl.LOCK_EX)
+state = json.loads(STATE.read_text()) if STATE.exists() else {}
+
+
+def identity(pid):
+    try:
+        raw = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+        return None if raw[0] == 'Z' else raw[19]
+    except (OSError, IndexError):
+        return None
+
+
+def alive(item):
+    return bool(item.get('birth')) and identity(item['pid']) == item['birth']
+
+
+def save():
+    tmp = STATE.with_suffix('.tmp')
+    tmp.write_text(json.dumps(state, indent=2))
+    tmp.replace(STATE)
+
+
+def owned(item):
+    members = []
+    for proc in Path('/proc').iterdir():
+        if not proc.name.isdigit():
+            continue
+        pid = int(proc.name)
+        try:
+            if os.getpgid(pid) != item['pid'] or identity(pid) is None:
+                continue
+            marker = f"LOCAL_STACK_TOKEN={item.get('token', '')}".encode()
+            if item.get('token') and marker in (proc / 'environ').read_bytes().split(b'\0'):
+                members.append((pid, identity(pid)))
+        except (OSError, ProcessLookupError):
+            continue
+    return members
+
+
+def stop():
+    for item in reversed(state.get('processes', [])):
+        members = owned(item)
+        if alive(item):
+            if os.getpgid(item['pid']) != item['pid']:
+                raise RuntimeError('Refusing to stop a different process group')
+            members.append((item['pid'], item['birth']))
+        # Signal only verified owned PIDs, including orphans after bwrap exits.
+        for pid, birth in set(members):
+            if identity(pid) == birth:
+                os.kill(pid, signal.SIGTERM)
+        until = time.monotonic() + 15
+        while any(identity(pid) == birth for pid, birth in members) and time.monotonic() < until:
+            time.sleep(.1)
+        for pid, birth in members:
+            if identity(pid) == birth:
+                os.kill(pid, signal.SIGKILL)
+    state['processes'] = []
+    save()
+
+
+if command == 'status':
+    for item in state.get('processes', []):
+        print(item['name'], item['pid'], 'running' if alive(item) else 'stopped')
+    if not state.get('processes'):
+        print('stopped')
+    if state:
+        print('base:', state.get('base'), 'schema:', state.get('schema'))
+    sys.exit(0)
+if command == 'stop':
+    stop()
+    print('stopped (schema and evidence retained)')
+    sys.exit(0)
+if state.get('processes'):
+    if all(alive(p) for p in state['processes']):
+        print('already running:', state['base'])
+        sys.exit(0)
+    raise RuntimeError('Partial stack; run stop before start')
+
+hp = int(os.environ.get('LOCAL_HARNESS_PORT', '8879'))
+wp = int(os.environ.get('LOCAL_WEB_PORT', '28919'))
+if len({hp, wp}) != 2 or {hp, wp} & {8769, 28899, 5173, 8770, 8765}:
+    raise RuntimeError('Use distinct non-production ports')
+for port in (hp, wp):
+    with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(('127.0.0.1', port))
+if not shutil.which('bwrap'):
+    raise RuntimeError('bwrap required: no unsandboxed fallback')
+subprocess.run(['bwrap', '--ro-bind', '/', '/', '--', '/bin/true'], check=True)
+
+schema = state.get('schema') or 'local_harness_' + time.strftime('%Y%m%d_%H%M%S')
+if not re.fullmatch(r'local_harness_[0-9_]+', schema):
+    raise RuntimeError('Invalid owned schema')
+base = f'http://127.0.0.1:{wp}'
+env = dict(os.environ)
+for key, value in dotenv_values(ROOT / '.env').items():
+    if value is not None:
+        env.setdefault(key, value)
+url = env['DATABASE_URL']
+# citext is already installed in public. Migrations need its type and operators;
+# runtime excludes public entirely so missing local tables cannot fall through.
+with psycopg.connect(url, autocommit=True) as conn:
+    if not conn.execute("SELECT 1 FROM pg_extension WHERE extname='citext'").fetchone():
+        raise RuntimeError('citext must already exist; do not modify public')
+    exists = conn.execute('SELECT 1 FROM pg_namespace WHERE nspname=%s', (schema,)).fetchone()
+    if not exists:
+        conn.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
+scoped = make_conninfo(url, options=f'-csearch_path={schema},public', application_name='local-harness-migrate')
+env.update(DATABASE_URL=scoped, DATABASE_URL_READONLY=scoped, PYTHONPATH=str(SRC),
+           PYTHONDONTWRITEBYTECODE='1')
+with (WORK / 'migrate.log').open('w') as log:
+    subprocess.run([PYTHON, '-m', 'db', 'migrate'], env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+# Runtime uses only its schema. Schema-qualified extension operators are not used
+# by the harness; account equality remains covered by the login smoke.
+scoped = make_conninfo(url, options=f'-csearch_path={schema}', application_name='local-harness')
+env.update(DATABASE_URL=scoped, DATABASE_URL_READONLY=scoped)
+
+for name in ('data', 'logs', 'tmp', 'cache', 'corpus'):
+    (WORK / name).mkdir(exist_ok=True)
+# Immutable corpus inputs are linked, mutable online state is private.
+mutable = {'live', 'accounts', 'harness', 'trip', 'decision', 'planning'}
+for source in (ROOT / 'data').iterdir():
+    target = WORK / 'data' / source.name
+    if source.name not in mutable:
+        if target.is_symlink() and target.readlink() != WORK / 'corpus' / source.name:
+            target.unlink()
+        if not target.exists() and not target.is_symlink():
+            target.symlink_to(WORK / 'corpus' / source.name)
+for name in mutable:
+    (WORK / 'data' / name).mkdir(exist_ok=True)
+# Copy existing live context once; don't share new writes or alter the prod cache.
+if not (WORK / 'cache-seeded').exists():
+    shutil.copytree(ROOT / 'data/live', WORK / 'data/live', dirs_exist_ok=True) if (ROOT / 'data/live').exists() else None
+    (WORK / 'cache-seeded').touch()
+shutil.copytree(ROOT / 'config', WORK / 'config', dirs_exist_ok=True)
+config = WORK / 'config/index.yaml'
+cfg = yaml.safe_load(config.read_text())
+cfg['embedder'].update(online_device='cpu', online_text_device='cpu')
+config.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+# Seed only a new local account, never copy prod rows or credentials to disk.
+sys.path.insert(0, str(SRC))
+from accounts import Accounts, GoogleClient
+from db import pool
+os.environ.update(env)
+accounts = Accounts(pool(scoped), GoogleClient.from_env(), WORK / 'data/accounts/avatars', env.get('TOKEN_ENC_KEY'))
+with psycopg.connect(scoped) as conn:
+    found = conn.execute('SELECT 1 FROM users WHERE email=%s', (env['DEV_ACCOUNT_EMAIL'],)).fetchone()
+if not found:
+    accounts.register(env['DEV_ACCOUNT_EMAIL'], env['DEV_ACCOUNT_PASSWORD'], 'Local QA')
+
+def counts(conn, namespace):
+    return {t: conn.execute(sql.SQL('SELECT count(*) FROM {}.{}').format(sql.Identifier(namespace), sql.Identifier(t))).fetchone()[0]
+            for t in ('users', 'auth_sessions', 'journeys')}
+with psycopg.connect(url) as conn:
+    before = counts(conn, 'public')
+release = ROOT / 'data/releases/current'
+state = dict(schema=schema, base=base, harness_port=hp, processes=[], public_before=before,
+             device='cpu', source=str(SRC),
+             release=release.read_text().strip() if release.is_file() else None,
+             corpus_env={k: v for k, v in env.items() if k.startswith('CORPUS_')})
+save()
+(WORK / 'public-before.json').write_text(json.dumps(before))
+env.update(APP_BASE_URL=base, TG_TEST_LOGIN='0', HARNESS_PORT=str(hp), DATA_DIR=str(ROOT / 'data'),
+           CUDA_VISIBLE_DEVICES='', HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
+           HF_HOME=str(ROOT / '.cache/hf'), XDG_CACHE_HOME=str(WORK / 'cache'),
+           TMPDIR=str(WORK / 'tmp'), OMP_NUM_THREADS='4', MKL_NUM_THREADS='4', TOKENIZERS_PARALLELISM='false')
+# Keep hard-coded ROOT/data and ROOT/logs paths isolated too (Eve, overload, avatars).
+sandbox = ['bwrap', '--ro-bind', '/', '/', '--proc', '/proc', '--dev-bind', '/dev', '/dev',
+           '--bind', str(WORK), str(WORK), '--ro-bind', str(ROOT / 'data'), str(WORK / 'corpus'),
+           '--bind', str(WORK / 'data'), str(ROOT / 'data'),
+           '--bind', str(WORK / 'logs'), str(ROOT / 'logs'),
+           '--ro-bind', str(WORK / 'config'), str(ROOT / 'config'), '--bind', str(WORK / 'tmp'), '/tmp',
+           '--chdir', str(ROOT), '--']
+# Popen's session identifies precisely our process group for stop.
+try:
+    for name, cmd in [('harness', [PYTHON, '-m', 'harness', 'serve', '--port', str(hp)]),
+                      ('web', ['node', WEB_SERVER, str(wp)])]:
+        token = uuid.uuid4().hex
+        with (WORK / f'{name}.log').open('a') as log:
+            p = subprocess.Popen(sandbox + cmd, env={**env, 'LOCAL_STACK_TOKEN': token}, stdout=log,
+                                 stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+        state['processes'].append(dict(name=name, pid=p.pid, birth=identity(p.pid), token=token))
+        save()
+    until = time.monotonic() + 300
+    while time.monotonic() < until:
+        if not all(alive(p) for p in state['processes']):
+            raise RuntimeError('Local child exited; inspect track logs')
+        try:
+            with urllib.request.urlopen(base + '/api/auth/options', timeout=2) as r:
+                if r.status == 200:
+                    break
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401:
+                break
+        except OSError:
+            pass
+        time.sleep(.5)
+    else:
+        raise RuntimeError('Local stack readiness timed out')
+    print('started:', base, 'harness:', hp, 'schema:', schema, 'embedding: cpu')
+except BaseException:
+    stop()
+    raise
+PY

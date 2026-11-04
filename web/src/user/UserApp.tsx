@@ -40,6 +40,7 @@ import './css/understand.css'
 import './css/chat.css'
 import './css/ask.css'
 import './css/screens.css'
+import './css/auth.css'
 import './css/plan.css'
 import './css/itinerary.css'
 import './css/landing.css'
@@ -47,10 +48,13 @@ import './css/app.css'
 import './css/today.css'
 import './css/memory.css'
 import './css/home.css'
+import './css/tags.css'
 import './css/motion.css'
 import './css/blog.css'
 import './css/gate.css'
 import './css/workspace.css'
+import './css/tour.css'
+import { TourProvider } from './tour'
 
 // docs/Role_Web_Functional_Design.md §6: one surface for the landing (/) and the app (/app/...).
 // Phones get the app download page on every user page (/, /app/..., shared links): the web is built for a computer.
@@ -76,8 +80,10 @@ export default function UserApp({ path }: { path: string }) {
   }
   return (
     <TripProvider>
-      <DecisionProvider>
-        <Shell p={clean.slice('/app'.length)} sheet={query(path).get('place')} />
+      <DecisionProvider active={clean.startsWith('/app/explore')}>
+        <TourProvider>
+          <Shell p={clean.slice('/app'.length)} sheet={query(path).get('place')} />
+        </TourProvider>
       </DecisionProvider>
     </TripProvider>
   )
@@ -132,13 +138,13 @@ function Shell({ p, sheet }: { p: string; sheet: string | null }) {
   } else if (p === '/explore') { screen = <Explore />; rail = false; side = true }
   else if ((m = match(p, '/explore/place/:id'))) { screen = <PlaceDetail id={m.id} key={m.id} />; rail = false; side = true }
   else if ((m = match(p, '/explore/compare/:ids'))) { screen = <Compare ids={m.ids.split(',')} key={m.ids} />; rail = false; side = true }
-  else if (p === '/plan') { screen = <PlanningProvider><Plan /></PlanningProvider>; rail = false; side = true }
+  else if (p === '/plan') { screen = <Plan />; rail = false; side = true }
   else if (p === '/done') { screen = <Done />; rail = false; side = true }
   else if (p === '/today') screen = guest ? <GuestGate what="Hôm nay" /> : <Today />
   else if (p === '/saved') screen = <Saved />
   else if (p === '/recent') screen = <Recent />
   else screen = <Empty art={<ArtHills />} title="Không có trang này" body="Đường dẫn này không còn dùng nữa." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/')}>Về Khám phá</button>} />
-  return (
+  const content = (
     <div className="tg tg-root">
       <a className="tg-skip" href="#tg-main" onClick={(e) => { e.preventDefault(); document.getElementById('tg-main')?.focus() }}>Bỏ qua điều hướng</a>
       {rail ? (
@@ -153,6 +159,8 @@ function Shell({ p, sheet }: { p: string; sheet: string | null }) {
       <Toast />
     </div>
   )
+  // The plan and the place snapshot are independent reads. Keep the provider mounted through snapshot loading.
+  return signedIn && p === '/plan' ? <PlanningProvider>{content}</PlanningProvider> : content
 }
 
 // A screen that fails to render shows a way out instead of a blank page; the trip itself is safe on the server.

@@ -3,7 +3,8 @@
 One row per (phrase, kind, city): {phrase, kind, city, topic, subject, count, last_seen}. kind: no_data (a wish with no
 data), zero_hits (find_places found nothing; phrase = its criteria as JSON), no_answer (the reply said "chưa có thông
 tin"; phrase = the user's message, topic = the tool group), unsourced_place (a place cut from the reply because no tool
-returned it; subject = its id). Never a user id, a session id or anything else personal.
+returned it; subject = its id), user_report (the user said a place is closed; phrase = "user says closed: name",
+subject = its id: a claim to check, not a fact). Never a user id, a session id or anything else personal.
 """
 
 import json

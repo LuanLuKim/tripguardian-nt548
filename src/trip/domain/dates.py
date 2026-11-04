@@ -110,7 +110,7 @@ DAY_MONTH = re.compile(r"(?:(?:mung|ngay) )?(\d{1,2})(?:\s*[/\-.]\s*|\s+thang\s+
 FULL_DATE = re.compile(r"(?<![\d/])(?:(?:mung|ngay)\s+)?(\d{1,2})(?:\s*/\s*|\s+thang\s+)(\d{1,2})"
                        r"(?:(?:\s*/\s*|\s+(?:nam\s+)?)(\d{4}))?(?![\d/])(?!\s*(?:ngay|n)\b)")
 # "17-20/10", "17 đến 20 tháng 10": the days of one month
-RANGE = re.compile(r"(?<![\d/])(\d{1,2})\s*(?:-|–|den|toi)\s*(\d{1,2})(?:\s*/\s*|\s+thang\s+)(\d{1,2})"
+RANGE = re.compile(r"(?<![\d/])(\d{1,2})\s*(?:-|–|den|toi|va)\s*(\d{1,2})(?:\s*/\s*|\s+thang\s+)(\d{1,2})"
                    r"(?:(?:\s*/\s*|\s+(?:nam\s+)?)(\d{4}))?(?![\d/])")
 # what joins a start and an end date: "từ 17/10 đến 20/10", "đi 17/10 về 20/10"
 UNTIL = re.compile(r"\b(den|toi|ve|cho den)\b|[-–]")
@@ -142,6 +142,36 @@ def exact_date(expression: str, today: date) -> date | None:
     if len(matches) != 1 or matches[0].field != "start_date" or matches[0].span != (0, len(low)):
         return None
     return matches[0].value
+
+
+def activity_date(text: str, quote: str) -> bool:
+    """A date attached to an activity is not the beginning of the whole trip."""
+    low, span = fold(text), fold(quote)
+    at = low.find(span)
+    if at < 0:
+        return False
+    before = re.split(r"[,;.!?\n]", low[:at])[-1]
+    after = re.split(r"[,;.!?\n]", low[at + len(span):])[0]
+    clause = before + span + after
+    return bool(re.search(r"\b(?:an chay|an sang|an trua|an toi|bua an|san may|cam trai|trekking|tham quan|chup anh|ngam|ghe|workshop)\b", clause)
+                and not re.search(r"\b(?:doi|chuyen|khoi hanh|bat dau|di da lat|den da lat|toi da lat)\b", clause))
+
+
+def relative_date_changes_trip(text: str, quote: str) -> bool:
+    """Only a departure or date-change verb attached to the date moves an existing trip."""
+    low, span = fold(text), fold(quote)
+    at = low.find(span)
+    if at < 0:
+        return False
+    matches = relative_dates(span, quote.lower(), date.today())
+    if matches:
+        start, end = matches[0].span
+        at, span = at + start, span[start:end]
+    before = re.split(r"[,;.!?\n]", low[:at])[-1]
+    after = re.split(r"[,;.!?\n]", low[at + len(span):])[0]
+    if re.search(r"\b(?:doi|chuyen|chot)(?:\s+\w+){0,4}\s*$|\b(?:khoi hanh|xuat phat|bat dau|di|len|toi|den|ve)(?:\s+(?:vao|tu|sang|luc|da lat)){0,3}\s*$", before):
+        return True
+    return bool(re.match(r"\s+(?:(?:minh|tui minh|bon minh|chung toi)\s+)?(?:khoi hanh|xuat phat|bat dau|di|len)(?:\s+da lat)?(?:\s+(?:nhe|nha|thoi))?\s*$", after))
 
 
 def weekday_named(idx: int, text: str) -> bool:

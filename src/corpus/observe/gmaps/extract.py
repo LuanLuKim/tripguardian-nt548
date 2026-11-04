@@ -37,10 +37,15 @@ RELEVANT_FILE = "reviews_relevant.json"  # written by corpus.crawl.gmaps.relevan
 EXTREMES_FILE = "reviews_extremes.json"  # written by corpus.crawl.gmaps.extremes
 KEYWORDS_FILE = "reviews_keywords.json"  # written by corpus.crawl.gmaps.keywords
 VISIT_FILE = "visit.json"  # written by corpus.crawl.gmaps.visit
+REVISIT_FILE = "revisit.json"  # written by corpus.crawl.gmaps.revisit: one later visit of the page (hours, popular times, ticket box, time line)
 PASSAGE_CHARS = 1200  # review text shown to REVIEW_VERIFY around the quote
 VERDICTS = ("supports", "contradicts", "insufficient")
 SPAN_CHECK_VERSION = "span_check@v2"  # claim = ontology claims[value] + quote
-QC_DROP = {"owner_reply", "spam", "not_a_review"}
+QC_DROP = {"owner_reply", "spam", "not_a_review", "qc_unscored"}
+# The drop reasons cache_key hashes. A reason added later is applied place by place (bad_review_ids -> input_hash and
+# prune), so it must not change the key: adding "qc_unscored" to QC_DROP would mark every place's model output stale
+# and re-observe the whole city for a few dropped reviews.
+QC_DROP_KEY = ("not_a_review", "owner_reply", "spam")
 ATTEMPTS = 2
 CALL_TIMEOUT_S = 240  # a batch takes ~50 s, the longest ~150 s; a dropped connection must not hold a slot for long
 BUSY_WAIT_S = 20  # after HTTP 429 (the key is shared): wait outside the slots, then try the same call again
@@ -182,7 +187,7 @@ def cache_key(ont: Ontology) -> str:
     checked = json.dumps({f.id: f.claims for f in ont.features.values() if f.span_check}, sort_keys=True,
                          ensure_ascii=False)
     parts = (REVIEW_OBSERVE.prompt_hash, REVIEW_VERIFY.prompt_hash, ont.prompt_text(), checked, DETAILS_EXTRACTOR,
-             RULES_VERSION, SPAN_CHECK_VERSION, str(PASSAGE_CHARS), ",".join(sorted(QC_DROP)))
+             RULES_VERSION, SPAN_CHECK_VERSION, str(PASSAGE_CHARS), ",".join(QC_DROP_KEY))
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
 
 
@@ -267,7 +272,7 @@ def input_hash(place_dir: Path, bad_ids: set[str]) -> str:
     for _, name, _ in TARGETED_FILES:
         if (place_dir / name).exists():
             h.update((place_dir / name).read_bytes())
-    if (place_dir / VISIT_FILE).exists():
+    if (place_dir / VISIT_FILE).exists():  # REVISIT_FILE is not hashed: it only feeds rule_facts, refreshed without the model
         h.update((place_dir / VISIT_FILE).read_bytes())
     h.update(json.loads((place_dir / "place.json").read_text(encoding="utf-8"))["fetched_at"].encode())
     h.update(json.dumps(sorted(bad_ids)).encode())  # qc run after observe changes what goes to the model
@@ -336,8 +341,41 @@ def listed_price(item: dict) -> dict | None:
 
 
 def time_spent(place_dir: Path) -> dict | None:
-    f = place_dir / VISIT_FILE
-    return parse_time_spent(json.loads(f.read_text(encoding="utf-8")).get("text")) if f.exists() else None
+    """Maps' "people typically spend" line: visit.json (the older phase), else the later visit's revisit.json."""
+    for name in (VISIT_FILE, REVISIT_FILE):
+        f = place_dir / name
+        if f.exists():
+            found = parse_time_spent(json.loads(f.read_text(encoding="utf-8")).get("text"))
+            if found:
+                return found
+    return None
+
+
+def maps_place(place_dir: Path, place: dict) -> dict:
+    """place.json with what a later visit of the same page found, added only where the first crawl had nothing."""
+    f = place_dir / REVISIT_FILE
+    if not f.exists():
+        return place
+    seen = json.loads(f.read_text(encoding="utf-8")).get("place") or {}
+    out = dict(place)
+    for key in ("hours", "price", "tickets"):
+        if not place.get(key) and seen.get(key):
+            out[key] = seen[key]
+    if not any(place.get("popular_times") or []) and any(seen.get("popular_times") or []):
+        out["popular_times"] = seen["popular_times"]
+    if parse_closure(place.get("status")) is None and parse_closure(seen.get("status")):
+        out["status"] = seen["status"]
+    return out
+
+
+def rule_facts(place_dir: Path, place: dict, night: dict | None) -> dict:
+    """Place facts read by rule from the Maps page (no model); recomputed without asking the model again."""
+    place = maps_place(place_dir, place)
+    return {"popular_times": parse_popular_times(place.get("popular_times")),
+            "price": parse_price(place.get("price")), "hours": parse_hours(place.get("hours")),
+            "closure": parse_closure(place.get("status")),
+            "tickets": parse_tickets(place.get("tickets")),
+            "time_spent": time_spent(place_dir), "price_night": night}
 
 
 def text_key(text: str) -> str:
@@ -469,11 +507,7 @@ async def observe_place(slots: Slots, place_dir: Path, ont: Ontology, city: str,
             "details": details, "proposed": proposed, "ratings": ratings,
             "place": {k: place.get(k) for k in ("category", "lat", "lng", "address", "phone", "website")},
             "voices": len(voices),
-            "place_facts": {"popular_times": parse_popular_times(place.get("popular_times")),
-                            "price": parse_price(place.get("price")), "hours": parse_hours(place.get("hours")),
-                            "closure": parse_closure(place.get("status")),
-                            "tickets": parse_tickets(place.get("tickets")),
-                            "time_spent": time_spent(place_dir), "price_night": night},
+            "place_facts": rule_facts(place_dir, place, night),
             "read": read,
             "stats": {"reviews": len(reviews), "to_llm": len(to_llm), "reused": len(reuse), "batches": len(parts),
                       "dropped": dict(dropped)}},
@@ -518,23 +552,31 @@ async def run(city: str, limit: int | None = None, wait_relevant: bool = False) 
         h = input_hash(d, bad_ids)
         if target.exists():
             old = json.loads(target.read_text(encoding="utf-8"))
+            before = set(old.get("qc_dropped") or [])
+            pruned = bool(bad_ids - before)
+            if pruned:
+                # Even stale prompts must lose rejected evidence before endpoint discovery can fail.
+                reviews, samples = load_samples(d)
+                if bad_ids - before - {r["review_id"] for r in reviews}:
+                    # Missing raw provenance cannot safely identify the rejected review's ratings and voices.
+                    target.unlink()
+                    return None
+                old = tag_samples(prune(old, reviews, bad_ids), reviews, samples, bad_ids)
+                if before <= bad_ids and old.get("input_hash") == input_hash(d, before):
+                    old["input_hash"] = h  # only QC changed, not the review inputs
+                old["built_at"] = now()
+                write_json(target, old)
             fresh = keep_stale() or (old.get("prompt_hash"), old.get("ontology_version")) == key
             if old.get("input_hash") == h and fresh:
-                if (old.get("place_facts") or {}).get("price_night") != nights.get(d.name):
-                    # the list's price moved: a list fact, not review evidence, so no model call
-                    old = {**old, "place_facts": {**(old.get("place_facts") or {}), "price_night": nights.get(d.name)}}
+                facts = rule_facts(d, json.loads((d / "place.json").read_text(encoding="utf-8")), nights.get(d.name))
+                if (old.get("place_facts") or {}) != facts:
+                    # a list fact or a rule's reading moved (Maps price, ticket box, a later visit): no model call
+                    old = {**old, "place_facts": facts}
                     write_json(target, old)
                 if "voices_targeted" in old:
-                    return "cached"
+                    return "pruned" if pruned else "cached"
                 write_json(target, tag_samples(old, *load_samples(d), bad_ids))  # built before samples were tagged
                 return "tagged"
-            before = set(old.get("qc_dropped") or [])
-            if before <= bad_ids and fresh and old.get("input_hash") == input_hash(d, before):
-                # same reviews, only new qc flags: their evidence leaves without asking the model again
-                reviews, samples = load_samples(d)
-                write_json(target, {**tag_samples(prune(old, reviews, bad_ids), reviews, samples, bad_ids),
-                                    "input_hash": h, "built_at": now()})
-                return "pruned"
         return None
 
     status = collections.Counter()

@@ -191,7 +191,9 @@ def test_the_daily_driving_cap_and_meal_needs_reach_the_frame():
 
 def test_search_input_carries_the_compiled_frame():
     si = compile_search_input(state(frame={"arrive": said({"at": "2026-11-20T09:30", "how": "plane"})}))
-    assert si.context.frame is not None and si.context.frame.days[0].start == "10:45"
+    # 2026-11-04: SearchInput supplies the airport; its road is routed downstream, not padded twice.
+    assert si.context.frame is not None and si.context.frame.days[0].start == "10:15"
+    assert si.context.entry_point is not None and si.context.entry_point.lat == 11.7502
 
 
 def _ev():

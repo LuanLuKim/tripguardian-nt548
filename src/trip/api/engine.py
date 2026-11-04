@@ -22,6 +22,8 @@ from pydantic import ValidationError, model_validator
 
 from ..agent import AgentError, Chat, TurnTools, build_messages, lookups, run_loop
 from agents.assistant import Guarded, last_shown, rule_reply
+from corpus import tags as corpus_tags
+
 from ..agent.tools import DATE_TOOLS
 from ..domain import ask, deck, drill, values
 from ..domain.derive import derive
@@ -33,7 +35,7 @@ from ..domain.frame import FrameDefaults
 from ..domain.readback import build as build_readback, party_conflict, plan_digest
 from ..domain.guard import asks_settled_care, same_question, prune_say, bad_say, drop_questions, trim_say, trim_words
 from ..domain.required import planning
-from ..agent.prefetch import candidates, covers, prepare, route
+from ..agent.prefetch import candidates, covers, prepare, route, start_weather
 from ..infrastructure import clef
 from . import blocks
 from ..infrastructure.gaps import record as gap
@@ -47,9 +49,10 @@ from ..domain.questions import (FIELD_LABEL, OFFER_QID, OTHER_CHIP, QUIZ_FIELD, 
 from ..domain.readiness import missing
 from ..domain.resolve import URL, anchor_for, search
 from ..domain.coverage import admissible
-from ..domain.state import (MAX_TRIP_DAYS, SCALARS, Anchor, Draft, Evidence, Frozen, Meta, SoftKey, TripState, Update, Vibe, apply, apply_drafts,
+from ..domain.covers import assign as distinct_covers
+from ..domain.state import (MAX_TRIP_DAYS, SCALARS, Anchor, Draft, Evidence, Frozen, KindWish, Meta, SoftKey, TripState, Update, Vibe, apply, apply_drafts,
                             ontology, pending_signals, settle, with_meta)
-from ..domain.text import fold, language, squash
+from ..domain.text import fold, language, says_nothing, squash
 from ..domain.traits import compared_places
 from ..domain.understanding import chip_effects, view as understanding
 from ..infrastructure.catalog import Catalog
@@ -61,14 +64,16 @@ from ..infrastructure.settings import ROOT, Settings
 Emit = Callable[[str, dict], None]
 INVITE = re.compile(r"lên lịch[^.!?…]*\?")  # the assistant's one invitation to plan the trip (agent/prompt.py ASSISTANT)
 NO_ANSWER = re.compile(r"\bchua co thong tin\b")  # the assistant's words for "the data has no answer" (folded)
-MIN_PREPARE_S = 0.3  # the read tools get at least this long after a slow Clef
+WISH_PLACES = 300  # places a kind wish holds (the best of the node)
 SHOWN_KEEP, TOLD_KEEP = 80, 300  # places and numbers of read-tool results a session remembers (Meta.shown_ids / told_numbers)
 TURN_LOG = ROOT / "logs" / "run" / "trip_turns.log"  # one JSON line per turn: tools called, retry, reply, card (debugging)
 
 
 def log_turn(sid: str, turn: int, text: str, log: list[str], say: str, card: str, state: dict | None = None,
-             path: Path = TURN_LOG) -> None:
-    """Append one turn's trace. Logging must never break a turn, so a failed write is ignored."""
+             path: Path | None = None) -> None:
+    """Append one turn's trace. Logging must never break a turn, so a failed write is ignored. The default file is read
+    at call time, so a test that points TURN_LOG elsewhere does not write to the live log."""
+    path = path or TURN_LOG
     line = {"at": datetime.now().isoformat(timespec="seconds"), "session": sid, "turn": turn, "user": text,
             "tools": log, "retried": "claim_without_record" in log, "say": say, "card": card, "state": state or {}}
     try:
@@ -126,15 +131,15 @@ BAD_PHOTO = "Ảnh này mình không mở được, bạn thử ảnh JPG hoặc
 log = logging.getLogger(__name__)
 PHOTOS_KEPT = 5  # photo records the assistant keeps for one session (memory only)
 FOLLOWUP_LIMIT = 3  # the agent's own questions in a row after which the app asks a required topic itself
-APPLIED_FIELDS = frozenset({"start_date", "month", "month_part", "days", "nights", "people", "budget_vnd",
+APPLIED_FIELDS = frozenset({"care", "checkout_at", "day_end", "checkin_at", "frame.day_start", "start_date", "month", "month_part", "days", "nights", "people", "budget_vnd",
                             "budget_scope", "signal", "hard", "soft", "arrival_mode", "mobility", "driver", "unmapped"})
 # Of those, the ones written as the user's own words (source user): the agent is told not to record or compute them again
-EXACT_FIELDS = frozenset({"start_date", "month", "month_part", "days", "nights", "people", "budget_vnd", "budget_scope", "signal", "arrival_mode", "unmapped"})
+EXACT_FIELDS = frozenset({"care", "checkout_at", "day_end", "checkin_at", "frame.day_start", "start_date", "month", "month_part", "days", "nights", "people", "budget_vnd", "budget_scope", "signal", "arrival_mode", "unmapped"})
 
 
 class TurnInput(Frozen):
     kind: Literal["text", "answer", "edit", "show", "more", "theme", "to_chat", "to_quiz", "image", "deck", "drop", "readback_ok",
-                  "like"]
+                  "like", "tag", "wish"]
     answers: dict[str, list[str] | str] = {}
     text: str = ""
     qid: str = ""
@@ -162,6 +167,8 @@ def _learned(before: TripState, after: TripState, fields: list[str]) -> bool:
             return {k: x.value for k, x in st.soft.items()}
         if f in ("anchor", "signal", "hard"):
             return getattr(st, {"anchor": "anchors", "signal": "signals"}.get(f, f))
+        if f == "excluded_place":
+            return st.excluded_places
         if f == "activity":
             return st.activities
         if f == "time_preference":
@@ -262,7 +269,7 @@ class Engine:
         return self.view(self.store.get(sid))
 
     def view(self, s: Session) -> dict:
-        return {"id": s.id,
+        return {"id": s.id, "discovery": self.cfg.discovery,
                 "transcript": [self._entry(t, s.state) for t in s.transcript if t["role"] in ("user", "agent")],
                 "understanding": understanding(s.state, self.catalog, self.cfg),
                 "card": self._card(s.state, s.card),
@@ -293,6 +300,91 @@ class Engine:
             return []
         liked = {a.place_id for a in state.anchors if a.priority == "want" and a.place_id}
         return [c for pid in ids if (c := self.knowledge.view(pid, self.today(), pid in liked, (scenes or {}).get(pid)))]
+
+    def tag_view(self, ref: str) -> dict:
+        """The home page's tag: {tag, block, cards}. block = the tag's places split into subtags (the chat's `tags` block,
+        no trip limits); cards = the tag's best places as one list when nothing splits them. ValueError: unknown tag."""
+        if self.knowledge is None:
+            raise ValueError("no corpus")
+        state = TripState()
+        out = self.knowledge.browse.tag(ref, state)
+        cards_of = lambda ids: self._cards(ids, state)  # noqa: E731
+        block = blocks.tags_block(out, cards_of, cover_fit=self._cover_fit)
+        return {"tag": out["tag"], "block": block, "cards": [] if block else cards_of(out.get("_cards") or ())}
+
+    STAGE_PLACES = 60  # place cards one level of the tag stage carries (the node's count says how many there are)
+
+    def _stage_node(self, s: Session, sig: str, path: list[str]) -> dict:
+        """The tree node `path` of the tags block `sig` of this chat (infrastructure.browse.stage), through the trip's
+        hard limits: {label, ids, children, all}. `*` as the last ref = every place of the parent. ValueError: not a node."""
+        if self.knowledge is None:
+            raise ValueError("no corpus")
+        block = next((t["block"] for t in reversed(s.transcript) if t.get("kind") == "block"
+                      and (t.get("block") or {}).get("kind") == "tags" and t["block"].get("sig") == sig), None)
+        if block is None:
+            raise ValueError("this chat has no such tags block")
+        every = bool(path) and path[-1] == "*"
+        path = path[:-1] if every else path
+        if not path:  # the root's "Xem tất cả": the places the block ranked
+            ids = [i for i in block.get("all") or () if self.knowledge._admissible(i, s.state)]
+            if not ids:
+                raise ValueError("nothing to list")
+            return {"label": block.get("title") or "Tất cả", "ids": ids, "children": None}
+        node = self.knowledge.browse.stage(block.get("criteria") or {}, s.state, path)
+        return {**node, "children": None} if every else node
+
+    def _cover_fit(self, tag: str) -> Callable[[str], str | None] | None:
+        """The scenes that show this tag (config/tags.yaml cover_scenes): place id -> its photo of them. None: any photo."""
+        shown = corpus_tags.config().get("cover_scenes", {})
+        scenes = shown.get(tag) or shown.get(tag.split(":")[0] + ":*")  # "dish:*": every dish tag shows food
+        return (lambda pid: self.knowledge.scene_cover(pid, scenes)) if scenes else None
+
+    def tag_stage(self, sid: str, sig: str, path: str) -> dict:
+        """One level of the tag stage (docs/TRIP_UNDERSTANDING.md §19), read only, no chat turn: the node `path` ("a/b", refs
+        of the tags block `sig`) -> {ref, label, count, nodes}. nodes = its children, either subtags {ref, kind, label,
+        count, cover, has_children, wished} (the last may be kind "all": every place of this node) or places
+        {ref: "place:<id>", kind: "place", id, card}. Covers are distinct across the level. ValueError: not a node."""
+        s = self.store.get(sid)
+        refs = [r for r in path.split("/") if r]
+        if not refs:
+            raise ValueError("path needs a node")
+        with s.lock:
+            node = self._stage_node(s, sig, refs)
+            state = s.state
+        wished = {squash(w.kind) for w in state.wishes.kinds}
+        base = {"sig": sig, "ref": "/".join(refs), "label": node["label"], "count": len(node["ids"]),
+                "wished": squash(node["label"]) in wished}
+        today = self.today()
+        liked = {a.place_id for a in state.anchors if a.priority == "want" and a.place_id}
+        photo_of = lambda pid: next(iter((self.knowledge.view(pid, today) or {}).get("photos") or ()), None)  # noqa: E731
+        if node["children"]:
+            kids = node["children"]
+            groups = [k["ids"] for k in kids] + [node["ids"]]
+            cover = distinct_covers(groups, photo_of, fits=[self._cover_fit(k["id"]) for k in kids] + [None])
+            nodes = [{"ref": "/".join([*refs, k["id"]]), "kind": k["kind"], "label": k["label"], "count": k["count"], "cover": c,
+                      "has_children": True, "wished": squash(k["label"]) in wished} for k, c in zip(kids, cover)]
+            nodes.append({"ref": "/".join([*refs, "*"]), "kind": "all", "label": "Xem tất cả", "count": len(node["ids"]),
+                          "cover": cover[-1], "has_children": True, "wished": False})
+            return {**base, "nodes": nodes}
+        cards = [c for pid in node["ids"][:self.STAGE_PLACES] if (c := self.knowledge.view(pid, today, pid in liked))]
+        return {**base, "nodes": [{"ref": f"place:{c['id']}", "kind": "place", "id": c["id"], "label": c["name"], "count": 1,
+                                   "cover": (c["photos"] or [None])[0], "has_children": False, "card": c} for c in cards]}
+
+    def tag_covers(self, items: list[dict]) -> list[dict]:
+        """Trending tags (corpus.pulse.tag_trends) with `cover`: a photo of up to 3 of the places that posted most, one that shows
+        the tag when config/tags.yaml `cover_scenes` names scenes for it (else the place's first photo); a place used by an
+        earlier tag only when the tag has no other (each tag looks like itself, not like the one before)."""
+        state, used, out = TripState(), set(), []
+        for it in items:
+            fit = self._cover_fit(it.get("ref") or "")  # the scenes that show this tag (a view for "Săn mây", not a plate)
+            cards = [(c, (fit(c["id"]) if fit else None) or c["photos"][0]) for c in self._cards(it.get("top") or (), state) if c.get("photos")]
+            fitted = [x for x in cards if fit and fit(x[0]["id"]) == x[1]]
+            pool = fitted or cards
+            pick = [x for x in pool if x[0]["id"] not in used] or pool
+            pick = (pick + [x for x in pool if x not in pick])[:3]
+            used.update(c["id"] for c, _ in pick)
+            out.append({**it, "cover": [photo for _, photo in pick]})
+        return out
 
     def forget(self, user_id: str) -> bool:
         """Delete everything stored about a user. False when nothing was stored (or learning is off)."""
@@ -370,7 +462,7 @@ class Engine:
     def _deck(self, s: Session, inp: TurnInput, emit: Emit) -> None:
         legacy = not isinstance(s.card, Deck)
         current = (deck.build(s.state, self.catalog, self.cfg, agent=s.card.agent, at=s.card.at, ask=s.card.ask,
-                              question=s.card.ask_question) if not legacy else
+                              question=s.card.ask_question, agent_only=s.card.agent_only) if not legacy else
                    deck.build(s.state, self.catalog, self.cfg, at="gate" if s.card is None else "understand"))
         available = {t.qid: t for t in current.tabs}
         before = s.state
@@ -392,6 +484,9 @@ class Engine:
                     issues.append({"key": key, "code": "invalid"})
                 continue
             if vals == ["skip"]:
+                if key == "budget":
+                    s.state = s.state.model_copy(update={name: type(getattr(s.state, name))() for name in
+                                                        ("budget_vnd", "budget_scope", "budget_unlimited")})
                 if tab.kind == "drill":
                     s.state = drill.skip(s.state, key.removeprefix("drill."))
                 s.state = with_meta(s.state, declined=tuple(dict.fromkeys((*s.state.meta.declined, key))),
@@ -477,7 +572,7 @@ class Engine:
                 elif key == "companions.people":
                     who = set(vals_who) if (vals_who := flat.get("companions.who")) else set(st.companions.value or ())
                     # alone is one person whatever the count box says (a guest sent "0 người" four times, 2026-10-16)
-                    st = put(st, "people", 1 if who == {"solo"} else int(value))
+                    st = put(st, "people", 1 if who - {"pet"} == {"solo"} else int(value))
                 elif key == "mobility":
                     if value not in ("motorbike", "car_self", "car_hired", "walk"):
                         raise ValueError("invalid mobility")
@@ -544,7 +639,7 @@ class Engine:
                     issues.append({"key": "trip.dates", "code": "end_before_start"})
             s.state = restored
         if {"companions.who", "companions.people"} & flat.keys() and st.people.known and st.companions.known:
-            if st.people.value < 1 + len(set(st.companions.value) - {"solo"}):
+            if st.people.value < 1 + len(set(st.companions.value) - {"solo", "pet"}):
                 issues.append({"key": "companions.people", "code": "people_below_groups"})
         if issues:
             emit("deck_issues", {"issues": issues})
@@ -553,6 +648,8 @@ class Engine:
         if other:
             return self._run(s, inp.text.strip(), emit)
         if current.at == "understand" and not issues and inp.answers:
+            if not inp.text.strip() and all(raw == ["skip"] or raw == "skip" for raw in inp.answers.values()):
+                return self._skip_deck(s, current, turn, emit)
             # whatever the user pressed (an option the agent wrote, a required topic, a photo variant, Bỏ qua) is
             # already written: the agent reads it like a reply in the talk, reacts and chooses the next question in
             # words that fit the talk. The app opens no required topic by itself.
@@ -561,6 +658,21 @@ class Engine:
             return self._run(s, s.transcript[-1]["text"], emit, answer=True, picked=True)
         emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
         emit("card", self._card(s.state, s.card))
+
+    def _skip_deck(self, s: Session, current: Deck, turn: int, emit: Emit) -> None:
+        previous = next((t for t in reversed(s.transcript) if t["role"] == "agent" and t.get("kind") == "say"), {})
+        repeated = previous.get("skip_only", False)
+        say = "Mình bỏ qua nhé." if repeated else "Mình bỏ qua ý này nhé."
+        pending = tuple(t for t in current.agent if t.qid not in s.state.meta.declined)
+        built = deck.build(s.state, self.catalog, self.cfg, agent=pending, agent_only=True)
+        s.card = built if pending and built.tabs and built.tabs[0].kind == "agent" else conversation_card()
+        if s.card.qid == "conversation" and not missing(s.state, self.cfg.required):
+            say += NEXT_READY
+        s.transcript.append({"role": "agent", "text": say, "turn": turn, "kind": "say", "skip_only": True})
+        emit("say", {"replace": say})
+        emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+        emit("card", self._card(s.state, s.card))
+        log_turn(s.id, turn, "(skip)", ["skip_only model_calls=0"], say, s.card.qid)
 
     def _tap_only(self, s: Session, available: dict, inp: TurnInput) -> bool:
         """True when the user only tapped options on required-topic cards, no words, and a required topic is still
@@ -935,12 +1047,16 @@ class Engine:
                                     for p in pre.proposals]})
         st = with_meta(st, turn=turn) if picked else self._deterministic(with_meta(st, turn=turn), text, pre, turn)
         st = derive(st, self.catalog, turn)  # what the words already answer is written before the agent reads the state
+        st = self._care_nothing(s, prev, st, text, turn, picked)
         if not quiet:  # what the keyword rules read shows at once, before the agent's slower reply
             emit("state", {"understanding": understanding(st, self.catalog, self.cfg)})
         photos = None  # a drill just heard gets its photo card while the agent runs (no model call)
-        if may_ask and not quiet and any(d.status == "pending" and d.tab is None for d in st.drills):
+        if may_ask and not quiet:
             pool = ThreadPoolExecutor(1)
-            photos = pool.submit(drill.build, st, self.catalog, self.looks, self.cfg)
+            if self.cfg.discovery and not self._user_asks(s):
+                photos = pool.submit(drill.discover, st, self.catalog, self.looks, self.cfg, turn)
+            elif not self.cfg.discovery:
+                photos = pool.submit(drill.build, st, self.catalog, self.looks, self.cfg, cached_only=True)
             pool.shutdown(wait=False)
         compared = compared_places(text, self.catalog)
         heard = " ".join(t["text"] for t in s.transcript if t["role"] == "user")
@@ -949,6 +1065,7 @@ class Engine:
                           history=tuple((t["turn"], t["text"]) for t in s.transcript if t["role"] == "user"),
                           gaps=Path(self.cfg.gaps_path),
                           knowledge=self.knowledge, assistant=self.cfg.assistant.enabled and not quiet,
+                          discovery=self.cfg.discovery and not quiet,
                           on_cards=lambda ids, why: send_cards(ids, why),
                           on_trace=lambda t: emit("progress", t),
                           # each fact reaches the summary as soon as the model has written it, not when the turn ends
@@ -957,26 +1074,52 @@ class Engine:
         if tools.assistant:  # what the user showed or pasted: the perceive tools read these (spec §5.2)
             tools.photos = s.photos
             tools.shown_log = last_shown(s.transcript, self._name)
+            tools.tag_seen, tools.tag_picked = tuple(blocks.recent_signatures(s.transcript)), tuple(blocks.picked_tags(s.transcript))
             tools.slots = {"photos": photo_context(s.photos), "links": links_in(text)}
         guard = None
         if tools.assistant and self.cfg.assistant.guard and self.judge is not None and not picked and not answer:
             # Clef reads the message for rules R1-R8 while the model works (spec 2026-10-29 §4); a hit stops the model
             # calls, the cards and the facts of this turn. Clef slow or down = ok.
-            guard = Guarded(lambda st, qs: clef.ask(st, qs, self.cfg), text, threshold=self.cfg.assistant.guard_threshold,
+            def guard_request(st, qs):
+                started = time.monotonic()
+                try:
+                    return clef.ask(st, qs, self.cfg)
+                finally:
+                    tools.timings.append(f"t_guard phase=request seconds={time.monotonic() - started:.3f}")
+
+            guard = Guarded(guard_request, text, threshold=self.cfg.assistant.guard_threshold,
                             **self._guard_context(s, tools))
-            tools.verdict = lambda: guard.verdict().hit
-            tools.blocked = guard.blocked_now
+            def verdict():
+                started = time.monotonic()
+                try:
+                    return guard.verdict()
+                finally:
+                    tools.timings.append(f"t_guard phase=verdict seconds={time.monotonic() - started:.3f}")
+
+            def blocked():
+                started = time.monotonic()
+                try:
+                    return guard.blocked_now()
+                finally:
+                    tools.timings.append(f"t_guard phase=poll seconds={time.monotonic() - started:.3f}")
+
+            tools.verdict = lambda: verdict().hit
+            tools.blocked = blocked
         def reply_cards(say: str) -> None:
             # the places a text names, as cards, no model call: the whole ranked list of the search they came from
-            if tools.card_lists or not say:
-                return
+            if tools.card_lists or not say or any(b.get("kind") == "tags" for b in getattr(tools, "blocks", ())):
+                return  # (a browse's subtag cards already show the places)
             if named := self._named(say, tools.told_ids | set(s.state.meta.shown_ids)):
                 ranked = next((r for r in tools.rankings if set(named) & set(r)), [])
                 tools.emit_cards(ranked + [p for p in named if p not in ranked])
 
         def send_cards(ids: list[str], why: str) -> None:
             # cards go out the moment a read tool answers the model, before its text is final (spec §2: thẻ trước)
-            emit("places", {"ids": ids, "why": why, "cards": self._cards(ids, tools.state, tools.scene_first)})
+            started = time.monotonic()
+            try:
+                emit("places", {"ids": ids, "why": why, "cards": self._cards(ids, tools.state, tools.scene_first)})
+            finally:
+                tools.timings.append(f"t_cards source=places count={len(ids)} seconds={time.monotonic() - started:.3f}")
         blocks.watch(tools, emit, lambda ids: self._cards(ids, tools.state, tools.scene_first))
         hints = [{"field": p.field, "value": values.jsonable(p.value), "quote": p.quote,
                   **({"written": True} if p.field in EXACT_FIELDS and not p.inferred else {})} for p in pre.proposals]
@@ -995,11 +1138,16 @@ class Engine:
             prefetched = pool.submit(self._prefetch, text, st, tools)
             pool.shutdown(wait=False)
         found = {} if picked else lookups(text, self.catalog)  # corpus lookups ready before the model reads the message
+        tools._reply_lookups = found
         data = None
         if prefetched is not None:
             try:
                 data, note = prefetched.result()
                 log.append(note)
+                if data and "dich_vu" in data and not tools.cards_blocked:  # a prepared answer shows its rows like a called one
+                    if block := blocks.services_block(data["dich_vu"]):
+                        tools.blocks.append(block)
+                        emit("block", block)
             except Exception as exc:  # preparing is optional: the agent calls the read tools itself
                 log.append(f"prefetch_failed {type(exc).__name__}")
         if assistant:  # names are matched by prefetch.candidates, and a prepared day needs no date tool
@@ -1007,14 +1155,17 @@ class Engine:
             if self.cfg.assistant.hide_prepared_lookup and data and (data.get("tim_noi") or data.get("chi_tiet")):
                 tools.hidden.add("find_places")  # the model re-searched what data holds: one 3-8 s call each time
             mode = self.cfg.assistant.covered_tools
-            if mode in ("write", "none") and tools.route is not None and covers(tools.route, data):
+            compound = re.search(r"[,;.!?…]\s*\w|\b(và|rồi|còn|từ|cách đi|đi lại|đồng thời)\b", text, re.I)
+            if mode in ("write", "none") and tools.route is not None and not compound and covers(tools.route, data):
+                # Compound requests keep reads: group-level coverage cannot prove every clause was answered.
                 # the prepared data answers every asked group: no lookup (each costs a 3-8 s second call)
-                tools.hidden |= {n for n in tools.tool_names() if mode == "none" or n != "record_fact"}
+                keep = {"record_fact", "browse_tags", "hide_place"} if mode == "write" else set()  # a broad ask still gets its subtags
+                tools.hidden |= {n for n in tools.tool_names() if mode == "none" or n not in keep}
                 log.append(f"covered tools={mode}")
         messages = build_messages(st, text, s.transcript[:-1], prev.text if prev else None, self.today(), hints, compared,
                                    clarify, dict(needed), stuck, picked=picked, lookups=found, data=data,
                                    assistant=assistant, ask_words=self.cfg.assistant.ask_words,
-                                   reply_style=self.cfg.assistant.reply_style, slots=tools.slots,
+                                   reply_style=self.cfg.assistant.reply_style, slots=tools.slots, discovery=self.cfg.discovery,
                                    name_of=lambda pid: p.name if (p := self.catalog.by_id.get(pid)) else None)
         tools.step("read", "Đọc lựa chọn của bạn" if picked else "Đọc tin nhắn của bạn", "ok")
         if assistant:
@@ -1040,13 +1191,20 @@ class Engine:
                 emit("say", {"replace": said[0]})
         finally:
             tools.close()
-        if guard is not None and (hit := guard.verdict()).hit:
+        if guard is not None and (hit := verdict()).hit:
             return self._refuse(s, before, prev, turn, text, hit, tools, started_at, emit)
         if photos is not None:
             try:
                 tools.state = drill.adopt(tools.state, photos.result(timeout=DRILL_WAIT_S))
             except Exception as exc:  # a photo card is optional: the turn goes on without it (a slow one is built
                 log.append(f"drill_build_failed {type(exc).__name__}")  # again on a later turn)
+        if any(b.get("kind") == "tags" for b in getattr(tools, "blocks", ())):
+            # the reply's tags / subtags already ask "which kind?": the photo question on the same taste would open over
+            # them and ask it twice, so the taste's photo card is closed for this turn (the subtags win)
+            tools.state = tools.state.model_copy(update={"drills": tuple(
+                d.model_copy(update={"status": "none"}) if d.status == "pending" and d.turn == turn else d for d in tools.state.drills)})
+            tools.told_ids |= {c["id"] for b in tools.blocks if b.get("kind") == "tags" for c in b["cards"]}  # Thích works on them
+            log.append("tags_block_wins")
         say = "".join(said).strip()
         if not say and (tools.recorded or "step_cap" in log) and tools.asked is None:  # the agent wrote no reply: never leave the turn silent
             got = ", ".join(sorted({FIELD_LABEL.get(f, "thông tin chuyến đi") for f in tools.recorded}))
@@ -1074,7 +1232,7 @@ class Engine:
             log.append(f"say pruned: {why}")
             say, why = kept, None
             emit("say", {"replace": say})
-        if why := (why or (tools.reply_problem() if say else None)):
+        if why := (why or tools.rejected_claim(say) or (tools.reply_problem() if say else None)):
             log.append(f"say replaced: {why}")
             # never leave a question without a visible reply; a told trip gets an honest pointer to the summary
             say = (UNSURE_SAY if "?" in text else NOTED_TEXT_SAY) if say else ""
@@ -1109,6 +1267,8 @@ class Engine:
             say = drop_questions(say)
             emit("say", {"replace": say})
         card = None
+        if self.cfg.discovery and may_ask and not quiet and tools.asked is None and not self._user_asks(s):
+            tools.state = drill.discover(tools.state, self.catalog, self.looks, self.cfg, turn)
         if may_ask and tools.asked is not None and asks_in_text(say):
             # a card is this turn's one question: the reply keeps its reaction, never a second question beside it
             log.append("card_is_the_question")
@@ -1121,6 +1281,10 @@ class Engine:
             log.append("drill_first")
             say = drop_questions(say)
             emit("say", {"replace": say})
+        final = tools.finalize_reply(say)
+        if final != say:
+            say = final
+            emit("say", {"replace": say})
         s.transcript.append({"role": "system", "text": "; ".join(log) or "no tools", "turn": turn,
                              "tools": {"recorded": list(tools.recorded), "refused": dict(tools.refusal_notes),
                                        "unmapped": list(tools.unmapped)},
@@ -1130,7 +1294,7 @@ class Engine:
         if assistant:
             reply_cards(say)  # a reply that names places no card has shown yet: they go out now
             try:
-                if block := blocks.prepared_dish_block(tools, found, lambda ids: self._cards(ids, tools.state, tools.scene_first)):
+                if not any(b.get("kind") == "tags" for b in tools.blocks) and (block := blocks.prepared_dish_block(tools, found, lambda ids: self._cards(ids, tools.state, tools.scene_first))):
                     tools.blocks.append(block)
                     emit("block", block)
             except Exception as exc:  # noqa: BLE001 - a block is an extra: the reply must not fail for it
@@ -1190,9 +1354,10 @@ class Engine:
             elif (qq := find_quiz(other, tools.state, self.catalog, self.cfg)) is not None:
                 card = qq  # not resolved yet: the chat clarifies, the chips stay available
         failed = "step_cap" in log or any(x.startswith("agent_error") for x in log)
-        if card is None and not failed and may_ask and (due := self._due_required(s, say)):
-            # the agent asked no required topic and the talk drifts (statement, or its own questions in a row): the
-            # app asks the next one in the topic's default words, so the seven answers are never left to chance
+        if self.cfg.discovery:
+            if card is None and not failed and may_ask and not self._user_asks(s) and not asks_in_text(say):
+                s.state = drill.discover(s.state, self.catalog, self.looks, self.cfg, turn)
+        elif card is None and not failed and may_ask and (due := self._due_required(s, say)):
             log.append(f"required_fallback {due}")
             if asks_in_text(say):
                 say = drop_questions(say)
@@ -1217,6 +1382,20 @@ class Engine:
             return
         self._quiz_next(s, emit)
 
+    def _care_nothing(self, s: Session, prev, st: TripState, text: str, turn: int, picked: bool) -> TripState:
+        """"Không có gì" to the open Lưu ý question is the answer (care = none), written whatever the agent does next, so the
+        gate does not ask it again. Only while that question is open (a care card, or the last reply asked about it)."""
+        if picked or (st.care.known and st.care.source == "user") or not (quote := says_nothing(text)):
+            return st
+        card_open = isinstance(prev, Deck) and any(t.qid == "care" for t in prev.tabs)
+        said = next((t["text"] for t in reversed(s.transcript[:-1]) if t["role"] == "agent" and t.get("kind") == "say"), "")
+        care_question = any(x.rstrip().endswith("?") and "luu y" in fold(x)
+                            for x in re.split(r"(?<=[.!?…])\s+", said))
+        if not (card_open or asks_settled_care(said) or care_question):
+            return st
+        return apply(st, Update(field="care", value="none", source="user", confidence="high",
+                                evidence=Evidence(turn=turn, quote=quote)))
+
     def _guard_context(self, s: Session, tools: TurnTools) -> dict:
         """What Clef reads next to the message: the user's message before, the start of the last answer, place names just shown."""
         said = [t for t in s.transcript[:-1] if t["role"] == "user" and t.get("kind") == "text"]
@@ -1236,36 +1415,106 @@ class Engine:
                              "turn": turn, "tools": {"recorded": [], "refused": {}, "unmapped": []}})
         s.transcript.append({"role": "agent", "text": say, "turn": turn, "kind": "say"})
         s.card = prev if isinstance(prev, Deck) else conversation_card()
-        log_turn(s.id, turn, text, [*tools.log, f"rule_guard {hit.label} {hit.prob:.2f}", f"t_turn {time.monotonic() - started_at:.1f}"],
+        log_turn(s.id, turn, text, [*tools.log, *tools.timings, f"rule_guard {hit.label} {hit.prob:.2f}", f"t_turn {time.monotonic() - started_at:.1f}"],
                  say, s.card.qid)
         emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
         emit("card", self._card(s.state, s.card))
 
     def _like(self, s: Session, inp: TurnInput, emit: Emit) -> None:
         """Thích on a chat place card (no model call): on = a want anchor of that place, off = that anchor gone.
-        Only a place the assistant showed this session."""
+        Only a place the assistant showed this session, or one the tag stage listed (a place the trip's limits allow)."""
         pid = inp.target
-        if pid not in s.state.meta.shown_ids or pid not in self.catalog.by_id or inp.value not in ("on", "off"):
+        offered = pid in s.state.meta.shown_ids or (self.knowledge is not None and inp.qid == "stage" and self.knowledge.fits(pid, s.state))
+        if not offered or pid not in self.catalog.by_id or inp.value not in ("on", "off"):
             raise ValueError("like needs a place shown in this chat and value on or off")
         kept = tuple(a for a in s.state.anchors if not (a.place_id == pid and a.priority == "want"))
         if inp.value == "on" and not any(a.place_id == pid for a in kept):  # a must-go stays a must-go
             kept += (Anchor(text=self.catalog.by_id[pid].name, place_id=pid, state="matched", priority="want"),)
         s.state = settle(s.state.model_copy(update={"anchors": kept}))
+        if inp.value == "on" and pid not in s.state.meta.shown_ids:
+            s.state = with_meta(s.state, shown_ids=(*s.state.meta.shown_ids, pid)[-SHOWN_KEEP:])
         s.transcript.append({"role": "system", "text": f"like {inp.value} {pid}", "turn": s.state.meta.turn})
         emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+
+    def _wish(self, s: Session, inp: TurnInput, emit: Emit) -> None:
+        """Thích cả kiểu này on a tag or subtag card of the stage (no model call): a soft kind wish whose places are the node's
+        places the trip allows. qid = the tags block, target = the node path, value on / off. Never a hard filter."""
+        if inp.value not in ("on", "off"):
+            raise ValueError("wish needs value on or off")
+        node = self._stage_node(s, inp.qid, [r for r in inp.target.split("/") if r])
+        if not node.get("ids"):  # a tag ref this release no longer knows (an old chat): nothing to wish for, keep the wishes
+            emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+            return
+        label = node["label"]
+        kept = tuple(w for w in s.state.wishes.kinds if squash(w.kind) != squash(label))
+        if inp.value == "on":
+            kept += (KindWish(kind=label, quote=label, place_ids=tuple(node["ids"][:WISH_PLACES])),)
+        s.state = s.state.model_copy(update={"wishes": s.state.wishes.model_copy(update={"kinds": kept})})
+        s.transcript.append({"role": "system", "text": f"wish {inp.value} {label}", "turn": s.state.meta.turn})
+        emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+
+    def _tag(self, s: Session, inp: TurnInput, emit: Emit) -> None:
+        """A tap on a tag card (no model call): the chat opens that tag, as its subtags when they split its places well
+        and as its places otherwise. The trip's hard limits and the places the user hid apply."""
+        if self.knowledge is None:
+            raise ValueError("no corpus")
+        out = self.knowledge.browse.tag(inp.target, s.state)  # ValueError: not a tag the chat offered
+        label = out["tag"]["label"]
+        turn = self._open_turn(s, label, "tag")
+        s.transcript[-1]["ref"] = inp.target
+        cards_of = lambda ids: self._cards(ids, s.state)  # noqa: E731
+        block = blocks.tags_block(out, cards_of, title=label, cover_fit=self._cover_fit)
+        ids = [c["id"] for c in block["cards"]] if block else list(out.get("_cards") or ())[:self.knowledge.cards_max]
+        say = (f"{label} có {len(block['subtags'])} kiểu, bạn bấm một kiểu để xem nơi." if block else
+               f"Đây là các nơi {label.lower()} hợp với chuyến của bạn." if ids else f"Mình chưa có nơi {label.lower()} nào phù hợp với chuyến này.")
+        s.transcript.append({"role": "agent", "text": say, "turn": turn, "kind": "say"})
+        emit("say", {"replace": say})
+        if block:
+            s.transcript.append({"role": "agent", "text": "", "turn": turn, "kind": "block", "block": block})
+            emit("block", block)
+        elif ids:
+            s.transcript.append({"role": "agent", "text": "", "turn": turn, "kind": "places", "ids": ids, "why": label})
+            emit("places", {"ids": ids, "why": label, "cards": cards_of(ids)})
+        m = s.state.meta
+        s.state = with_meta(s.state, shown_ids=tuple(dict.fromkeys((*m.shown_ids, *ids)))[-SHOWN_KEEP:])
+        s.card = self._next(s, say)
+        emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+        emit("card", self._card(s.state, s.card))
 
     def _prefetch(self, text: str, st: TripState, tools: TurnTools) -> tuple[dict, str]:
         """The assistant's prepared data (agent/prefetch.py): candidates -> one Clef request -> the read tools at once,
         waiting at most cfg.assistant.prefetch_wait_s in all. -> (data, the turn-log line)."""
+        from ..agent.prefetch import Route
+
         started = time.monotonic()
-        a = self.cfg.assistant
-        cands = candidates(text, self.catalog, a.max_candidates)
-        r = route(text, cands, self.cfg, ask=clef.ask if self.judge is not None else (lambda *_: {}), today=self.today())
-        tools.route = r
-        left = max(MIN_PREPARE_S, a.prefetch_wait_s - (time.monotonic() - started))
-        data = prepare(r, text, st, tools, self.today(), left)
+        deadline = started + max(0.0, self.cfg.assistant.prefetch_wait_s)
+        early = start_weather(st, tools)  # runs while Clef is asked
+
+        def routing():
+            cands = candidates(text, self.catalog, self.cfg.assistant.max_candidates)
+            clef_started = time.monotonic()
+            try:
+                return route(text, cands, self.cfg, ask=clef.ask if self.judge is not None else (lambda *_: {}), today=self.today())
+            finally:
+                tools.timings.append(f"t_prefetch_clef seconds={time.monotonic() - clef_started:.3f}")
+
+        pool = ThreadPoolExecutor(1, thread_name_prefix="prefetch-route")
+        future = pool.submit(routing)
+        expired = False
+        try:
+            r = future.result(timeout=max(0.0, deadline - time.monotonic()))
+        except TimeoutError:
+            expired = True
+            r = Route(set(), [])  # only completed early reads, no guessed routing decision
+            tools.timings.append(f"t_prefetch_clef_pending seconds={time.monotonic() - started:.3f}")
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        tools.route = r  # a late routing worker never changes the turn's route or starts more tools
+        left = max(0.0, deadline - time.monotonic())
+        data = prepare(r, text, st, tools, self.today(), left, early)
+        expired = expired or time.monotonic() >= deadline
         return data, (f"prefetch groups={','.join(sorted(r.groups)) or '-'} places={len(r.places)} "
-                      f"clef={r.clef_s:.2f}s wait={time.monotonic() - started:.2f}s")
+                      f"clef={r.clef_s:.2f}s wait={time.monotonic() - started:.2f}s deadline={int(expired)}")
 
     # ---------- answers the agent does not need to read ----------
 
@@ -1378,7 +1627,13 @@ class Engine:
                 u = user("signal", arg, "remove")
             else:
                 raise ValueError(f"unknown target {inp.target!r}")
+            removed = s.state.soft.get(arg) if self.cfg.discovery and kind == "soft" and v is None else None
             s.state = settle(apply(s.state, u))
+            if removed is not None:
+                origins = {(e.tool.removeprefix("deck:drill."), e.turn) for e in removed.evidence
+                           if e.tool and e.tool.startswith("deck:drill.")}
+                s.state = s.state.model_copy(update={"vibes": tuple(
+                    look for look in s.state.vibes if (look.phrase, look.turn) not in origins)})
         except (ValueError, ValidationError, IndexError):
             emit("error", {"message": BAD_VALUE})
             return
@@ -1457,6 +1712,10 @@ class Engine:
         signals, effort hard filters). Suggestions (who goes, transport, pace, novelty, kinds of place)
         are agent-only hints: the agent reads the user's words and records them via record_fact.
         """
+        from ..domain import diet
+        diet_before = diet.progress(st)
+        diet_pending = diet.question(st)
+        st, scoped_diet = diet.record(st, text, turn)
         lines = [x.strip() for x in text.splitlines() if x.strip()]
         names = [x for x in lines if not URL.match(x)] if len(lines) >= 2 else []
         for raw in URL.findall(text) + names:
@@ -1466,9 +1725,18 @@ class Engine:
             st = apply(st, Update(field="anchor", op="add", value=a, source="user", confidence="high",
                                   evidence=Evidence(turn=turn, quote=raw)))
         for p in pre.proposals:
+            if scoped_diet and (p.field in {"start_date", "days", "month", "month_part"} and not diet.DIET.search(fold(text))
+                                or p.field == "signal" and p.value in {"vegetarian", "vegan"}):
+                continue
             if p.field not in APPLIED_FIELDS:
                 continue
             try:
+                if p.field == "start_date" and st.start_date.known and st.start_date.value != p.value:
+                    from ..domain.dates import FULL_DATE, RANGE, relative_date_changes_trip, relative_dates
+                    low = fold(p.quote)
+                    if (relative_dates(low, p.quote.lower(), self.today()) and not FULL_DATE.search(low)
+                            and not RANGE.search(low) and not relative_date_changes_trip(text, p.quote)):
+                        continue
                 exact = p.field in EXACT_FIELDS and not p.inferred
                 st = apply(st, Update(field=p.field, op=p.op, value=p.value,
                                       source="user" if exact else "inferred",
@@ -1476,7 +1744,8 @@ class Engine:
                                       evidence=Evidence(turn=turn, quote=p.quote)))
             except (ValueError, ValidationError):
                 pass
-        if allergy := next((p for p in pre.proposals if p.field == "unmapped"), None):
+        if allergy := next((p for p in pre.proposals if p.field == "unmapped"
+                            and re.search(r"\b(?:di ung|ung)\b", fold(p.quote))), None):
             if not (st.care.known and st.care.source == "user"):  # the care question is answered by what they told
                 st = apply(st, Update(field="care", value="listed", source="user", confidence="high",
                                       evidence=Evidence(turn=turn, quote=allergy.quote, tool="derived:allergy")))
@@ -1484,7 +1753,17 @@ class Engine:
         rushed = bool(re.search(r"\b(goi y luon|tim luon|khoi hoi|nhanh len)\b", fold(text)))
         st = with_meta(st, companion_hints=tuple(dict.fromkeys((*st.meta.companion_hints, *hints))),
                        rushed=st.meta.rushed or rushed)
-        return drill.note(settle(st), text, turn)
+        if st.diet_requests:
+            st = diet.refresh(st)
+            feed = self.knowledge.more.feeds.calendar if self.knowledge is not None else None
+            try:
+                calendar = feed() if feed and any(r.lunar_day for r in st.diet_requests) else None
+            except (OSError, ValueError, TypeError):
+                calendar = None
+            st = st.model_copy(update={"diet_days": diet.resolved(st, calendar)})
+            unchanged = diet_before == diet.progress(st)
+            st = with_meta(st, diet_stalled=bool(diet_pending and unchanged))
+        return drill.note(settle(st), text, turn, discovery=self.cfg.discovery)
 
     def _remember(self, s: Session) -> None:
         """The user is done with this session: add its explicit choices to their stored history, if they agreed."""
@@ -1509,6 +1788,8 @@ class Engine:
             return conversation_card()
         built = deck.build(s.state, self.catalog, self.cfg,
                            agent=s.card.agent if isinstance(s.card, Deck) else ())
+        if self.cfg.discovery:
+            built = built.model_copy(update={"tabs": tuple(t for t in built.tabs if t.kind != "confirm")})
         return self._open(s, built)
 
     def _due_required(self, s: Session, say: str) -> str | None:
@@ -1744,9 +2025,10 @@ class Engine:
 
     def _card(self, state: TripState, q: Question | Deck | None) -> dict | None:
         if isinstance(q, Deck):
-            q = deck.build(state, self.catalog, self.cfg, agent=q.agent, at=q.at, ask=q.ask, question=q.ask_question)
+            q = deck.build(state, self.catalog, self.cfg, agent=q.agent, at=q.at, ask=q.ask, question=q.ask_question,
+                           agent_only=q.agent_only)
             q = q.model_copy(update={"tabs": tuple(ask.with_photos(t, state, self.catalog, self.looks) for t in q.tabs)})
-            out = q.model_dump(mode="json", exclude={"agent": True, "at": True, "ask": True, "tabs": {"__all__": {"options": {"__all__": {"writes"}}}}})
+            out = q.model_dump(mode="json", exclude={"agent": True, "agent_only": True, "at": True, "ask": True, "tabs": {"__all__": {"options": {"__all__": {"writes"}}}}})
             for tab in out["tabs"]:
                 for option in tab["options"]:
                     if option["photo"]:

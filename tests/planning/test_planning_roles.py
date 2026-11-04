@@ -26,8 +26,9 @@ def test_meal_kind_by_group_and_dishes():
     assert meal_kind(rec("g", 1, 1, group="attraction"), CFG) is None
 
 
-def test_dawn_wins_over_sunset_unless_the_user_wants_sunset():
-    assert pin_order(("sunset_view", "cloud_hunting"), set()) == ("cloud_hunting", "sunset_view")
+def test_dawn_is_only_pinned_when_the_user_wants_it():
+    assert pin_order(("sunset_view", "cloud_hunting"), set()) == ("sunset_view",)
+    assert pin_order(("sunset_view", "cloud_hunting"), {"cloud_hunting"}) == ("cloud_hunting",)
     assert pin_order(("sunset_view", "cloud_hunting"), {"sunset_view"}) == ("sunset_view",)
 
 
@@ -67,7 +68,7 @@ def test_a_cafe_the_user_chose_for_photos_keeps_the_photo_windows():
 def test_a_cloud_hunting_hill_that_is_also_a_sunset_view_pulls_a_later_day_to_dawn():
     cx = day_ctx([rec("hill", 1, 1, hours=None, features={"cloud_hunting": "present", "sunset_view": "present"})],
                  sun=(360, 1050), start=480)
-    hill = replace(cx.places["hill"], pins=pin_order(cx.places["hill"].pins, set()))
+    hill = replace(cx.places["hill"], pins=pin_order(cx.places["hill"].pins, {"cloud_hunting", "sunset_view"}))
     later = replace(cx, places={"hill": hill}, day=replace(cx.day, index=1))
     assert hill.pins == ("cloud_hunting", "sunset_view")
     assert pin_window(hill, later) == (330, 420)               # dawn, although it starts before the 08:00 day
@@ -92,10 +93,16 @@ def test_a_released_pin_survives_a_pace_change_and_a_reorder_and_stays_confirmab
     for action in ({"type": "set_pace", "level": "slow"},
                    {"type": "reorder", "day": 0, "order": ["temple", "station", "park"]}):
         e.act(sid, action)
-        results = e._active_itinerary(e._get(sid), e._base[sid])["results"]
+        active = e._active_itinerary(e._get(sid), e._base[sid])
+        results, ctxs = active["results"], active["ctxs"]
         # Round-4 ruling (spec section 5): only the music, which the 18:00 departure rules out, is given up; the
-        # sunset stays held because keeping it breaks no physical limit.
-        assert set(results[0].unpinned) == {"station"}, action
+        # sunset stays held because keeping it breaks no physical limit. A pin the day cannot reach at all counts as
+        # given up whether the scheduler recorded it (unpinned) or the day simply cannot host it (pin_hostable).
+        from planning.schedule import pin_hostable
+        given_up = set(results[0].unpinned) | {i.place_id for i in results[0].items if i.kind == "visit"
+                                               and ctxs[0].places[i.place_id].pins
+                                               and not pin_hostable(ctxs[0].places[i.place_id], ctxs[0])}
+        assert given_up == {"station"}, action
         park = next(i for i in results[0].items if i.kind == "visit" and i.place_id == "park")
         assert 16 * 60 + 15 <= park.start <= 17 * 60 + 10, action
     e.act(sid, {"type": "set_lodging", "text": "Chosen hotel", "lat": 11.94, "lng": 108.45})

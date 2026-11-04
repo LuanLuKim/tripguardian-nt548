@@ -98,7 +98,9 @@ def test_v2_run_measures_tools_cards_and_guard(tmp_path):
                         say("Mình chỉ hỗ trợ chuyến Đà Lạt thôi, bạn cần gợi ý chỗ nào?"))
     eng = engine(chat, tmp_path)
     row = run_v2(eng, Case("a", "places", (("Gợi ý quán cà phê view đồi thông cho mình với", None),), frozenset({"places"}), True))
-    assert row["tool_group_ok"] and row["shown"] and not row["problems"] and row["tools"][0] == "find_places"
+    # Independent read tools may finish in either order; early weather prefetch must not hide the place lookup.
+    assert row["tool_group_ok"] and row["shown"] and not row["problems"]
+    assert "find_places" in row["tools"]
     off = run_v2(eng, Case("b", "offtopic", (("Hôm nay bóng đá thế nào?", None),), cards=False, reply_has=("Đà Lạt",)))
     assert not off["problems"] and not off["wrong_block"]
     s = summary_v2([row, off])

@@ -1,7 +1,7 @@
 """A Planning session: a Decision Output plus the user's edits, versioned for undo / redo
 (docs/PLANNING.md §Vòng người dùng sửa và góp ý). Shaped like src/decision/session.py; in memory,
-mirrored to data/planning/sessions/<id>.json so a reload or a restart resumes. Only State is persisted -- the laid
-out Schedule is rebuilt by the engine (Task 6), never serialized here.
+mirrored to data/planning/sessions/<id>.json so a reload or a restart resumes. Offered timed-search results are
+persisted alongside State; the engine rebuilds edited schedules from that stable choice history.
 """
 
 import json
@@ -44,6 +44,7 @@ class State(BaseModel):
     assignment: dict[str, int] = Field(default_factory=dict)             # place id -> day index, user-placed
     activity_override: dict[str, Activity] = Field(default_factory=dict)
     visit_duration_override: dict[str, int] = Field(default_factory=dict)
+    start_time_override: dict[str, int] = Field(default_factory=dict)
     order_override: dict[int, list[str]] = Field(default_factory=dict)
     dropped: list[Drop] = Field(default_factory=list)
     locked: list[str] = Field(default_factory=list)
@@ -225,6 +226,15 @@ def apply_act(state: State, action: dict, ctx: ActCtx) -> State:
             if pid in ctx.protected_ids or pid in newly_protected or pid in s.locked or pid in s.restored:
                 raise ActionError(f"{pid!r} is protected and cannot make room")
             _drop(s, pid)
+    elif t == "repair_meals":
+        acts = action.get('acts')
+        if not isinstance(acts, list) or not acts or any(
+                not isinstance(a, dict) or a.get('type') != 'add_from_backup' for a in acts):
+            raise ActionError('repair_meals needs verified meal additions')
+        if len({a.get('place') for a in acts}) != len(acts):
+            raise ActionError('repair_meals needs distinct places')
+        for edit in acts:
+            s = apply_act(s, edit, ctx)
     elif t == "dismiss_suggestion":
         pid = action.get("place")
         if not isinstance(pid, str) or not pid:
@@ -246,6 +256,13 @@ def apply_act(state: State, action: dict, ctx: ActCtx) -> State:
         if level not in ctx.valid_paces:
             raise ActionError(f"unknown pace {level!r}")
         s.pace_override = level
+    elif t == "set_stop_time":
+        pid, start = action.get("place"), action.get("start")
+        if not _known(ctx, pid) or _day_of(ctx, pid) is None:
+            raise ActionError(f"{pid!r} is not currently in the plan")
+        if not isinstance(start, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", start):
+            raise ActionError("start must be HH:MM between 00:00 and 23:59")
+        s.start_time_override[pid] = to_min(start)
     elif t == 'set_visit_duration':
         pid, minutes = action.get('place'), action.get('minutes')
         if not _known(ctx, pid):
@@ -316,7 +333,9 @@ class Session(BaseModel):
     position: int = 0
     log: list[dict] = Field(default_factory=list)
     output: dict | None = None
+    search_artifacts: dict = Field(default_factory=dict)   # offered timed-search outcomes, stable across replay
     chat: list[dict] = Field(default_factory=list)   # typed turns of the assistant: {text, say}; not part of the replayed log
+    turn_traces: list[dict] = Field(default_factory=list)   # bounded model/tool spans, separate from conversation content
 
     @property
     def state(self) -> State:

@@ -17,8 +17,9 @@ from ..ontology import load as load_ontology
 from .schema import Claim, Document, Proposed, Rating
 
 VERSION = 1
-FOLDERS = (("gmaps", "observations"), ("gmaps", "photo_observations"),
-           ("tiktok", "observations"), ("official", "observations"), ("reports", "observations"))
+FOLDERS = (("gmaps", "observations"), ("gmaps", "photo_observations"), ("gmaps", "visit_observations"),
+           ("tiktok", "observations"), ("official", "observations"), ("reports", "observations"),
+           ("gsearch", "observations"))
 
 
 def _hash(value: bytes) -> str:

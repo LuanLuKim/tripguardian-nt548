@@ -1,0 +1,20 @@
+# tag -> subtag (docs/TRIP_UNDERSTANDING.md §Tag, subtag hay danh sách). The app decides the shape from what the ask names
+# (src/trip/domain/tag_policy.py): vague -> tags (kinds of places), one interest -> subtags (groups of it), specific or a
+# follow-up that names the kind -> the plain list. No flat cards beside a tags block. Format: src/bench/assistant.py docstring.
+cases:
+  # ---- (a) vague, no interest yet: TAGS
+  - {id: tags-vague-ideas, family: tags, turns: ["Gợi ý gì hay ở Đà Lạt đi"], tool_groups: [places], tools: [browse_tags], block: tags, level: tags, cards: false}
+  - {id: tags-vague-lost, family: tags, turns: ["Mình chưa biết đi đâu ở Đà Lạt hết, chỉ mình với"], tool_groups: [places], tools: [browse_tags], block: tags, level: tags, cards: false}
+  # ---- (b) one named interest, many matches: SUBTAGS
+  - {id: tags-cloud, family: tags, turns: ["Tui thích săn mây á, có kiểu nào hay hay gợi ý cho tôi"], tool_groups: [places], tools: [browse_tags], block: tags, level: subtags, cards: false}
+  - {id: tags-sunset, family: tags, turns: ["Mình muốn ngắm hoàng hôn ở Đà Lạt, có những kiểu nào hay gợi ý đi"], tool_groups: [places], tools: [browse_tags], block: tags, level: subtags, cards: false}
+  - {id: tags-flower, family: tags, turns: ["Mình mê hoa lắm, có mấy kiểu chỗ ngắm hoa gợi ý cho mình với"], tool_groups: [places], tools: [browse_tags], block: tags, level: subtags, cards: false}
+  - {id: tags-food, family: tags, turns: ["Mình thích ăn lẩu, ở Đà Lạt có những kiểu lẩu nào hay gợi ý giúp"], tool_groups: [places], tools: [browse_tags], block: tags, level: subtags, cards: false}
+  - {id: tags-vibe, family: tags, turns: ["Mình thích quán cà phê chill ngồi được lâu, có những kiểu nào hay gợi ý cho mình"], tool_groups: [places], tools: [browse_tags], block: tags, cards: false}
+  - {id: tags-rain, family: tags, turns: ["Nếu trời mưa thì ở Đà Lạt có những kiểu chỗ nào để đi, gợi ý giúp mình"], tool_groups: [places], tools: [browse_tags], block: tags, cards: false}
+  # ---- (c) specific ask, few matches, or a follow-up that names the kind: the FLAT list
+  - {id: tags-flat-follow, family: tags, turns: ["Tui thích săn mây á, có kiểu nào hay hay gợi ý cho tôi", "Cho xem thêm quán cà phê săn mây đi"], tool_groups: [places], block: "!tags", cards: true}
+  - {id: tags-flat-picked, family: tags, turns: ["Gợi ý gì hay ở Đà Lạt đi", "Mình thích quán cà phê có view đồi, cho xem mấy quán đi"], tool_groups: [places], block: "!tags", cards: true}
+  - {id: tags-not-near, family: tags, turns: ["Cà phê dưới 50k gần chợ Đà Lạt"], tool_groups: [places], tools_lack: [browse_tags], block: "!tags", cards: true}
+  - {id: tags-not-named, family: tags, turns: ["Quán Túi Mơ To mở cửa mấy giờ?"], tools_lack: [browse_tags], block: "!tags"}
+  - {id: tags-not-more, family: tags, turns: ["Gợi ý quán cà phê view đồi thông", "Thêm nữa đi"], tool_groups: [places], tools_lack: [browse_tags], block: "!tags", cards: true}

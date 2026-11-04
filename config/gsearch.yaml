@@ -1,0 +1,11 @@
+# Google search per place (docs/CORPUS.md, gsearch places / search observe).
+# A search basis (google_panel | official_site | web) enters the corpus only after >= 60 hand labels with a Wilson
+# lower bound >= 0.85 (.superpowers/sdd/2026-10-30-fill-web/labels*.jsonl, summary in progress.md and CORPUS.md).
+# enabled_bases: bases aggregate reads at all. Anything not listed is ignored (fail closed).
+# fact_bases: enabled bases served as a FACT (hours kind fact, entry_fee kind fact); the other enabled bases are
+#   estimates: hours UNCERTAIN (kind estimate), fee kind estimate.
+# 2026-10-30: web = 57/60 correct (0.95, Wilson LB 0.863), passes, but blogs/snippets are never the operator's word
+#   -> estimate. google_panel (36 panels, 28 hours facts) and official_site (3 facts) have < 60 labels: off until
+#   the panel crawl (blocked by a captcha) reaches 60.
+enabled_bases: [web]
+fact_bases: []

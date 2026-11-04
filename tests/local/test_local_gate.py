@@ -76,11 +76,12 @@ def test_one_amount_fills_both_ends_and_a_swapped_range_is_ordered():
 def test_a_poi_resolves_by_name_or_stays_unresolved():
     poi = item(subject_kind="poi", subject_text="Hồ Tuyền Lâm", kind="tip", text="mai anh đào nở rộ",
                **{"months": [], "days": [], "hours": "", "weather": ""})
-    claim, _ = gate_claim(poi, SECTION, resolve=lambda name: "fid:1" if "Tuyền Lâm" in name else None)
+    section = "Hồ Tuyền Lâm\n\n" + SECTION  # the venue is named in the heading of the section
+    claim, _ = gate_claim(poi, section, resolve=lambda name: "fid:1" if "Tuyền Lâm" in name else None)
     assert (claim["subject_kind"], claim["subject_id"]) == ("poi", "fid:1")
-    claim, _ = gate_claim(poi, SECTION, resolve=lambda name: None)
+    claim, _ = gate_claim(poi, section, resolve=lambda name: None)
     assert (claim["subject_kind"], claim["subject_id"]) == ("poi_unresolved", None)
-    claim, _ = gate_claim(poi, SECTION)  # no resolver: unknown, never a guessed id
+    claim, _ = gate_claim(poi, section)  # no resolver: unknown, never a guessed id
     assert (claim["subject_kind"], claim["subject_id"]) == ("poi_unresolved", None)
 
 

@@ -1,0 +1,4 @@
+/* Phone and website links of a place (ui/contact.tsx). */
+.tg-contact { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow-wrap: anywhere; }
+.tg-contact svg { flex: none; }
+.tg-contacts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 0.82rem; }

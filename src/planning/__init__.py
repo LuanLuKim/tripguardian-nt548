@@ -6,17 +6,29 @@ python -m planning lodging <decision_output.json> [--weather forecast.json]
 python -m planning serve [--port 8768]
 """
 
-from .build import build_plan, render_text
-from .engine import Engine, TripIncomplete
-from .server import run as run_server
-from .settings import Settings
-from .settings import load as load_settings
-from .variants import build_lodging_variants, build_variants, render_lodging_variants, render_variants
-from .tools import Tools, create_engine
-from .proposal import PlanningProposal, run_proposal
-from .eve import Store as EveStore, eve_runner, run_eve
-from .expert import expert_runner
+from importlib import import_module
 
-__all__ = ["Engine", "TripIncomplete", "Settings", "build_lodging_variants", "build_plan", "build_variants", "load_settings",
-          "PlanningProposal", "Tools", "create_engine", "render_lodging_variants", "render_text", "render_variants", "run_proposal", "run_server",
-           "EveStore", "eve_runner", "run_eve", "expert_runner"]
+_EXPORTS = {
+    "build_plan": ("build", "build_plan"), "render_text": ("build", "render_text"),
+    "Engine": ("engine", "Engine"), "TripIncomplete": ("engine", "TripIncomplete"), "Store": ("session", "Store"),
+    "run_server": ("server", "run"), "Settings": ("settings", "Settings"),
+    "load_settings": ("settings", "load"),
+    "fork_readonly": ("read", "fork_readonly"),
+    **{name: ("variants", name) for name in ("build_lodging_variants", "build_variants", "render_lodging_variants", "render_variants")},
+    "Tools": ("tools", "Tools"), "create_engine": ("tools", "create_engine"),
+    "PlanningProposal": ("proposal", "PlanningProposal"), "run_proposal": ("proposal", "run_proposal"),
+    "EveStore": ("eve", "Store"), "eve_runner": ("eve", "eve_runner"), "run_eve": ("eve", "run_eve"),
+    "expert_runner": ("expert", "expert_runner"),
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name):
+    # Spawned scheduling workers need the clock, not the server's chat / retrieval runtime.
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    module, attribute = _EXPORTS[name]
+    value = getattr(import_module(f".{module}", __name__), attribute)
+    globals()[name] = value
+    return value

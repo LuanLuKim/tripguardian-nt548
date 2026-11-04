@@ -4,7 +4,7 @@ version: 1
 repair_local_additions: 1
 repair_search_limit: 720
 cache_entries: 128
-direction_workers: 3        # overload: fit / travel / cost searched in forked processes at once; 1 = one after another
+direction_workers: 3        # overload searches use spawn; 1 disables nested parallel extend trials
 route_cache_entries: 4096   # Trip.routes: the days and orders of one trip, shared by every subset the overload search tries
 suggestion_workers: 2
 
@@ -76,7 +76,10 @@ meal_durations: {breakfast: 30, lunch: 90, dinner: 90}
 
 # Trip estimates used only when the serving range comes from a category default.
 duration_profiles:
-  activity_ranges: {coffee: [30, 60, 90], eating: [90, 90, 90]}
+  activity_ranges: {coffee: [30, 60, 90], eating: [60, 90, 90]}
+  # Longest a meal or coffee visit may be planned, whatever a review-based estimate says (a review reading "until 10:30" as a
+  # duration made a grill 3.5-8 h): [short, typical, long]. A length the user gave (source: user) is never capped.
+  max_visit: {eating: [90, 120, 150], coffee: [90, 150, 210]}
   activity_groups: [nature, attraction, other, religious, museum, garden_farm, market]
   activity_range: [30, 60, 150]
   deep_activities: [photography]
@@ -186,6 +189,7 @@ realistic:
   suggest_radius_min: 15
   suggest_pool_max: 60
   extend_max_min: 60
+  overload_deadline_s: 15     # total overload search budget, including worker startup; no synchronous retry
   better_order_min: 15
   event_early_min: 15
   # Round 3, 22 corpus cases: create p95 6.777s with exact=5/passes=2; 4.192s with 4/1.

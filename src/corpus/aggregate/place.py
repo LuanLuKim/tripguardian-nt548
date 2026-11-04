@@ -42,7 +42,7 @@ from ..judge import merges
 from ..review import decisions, label_key, label_stats, label_verdicts
 from ..categories import group
 from .details import place_details
-from .estimates import estimates
+from .estimates import enabled_bases, fact_bases, estimates
 
 AGREEMENT_MIN = 0.6
 TREND_MIN = 5  # authors on each side
@@ -233,6 +233,16 @@ def crowd_by_time(popular_times: dict | None) -> dict | None:
     return out
 
 
+def searched_fee(searched: dict) -> dict | None:
+    """What Google search gave for the entry price: {tickets: {adult, child, senior}, evidence} or {free: True,
+    evidence}; None when it gave none. corpus.observe.search writes it (docs/CORPUS.md, gsearch places)."""
+    if searched.get("tickets_vnd") and searched.get("tickets_evidence"):
+        return {"tickets": searched["tickets_vnd"], "evidence": searched["tickets_evidence"]}
+    if searched.get("entry_free"):
+        return {"free": True, "evidence": searched["entry_free"]}
+    return None
+
+
 def merge_hours(maps: dict | None, official: dict | None) -> dict:
     """Official hours win for the days the site names, Maps' for the others; a day both state differently is kept in
     `hours_conflict` (Maps' value) so the record can say the hours are not settled."""
@@ -347,12 +357,24 @@ def aggregate_place(files: list[dict], ont: Ontology, quality: dict | None = Non
     for f in files:
         for p in f.get("proposed", []):
             proposed[p["label"].strip().casefold()].append(p.get("author"))
-    facts, official = {}, {}
+    facts, official, searched = {}, {}, {}
     for f in files:
         for k, v in (f.get("place_facts") or {}).items():
             if v is not None:
-                (official if f.get("source") == "official" else facts).setdefault(k, v)
+                (official if f.get("source") == "official" else searched if f.get("source") == "gsearch"
+                 else facts).setdefault(k, v)
+    on = enabled_bases()  # a search basis that has not passed the label gate is left out
+    searched = {k: v for k, v in searched.items() if not (k.endswith("evidence") or k == "entry_free") or
+                (v or {}).get("basis") in on}
+    for fact, ev in (("hours", "hours_evidence"), ("tickets_vnd", "tickets_evidence")):
+        if ev not in searched:
+            searched.pop(fact, None)
     hours = merge_hours(facts.get("hours"), official.get("hours"))
+    if hours["hours"] is None and searched.get("hours"):  # Google search fills only what Maps and the own site lack
+        ev = searched.get("hours_evidence") or {}
+        hours = {"hours": searched["hours"], "hours_source": ev.get("basis") or "web", "hours_conflict": None,
+                 "hours_as_of": ev.get("dated") or ev.get("at"), "hours_evidence": ev,
+                 "hours_fact": ev.get("basis") in fact_bases()}
     return {
         "place_fid": files[0]["place_fid"],
         "merged": sorted({f["place_fid"] for f in files} - {files[0]["place_fid"]}),
@@ -367,7 +389,7 @@ def aggregate_place(files: list[dict], ont: Ontology, quality: dict | None = Non
                       "popular_times": facts.get("popular_times")},
         "estimates": estimates(identity.get("category"), features, [o for os in by_feature.values() for o in os],
                                (facts.get("tickets") or {}).get("usd"), official.get("tickets_vnd"),
-                               facts.get("time_spent"), identity.get("name")),
+                               facts.get("time_spent"), identity.get("name"), searched_fee(searched)),
         "rating_trend": rating_trend(ratings) if ratings else None,
         "proposed_features": sorted(({"label": k, "count": len(v), "authors": len(set(v))} for k, v in proposed.items()),
                                     key=lambda x: (-x["count"], x["label"])),
@@ -382,6 +404,19 @@ def _poi_claims(root, city: str) -> list[dict]:
     except (OSError, ValueError, AttributeError):
         return []
     return [r for r in rows if isinstance(r, dict)]
+
+
+MAPS_IDENTITY = ("category", "lat", "lng", "address", "phone", "website")
+
+
+def maps_identity(root, fid: str) -> dict:
+    """The identity facts Maps gave this place (data/gmaps/places/<fid_dir>/place.json); {} when not crawled or unreadable.
+    Observation files built before observe copied phone / website carry no such keys: the raw record is the source."""
+    try:
+        raw = json.loads((root / "gmaps" / "places" / safe_name(fid) / "place.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: raw[k] for k in MAPS_IDENTITY if isinstance(raw, dict) and raw.get(k) is not None}
 
 
 def run(city: str, *, output_root=None, root=None, normalization=None) -> dict:
@@ -399,6 +434,10 @@ def run(city: str, *, output_root=None, root=None, normalization=None) -> dict:
         inputs[fid].append(path)
     for fid in files:  # the canonical entry's own files first: its name, place facts and identity win
         files[fid].sort(key=lambda f: f["place_fid"] != fid)
+        for i, f in enumerate(files[fid]):  # what the observation lacks, Maps' own record fills (never overrides)
+            if raw := maps_identity(root, f["place_fid"]):
+                seen = {k: v for k, v in (f.get("place") or {}).items() if v is not None}
+                files[fid][i] = {**f, "place": {**raw, **seen}}
     status = collections.Counter()
     destination = output_root or root
     out = destination / "intel" / "places"

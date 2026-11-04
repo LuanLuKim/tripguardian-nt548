@@ -1,7 +1,7 @@
 """The seven required tabs, built from missing user answers rather than model text."""
 
 from .deck import Option, Tab, exits
-from .readiness import TITLE, missing
+from .readiness import TITLE, boundary_answered, missing
 from .state import Draft, TripState
 
 
@@ -30,11 +30,14 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
             header, question, why = TITLE["trip"], "Bạn đi ngày nào, bắt đầu và kết thúc lúc mấy giờ?", "Để biết thời gian có thể đi chơi."
             inputs = tuple(k for k, ok in (
                 ("dates", answered(state.start_date) and answered(state.days)),
-                ("start", any(answered(f) for f in (state.checkin_at, state.frame.arrive, state.inbound))),
-                ("end", any(answered(f) for f in (state.checkout_at, state.frame.leave, state.outbound)))) if not ok)
-            from datetime import datetime, timedelta
+                ("start", boundary_answered(state, "start")),
+                ("end", boundary_answered(state, "end"))) if not ok)
+            from datetime import timedelta
             from .frame import FrameDefaults, compile_frame
-            frame = compile_frame(state, cfg.arrival_buffer_min, cfg.entry_min, FrameDefaults(**cfg.frame))
+            from .logistics import travel_bound, travel_moments, with_travel_points
+            physical_state = with_travel_points(state)
+            frame = compile_frame(physical_state, cfg.arrival_buffer_min, cfg.entry_min, FrameDefaults(**cfg.frame),
+                                  departure_buffer_min=cfg.departure_buffer_min)
             questions = []
             if "dates" in inputs:
                 # ask only what is missing: a length they gave is repeated back, not asked again
@@ -77,13 +80,17 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
                 because = "Giờ nhận phòng thường gặp" if slot == "start" else "Giờ trả phòng thường gặp"
                 if at:
                     if frame is None:
-                        delta = timedelta(minutes=cfg.arrival_buffer_min + cfg.entry_min)
-                        bound = datetime.fromisoformat(at) + (delta if slot == "start" else -delta)
+                        arrive, leave = travel_moments(physical_state)
+                        point = physical_state.entry_point.value if slot == "start" else physical_state.exit_point.value
+                        margin = cfg.arrival_buffer_min if slot == "start" else cfg.departure_buffer_min
+                        bound = travel_bound(arrive if slot == "start" else leave, margin,
+                                             cfg.entry_min, departing=slot == "end", point=point)
                         clock = bound.strftime("%H:%M")
                     mode = physical.how if physical else transit.value.mode
                     verb = "bay" if mode == "plane" else "xe" if mode == "bus" else "bạn"
                     because = f"vì {verb} {'tới' if slot == 'start' else 'về'} {at[11:].lstrip('0')}"
-                    description = ("Mình chừa giờ xuống xe, lấy đồ và vào thành phố." if slot == "start" else
+                    description = ("Mình chia lịch theo giờ bạn có mặt." if mode == "self" else
+                                   "Mình chừa giờ xuống xe, lấy đồ và vào thành phố." if slot == "start" else
                                    "Mình chừa giờ ra bến, sân bay và làm thủ tục.")
                 elif current.known or clock != default:
                     description = "Mình chia lịch theo giờ bạn xác nhận."
@@ -111,7 +118,8 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
         elif key == "companions":
             from .questions import WHO
             header, question, why = TITLE["companions"], "Ai đi cùng bạn, tổng cộng mấy người?", "Để chọn nơi và tính chi phí cho cả nhóm."
-            inputs = tuple(k for k, f in (("who", state.companions), ("people", state.people)) if not answered(f))
+            inputs = tuple(k for k, ok in (("who", answered(state.companions) or bool(state.companions_other)),
+                                           ("people", answered(state.people))) if not ok)
             if "people" not in inputs:
                 question = f"Nhóm bạn có {state.people.value} người. Ai đi cùng bạn?"
             elif "who" not in inputs:
@@ -171,6 +179,13 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
         elif key == "care":
             from .questions import care_q, c_effort
             header, question, why = TITLE["care"], "Có điều gì về sức khỏe, đi lại hay ăn uống cần lưu ý?", "Để tránh nơi không phù hợp với người trong nhóm."
+            from .diet import question as diet_question
+            if pending := diet_question(state):
+                if state.meta.diet_stalled or "care" in state.meta.declined:
+                    continue
+                out.append(Tab(qid="care", kind="required", header=header, question=pending, why=why,
+                               options=(Option(id="other", label="Trả lời, tự gõ"),)))
+                continue
             multi = True
             chips = {c.id: c.drafts for c in care_q().chips}
             inferred = tuple(s.kind for s in state.signals if not s.handled and (s.source == "inferred" or s.from_companion))

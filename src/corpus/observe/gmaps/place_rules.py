@@ -49,13 +49,27 @@ def parse_popular_times(raw: list[list[str]] | None) -> dict | None:
     return out or None
 
 
-_USD = re.compile(r"(\d+(?:,\d{1,2})?)\s*US\$")
+_USD = re.compile(r"^(\d+(?:,\d{1,2})?)\s*US\$$")
+_GLYPH = re.compile(r"[\ue000-\uf8ff]")  # icon-font glyphs of the page
+OFFICIAL = "Trang web chính thức"
+FREE = "Miễn phí"
 
 
 def parse_tickets(raw: str | None) -> dict | None:
-    """Maps' ticket box ("Vé vào cửa … 5,78 US$ …"): the first price, in US$ as Maps shows it."""
-    m = _USD.search(raw or "")
-    return {"usd": float(m.group(1).replace(",", "."))} if m else None
+    """Maps' ticket box ("Vé vào cửa … Trang web chính thức / 5,78 US$ …"): the price on the row marked "Trang web
+    chính thức" (the place's own admission feed), in US$ as Maps shows it, or free when that row says "Miễn phí".
+    Other rows are resellers (tours, combos, another product): never the entry price (the first US$ of the box was
+    taken before, which gave a free pagoda a reseller's 4,94 US$). None when the box has no official row."""
+    lines = [ln for ln in (_GLYPH.sub("", ln).strip() for ln in (raw or "").split("\n")) if ln]
+    for i, ln in enumerate(lines[:-1]):
+        if not ln.endswith(OFFICIAL):  # the seller's name may share the line ("Name \ue8e8Trang web chính thức")
+            continue
+        price = lines[i + 1]
+        if price == FREE:
+            return {"free": True}
+        m = _USD.match(price)
+        return {"usd": float(m.group(1).replace(",", "."))} if m else None
+    return None
 
 
 def parse_price(raw: str | None) -> dict | None:

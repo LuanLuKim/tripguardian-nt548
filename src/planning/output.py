@@ -7,9 +7,11 @@ the chosen lodging's price). Everything else here is reshaping what build.py / v
 import live
 from trip import nights
 
-from .build import chunk_view, flag_warnings, restricted_warnings, shared_output
+from . import pets
+from .build import chunk_view, flag_warnings, itinerary, restricted_warnings, shared_output
 from .details import plan_notes
 from .settings import fmt
+from .safety import visit_warnings
 
 
 def route_of_day(day, result, coords: dict, live_cfg, mobility, route_fn=None) -> dict | None:
@@ -56,6 +58,11 @@ def build(trip, variants: list[dict], chosen: dict, chosen_results: list, decisi
     slept = nights(decision["trip_context"]["context"])
     lodging = chosen.get("lodging") or {}
     shared = shared_output(trip)
+    pet_places = {i.place_id: cx.places[i.place_id] for cx, result in zip(trip.ctxs, chosen_results)
+                  for i in result.items if i.kind == 'visit'}
+    warnings = [w for w in trip.warnings if w.get('code') != 'pets_unknown'
+                and w.get('feature') != 'pets']
+    warnings += pets.warnings(pet_places.values(), pets.filters(decision['trip_context']))
     # a variant already carries its notes (variants.py); a chosen dict without them is read here
     notes = ({"warnings": [], "checklist": chosen["checklist"]} if "checklist" in chosen else
              plan_notes(list(trip.ctxs)[: len(chosen_results)], chosen_results, decision, trip.weather, trip.by_place))
@@ -64,7 +71,7 @@ def build(trip, variants: list[dict], chosen: dict, chosen_results: list, decisi
         "variants": [{"id": v["id"], "objective": v["objective"], "label": v["label"], "score": v["score"]}
                      for v in variants],
         "chosen": chosen["id"],
-        "itinerary": chosen["itinerary"],
+        "itinerary": itinerary(days, chosen_results, trip.ctxs),
         **(chunk_view(chosen["itinerary"], trip.cfg.chunk_days) if len(days) > trip.cfg.chunk_days else {}),
         "route": [route_of_day(d, r, coords, live_cfg, mobility, route_fn) for d, r in zip(days, chosen_results)],
         "time_budget": time_budget(days, slept),
@@ -73,8 +80,9 @@ def build(trip, variants: list[dict], chosen: dict, chosen_results: list, decisi
         "travel_load": chosen["travel_load"],
         "reasons": shared["reasons"],
         "tradeoffs": shared["tradeoffs"],
-        "warnings": (trip.warnings + [w for w in chosen["warnings"] if w.get("code") != "restricted_place"]
+        "warnings": (warnings + [w for w in chosen["warnings"] if w.get("code") not in {'restricted_place', 'pets_unknown', 'safety_unknown'}]
                      + restricted_warnings(list(trip.ctxs)[: len(chosen_results)], chosen_results)
+                     + visit_warnings(list(trip.ctxs)[: len(chosen_results)], chosen_results, pets.filters(decision['trip_context']))
                      + flag_warnings(decision) + notes["warnings"]),
         "checklist": notes["checklist"],
         "uncertainty": shared["uncertainty"],

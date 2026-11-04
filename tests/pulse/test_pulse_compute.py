@@ -126,3 +126,44 @@ def test_event_named_only_by_the_city_is_dropped():
 def test_short_season_subject_gets_no_video():
     s = sig(claims=[claim("season", "hồng", [10])], videos={"p1": [video(1, "a", "2026-10-27", "màu hồng đẹp")]})
     assert compute.seasons(s, CFG, NOW, city_name="Đà Lạt")[0]["signals"]["latest_video"] is None
+
+
+# ---- trending: one 0-100 score over every signal ----
+
+def place(name, group="cafe", direction=None):
+    return {"name": name, "category": "x", "group": group, "area": "a1", "rating_direction": direction}
+
+
+def clips(prefix, n, day="2026-10-20"):
+    return [video(f"{prefix}{i}", f"{prefix}-a{i}", day) for i in range(n)]
+
+
+def test_trending_ranks_by_score_not_by_source_order():
+    s = sig(places={"hot": place("Hot"), "warm": place("Warm"), "cold": place("Cold")},
+            videos={"hot": clips("h", 8, "2026-10-27"), "warm": clips("w", 6), "cold": clips("c", 2)})
+    items = compute.trending(s, CFG, NOW)
+    assert [i["subject"]["id"] for i in items] == ["hot", "warm"]  # "cold": 2 authors is not a crowd
+    assert items[0]["signals"]["score"] > items[1]["signals"]["score"] >= CFG["trending"]["min_score"]
+    assert items[0]["signals"]["tiktok_recent_authors"] == 8
+
+
+def test_trending_momentum_lifts_a_place_with_the_same_volume():
+    s = sig(places={"new": place("New"), "old": place("Old")}, videos={"new": clips("n", 6, "2026-10-28"), "old": clips("o", 6, "2026-10-05")})
+    ids = [i["subject"]["id"] for i in compute.trending(s, CFG, NOW)]
+    assert ids == ["new", "old"]
+
+
+def test_trending_reviews_count_against_the_places_own_history():
+    revs = lambda n: [review("2026-10-2%d" % (i % 9), f"r{i}") for i in range(n)]
+    s = sig(places={"big": place("Big", direction="rising"), "small": place("Small", direction="rising")},
+            reviews={"big": revs(30), "small": revs(30)}, review_totals={"big": 30000, "small": 300})
+    items = compute.trending(s, CFG, NOW)
+    assert [i["subject"]["id"] for i in items] == ["small"]  # 30 of 30000 is a busy month of a busy place, 30 of 300 is a jump
+
+
+def test_trending_never_ranks_a_place_to_stay_or_a_place_without_evidence():
+    s = sig(places={"inn": place("Inn", group="stay")}, videos={"inn": clips("i", 8, "2026-10-27")})
+    assert compute.trending(s, CFG, NOW) == []
+    assert compute.trending(sig(), CFG, NOW) == []
+    for i in compute.trending(sig(places={"p1": place("Quán Một")}, videos={"p1": clips("p", 5)}), CFG, NOW):
+        assert i["evidence"]  # an item without evidence is never made

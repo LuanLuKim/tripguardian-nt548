@@ -1,11 +1,26 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { useSnapshot } from '../../../data/store'
 import { info } from '../../lib'
-import type { ChatPlaces } from '../../tu/types'
+import type { ChatPlace, ChatPlaces } from '../../tu/types'
 import { CardImg } from '../../ui/common'
 import { HeartFill, Icon } from '../../ui/icons'
 import { openPlace } from '../../ui/PlaceSheet'
 import { StageFrame, StageRing, stageKeys, useStage, type StageCard } from './Ask'
+
+// One place on the photo stage: the front card opens the place sheet, the round button is Thích (a want, no model call).
+export function placeCard(c: ChatPlace, on: boolean): StageCard {
+  const p = info(c.id)
+  const name = c.name ?? p?.name ?? 'Nơi này'
+  const rating = c.rating ?? p?.rating ?? null
+  const kind = [c.category ?? p?.category, rating ? `★ ${rating.toFixed(1)}` : null].filter(Boolean).join(' · ')
+  return { id: c.id, photo: c.photos[0] ?? p?.photos[0]?.src ?? null, alt: name, title: name, on,
+    line: <>
+      <small><Icon name="pin" size={13} />{kind || 'Nơi thật'}</small>
+      <small>{c.hours_today ? `Hôm nay ${c.hours_today}` : 'Chưa có giờ mở'}</small>
+    </>,
+    pick: on ? <HeartFill size={18} /> : <Icon name="heart" size={18} strokeWidth={2.2} />,
+    pickLabel: on ? `Bỏ thích ${name}` : `Thích ${name}` }
+}
 
 // The places the assistant found (src/trip/api/engine.py kind places), on the same photo stage as a photo question:
 // the round button is Thích (a want, no model call), the front card opens the place sheet. A new reply opens the
@@ -22,19 +37,7 @@ export function PlaceStage({ row, busy, autoOpen, onLike }: {
   const like = (i: number) => onLike(places[i].id, !places[i].liked)
   const keys = (e: KeyboardEvent<HTMLDivElement>) => stageKeys(e, panel, places.length, setAt, () => close(),
     key => (key === 'Enter' ? view(at) : like(at)))
-  const cards: StageCard[] = places.map(c => {
-    const p = info(c.id)
-    const name = c.name ?? p?.name ?? 'Nơi này'
-    const rating = c.rating ?? p?.rating ?? null
-    const kind = [c.category ?? p?.category, rating ? `★ ${rating.toFixed(1)}` : null].filter(Boolean).join(' · ')
-    return { id: c.id, photo: c.photos[0] ?? p?.photos[0]?.src ?? null, alt: name, title: name, on: c.liked,
-      line: <>
-        <small><Icon name="pin" size={13} />{kind || 'Nơi thật'}</small>
-        <small>{c.hours_today ? `Hôm nay ${c.hours_today}` : 'Chưa có giờ mở'}</small>
-      </>,
-      pick: c.liked ? <HeartFill size={18} /> : <Icon name="heart" size={18} strokeWidth={2.2} />,
-      pickLabel: c.liked ? `Bỏ thích ${name}` : `Thích ${name}` }
-  })
+  const cards: StageCard[] = places.map(c => placeCard(c, c.liked))
   if (!places.length) return null
   const title = row.why || `${places.length} nơi từ dữ liệu`
   return <>

@@ -263,7 +263,9 @@ def test_a_variant_whose_later_day_opens_early_for_a_sunrise_place_confirms():
     e = Engine(recs + LODGING, cfg=CFG, live_cfg=FakeLive(), store=Store(None), geocode_fn=no_geocode, matrix_fn=fake_matrix,
                sun_fn=lambda *a: (6 * 60, 17 * 60 + 30), route_fn=fake_route,
                background=False)
-    out = e.create(decision([r["id"] for r in recs]), None)
+    d = decision([r["id"] for r in recs])
+    d["trip_context"]["soft_weights"] = [{"feature": "cloud_hunting", "value": "present", "weight": 1}]
+    out = e.create(d, None)
     v = out["view"]["variants"][0]
     assert any(w["code"] == "early_start" for w in v["warnings"])
     sid = out["id"]

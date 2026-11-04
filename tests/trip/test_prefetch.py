@@ -103,3 +103,62 @@ def test_covers_needs_data_for_every_group():
     assert not covers(Route({"weather"}, []), {"thoi_tiet": [{"error": "weather unavailable"}]})
     assert covers(Route({"distance"}, ["center", "0xa:0x1"]), {"khoang_cach": {"minutes": 9}})
     assert not covers(Route({"distance"}, ["center", "0xa:0x1"]), {"khoang_cach": {"error": "distance unavailable"}})
+
+
+def test_route_a_service_ask_prepares_services_not_places(cfg):
+    r = route("cây xăng trên đường đi Tà Nung ở đâu", [], cfg, ask=lambda *a: {})
+    assert "services" in r.groups and "places" not in r.groups
+    both = route("gần chợ có quán cà phê nào và ATM", [], cfg, ask=lambda *a: {})
+    assert {"services", "places"} <= both.groups
+
+
+def test_prepare_runs_find_services_and_covers_counts_it(turn_tools, monkeypatch):
+    from trip.agent import services_tool
+    from trip.agent.prefetch import covers
+    rows = [{"fid": "p1", "name": "Petrolimex 61", "lat": 11.95, "lng": 108.44, "group": "utilities", "words": ["cây xăng"],
+             "category": "Trạm xăng", "fetched_at": "2026-10-29T10:00:00+00:00"}]
+    monkeypatch.setattr(services_tool, "service_places", lambda city, group=None: [dict(r) for r in rows])
+    r = Route({"services"}, ["center"], {}, 0.0)
+    data = prepare(r, "cây xăng gần chợ Đà Lạt", TripState(), turn_tools(), date(2026, 10, 28), 1.0)
+    assert data["dich_vu"]["rows"][0]["name"] == "Petrolimex 61" and covers(r, data)
+    assert not covers(r, {})
+
+
+def test_every_requested_service_is_prepared_and_required_for_coverage(cfg):
+    from trip.agent.prefetch import covers
+
+    class Tools:
+        knowledge = None
+
+        def __init__(self):
+            self.calls = []
+
+        def run(self, name, args):
+            self.calls.append((name, args))
+            return {"rows": [{"name": args["kind"], "kind": args["kind"]}], "found": 1}
+
+    text = "ATM và cây xăng ở đâu?"
+    r = route(text, [], cfg, ask=lambda *a: {})
+    tools = Tools()
+    data = prepare(r, text, TripState(), tools, date(2026, 11, 3), 1)
+    assert {args["kind"] for name, args in tools.calls if name == "find_services"} == {"ATM", "cây xăng"}
+    assert {row["kind"] for row in data["dich_vu"]["rows"]} == {"ATM", "cây xăng"}
+    assert covers(r, data)
+    assert not covers(r, {"dich_vu": {"rows": [{"kind": "ATM"}], "by_kind": {"ATM": {"rows": []}}}})
+    data["dich_vu"]["by_kind"]["cây xăng"] = {"error": "unavailable"}
+    assert not covers(r, data)
+
+
+def test_the_start_day_weather_runs_while_clef_is_asked(turn_tools_slow_weather, cfg):
+    """N8 / R6: Clef 0.5 s and the weather 0.6 s used to follow each other (1.1 s before the agent's call)."""
+    from trip.agent.prefetch import start_weather
+    t = turn_tools_slow_weather  # weather sleeps 0.6 s
+    state = apply(TripState(), Update(field="start_date", op="set", value=date(2026, 10, 30), source="user",
+                                      confidence="high", evidence=Evidence(turn=1, quote="30/10")))
+    started = time.monotonic()
+    early = start_weather(state, t)
+    r = route("mình đi 30/10", [], cfg, ask=lambda *a: time.sleep(0.5) or {})
+    data = prepare(r, "mình đi 30/10", state, t, date(2026, 10, 28), 3.0, early)
+    assert [w["date"] for w in data["thoi_tiet"]] == ["2026-10-30"]
+    assert time.monotonic() - started < 0.95  # 0.6 s, not 0.5 + 0.6
+    assert start_weather(TripState(), t) == {}

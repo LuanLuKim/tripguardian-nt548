@@ -50,6 +50,24 @@ def _key(query: str) -> str:
     return hashlib.sha1(norm.encode("utf-8")).hexdigest()[:16]
 
 
+def key(query: str) -> str:
+    """Public name of the query key results.jsonl is indexed by."""
+    return _key(query)
+
+
+def forbidden(html: str) -> bool:
+    """Google's bare 403 page: a short block (no captcha to solve), not a search with no result."""
+    return "Error 403 (Forbidden)" in html[:2000]
+
+
+def _blocked_record(root: Path, rec: dict) -> bool:
+    """An empty record whose saved page is the 403 page (written before fetch knew it): as good as never asked."""
+    if rec.get("n") or not rec.get("raw"):
+        return False
+    raw = root / rec["raw"]
+    return raw.exists() and raw.stat().st_size < 5000 and forbidden(raw.read_text(encoding="utf-8", errors="replace"))
+
+
 def load(city: str, max_age_days: float = MAX_AGE_DAYS) -> dict[tuple[str, int], dict]:
     """(query key, page) -> the newest record younger than max_age_days."""
     path, out = city_dir(city) / "results.jsonl", {}
@@ -59,7 +77,7 @@ def load(city: str, max_age_days: float = MAX_AGE_DAYS) -> dict[tuple[str, int],
     for line in path.read_text(encoding="utf-8").splitlines():
         try:
             rec = json.loads(line)
-            if datetime.fromisoformat(rec["at"]) >= oldest:
+            if datetime.fromisoformat(rec["at"]) >= oldest and not _blocked_record(city_dir(city), rec):
                 out[(_key(rec["query"]), int(rec["page"]))] = rec
         except (ValueError, KeyError, TypeError):
             continue
@@ -88,6 +106,8 @@ async def fetch(ctx, query: str, page_no: int, wait=wait_for_person) -> tuple[di
         serp = parse(html)
         if serp.captcha:  # still the block page after the wait: nothing to record
             raise LoginRequired(SOURCE)
+        if forbidden(html):  # nothing to record either: the caller sees the query as unread and may ask again later
+            raise RuntimeError("google 403")
         return {"query": query, "page": page_no, "url": url, "n": len(serp.results),
                 "results": [{"rank": r.rank, "url": r.url, "title": r.title, "snippet": r.snippet}
                             for r in serp.results],

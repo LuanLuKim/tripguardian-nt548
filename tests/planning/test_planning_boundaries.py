@@ -49,10 +49,10 @@ def test_no_module_names_a_directory_only_the_corpus_writes(path):
 
 def test_the_public_api_is_the_plan_builder_and_its_settings():
     import planning
-    assert set(planning.__all__) == {"Engine", "TripIncomplete", "Settings", "build_lodging_variants", "build_plan", "build_variants",
+    assert set(planning.__all__) == {"Engine", "TripIncomplete", "Settings", "Store", "build_lodging_variants", "build_plan", "build_variants",
                                      "load_settings", "render_lodging_variants", "render_text", "render_variants",
                                      "run_server", "PlanningProposal", "Tools", "create_engine", "run_proposal",
-                                     "EveStore", "eve_runner", "run_eve", "expert_runner"}
+                                     "EveStore", "eve_runner", "run_eve", "expert_runner", "fork_readonly"}
     for name in planning.__all__:
         assert hasattr(planning, name)
 

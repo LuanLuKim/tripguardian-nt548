@@ -5,7 +5,7 @@ from planning.schedule import _SimulationCache, simulate
 from planning.validate import validate
 
 
-def test_unreachable_breakfast_venue_takes_lunch_and_preserves_free_breakfast():
+def test_unreachable_breakfast_venue_reports_its_window_and_preserves_free_breakfast():
     venue = rec('food', *CENTRE, usable=('meal',), group='restaurant', name='Bánh căn',
                 hours=all_days('06:30', '16:00'), visit=(30, 30, 30))
     venue['operation']['visit_minutes']['source'] = 'reviews'
@@ -14,12 +14,16 @@ def test_unreachable_breakfast_venue_takes_lunch_and_preserves_free_breakfast():
                  start_node='h', end_node='h', extra_nodes=['h'])
     cx = replace(cx, home='h', require_meals=True, compact_estimates=True)
     cache = _SimulationCache(['food', 'sight'], cx)
-    # The same meal order needs different slots when another visit precedes it.
-    simulate(['food', 'sight'], cx, _cache=cache)
+    # A preceding visit can make breakfast unreachable; the cache must not reuse the morning claim.
+    morning = simulate(['food', 'sight'], cx, _cache=cache)
+    assert not validate([cx], [morning], [], set(), None, None)
+    assert next(i.start for i in morning.items if i.kind == 'visit' and i.place_id == 'food') == 500
     result = simulate(['sight', 'food'], cx, _cache=cache)
-    assert not validate([cx], [result], [], set(), None, None)
+    assert any(v.kind == 'meal_window' and v.place_id == 'food'
+               for v in validate([cx], [result], [], set(), None, None))
     breakfast = next(i for i in result.items if i.kind == 'meal_free' and i.name == 'breakfast')
     assert (breakfast.start, breakfast.end) == (480, 510)
     meal = next(i for i in result.items if i.kind == 'visit' and i.place_id == 'food')
-    assert 660 <= meal.start <= 810
+    assert not (390 <= meal.start <= 540)
+    assert any(v.kind == 'meal_window' for v in result.violations)
     assert result == simulate(['sight', 'food'], cx)

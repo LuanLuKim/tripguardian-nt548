@@ -155,6 +155,7 @@ export interface Cover {
   w: number
   h: number
   url?: string
+  year?: number // a card photo past the 3-year cap (outdoor scene of a sight, up to 6 years): the UI says "Ảnh <year>"
   scene?: string // Place Decision card photos: the scene the photo shows (exterior, interior, view, food, ...)
 }
 let covers: Record<string, Cover[]> = {}
@@ -171,12 +172,19 @@ export function setScenePhotos(id: string, photos: Cover[] | undefined) {
 // (unlabelled covers, clip frames and doubtful labels are not); if the file is missing nothing old is shown (fail closed).
 let allow: Record<string, Set<string>> = {}
 const permitted = (id: string, c: Cover) => c.kind === 'gmaps' && !!allow[id]?.has(c.src.slice(c.src.lastIndexOf('/') + 1))
+// covers.json is older than the person-free list: a place whose picked cover is not listed there still has listed photos of
+// its own (the card path brings them as scene photos, the other screens do not). They stand in for the cover, so a place is
+// without a picture only when it has no photo the rule allows. The size is not in the list: the file is shown cover-fit.
+const FROM_LIST = 4
+const fromList = (id: string): Cover[] => [...(allow[id] ?? [])].slice(0, FROM_LIST)
+  .map((f) => ({ src: `/media/gmaps/${id.replace(/:/g, '_')}/photos/${f}`, credit: 'Google Maps', kind: 'gmaps', w: 768, h: 768 }))
 export function coversOf(id: string): Cover[] {
   const all = covers[id] ?? NONE
   const scene = scenePhotos.get(id)
   const hit = merged.get(id)
   if (hit && hit.scene === scene && hit.rest === all) return hit.out
-  const rest = all.filter((c) => permitted(id, c))
+  const kept = all.filter((c) => permitted(id, c))
+  const rest = kept.length ? kept : fromList(id)
   const out = scene ? [...scene, ...rest.filter((c) => !scene.some((s) => s.src === c.src))] : rest.length === all.length ? all : rest
   merged.set(id, { scene, rest: all, out })
   return out

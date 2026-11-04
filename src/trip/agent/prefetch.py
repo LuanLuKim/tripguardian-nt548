@@ -20,6 +20,7 @@ from ..domain.text import fold
 from ..infrastructure import clef
 from ..infrastructure.catalog import Catalog
 from ..infrastructure.settings import Settings
+from .services_tool import kind_in, kinds_in
 
 # One yes / no question per tool group (wording measured in logs/clef_prefetch_bench.py GROUPS2)
 GROUPS = {
@@ -36,6 +37,8 @@ DETAIL_WORDS = re.compile(r"mấy giờ|mở cửa|giờ mở|vé|giá|bao nhiê
 WEATHER_WORDS = re.compile(r"mưa|trời|thời tiết|lạnh|nắng")
 LIST_WORDS = re.compile(r"nào|gợi ý|tìm|ở đâu|chỗ nào|quán gì|ăn gì|đi đâu")
 ASKS_LIST = re.compile(r"nào|gợi ý|tìm|ở đâu")
+# a message that names a place to eat / drink / see as well as a service keeps the places list
+PLACE_WORDS = re.compile(r"quán|cà phê|cafe|nhà hàng|ăn |uống|homestay|khách sạn|check.?in|tham quan|điểm|chơi|món")
 CENTER_WORDS = re.compile(r"\bchợ\b|trung tâm")
 # trends (Nhịp Đà Lạt) is asked by words alone: no extra Clef question, no cost; one kind when the words name one
 TREND_WORDS = re.compile(r"đang hot|\bhot\b|xu hướng|dạo này|gần đây|sự kiện|lễ hội|festival|vào mùa|đang mùa|mùa hoa|mùa gì|"
@@ -74,6 +77,8 @@ def candidates(text: str, catalog: Catalog, k: int = 6) -> list[tuple[str, str]]
     padded, words = f" {m} ", set(m.split())
     hits = []
     for name, distinct, voices, p in _aliases(catalog):
+        if not distinct:
+            continue  # a city/category-only name is context, not a named POI
         if f" {name} " in padded:
             hits.append((2, len(name), voices, p))
         elif distinct and distinct <= words and p.category_group != "stay":
@@ -114,6 +119,7 @@ class Route:
     places: list[str]  # ids the message means, in its order; "center" for "chợ / trung tâm"
     probs: dict[str, float] = field(default_factory=dict)
     clef_s: float = 0.0
+    services: list[str] = field(default_factory=list)
 
 
 def route(text: str, cands: list[tuple[str, str]], cfg: Settings, ask=clef.ask, today: date | None = None) -> Route:
@@ -147,11 +153,15 @@ def route(text: str, cands: list[tuple[str, str]], cfg: Settings, ask=clef.ask, 
         groups.add("places")
     if "detail" in groups and places and not LIST_WORDS.search(m):
         groups.discard("places")  # a question about one named place needs no list
+    if kind_in(text):  # ATM, cây xăng, thuê xe...: find_services answers, find_places has no such place
+        groups.add("services")
+        if not PLACE_WORDS.search(m):
+            groups.discard("places")
     if TREND_WORDS.search(m):
         groups.add("trends")
     if "distance" in groups and len(places) < 2 and CENTER_WORDS.search(m) and CENTER not in places:
         places.append(CENTER)
-    return Route(groups, places, probs, clef_s)
+    return Route(groups, places, probs, clef_s, kinds_in(text))
 
 
 def covers(route: Route, data: dict | None) -> bool:
@@ -166,6 +176,9 @@ def covers(route: Route, data: dict | None) -> bool:
         "weather": lambda: ok(data.get("thoi_tiet")),
         "distance": lambda: ok([data["khoang_cach"]] if "khoang_cach" in data else []),
         "trends": lambda: bool((data.get("xu_huong") or {}).get("items")) and "error" not in data["xu_huong"],
+        "services": lambda: "dich_vu" in data and "error" not in data["dich_vu"]
+        and all(k in data["dich_vu"].get("by_kind", {}) and "error" not in data["dich_vu"]["by_kind"][k]
+                for k in route.services),
     }
     return bool(route.groups) and all(g in need and need[g]() for g in route.groups)
 
@@ -188,7 +201,19 @@ def asked_day(text: str, today: date) -> date | None:
                  if r.field == "start_date"), None)
 
 
-def prepare(route: Route, text: str, state: TripState, tools, today: date, wait_s: float) -> dict:
+def start_weather(state: TripState, tools) -> dict:
+    """The trip's start day's weather, started now: it needs no answer from Clef, so it runs while Clef is asked and
+    `prepare` takes the running call instead of starting it again. {} when the trip has no start day."""
+    if not state.start_date.known:
+        return {}
+    args = {"date": state.start_date.value.isoformat()}
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="prefetch-early")
+    future = pool.submit(tools.run, "weather", args)
+    pool.shutdown(wait=False)
+    return {("weather", state.start_date.value.isoformat()): future}
+
+
+def prepare(route: Route, text: str, state: TripState, tools, today: date, wait_s: float, early: dict | None = None) -> dict:
     """Run the read tools the route needs at once through `tools` (TurnTools), wait at most `wait_s`, and return what
     is ready as the agent's data: {"tim_noi", "chi_tiet", "thoi_tiet", "khoang_cach", "xu_huong"} (only keys with data). A tool
     still running is left out here and lands in the turn's cache when it ends. The trip's start day's weather is
@@ -209,21 +234,31 @@ def prepare(route: Route, text: str, state: TripState, tools, today: date, wait_
     jobs += [("thoi_tiet", "weather", {"date": d.isoformat()}) for d in days]
     if "distance" in route.groups and len(route.places) >= 2:
         jobs.append(("khoang_cach", "distance", {"a": route.places[0], "b": route.places[1]}))
+    if "services" in route.groups:
+        near = route.places[-1] if route.places else (CENTER if CENTER_WORDS.search(vnorm(text)) else None)
+        jobs += [("dich_vu", "find_services", {"kind": kind, **({"near_place": near} if near else {})})
+                 for kind in route.services or kinds_in(text)]
     if "trends" in route.groups:
         kinds = [k for k, rx in TREND_KINDS if rx.search(vnorm(text))]
         jobs.append(("xu_huong", "trends", {"kind": kinds[0]} if len(kinds) == 1 else {}))
     if not jobs:
         return {}
     pool = ThreadPoolExecutor(max_workers=min(8, len(jobs)), thread_name_prefix="prefetch")
-    futures = [(key, pool.submit(tools.run, name, args)) for key, name, args in jobs]
+    early = early or {}
+    futures = [(key, early.get((name, args.get("date"))) or pool.submit(tools.run, name, args)) for key, name, args in jobs]
     wait([f for _, f in futures], timeout=wait_s)
     pool.shutdown(wait=False)  # a tool still running finishes into tools.cache
     data: dict = {}
-    for key, f in futures:
+    for (_, _, args), (key, f) in zip(jobs, futures):
         if not f.done() or f.exception() is not None:
             continue
         result = f.result()
-        if key == "tim_noi":  # copies: km below must not change the cached result
+        if key == "dich_vu":
+            merged = data.setdefault(key, {**result, "rows": [], "found": 0, "by_kind": {}})
+            merged["by_kind"][args["kind"]] = result
+            merged["rows"] += result.get("rows") or []
+            merged["found"] += result.get("found", 0)
+        elif key == "tim_noi":  # copies: km below must not change the cached result
             data[key] = [dict(x) for x in result.get("places") or []] if "error" not in result else [result]
         elif key == "chi_tiet":
             data.setdefault(key, []).append(result.get("place") or result)

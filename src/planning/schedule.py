@@ -41,6 +41,8 @@ class DayCtx:
     drop_bags: bool = False                  # day one reaches the city before check-in: stop at the lodging first
     compact_estimates: bool = False          # recover earlier estimate ranges when laying out a full frame
     meal_cuts: dict | None = None            # replay-local free-meal minutes, never a change to Settings
+    diet_days: tuple = ()                    # mandatory eating requirements for this ISO date only
+    pet: bool = False
 
     @property
     def wet(self) -> float | None:
@@ -85,7 +87,20 @@ def pin_window(place: Place, ctx: DayCtx, *, _intervals: list[tuple[int, int]] |
         in_day = [wins[0]]
     lo, hi = (in_day or hosted or [(0, DAY_MINUTES)])[0]
     last = official_last_entry(place)  # the place's own site: nobody is let in after it
-    return (lo, hi if last is None else min(hi, last))
+    hi = hi if last is None else min(hi, last)
+    if place.start_time is not None:
+        return max(lo, place.start_time), min(hi, place.start_time)
+    return lo, hi
+
+
+def pin_hostable(place: Place, ctx: DayCtx) -> bool:
+    """The day can hold the place at its time of day at all: its window, the place's hours and its shortest visit at
+    this pace (a dawn pin pulls the day's start, so it always can). A day that cannot gives the wish up and says so."""
+    if not place.pins or any(ctx.cfg.pins[f]["anchor"] == "sunrise" for f in place.pins):
+        return True
+    lo, hi = pin_window(place, ctx)
+    need = min(place.visit[ctx.cfg.visit_key[ctx.pace]], place.visit["short"])
+    return any(max(ctx.day.start, o, lo) <= min(hi, c - need, ctx.day.end - need) for o, c in intervals_for(place, ctx))
 
 
 def dawn_swapped(place: Place, ctx: DayCtx) -> bool:
@@ -195,7 +210,7 @@ class _SimulationCache:
 
 
 def _role_fits(place: Place, slot: str) -> bool:
-    """A breakfast place takes breakfast or lunch, a hot-pot place lunch or dinner, a night market dinner; a place with
+    """A breakfast place takes breakfast, a hot-pot place lunch or dinner, a night market dinner; a place with
     no role fits any slot."""
     return place.meal_kind not in ROLE_SLOTS or slot in ROLE_SLOTS[place.meal_kind]
 
@@ -549,44 +564,44 @@ def simulate(order: list[str], ctx: DayCtx, shrink: bool = True, *, _cache: _Sim
         best = earliest if earliest.key < preferred.key else preferred
         # An unallocated meal venue already failed the shortest-visit/road lower bound in _meal_slots.
         # Minute recovery cannot give that order a meal slot; a different order/day or soft pin must change.
-        if best.violations and shrink and ctx.compact_estimates and not any(
+        if preferred.violations and shrink and ctx.compact_estimates and not any(
                 v.kind == "meal_window" for v in best.violations):
-            cuts = {}
-            while True:
-                try:
-                    compact = _simulate(order, ctx, shrink, False, _cache, compact=True, cuts=cuts)
-                    break
-                except _Reclock:
-                    continue
-                except _SlackDay:
-                    compact = best
-                    break
-            # A visit held to its time of day shrinks only as far as pin_duration_floor lets it (the time of day
-            # wins over pace); any other visit cut short while the day has idle time means a stop should move.
-            shortened = any(i.kind == "visit" and i.end - i.start < visit_minutes(ctx.places[i.place_id], ctx.cfg, ctx.pace, ctx.prefs)
-                            and not ctx.places[i.place_id].pins for i in compact.items)
-            idle = any(i.kind in {"free", "wait"} and i.end - i.start >= ctx.cfg.realistic["fill_min_gap"]
-                       for i in compact.items) or any(b.start - a.end >= ctx.cfg.realistic["fill_min_gap"]
-                                                    for a, b in zip(compact.items, compact.items[1:]))
-            if compact.key < best.key and not (shortened and idle):
-                if cuts and not compact.violations and compact.end < ctx.day.end:
-                    # A minute cut can also remove a pace rest. Give back that surplus instead of keeping an
-                    # unnecessarily shortened visit; replay without recovery so a new deficit rejects the trial.
-                    for cut_key in reversed(cuts):
-                        low, high = 0, cuts[cut_key]
-                        kept = compact
-                        while low < high:
-                            give = (low + high + 1) // 2
-                            trial_cuts = {**cuts, cut_key: cuts[cut_key] - give}
-                            trial = _simulate(order, ctx, shrink, False, _cache, compact=True,
-                                              cuts=trial_cuts, recovery=False)
-                            if not trial.violations and not any(n.startswith("meal_missed") for n in trial.notes):
-                                low, kept = give, trial
-                            else:
-                                high = give - 1
-                        cuts[cut_key] -= low
-                        compact = kept
-                best = compact
+            for prefer_time in ((True, False) if changed else (False,)):
+                cuts = {}
+                while True:
+                    try:
+                        compact = _simulate(order, ctx, shrink, prefer_time, _cache, compact=True, cuts=cuts)
+                        break
+                    except _Reclock:
+                        continue
+                    except _SlackDay:
+                        compact = best
+                        break
+                # A meal or a timed pin may shrink within its window; other visits cannot shrink beside idle time.
+                shortened = any(i.kind == "visit" and i.end - i.start < visit_minutes(ctx.places[i.place_id], ctx.cfg, ctx.pace, ctx.prefs)
+                                and not ctx.places[i.place_id].pins and not takes_meal_slot(ctx.places[i.place_id])
+                                for i in compact.items)
+                idle = any(i.kind in {"free", "wait"} and i.end - i.start >= ctx.cfg.realistic["fill_min_gap"]
+                           for i in compact.items) or any(b.start - a.end >= ctx.cfg.realistic["fill_min_gap"]
+                                                        for a, b in zip(compact.items, compact.items[1:]))
+                if compact.key < best.key and not (shortened and idle):
+                    if cuts and not compact.violations and compact.end < ctx.day.end:
+                        # Give surplus minutes back without crossing a deadline on replay.
+                        for cut_key in reversed(cuts):
+                            low, high = 0, cuts[cut_key]
+                            kept = compact
+                            while low < high:
+                                give = (low + high + 1) // 2
+                                trial_cuts = {**cuts, cut_key: cuts[cut_key] - give}
+                                trial = _simulate(order, ctx, shrink, prefer_time, _cache, compact=True,
+                                                  cuts=trial_cuts, recovery=False)
+                                if not trial.violations and not any(n.startswith("meal_missed") for n in trial.notes):
+                                    low, kept = give, trial
+                                else:
+                                    high = give - 1
+                            cuts[cut_key] -= low
+                            compact = kept
+                    best = compact
         result = best
     else:
         result = preferred
@@ -753,6 +768,8 @@ def _simulate(order: list[str], ctx: DayCtx, shrink: bool, prefer_time: bool,
                              else Item("free", t, a, note=here) if gap > r["wait_max"] else Item("wait", t, a, note="busy"))
             if t < b:                   # a block the look-ahead reached late keeps only what is left of it: the
                 items.append(Item("busy", max(t, a), b, name=label, note=kind))     # validator flags the overlap
+                if t > a:               # say so here too: minute recovery (compact replay) only starts from a violation
+                    viol.append(Violation("busy", day.index, here, t - a, False, f"overlaps {label}"))
             t, active, pending_buffer = max(t, b), 0, 0
         return handled
 
@@ -821,9 +838,13 @@ def _simulate(order: list[str], ctx: DayCtx, shrink: bool, prefer_time: bool,
         if blocks:              # when the stop can really start: after the road, its opening and its time of day
             reach = t + (leg(here, pid)[0] if here else 0) + pending_buffer
             pin_lo = (cache.pins[pid] if cache else pin_window(p, ctx))[0]
+            if pid in claimed:      # a meal place starts in its meal's window, not before it
+                pin_lo = max(pin_lo, cfg.meal_windows[claimed[pid]][0])
             starts = [max(reach, o, pin_lo) for o, c in (cache.intervals[pid] if cache else intervals_for(p, ctx))
                       if max(reach, o, pin_lo) < c]
             stay = duration(pid)
+            if pid in claimed and shrink:   # ... and may be eaten shorter so it ends before a fixed block of the user
+                stay = min(stay, short_minutes(pid))
             done = min(starts, default=reach) + stay
             nxt = min(((a, where) for k, (a, _, _, _, where) in enumerate(blocks) if k not in done_busy and a >= t),
                       default=None)
@@ -862,6 +883,11 @@ def _simulate(order: list[str], ctx: DayCtx, shrink: bool, prefer_time: bool,
             # The visit is an estimate range: when the pace's length does not fit the opening block or what is
             # left of the day, it shrinks toward the short estimate, never below it.
             room = min(c, day.end) - s
+            if pid in claimed and shrink:   # a meal place gives way to the next fixed block rather than cross it
+                room = min([room, *(a - (leg(pid, at)[0] if at and at != pid else 0) - s
+                                    for k, (a, *_, where) in enumerate(blocks) if k not in done_busy and s <= a < day.end
+                                    for at in (busy_place(where, ctx),)
+                                    if a - (leg(pid, at)[0] if at and at != pid else 0) - s >= shortest)])
             if s <= hi and room >= shortest:
                 start, visit = s, min(visit, room)
                 why = "opening" if s == o and o > max(t, lo) else "meal" if pid in claimed and s == lo > pin_lo else "pin"
@@ -953,7 +979,9 @@ def _simulate(order: list[str], ctx: DayCtx, shrink: bool, prefer_time: bool,
                     items.append(Item("wait", w_at, start, place_id=pid, note=why))
                     wait_min += start - w_at
             t = start       # with no start point the day simply opens at the first stop: nothing is waited out
-        items.append(Item("visit", start, start + visit, place_id=pid, name=p.name))
+        unknown_hours = windows_on(p.hours, day.weekday) is None or p.hours_status in {"UNCERTAIN", "OUTDATED"}
+        items.append(Item("visit", start, start + visit, place_id=pid, name=p.name,
+                          note="Chưa rõ giờ mở" if unknown_hours else None))
         penalty, detail = score(p, start, start + visit)
         time_penalty += penalty
         details.append(detail)

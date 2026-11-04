@@ -113,7 +113,7 @@ class Perceiver:
             return {**out, "photos": [], "note": f"no person-free photo of {scene!r} for this place" +
                     (f"; it has {have}" if have else "")}
         shots = sorted(shots, key=lambda s: s["scene"] != scene)
-        return {**out, "photos": [{"scene": s["scene"], "url": media_url(s["file"])} for s in shots],
+        return {**out, "photos": [{"scene": s["scene"], "url": media_url(s["file"]), **({"year": s["year"]} if s.get("year") else {})} for s in shots],
                 **({"first": scene} if scene else {}),
                 **({} if shots else {"note": "no person-free labelled photos for this place yet"})}
 

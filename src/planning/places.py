@@ -82,6 +82,19 @@ def cost_of(op: dict, details: dict | None = None, people: int = 1) -> int | Non
     return None
 
 
+def cap_visit(visit: dict, activity: str | None, cfg: Settings) -> dict:
+    """A meal or coffee visit longer than people sit for one (duration_profiles.max_visit) is cut to that. A misread
+    review ("until 10:30" taken as a length) once made a grill a 3,5-8 hour visit that no day could hold. The length
+    the user gave is theirs and never capped; the cut is recorded as `capped_from`, never silent."""
+    caps = cfg.duration_profiles.get("max_visit", {}).get(activity)
+    if not caps or visit.get("source") == "user":
+        return visit
+    cut = {k: min(visit[k], cap) for k, cap in zip(("short", "typical", "long"), caps) if visit.get(k) is not None}
+    if all(visit[k] == v for k, v in cut.items()):
+        return visit
+    return {**visit, **cut, "capped_from": {k: visit[k] for k in cut}}
+
+
 def build_places(decision: dict, by_id: dict, cfg: Settings) -> tuple[list[Place], list[Unplaced]]:
     from .roles import meal_kind     # roles imports parse_hours from here
     places, unplaced = [], []
@@ -117,6 +130,7 @@ def build_places(decision: dict, by_id: dict, cfg: Settings) -> tuple[list[Place
                 if bounds:
                     visit = {**visit, **dict(zip(('short', 'typical', 'long'), bounds)),
                              'source': 'planning_default', 'original_source': 'category_default'}
+            visit = cap_visit(visit, activity, cfg)
             places.append(Place(
                 id=pid, name=ident.get("name") or name, kind=kind, role=c.get("role", "selected"),
                 lat=float(ident["lat"]), lng=float(ident["lng"]), area=ident.get("area"),
@@ -124,7 +138,10 @@ def build_places(decision: dict, by_id: dict, cfg: Settings) -> tuple[list[Place
                 hours=parse_hours(hours["value"]) if hours else None,
                 hours_status=hours["status"] if hours else None,
                 visit=visit, cost_vnd=cost_of(op, rec.get("details"), people),
-                pins=tuple(f for f in cfg.pins if (feature(rec, f) or {}).get("value") == "present"),
+                # A meal keeps its meal time: a sun-based wish (a grill "with a sunset view") never fits a meal
+                # window and was always given up with a warning. A clock pin (live music at dinner) still holds.
+                pins=tuple(f for f in cfg.pins if (feature(rec, f) or {}).get("value") == "present"
+                           and not (kind == "meal" and cfg.pins[f]["anchor"] != "clock")),
                 flags=tuple(c.get("flags") or ()), relaxed=tuple(c.get("relaxed") or ()), rec=rec, activity=activity,
                 activity_explicit=pid in (decision.get("trip_context", {}).get("activities") or {}),
                 meal_kind=meal_kind(rec, cfg)))

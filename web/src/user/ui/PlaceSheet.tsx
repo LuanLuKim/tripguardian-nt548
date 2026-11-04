@@ -17,15 +17,17 @@ import { useTrip } from '../trip'
 import { go, Photo, Trust, Unconfirmed, warmPhoto } from './common'
 import { HeartFill, Icon } from './icons'
 import { Pano } from './Pano'
+import { Space3d, useSpace3d } from './Space3d'
 import { askAssistant } from './askAssistant'
 import { PlaceWalk, walkOf } from './PlaceWalk'
 import { DetailsOverview, KnownFor } from './PlaceDetails'
+import { PhoneLink, SiteLink, phoneText, siteOf } from './contact'
 
 // docs/Role_Web_Functional_Design.md §6: "Xem chi tiết" of a place. One sheet for the disc, the grid and the shared
 // link page (/explore/place/:id). As a modal it lives in the URL (?place=<id>), so the browser's Back closes it.
 
 const SLOTS: [string, string][] = [['early_morning', 'Sớm'], ['morning', 'Sáng'], ['noon', 'Trưa'], ['afternoon', 'Chiều'], ['evening', 'Tối']]
-const TABS = [['overview', 'Tổng quan'], ['photos', 'Hình ảnh'], ['pano', 'Xem 360°'], ['plan', 'Gợi ý lịch trình'], ['reviews', 'Đánh giá']] as const
+const TABS = [['overview', 'Tổng quan'], ['photos', 'Hình ảnh'], ['space3d', 'Khám phá 3D'], ['pano', 'Xem 360°'], ['plan', 'Gợi ý lịch trình'], ['reviews', 'Đánh giá']] as const
 type Tab = (typeof TABS)[number][0]
 const HERO = 'tg-hero' // view-transition-name shared by the photo that opened the sheet and the sheet's big photo
 const EASE = 'cubic-bezier(.2,.8,.2,1)'
@@ -169,6 +171,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
   const tabsRef = useRef<HTMLDivElement>(null)
   const gallery = useGallery(id)
   const detailed = useDetail(id) // its evidence loads first; the basics are on screen already
+  const model = useSpace3d(id)
   useEffect(() => { setG(0); setTab('overview'); setViewing(null); setWalking(false) }, [id])
   const Title = onClose ? Dialog.Title : 'h1'
   if (!p || !snap)
@@ -275,7 +278,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
       </header>
 
       <div className="tg-ps__tabs" role="tablist" aria-label="Thông tin về nơi này" ref={tabsRef}>
-        {TABS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}</button>)}
+        {TABS.filter(([k]) => k !== 'space3d' || model).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}</button>)}
       </div>
 
       <section className="tg-ps__pane" role="tabpanel">
@@ -289,6 +292,8 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
                 {visit && <div><dt>Thời gian tham quan</dt><dd>≈ {visit}</dd></div>}
                 {price && <div><dt>Giá</dt><dd>{price}{p.price && <span className="tg-faint"> · {p.price.reports} báo cáo</span>}</dd></div>}
                 {snap.address && <div><dt>Địa chỉ</dt><dd>{snap.address}</dd></div>}
+                {snap.phone && phoneText(snap.phone) && <div><dt>Điện thoại</dt><dd><PhoneLink id={id} phone={snap.phone} /></dd></div>}
+                {snap.website && siteOf(snap.website) && <div><dt>Trang web</dt><dd><SiteLink id={id} website={snap.website} /></dd></div>}
                 {card && card.location.minutes !== null && <div><dt>Khoảng cách</dt><dd>≈ {card.location.minutes} phút <span className="tg-faint">· ước tính từ {card.location.center}</span></dd></div>}
                 <div><dt>Nguồn</dt><dd>{p.voices ? `${p.voices.toLocaleString('vi-VN')} người đã viết về nơi này` : 'Google Maps'}{asOf ? `, dữ liệu cập nhật ${asOf}` : ''}{card && <> <Trust level={TRUST[card.confidence.level]} why={card.confidence.reason} /></>}</dd></div>
               </dl>
@@ -323,6 +328,8 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
             ) : <p className="tg-faint">Chưa có ảnh của nơi này.</p>}
           </>
         )}
+
+        {tab === 'space3d' && model && <Space3d key={id} slug={model} name={p.name} />}
 
         {tab === 'pano' && (
           <Pano key={id} id={id} name={p.name} lat={p.lat} lng={p.lng} />

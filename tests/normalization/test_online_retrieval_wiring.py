@@ -59,7 +59,7 @@ def test_harness_bundle_opens_one_reader_for_all_three_factories(tmp_path):
     scope = {'Binding': Binding, 'data': tmp_path, 'trip_live': None,
              'RetrievalEngine': SimpleNamespace(open=open_reader),
              'trip_engine': engine, 'decision_engine': engine, 'planning_engine': engine,
-             'TripTools': lambda e: SimpleNamespace(engine=e),
+             'TripTools': lambda e: SimpleNamespace(engine=e, read_turn=lambda sid, text: None),
              'DecisionTools': lambda e: SimpleNamespace(engine=e),
              'PlanningTools': lambda e: SimpleNamespace(engine=e),
              'bind': lambda *a, **kw: Binding(region='dalat')}
@@ -67,5 +67,8 @@ def test_harness_bundle_opens_one_reader_for_all_three_factories(tmp_path):
     tools = scope['tools_for_binding'](binding)
     assert calls == [{'data_root': tmp_path, 'binding': binding}]
     assert all(t.engine.retrieval is reader and t.engine.binding == binding for t in tools.values())
+    # both assistants read places through the Trip turn of the same bundle
+    assert tools['decision'].engine.trip_reader is tools['trip'].read_turn
+    assert tools['planning'].engine.trip_reader is tools['trip'].read_turn
     legacy = scope['tools_for_binding'](None)
     assert all(t.engine.corpus_binding is None for t in legacy.values())

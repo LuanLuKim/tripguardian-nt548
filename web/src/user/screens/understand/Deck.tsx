@@ -29,24 +29,27 @@ export const TAB_ICON: Record<string, IconName> = { trip: 'calendar', companions
 export function useDeckForm(deck: Deck, at: number) {
   const [picked, setPicked] = useState<Record<string, string[]>>(() => Object.fromEntries(deck.tabs.map(t => [t.qid, t.options.filter(o => o.prefilled).map(o => o.id)])))
   const [fields, setFields] = useState<Record<string, string>>({})
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
   const tab = deck.tabs[Math.min(at, deck.tabs.length - 1)]
   const selected = (tab && picked[tab.qid]) ?? []
   const field = (key: string, value: string) => setFields(old => ({ ...old, [key]: value }))
   const choose = (o: Option) => {
+    const removing = selected.includes(o.id) && (!o.prefilled || confirmed[`${tab.qid}.${o.id}`])
+    setConfirmed(old => ({ ...old, [`${tab.qid}.${o.id}`]: true }))
     setPicked(old => {
       const current = (old[tab.qid] ?? []).filter(id => id !== 'skip' && (tab.qid !== 'budget' || o.id === 'unlimited' || id !== 'unlimited'))
       const group = tab.qid === 'trip' ? o.id.split('.')[0] : tab.qid === 'budget' ? (scopeIds.includes(o.id) ? 'scope' : 'amount') : null
       const sameGroup = (id: string) => group === 'scope' ? scopeIds.includes(id) : group === 'amount' ? id.startsWith('amount.') : id.startsWith(`${group}.`)
       const multi = tab.multi && !(tab.qid === 'care' && o.id === 'none') && !(tab.qid === 'companions' && o.id === 'solo')
       const base = group ? current.filter(id => !sameGroup(id)) : multi ? current.filter(id => id !== 'none' && id !== 'solo') : []
-      return { ...old, [tab.qid]: current.includes(o.id) ? base.filter(id => id !== o.id) : [...base, o.id] }
+      return { ...old, [tab.qid]: [...base.filter(id => id !== o.id), ...(!removing ? [o.id] : [])] }
     })
     if (tab.qid === 'trip') {
       const part = o.id.split('.')[0]
-      if (part === 'start' || part === 'end') field(`trip.${part}`, selected.includes(o.id) ? '' : clockOf(o) ?? '')
+      if (part === 'start' || part === 'end') field(`trip.${part}`, removing ? '' : clockOf(o) ?? '')
       if (part === 'dates') setFields(({ dateFrom: _, dateTo: __, ...rest }) => rest)
     }
-    if (tab.qid === 'budget') field('budget.unlimited', o.id === 'unlimited' && !selected.includes(o.id) ? 'true' : '')
+    if (tab.qid === 'budget') field('budget.unlimited', o.id === 'unlimited' && !removing ? 'true' : '')
     if (o.id === 'people.prefilled') field('companions.people', '')
     if (o.id === 'amount.prefilled') field('budget.amount', '')
     if (tab.qid === 'lodging') field('lodging', '')
@@ -63,7 +66,7 @@ export function useDeckForm(deck: Deck, at: number) {
   }
   const answers: DeckAnswers = {}
   for (const t of deck.tabs) {
-    const ids = picked[t.qid] ?? []
+    const ids = (picked[t.qid] ?? []).filter(id => !t.options.find(o => o.id === id)?.prefilled || confirmed[`${t.qid}.${id}`])
     const has = (id: string) => ids.includes(id)
     if (has('skip')) { answers[t.qid] = ['skip']; continue }
     if (t.kind !== 'required' || !['trip', 'companions', 'budget', 'lodging'].includes(t.qid)) {
@@ -92,7 +95,15 @@ export function useDeckForm(deck: Deck, at: number) {
     } else if (fields.lodging) answers.lodging = fields.lodging
     else if (ids.length) answers.lodging = ids
   }
-  return { tab, picked, selected, fields, choose, skip, toggleInput, pickLodging, answers }
+  const answered = (qid: string) => {
+    const t = deck.tabs.find(t => t.qid === qid)
+    if (answers[qid]?.includes('skip')) return true
+    if (t?.qid === 'trip' && t.kind === 'required') return t.inputs.every(part => part === 'dates'
+      ? Boolean(answers['trip.dates'] || answers.trip?.includes('dates.prefilled'))
+      : Boolean(answers[`trip.${part}`]))
+    return Object.keys(answers).some(k => k === qid || k.startsWith(`${qid}.`))
+  }
+  return { tab, picked, selected, fields, choose, skip, toggleInput, pickLodging, answers, answered }
 }
 export type DeckForm = ReturnType<typeof useDeckForm>
 
@@ -178,7 +189,7 @@ export function DeckCard({ deck, busy, issues = [], onAnswer, onOther, focus }: 
       const next = e.key === 'ArrowRight' ? (i + 1) % deck.tabs.length : e.key === 'ArrowLeft' ? (i - 1 + deck.tabs.length) % deck.tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? deck.tabs.length - 1 : null
       if (next === null) return
       e.preventDefault(); setAt(next); document.getElementById(`${uid}-tab-${next}`)?.focus()
-    }}><span aria-hidden="true">{i + 1}</span>{t.header}{Object.keys(answers).some(k => k === t.qid || k.startsWith(`${t.qid}.`)) && <Icon name="check" size={13} />}</button>)}</div>
+    }}><span aria-hidden="true">{i + 1}</span>{t.header}{form.answered(t.qid) && <Icon name="check" size={13} />}</button>)}</div>
     <div role="tabpanel" id={`${uid}-panel-${at}`} aria-labelledby={`${uid}-tab-${at}`} className="tg-ask__panel">
       <div className="tg-ask__scroll">
       <h4 className="tg-ask__q">{tab.question}</h4>{tab.why && <p className="tg-ask__why">{tab.why}</p>}

@@ -4,6 +4,16 @@ tz_offset_h: 7          # the city's day: video epochs and review dates are read
 keep_snapshots: 30      # dated files kept per city (latest.json always)
 stale_after_days: 3     # the bulletin says "chưa được làm mới" when the newest snapshot is older than this
 hide_after_days: 14     # older than this the "đang hot" label is not shown (a trend of a month ago is not a trend)
+trending:               # the home rail's one ranking: a 0-100 score over five signals (compute.trending, docs/CORPUS.md "Hạng xu hướng")
+  window_days: 30
+  recent_days: 7        # momentum: authors of clips posted in the last week
+  min_authors: 3        # a candidate has this many different clip authors in the window ...
+  min_review_authors: 15  # ... or this many different review authors (reviews alone must be a real crowd)
+  exclude_groups: [stay, rental]   # not places to visit
+  min_score: 25         # below this a place is not "trending", only known
+  weights: {tiktok: 40, tiktok_recent: 20, reviews: 20, rising: 10, web: 10}
+  cap: {tiktok: 8, tiktok_recent: 3, reviews: 0.06, web: 4}   # a part saturates here: more adds nothing; reviews = share of the place's all-time reviews
+  max_items: 10
 hot:                    # new TikTok videos at a place's POI page
   window_days: 30
   min_authors: 3        # TREND_MIN=5 (aggregate/place.py) keeps 1 place; 3 keeps 14 and is still different people

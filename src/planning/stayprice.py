@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 
 import live
 from corpus.serving import stay_prices
-from trip import nights
 
 from .settings import Settings
 
@@ -32,6 +31,8 @@ def age_h(observed_at: str | None, now: datetime | None = None) -> float | None:
 def overlay(cands: list[dict], tc: dict, cfg: Settings) -> list[dict]:
     """Each candidate with `price_kind` ("dated" | "reference" | None) and, for a dated price, `price_vnd` = the observed
     night price and `price_at` = its `observed_at`."""
+    from trip import nights
+
     start, n = tc.get("start_date"), nights(tc)
     table = load_prices(live.load_settings().views_city, cfg.stay_price_max_age_h) if start and n > 0 else {}
     out = []

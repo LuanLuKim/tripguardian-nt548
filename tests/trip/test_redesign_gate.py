@@ -1,3 +1,4 @@
+from dataclasses import replace
 """Trip redesign part 2b: seven required answers, the read-back digest and the gate into Lịch trình.
 
 Test ids Q1-Q13 of docs/superpowers/specs/2026-10-15-trip-understanding-architecture.md §5.3 (Q14 lives in
@@ -100,6 +101,20 @@ def test_q7_an_amount_without_what_it_covers_is_not_enough():
     assert keys(build(drop=("budget_scope",))) == ["budget"]
 
 
+def test_skipping_budget_does_not_answer_other_required_topics():
+    st = with_meta(TripState(), declined=tuple(REQUIRED))
+    assert keys(st) == ["trip", "companions", "mobility", "care", "pace"]
+
+
+def test_skipping_budget_does_not_clear_a_physical_signal():
+    st = with_meta(build(drop=("budget_vnd", "budget_scope"),
+                         signals=[{"kind": "pregnant", "quote": "vợ bầu", "turn": 1}]), declined=("budget",))
+    assert keys(st) == ["care"]
+    from trip import UnhandledSignal
+    with pytest.raises(UnhandledSignal):
+        compile_search_input(st)
+
+
 def test_q8_a_complete_trip_misses_nothing_and_says_so_downstream():
     st = build()
     assert keys(st) == []
@@ -156,7 +171,8 @@ def test_q12_the_readback_separates_said_guessed_default_and_points_to_a_tab():
 def test_q12_the_readback_shows_the_day_window_the_planner_will_use():
     st = build(frame={"arrive": said({"at": "2026-11-20T09:30", "how": "plane"})}, drop=("checkin_at",))
     text = " ".join(line.text for line in readback.build(compile_search_input(st)).lines)
-    assert "10:45" in text and "9:30" in text
+    # 2026-11-04: the inferred airport leaves only the shared hub margin in the read-back.
+    assert "10:15" in text and "9:30" in text
 
 
 # ---------- Q13: a deck tap is applied by code, with no model call ----------
@@ -175,6 +191,7 @@ def tap(e, sid, answers):
 
 def test_q13_required_tabs_are_written_as_the_users_answers_then_read_by_the_agent(engine):
     e, chat = engine
+    e.cfg = replace(e.cfg, discovery=True)
     sid = e.create("first", "nothing")["id"]
     e.chat = chat = ScriptedChat(say("Rõ rồi."))
     tap(e, sid, {"trip.dates": "2026-11-20..2026-11-22", "trip.start": "10:00", "trip.end": "15:00",
@@ -182,7 +199,8 @@ def test_q13_required_tabs_are_written_as_the_users_answers_then_read_by_the_age
                  "care": ["none"], "pace": ["slow"], "budget.amount": "10000000", "budget.scope": ["trip_total"]})
     st = e.store.get(sid).state
     assert chat.calls == 1  # The agent reacts after code writes every answer.
-    assert [x["qid"] for x in e.load(sid)["card"]["tabs"]] == ["lodging"]  # the one topic the tap did not answer
+    assert e.load(sid)["card"]["qid"] == "conversation"
+    assert "lodging" in e._readback(st)["missing"]  # Only the gate asks the missing stay.
     assert (st.start_date.value, st.days.value, st.checkin_at.value, st.checkout_at.value) == (
         date(2026, 11, 20), 3, "10:00", "15:00")
     assert (st.mobility.value, st.driver.value, st.pace.value, st.care.value) == ("car", "hired", "slow", "none")
@@ -215,6 +233,33 @@ def test_q13_readback_ok_stores_the_current_digest_without_the_model(engine):
     e.turn(sid, TurnInput(kind="readback_ok"), lambda *_: None)
     st = e.store.get(sid).state
     assert chat.calls == 0 and compile_search_input(st).readiness.readback_ok is True
+
+
+@pytest.mark.parametrize("companions, people", [(["partner"], 2), (["friends"], 8)])
+def test_budget_skip_reaches_readback_with_unknown_budget_and_survives_reload(engine, companions, people):
+    e, chat = engine
+    sid = e.create("first", "nothing")["id"]
+    s = e.store.get(sid)
+    s.state = build(drop=("budget_vnd", "budget_scope"), companions=said(companions), people=said(people))
+    s.card = None  # The planning gate, not the agent's Understand question.
+    e.store.save(s)
+
+    events = tap(e, sid, {"budget": ["skip"]})
+    assert not any(event == "deck_issues" for event, _ in events)
+    st = e.store.get(sid).state
+    assert "budget" in st.meta.declined
+    assert keys(st) == []
+    rb = e._readback(st)
+    assert rb["missing"] == [] and rb["deck"] is None and not rb["ok"]
+    si = compile_search_input(st)
+    assert si.context.budget_vnd is None and si.context.budget_intent is None
+    assert si.context.budget_unlimited is None and "budget_vnd" in si.unknowns
+    e.load(sid)
+    assert keys(e.store.get(sid).state) == []
+
+    e.turn(sid, TurnInput(kind="readback_ok", value=rb["digest"]), lambda *_: None)
+    assert compile_search_input(e.store.get(sid).state).readiness.readback_ok is True
+    assert chat.calls == 0
 
 
 def test_q13_readback_ok_is_refused_while_answers_are_missing(engine):

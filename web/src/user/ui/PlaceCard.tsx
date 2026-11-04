@@ -6,6 +6,7 @@ import { useWarm } from '../../data/store'
 import { toggleSaved, useUi } from '../store'
 import { cardLines } from './cardLines'
 import { PlacePhoto, Trust } from './common'
+import { PetFacts } from './PetFacts'
 import { HeartFill, Icon } from './icons'
 import { openPlace, warmSheet } from './PlaceSheet'
 
@@ -19,21 +20,19 @@ export function PlaceCard({ c, onDrop, cmp, onCmp, warn, phase = 'stay', order =
   const flash = useUi((u) => u.flashId === c.id)
   const crowd = crowdOf(p)
   const price = c.price ?? priceText(p?.price)
-  const { why, trade, alerts } = cardLines(c)
-  const credit = p?.photos[0]?.credit
+  const { why, trade, alerts, pets } = cardLines(c)
   const liked = Boolean(view?.likes?.includes(c.id))
   return (
     <article className={`tg-pc ${c.chosen ? 'is-sel' : ''} ${c.locked ? 'is-lock' : ''} ${warn ? 'is-warn' : ''} ${c.status === 'unverified' ? 'is-dim' : ''} ${flash ? 'tg-flash' : ''} is-${phase}`} style={{ '--i': order } as CSSProperties} data-place={c.id} aria-hidden={phase === 'leave' || undefined}>
       <div className="tg-pc__media">
         <button type="button" className="tg-pc__open" onPointerEnter={() => warmSheet(c.id)} onFocus={() => warmSheet(c.id)} onClick={(e) => openPlace(c.id, e.currentTarget.querySelector('figure'))} aria-label={`Xem chi tiết ${c.name}`}>
-          <PlacePhoto id={c.id} name={c.name} />
+          <PlacePhoto id={c.id} name={c.name} credit />
           <span className="tg-pc__shade" />
         </button>
         {c.category && <span className="tg-tag tg-tag--dark tg-pc__cat">{c.category}</span>}
         {c.top && <span className="tg-tag tg-pc__top" title="Một trong những nơi hợp chuyến của bạn nhất, đã chọn sao cho khác nhau">Hợp nhất</span>}
-        <button type="button" className={`tg-pc__save ${saved ? 'is-on' : ''}`} onClick={() => toggleSaved(c.id, c.name)} aria-pressed={saved} aria-label={saved ? `Bỏ lưu ${c.name}` : `Lưu ${c.name}`}>{saved ? <HeartFill size={18} /> : <Icon name="heart" size={18} />}</button>
+        <button type="button" className={`tg-pc__save ${saved ? 'is-on' : ''}`} onClick={() => toggleSaved(c.id, c.name)} aria-pressed={saved} aria-label={saved ? `Bỏ lưu xem lại ${c.name}` : `Lưu xem lại ${c.name}`} title="Lưu để xem lại sau; dùng Thêm vào chuyến để chọn nơi xếp lịch">{saved ? <HeartFill size={18} /> : <Icon name="heart" size={18} />}<span>{saved ? 'Đã lưu xem lại' : 'Lưu xem lại'}</span></button>
         {(c.anchor || c.locked) && <span className="tg-pc__lock" title={c.anchor ? 'Bạn nói nhất định đến' : 'Đã khóa'}><Icon name="lock" size={14} /> {c.anchor ? 'Bắt buộc' : 'Đã khóa'}</span>}
-        {credit && <span className="tg-pc__credit">Ảnh: {credit}</span>}
       </div>
       <div className="tg-pc__body">
         <div className="tg-pc__title">
@@ -48,6 +47,7 @@ export function PlaceCard({ c, onDrop, cmp, onCmp, warn, phase = 'stay', order =
         {trade ? <p className="tg-pc__trade"><Icon name="warn" size={15} /><span><b>Đánh đổi:</b> {trade}</span></p> : <p className="tg-faint">Chưa thấy điều gì đáng ngại.</p>}
         {alerts.map((n) => <p key={n} className="tg-pc__alert"><Icon name="warn" size={14} />{n}</p>)}
         {warn && <p className="tg-pc__alert" role="status"><Icon name="warn" size={14} />{warn}</p>}
+        <PetFacts id={c.id} claims={pets} />
         <div className="tg-pc__facts">
           {c.visit ? <span className="tg-mono" title="Ước tính">≈ {fmtRange(c.visit.short, c.visit.long)}</span> : <span className="tg-faint">Chưa có thời lượng</span>}
           {price ? <span className="tg-mono">{price}</span> : <span className="tg-faint">Chưa có giá</span>}
@@ -61,7 +61,7 @@ export function PlaceCard({ c, onDrop, cmp, onCmp, warn, phase = 'stay', order =
           {c.chosen ? (
             <button type="button" className="tg-btn tg-btn--sm tg-btn--soft" disabled={busy || c.anchor} onClick={() => onDrop(c)} title={c.anchor ? 'Nơi bạn nói nhất định đến' : 'Bấm để bỏ khỏi danh sách'} aria-pressed="true"><Icon name="check" size={16} /> Đã chọn</button>
           ) : (
-            <button type="button" className="tg-btn tg-btn--sm tg-btn--primary" disabled={busy} onClick={() => act({ type: 'select', place_id: c.id })} aria-pressed="false"><Icon name="plus" size={16} /> Thêm</button>
+            <button type="button" className="tg-btn tg-btn--sm tg-btn--primary" disabled={busy} onClick={() => act({ type: 'select', place_id: c.id })} aria-pressed="false" title="Đưa nơi này vào chuyến để xếp lịch"><Icon name="plus" size={16} /> Thêm vào chuyến</button>
           )}
           <div className="tg-pc__more" role="group" aria-label={`Thao tác với ${c.name}`}>
             <button type="button" className={`tg-pc__ic ${c.locked ? 'is-on' : ''}`} disabled={busy} onClick={() => act({ type: c.locked ? 'unlock' : 'lock', place_id: c.id })} aria-pressed={c.locked} title={c.locked ? 'Bỏ khóa' : 'Khóa: luôn giữ nơi này'}><Icon name={c.locked ? 'lock' : 'unlock'} size={17} /><span>Khóa</span></button>

@@ -27,6 +27,10 @@ __all__ = [
     "SimilarHit",
 ]
 
+from .trace import read_span, trace_reads
+
+__all__ += ["read_span", "trace_reads"]
+
 from .card import card
 from .find import Criteria, FindHit, FindResult
 from .local import local_knowledge

@@ -11,7 +11,7 @@ from functools import cache
 import numpy as np
 
 from corpus import load_ontology
-from requirements import activity_for, scope_allows
+from requirements import activity_for, applicable, safety_requirement, scope_allows
 
 from .fit import DAYTIME, NEEDS, radius, trip_companions
 from .model import FIRM, role_of
@@ -20,7 +20,6 @@ from .trip_days import DAYS
 from .wishes import build as build_wishes
 
 SPECIAL = {"venue_category", "activity", "wine_tasting_available"}  # hard_result has its own rules for these
-PROTECTED = {"effort", "suitability"}                                # hard_result: no uncertain_value pass
 SOFT_SPECIAL = {"wine_tasting_available"}                            # applicable() has its own rule for it
 
 
@@ -61,10 +60,12 @@ def roles(region, overrides: dict[str, str], keep: set[str]) -> tuple[list, list
 class Screen:
     status: list
     fails: dict
+    safety_unknown: np.ndarray
 
 
 def _applies(h, act: list) -> np.ndarray:
-    allowed = {a: scope_allows(h, a) for a in set(act)}
+    allowed = {a: applicable({}, h, activity=a) if a == "accommodation" else scope_allows(h, a)
+               for a in set(act)}
     return np.array([allowed[a] for a in act], dtype=bool)
 
 
@@ -80,10 +81,6 @@ def _generic(region, h) -> np.ndarray:
     out = np.where(~col.exists, "unknown",
                    np.where(eqv, np.where(col.firm, "fail", "unknown"),
                             np.where(has | ~col.firm, "unknown", "pass")))
-    f = _ontology().features.get(h.feature)
-    if f is not None and f.group not in PROTECTED:
-        up = (out == "unknown") & col.exists & col.uncertain & ~eqv & ~has
-        out = np.where(up, "pass", out)
     return out
 
 
@@ -125,6 +122,7 @@ def _hard_special(region, h, act: list, overrides: dict) -> np.ndarray:
     override = np.array([pid in overrides for pid in region.ids], dtype=bool)
     col = region.feature(h.feature)
     app = np.where(override, sel_in, col.exists | sel_in | np.array([a is None for a in act]))
+    app &= np.array([a != "accommodation" or applicable({}, h, activity=a) for a in act], dtype=bool)
     return np.where(app, _generic(region, h), "not_applicable")
 
 
@@ -132,6 +130,7 @@ def screen_table(region, si, days, relaxed: set, role: list, act: list) -> Scree
     n = len(region.ids)
     fails: dict[str, np.ndarray] = {}
     unknown = np.zeros(n, dtype=bool)
+    safety_unknown = np.zeros(n, dtype=bool)
     if not any(d.weekday is None for d in days):  # screen.closed_all_days
         mask = 0
         for d in days:
@@ -147,12 +146,15 @@ def screen_table(region, si, days, relaxed: set, role: list, act: list) -> Scree
         fail = (res == "fail") & ~skip
         key = f"hard:{h.feature}"
         fails[key] = fails.get(key, np.zeros(n, np.int32)) + fail.astype(np.int32)
-        unknown |= (res == "unknown") & ~skip
+        if safety_requirement(h) and h.feature != "pets":
+            safety_unknown |= (res == "unknown") & ~skip
+        else:
+            unknown |= (res == "unknown") & ~skip
     any_fail = np.zeros(n, dtype=bool)
     for v in fails.values():
         any_fail |= v > 0
     status = np.where(any_fail, "excluded", np.where(unknown, "unverified", "main")).tolist()
-    return Screen(status, fails)
+    return Screen(status, fails, safety_unknown)
 
 
 def _round(xs) -> list[float]:
@@ -346,6 +348,7 @@ class Table:
     anchor_areas: set
     key: str = ""  # everything the numbers above were computed from (a Cand built from them is valid while it is the same)
     wishes: tuple = ()  # decision.wishes.build of the Search Input the score tier read
+    safety_unknown: np.ndarray | None = None
 
 
 def display_groups(region, role: list, cfg) -> list[str]:
@@ -420,4 +423,5 @@ def table(region, si, profile, days, relaxed, ctrs, anchors: list, keep: set, n_
                                                   "liked_groups"}))
     score, voices = _cached(memo, "score", kc, lambda: score_table(region, si, profile, cfg, fit, live, role, act,
                                                                     n_missing, si.activities, group=group, wishes=wl))
-    return Table(role, act, scr.status, scr.fails, fit, score, live, members, voices, group, anchor_areas, kc, wl)
+    return Table(role, act, scr.status, scr.fails, fit, score, live, members, voices, group, anchor_areas, kc, wl,
+                 scr.safety_unknown)

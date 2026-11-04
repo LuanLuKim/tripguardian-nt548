@@ -21,7 +21,7 @@ SERVING INDEX ─┘                              (fail-closed) (thô)          
 ```
 
 - Mục tiêu là **một tập quyết định nhỏ, hữu ích**, không phải danh sách dài. Hệ thống hỗ trợ chọn, không chọn thay.
-- Constraint trước sở thích: profile và sở thích chỉ xếp hạng ứng viên đã qua sàng lọc (`docs/Project_Context.md` §14.2, §14.8).
+- Constraint trước sở thích: bằng chứng trượt thì loại; safety chưa rõ vẫn hiện sau mọi nơi có bằng chứng đạt, trong cùng bậc giữ thứ tự gu (§6.2). Physical không nới.
 - Không bịa: địa điểm thiếu bằng chứng cho một khía cạnh thì khía cạnh đó là `unknown`, không phải "không có".
 - Chỉ đọc: Place Decision đọc serving record, không ghi Place Intelligence. Nó chỉ ghi Session Profile (từ thao tác tuyển chọn) và danh sách đã xác nhận.
 - Chỉ dùng độ hợp không gian **thô**. Thời gian di chuyển thực tế, thời tiết, điều kiện tạm thời thuộc Live Context của bước Planning (`docs/PLANNING.md` §Live Context).
@@ -35,8 +35,9 @@ Mỗi field của Search Input (`TRIP_UNDERSTANDING.md` §9) được dùng ở 
 | Field | Dùng ở | Cách dùng |
 |---|---|---|
 | `context` (dates, duration, base, mobility, companions) | Sàng lọc, Hợp bối cảnh, Khả thi | Ngày → giờ mở cửa trong chuyến; base + mobility → bán kính thô; companions → suitability |
-| `hard_filters` | Sàng lọc | Loại ứng viên, fail-closed (§6) |
+| `hard_filters` | Sàng lọc | Bằng chứng trượt thì loại; safety chưa rõ vẫn hiện sau nơi đạt (§6) |
 | `anchors` | Resolve, Hợp bối cảnh, Khả thi | Luôn giữ; làm tâm đánh giá không gian; chiếm thời gian cố định |
+| `excluded_places` | Gợi ý | Không vào tab, shortlist, thẻ chat hay nơi tương tự; vẫn tìm bằng tên và tự chọn được, không kèm lời nhắc. Giữ nguyên trong `trip_context` sang Planning |
 | `soft_weights` | Xếp hạng | Trọng số theo feature id |
 | `pace` + travel / crowd tolerance | Hợp bối cảnh, Đa dạng, Khả thi | Bán kính chấp nhận, cỡ shortlist, số nơi mỗi ngày |
 | `novelty` + danh sách đã đi | Xếp hạng | Giảm hoặc loại nơi đã đi |
@@ -63,7 +64,7 @@ Provenance    trạng thái theo khía cạnh, coverage theo khía cạnh, confi
 
 Chỉ record có trạng thái `VERIFIED`, `UNCERTAIN`, `OUTDATED` được dùng (`docs/CORPUS.md` §Trạng thái). `NEEDS_REVIEW` và `DISABLED` không bao giờ xuất hiện.
 
-Place Decision đọc serving record qua snapshot (`corpus.snapshot`, `docs/CORPUS.md` §Place Decision dùng corpus thế nào). Bước ③–⑤ tính cho mọi nơi một lượt bằng bảng (`decision.frame`: `screen_table`, `fit_table`, `score_table`); thẻ, so sánh và `why_not` dựng bằng các hàm theo từng nơi (`screen.py`, `fit.py`, `rank.py`), vẫn là định nghĩa của các con số. Hai bên được giữ khớp bằng oracle test `tests/decision/test_equivalence.py` (`tests/decision/reference.py` là bản `run` theo từng nơi). Chỗ ở (`stay`) có trong snapshot cho Planning, nhưng không bao giờ là ứng viên của Decision, kể cả khi user chọn hay đặt làm neo.
+Place Decision đọc serving record qua snapshot (`corpus.snapshot`, `docs/CORPUS.md` §Place Decision dùng corpus thế nào). Đường đọc feature theo từng nơi dùng public `corpus.serving.feature`, kể cả chọn trải nghiệm nổi bật theo `n` cho neo theo buổi và lấy thuộc tính learner trước guard `VERIFIED`/`n > 0`/evidence; silence không tạo hay lấn át tín hiệu. Bước ③–⑤ tính cho mọi nơi một lượt bằng bảng (`decision.frame`: `screen_table`, `fit_table`, `score_table`); thẻ, so sánh và `why_not` dựng bằng các hàm theo từng nơi (`screen.py`, `fit.py`, `rank.py`), vẫn là định nghĩa của các con số. Hai bên được giữ khớp bằng oracle test `tests/decision/test_equivalence.py` (`tests/decision/reference.py` là bản `run` theo từng nơi). Chỗ ở (`stay`) có trong snapshot cho Planning, nhưng không bao giờ là ứng viên của Decision, kể cả khi user chọn hay đặt làm neo.
 
 ## 3. Luồng xử lý
 
@@ -119,6 +120,7 @@ nguồn ứng viên
 - Truy xuất rộng hơn shortlist nhiều lần để sàng lọc và đa dạng còn đủ chỗ chọn; cỡ nằm trong config.
 - Coverage giới hạn vai trò: địa điểm `experience = NONE` chỉ được dùng làm chỗ ăn, anchor, hoặc dự phòng, không được gợi ý như một trải nghiệm (`docs/CORPUS.md` §Ba loại output).
 - Không có chỗ ở trong ứng viên: chỗ ở không nằm trong Place Intelligence, Planning tra live theo request (`docs/PLANNING.md` §Chỗ ở (crawl live)).
+- `Tools.create` / `Tools.rebase` nhận `hidden_ids` từ `TripState.meta.hidden_ids` qua harness (gồm chi nhánh Trip đã ẩn). Các ID này không vào gợi ý, danh sách/phân trang, tìm kiếm (kể cả `outside`), mục chưa xác minh hay phương án thay thế/pool dự phòng. Nơi người dùng tự chọn hoặc đặt làm neo vẫn giữ; báo cáo của người dùng không trở thành physical constraint hay fact trong corpus. Snapshot giữ `hidden_ids` ngoài lịch sử undo; rebase không truyền trường này giữ danh sách hiện có, truyền `[]` xóa danh sách. `DecisionOutput.hidden_ids` chuyển tiếp phạm vi ẩn cho ứng viên bổ sung của Planning.
 
 ## 6. Sàng lọc constraint
 
@@ -151,14 +153,19 @@ Khoảng cách và thời gian di chuyển chưa phải constraint ở đây; ch
 |---|---|---|
 | `pass` | Tiếp tục | Tiếp tục |
 | `fail` | Loại, ghi lý do | Giữ, cảnh báo, hỏi nới (§6.3) |
-| `unknown` (thiếu bằng chứng effort / suitability / giá) | Không vào danh sách chính; hiển thị ở mục "chưa xác minh được" nếu user muốn xem | Giữ, gắn cờ "chưa xác minh được [constraint]" |
-| Giá trị `UNCERTAIN` (bằng chứng xung đột) | Như `unknown` với constraint an toàn / tiếp cận; như `pass` kèm cảnh báo với constraint khác | Giữ + cảnh báo |
+| `unknown` thuộc effort / suitability / `fit.<who>` (trừ pets theo quy tắc riêng dưới) | Vẫn trong tab, search và thẻ chat, sau mọi nơi đạt; không pill/banner hay mục chưa xác minh riêng | Giữ; cùng quy tắc Đánh đổi |
+| `unknown` khác (giá, dietary…) | Theo `unknown_policy`, không suy đạt; `exclude` không vào danh sách chính | Giữ, nêu điều chưa xác minh |
+| Giá trị `UNCERTAIN` (bằng chứng chưa chắc chắn) | Hard luôn `unknown`, không suy `pass` từ giá trị khác; áp quy tắc nhóm trên | Giữ, không biến thao tác chọn thành bằng chứng |
 
-Đây là fail-closed: thiếu bằng chứng cho hard constraint thì không được nói địa điểm là an toàn. Field trong `unknowns` của Search Input không tạo kiểm tra nào.
+Thiếu bằng chứng không chứng minh an toàn: kết quả kiểm vẫn `unknown`, kể cả khi được liệt kê. Safety chưa rõ chỉ cảnh báo trong **một dòng Đánh đổi** trên thẻ nơi, ưu tiên trước đánh đổi khác; không nhắc/chặn ở danh sách hay khả thi của Decision. Planning kiểm và cảnh báo khi xếp lịch. Silence được đọc như không có feature ở cả serving và snapshot (`docs/CORPUS.md` §Độ tin của feature), không dùng làm bằng chứng lọc, fit hay gu. Field trong `unknowns` của Search Input không tạo kiểm tra nào.
 
 **Bộ lọc cứng từ người đi cùng và xe.** Chip người đi cùng ghi kèm hard filter: `fit.baby`, `fit.parents`, `fit.pregnant`, `fit.wheelchair` `!= bad` (verdict của `details.fit[x]`, tên có tiền tố `fit.`), `pets != not_allowed` khi có thú cưng. Đi `car` với `people ≥ coach_min_people` (`config/trip.yaml`) thì Trip thêm `coach_access != no`, chính sách unknown mặc định `exclude`. Cả ba chạy qua `hard_result` như mọi feature; `fit.*` luôn là kiểm tra an toàn nên giá trị `UNCERTAIN` không bao giờ `pass`.
 
-`eq` cần giá trị VERIFIED/OUTDATED phù hợp và distribution không mâu thuẫn; `ne` dùng cùng semantics cho Decision và Planning. Dietary thiếu evidence không thành `not_applicable`. Soft ranking loại yêu cầu không liên quan khỏi cả tử số, mẫu số và uncertainty. Wine preference đọc offering có evidence riêng, không suy việc user bắt buộc uống; coffee-only không bị wine requirement lọc. Contract ý định ở `docs/TRIP_UNDERSTANDING.md` §9.
+**Thú cưng:** Decision chuẩn hóa `context.companions` có `pet` thành `pets != not_allowed`, unknown `flag`, kể cả create, rebase và session cũ/restore; không nhân đôi filter đã có. Nơi biết cấm không vào gợi ý; thiếu hoặc chưa chắc bằng chứng chỉ vào nhóm chưa xác minh, ghi “Chưa rõ có cho mang thú cưng không”. `relaxed` không đưa nơi cấm trở lại gợi ý; thẻ chat do trợ lý đề xuất cũng loại nơi cấm (không can thiệp thao tác chọn). Thẻ chỉ nói “Cho mang thú cưng” / “Không cho mang thú cưng” khi serving feature có bằng chứng VERIFIED/OUTDATED, kèm số người và `sid=pets` để xem nguồn; fit hay thiếu dữ liệu không chứng minh được phép.
+
+Riêng pets, người dùng vẫn tự tìm, chọn, khóa hoặc giữ chỗ ở cấm/chưa rõ; không popup, cảnh báo khả thi hay yêu cầu nới tại Lựa chọn. Thẻ giữ thông tin thật; handoff giữ pet context/filter để Planning tự kiểm trước khi xếp, không xem thao tác chọn là bằng chứng được phép.
+
+`eq` cần giá trị VERIFIED/OUTDATED phù hợp và distribution không mâu thuẫn; `ne` dùng cùng semantics cho Decision và Planning. Dietary thiếu evidence không thành `not_applicable`. Soft ranking loại yêu cầu không liên quan khỏi cả tử số, mẫu số và uncertainty. Với activity `accommodation`, feature ontology ngoài tập `stay` là `not_applicable` theo public `requirements.applicable`; `fit.*` và structural constraint vẫn được kiểm. Bảng vector Decision dùng cùng semantics cho hard/soft. Wine preference đọc offering có evidence riêng, không suy việc user bắt buộc uống; coffee-only không bị wine requirement lọc. Contract ý định ở `docs/TRIP_UNDERSTANDING.md` §9.
 
 ### 6.3 Xung đột với địa điểm user chọn
 
@@ -177,7 +184,7 @@ Nới là quyết định của user, chỉ áp cho địa điểm đó trong ch
 
 Mỗi ứng viên bị loại giữ `reason` (constraint, giá trị, bằng chứng). Dùng để:
 
-- trả lời "vì sao không có nơi X?";
+- trả lời "vì sao không có nơi X?"; tool `why_not` trả `answer` đủ dấu câu từ lý do thật. Nơi tự bỏ/để dành/ẩn theo lọc/xếp thấp không bị diễn giải thành giới hạn cần nới; physical constraint không được gợi ý nới;
 - dựng pool dự phòng cho Planning (`docs/PLANNING.md` ⓗ): ứng viên bị loại vì lý do theo ngữ cảnh (ví dụ ngoài trời) vẫn có thể là phương án thay thế trong điều kiện khác;
 - đo chất lượng (§17).
 
@@ -208,6 +215,7 @@ score = w_ctx   · context_fit
       + w_pop   · popularity          chỉ là một tín hiệu, trọng số nhỏ
       + w_wish  · wish                1 − Π(1 − a·strength) trên các mong muốn áp cho nơi đó (decision.wishes)
       + w_rep   · reputation          điểm uy tín Maps (rating + số review cùng thang) − 0,5; không có = 0
+      + session · bounded_taste       học nhẹ từ chọn/bỏ trong phiên (§12.2), không phạt unknown
       − w_unc   · uncertainty         thiếu coverage / UNCERTAIN / OUTDATED ở khía cạnh quan trọng với user
 ```
 
@@ -222,6 +230,7 @@ Quy tắc:
 - `confidence(f)` của một feature = `agreement × support(n) × mention(rate) × trọng số trạng thái` (`corpus.serving.evidence`, `config/serving.yaml` `evidence`; snapshot lưu cùng hàm ở cột `conf`). `support(n)`: tuyến tính tới `base` (0,7) ở 3 tác giả, rồi tăng theo log tới 1,0 ở `ref_n` (300), nên 3 / 30 / 300 tác giả cùng agreement xếp đúng thứ tự. `mention(rate)`: tỷ lệ người đã đọc có nhắc; dưới `rate_ref` (2 %) trừ tối đa `rate_weight` (30 %), nên 6 lượt nhắc trong 3.000 review nhẹ hơn 6 trong 10. Tỷ lệ 0 / không biết (Maps attribute, chủ quán khai) không bị trừ. Chỉ xếp hạng dùng `confidence`; hard constraint (§6) không đọc nó.
 - **Uy tín** (`rep`): `provenance.reputation.score` (0..1) của bản ghi, đặt `score − 0,5` nên trên giữa nhóm thì cộng, dưới thì trừ; thiếu rating hoặc số review → 0, không âm. Trọng số nhỏ (`w_rep` = 0,3 ở `config/decision.yaml`). Cách tính ở `docs/CORPUS.md` (Serving record, Uy tín). `pop` vẫn đo theo `voices` của corpus và chỉ là tín hiệu phụ.
 - Trọng số `w_*` nằm trong config, có version; mỗi điểm lưu kèm từng thành phần để giải thích và debug.
+- **Đi cùng thú cưng.** Trong từng tab, sau bậc chế độ ăn, ưu tiên nơi có `pets=allowed` VERIFIED/OUTDATED, có nguồn và người xác nhận, không có bằng chứng `not_allowed` mâu thuẫn; sau đó mới xét né đông và điểm. Tìm kiếm và thẻ chat Decision cũng đặt các nơi có bằng chứng này trước nơi chưa rõ, trước khi cắt số thẻ; chỉ sắp lại các kết quả khớp, không lấy nơi khác loại thay cho cà phê/đi dạo người dùng xin. Nơi chưa rõ không bị loại thêm hay được nói là cho phép. `decision.pet_access_priority(record, companions)` là API public trả bậc sắp xếp, không thay hard check hay điểm `wish`.
 - **Né đông.** Khi user né đông (`profile.crowd_tolerance` hoặc `pace.crowd_tolerance` = `avoid`), mỗi tab xếp các nơi Google ghi là đông (≥ `crowd_busy_pct` ở khung giờ nào đó của loại ngày trong chuyến, hoặc cả hai loại ngày khi chưa biết ngày) sau mọi nơi còn lại, bất kể điểm; nơi không có popular times không bị coi là đông (`frame.busy_mask`).
 - **Chế độ ăn** (`decision/diet.py`, chỉ tab `meal`, `snack`). Có yêu cầu chay (hard hoặc soft `vegetarian_options` / `vegan_options` = yes) hay ghi chú "dị ứng hải sản" ở `unmapped` (Trip không có feature dị ứng, chỉ giữ ghi chú): tab xếp theo bậc, rồi mới đến điểm. Bậc 0: nơi tự nhận là quán chay (tên hoặc category Google có "chay"). Bậc 1: không có gì trái chế độ (chay: đã verify `vegetarian_options` = yes). Bậc 2: chưa verify được món chay (chỉ xảy ra với yêu cầu soft; hard thì nơi này vào mục chưa xác minh). Bậc 3: tên hoặc category tự nhận là nơi nướng / thịt / hải sản… (chay) hoặc hải sản (dị ứng). Bậc ≥ 2 không bao giờ được "Hợp nhất"; bậc 3 không vào shortlist và thẻ có ghi chú; bậc 3 vẫn nằm trong tab (không có bằng chứng "chỉ có món mặn" ngoài tự nhận, nên không loại cứng). Thiếu bằng chứng là `unknown`, không bao giờ được xếp như "khớp".
 
@@ -252,7 +261,7 @@ cỡ shortlist ≈ số chỗ cần × hệ số dư
 | cân bằng | trung bình |
 | đi nhiều | nhiều, vẫn không vi phạm physical |
 
-Cỡ shortlist là số nơi MMR chọn ở mỗi vai trò; nó quyết định mỗi tab có bao nhiêu nơi mang `top: true` (web hiện nhãn "Hợp nhất", §9.3). Danh sách không dừng ở đó: mỗi tab có mọi nơi qua sàng lọc, xếp theo `score`. Nơi gần trùng vẫn có `alternatives` nhưng cũng nằm trong danh sách. View chỉ mang **trang đang hiện** của mỗi tab (§9.4) kèm `total` của tab. Ngưỡng "bỏ nhiều quá, nghĩ lại" (`first_shortlist`) = số card `top` + anchor của lần dựng đầu, không phải tổng số nơi.
+Cỡ shortlist là số nơi MMR chọn ở mỗi vai trò; nó quyết định mỗi tab có bao nhiêu nơi mang `top: true` (web hiện nhãn "Hợp nhất", §9.3). Danh sách không dừng ở đó: mỗi tab có mọi nơi qua sàng lọc, xếp theo thứ tự ở §8. Nơi gần trùng vẫn có `alternatives` nhưng cũng nằm trong danh sách. View chỉ mang **trang đang hiện** của mỗi tab (§9.4) kèm `total` của tab. `first_shortlist` giữ cỡ shortlist đầu trong snapshot; không tạo lời nhắc khi bỏ nhiều.
 
 ### 9.3 Tab
 
@@ -260,7 +269,7 @@ Danh sách nằm trong các tab theo loại nơi (`config/decision.yaml` `tabs`:
 
 **Nơi quá xa bị ẩn** (fail-closed, không có đường nới): nơi có thời gian di chuyển từ tâm gần nhất trong các tâm của `fit` (chỗ ở / base nếu đã có, không thì tâm thành phố mà `fit.radius` đang dùng, cộng các nơi user đã đặt làm anchor; nơi gần một anchor thì với tới được) vượt `max_travel_min` (`config/decision.yaml`, mặc định 90 phút; công thức `geo.minutes`) không nằm trong tab nào, shortlist hay mục chưa xác minh. Ngoại lệ: nơi user đã chọn hoặc đặt làm anchor không bao giờ bị ẩn; nơi không có toạ độ không bị coi là xa (không có bằng chứng thì không loại). `why-not` của nơi bị ẩn nói rõ "Xa so với <tâm> (≈N phút, quá giới hạn 90 phút)" với N tính từ toạ độ thật. Số "N nơi hợp với chuyến" của Web là tổng `total` các tab nên đã không đếm nơi bị ẩn.
 
-Mỗi tab liệt kê **mọi** nơi còn lại qua sàng lọc của nó (kể cả nơi có `context_fit` dưới `min_context_fit`; ngưỡng đó chỉ áp cho pool của shortlist), kể cả nơi user đã chọn, xếp theo `score` (sau bậc chế độ ăn và quy tắc né đông ở §8; ngoài hai trường hợp đó không có tiêu chí nào khác). "Hợp nhất" (`top`) đánh dấu các nơi chưa chọn đứng đầu tab, đúng bằng số nơi MMR (§9.2) lấy từ tab đó.
+Mỗi tab liệt kê **mọi** nơi còn lại qua sàng lọc của nó (kể cả nơi có `context_fit` dưới `min_context_fit`; ngưỡng đó chỉ áp cho pool của shortlist), kể cả nơi user đã chọn. Bậc đầu là bằng chứng safety (§6.2): tất cả nơi đạt trước nơi chưa rõ; trong cùng bậc giữ thứ tự chế độ ăn, bằng chứng cho mang thú cưng, né đông và `score` ở §8. Search và thẻ chat cũng ưu tiên bằng chứng safety, không gán chưa rõ thành trượt. "Hợp nhất" (`top`) đánh dấu các nơi chưa chọn đứng đầu tab, đúng bằng số nơi MMR (§9.2) lấy từ tab đó.
 
 ### 9.4 Trang, tìm kiếm và lọc lại
 
@@ -270,7 +279,7 @@ Dựng lại (act, lượt chat, rebase) giữ số trang; trang được lấy 
 
 **Bộ lọc phiên** (`State.filters`, `decision/filters.py`): sau khi xếp hạng, mỗi tab chỉ giữ nơi qua mọi bộ lọc; thẻ ẩn không đổi `status`/`score`. Nơi qua bộ lọc phải có giá trị `VERIFIED`/`OUTDATED` khớp (feature) hoặc giờ mở có trạng thái đó; `unknown` không bao giờ qua (không coi là "có"). Nơi đã chọn / khóa luôn hiện. `total` và số trang của tab đếm sau lọc; "Hợp nhất" (`top`) chọn trong số nơi còn hiện. View có `filter = {active: [{key, value, label}], hidden: n}` và `likes` (id đã bấm "giống"), luôn có; `why-not` của nơi bị ẩn nói do bộ lọc.
 
-`Engine.search(sid, q)`: mỗi chữ gõ (bỏ dấu, hoa thường) phải là đầu một chữ trong tên, category Maps hoặc tên tab của nơi; tìm trên mọi tab và mục chưa xác minh, xếp theo `score`, tối đa 60 thẻ kèm `total`. `outside` = tối đa 8 nơi trong vùng có tên khớp mà không nằm trong danh sách (không tính chỗ ở), mỗi nơi kèm lý do của `why-not`.
+`Engine.search(sid, q)`: mỗi chữ gõ (bỏ dấu, hoa thường) phải là đầu một chữ trong tên, category Maps hoặc tên tab của nơi; tìm trên mọi tab và mục chưa xác minh, ưu tiên bằng chứng cho mang thú cưng khi chuyến có `pet` rồi xếp theo `score`, tối đa 60 thẻ kèm `total`. `outside` = tối đa 8 nơi trong vùng có tên khớp mà không nằm trong danh sách (không tính chỗ ở), mỗi nơi kèm lý do của `why-not`. Với `excluded_places`, query loại/tab chung không làm nơi đó trở lại; query khớp tên riêng trả thẻ trực tiếp không kèm lời nhắc.
 
 `why-not` của một nơi có trong danh sách trả `listed: true` và vị trí ("xếp thứ 41/60; ở trang 2"), kèm mong muốn user đã nói mà nơi đó chưa khớp, khi tab của nó có nơi khớp ("Chưa thấy ghi món bánh căn ở nơi này", "Chưa khớp mong muốn “karaoke”"); thiếu dữ liệu không bao giờ thành "không bán". Nơi bị loại chỉ nêu điều kiện đã loại nó. Prompt của agent có mọi nơi trên màn, nhưng lý do chỉ cho trang đầu mỗi tab và nơi đã chọn. `page_size` = 24, `replace_below` = 0.3 trong `config/decision.yaml`.
 
@@ -297,7 +306,7 @@ B: yên tĩnh hơn, xa base hơn, cùng cụm với anchor TikTok 2
 → Chọn B nếu đi ngày 2 cùng TikTok 2; chọn A nếu muốn đi đâu cũng gần
 ```
 
-Mỗi so sánh chỉ dùng giá trị trong serving record. Tác động di chuyển ở đây là **ước lượng thô** theo cụm; con số phút chính xác chỉ có sau Planning. Lựa chọn sau so sánh là tín hiệu mạnh cho Session Profile (§12).
+Mỗi so sánh chỉ dùng giá trị trong serving record. Tác động di chuyển ở đây là **ước lượng thô** theo cụm; con số phút chính xác chỉ có sau Planning. Chọn sau so sánh vẫn là tín hiệu nhẹ như thao tác chọn thông thường (§12.2); mở bảng so sánh không tạo tín hiệu gu.
 
 ## 11. Thẻ ứng viên
 
@@ -306,11 +315,11 @@ Mỗi ứng viên chỉ hiển thị thông tin phục vụ quyết định (`do
 | Mục | Nội dung | Nguồn |
 |---|---|---|
 | Vì sao phù hợp | Tối đa 3 dòng: mong muốn user nói ("Có bánh căn bạn muốn · theo menu", kiểu nơi, phong cách, giống X) → feature khớp `soft_weights` + bằng chứng (xu hướng review kèm cỡ mẫu) → `liked_groups` / `purpose` (✎) → vị trí. Không có dòng nào thì một dòng thật theo thành phần điểm lớn hơn (khoảng cách hoặc số người viết). Lưới và đĩa xoay cùng lấy dòng từ `web/src/user/ui/cardLines.ts`, chỉ khác cách vẽ | `wish`, Experience, Environment |
-| Đánh đổi | Cờ từ §7, điểm thua trong so sánh | Hợp bối cảnh, So sánh |
+| Đánh đổi | Một dòng; safety chưa rõ ưu tiên trước cờ §7/điểm thua, ví dụ “Chưa rõ có dốc, nhiều bậc”; nhãn feature lấy từ config, không nhắc lại ở `unverified` hay banner | Kiểm tra §6.2, Hợp bối cảnh, So sánh |
 | Thời gian ước tính | Khoảng min / typical / long | Estimate |
 | Ảnh hưởng vị trí | "cùng cụm với X", "xa base", ước lượng thô | Hợp bối cảnh |
 | Độ tin cậy | Trạng thái theo khía cạnh; `UNCERTAIN` / `OUTDATED` hiển thị rõ | Provenance |
-| Phụ thuộc unknown | "Chưa biết ngân sách của bạn; giá nơi này khoảng …" | `unknowns` |
+| Phụ thuộc unknown | Không có: điều người dùng chưa nói (ngân sách…) do cổng hỏi, không phải đánh đổi của nơi nên thẻ không nêu; `depends_on_unknown` luôn `null`, giá vẫn hiện ở `price` | `unknowns` |
 | Nổi tiếng vì | `known_for.headline` (cụm hiếm trong nhóm category) kèm số người nhắc | `details` |
 | Tổng tiền | `cost.total_vnd` (một người: vé, gửi xe; kèm các khoản thêm) | `details` |
 | Ảnh | `photos`: tối đa 4 ảnh, mỗi cảnh một ảnh, ảnh bìa đứng đầu; cảnh theo loại nơi (quán ăn / cà phê: interior, food, exterior, drink; chỗ ở: room, exterior, view; điểm tham quan: view, exterior, amenity). Chỉ ảnh không có người, không mờ / tối, không trùng gần (`corpus.serving.scenes`, `docs/CORPUS.md` §Ảnh Google Maps). Nơi chưa có nhãn cảnh: `photos` rỗng, web giữ ảnh của nó | `data/gmaps/photo_scenes` |
@@ -326,7 +335,7 @@ Giờ / giá / vị trí lấy từ bằng chứng official hoặc Google, khôn
 | Thao tác | Tác động |
 |---|---|
 | Thêm | Vào tập đã chọn; nơi mới → resolve (§4) |
-| Bỏ | Ra khỏi tập; hỏi lý do ngắn khi có ích (`Project_Context.md` §8.3) |
+| Bỏ | Ra khỏi tập; nhận lý do nếu người dùng cung cấp. Không hỏi lấp khoảng trống; phần thiếu do Lịch trình xử lý |
 | Khóa | Giữ bắt buộc; xử lý xung đột theo §6.3, §13.3 |
 | So sánh | Mở §10 |
 | Thay | Đổi sang nơi thay thế trong nhóm |
@@ -340,21 +349,19 @@ Không thao tác nào bị chặn vì lựa chọn quá tải, vướng điều 
 
 ### 12.2 Tín hiệu và thích nghi trong phiên
 
-```text
-thao tác → tín hiệu (độ mạnh theo Project_Context.md §8.2)
-        → lý do (nếu có) → field tương ứng
-              Xa quá          → travel tolerance ↓
-              Đông quá        → crowd tolerance ↓
-              Giá cao         → price sensitivity ↑
-              Không hứng thú  → soft_weight feature đó ↓
-              Đã từng đi      → Experience History
-        → Session Profile → cập nhật soft_weights / pace của phiên → xếp hạng lại ⑤–⑥
-```
+`learning.py` là learner thuần, tất định, không model và không ghi hồ sơ dài hạn. Cờ `wish.session_learning.enabled` mặc định `false`: tắt là không có delta, giữ cách xếp hạng không learner. Khi bật, mỗi lần dựng view tính lại từ state hiện tại; undo hoặc chọn lại rút đúng tín hiệu cũ. Không tạo câu hỏi `pattern`/`rethink`, không hỏi xác nhận hay nhắc học gu, kể cả khi cờ tắt.
 
-- Chỉ ứng viên **chưa chọn** được xếp lại; nơi đã chọn / khóa không đổi vị trí.
-- Không coi "không bấm" là không thích. Bỏ không lý do → chỉ giảm nơi đó, không suy ra feature.
-- So sánh: học từ phần **khác nhau** giữa hai nơi, không từ phần giống (`Project_Context.md` §8.4).
-- Mọi cập nhật chỉ ở Session Profile; Long-term Profile chỉ đổi theo `Project_Context.md` §8.6.
+| Thao tác | Tín hiệu |
+|---|---|
+| Chọn / khóa | Cộng yếu các thuộc tính `VERIFIED`, `n > 0`, evidence không rỗng; anchor và `like` không trở thành select ngầm |
+| Bỏ, lý do `dislike` | Trừ yếu các giá trị có bằng chứng của nơi đó ngay |
+| Bỏ không lý do | Một lần không tính; chỉ giá trị chung của ít nhất `pattern_min` nơi bỏ mới trừ nhẹ, không gắn nhãn không thích |
+| Bỏ vì xa / đắt / đã đến | Không dạy thuộc tính gu; feedback rõ vẫn đổi travel tolerance / price sensitivity / visited tương ứng; đã đến không phải đã thích |
+| Feedback đông / `prefer` | Giữ đường phản hồi chủ động riêng; thuộc tính đã nói rõ không bị tín hiệu ngầm ghi đè |
+
+Điểm `parts.session` là delta riêng, không nhập `soft_weights`, không thêm uncertainty penalty. Phiếu co theo `shrink`, cân confidence của nơi nhận. Tín hiệu dương chỉ lấy feature/value gu trong `taste_values` (trải nghiệm, không khí, view, món… từ ontology), không suy thích muỗi, ồn, đông hay khó đi. Một nơi chọn chỉ có `single_scale` (0,1); từ hai nơi trở lên cần ≥ `consistent_min` (2), ≥ `consistent_share` (0,6). So với pool cùng category group, tính đuôi binomial một phía với nền Laplace `(matches+1)/(pool+2)`; độ mạnh là `(1-tail) × n/(n+evidence_prior)`, không có ngưỡng lift cứng hay thưởng độ hiếm. Giá trị phổ biến vẫn học yếu nếu nhất quán, hai phiếu cho thuộc tính hiếm không mặc nhiên mạnh hơn sáu phiếu. Chỉ giữ `top_k` (3) tín hiệu dương mạnh nhất; tín hiệu âm giữ riêng. Trị tuyệt đối không quá `wish.session_learning.max_lift` (0,18). Tham số nằm cùng mục trong `config/decision.yaml`; không có đường tăng lên full weight. Feature có soft của chuyến (không phải prior), hard filter hoặc `prefer` bị bỏ khỏi learner. Nơi chưa rõ/không đủ bằng chứng nhận 0, không bị trừ.
+
+Chỉ thay điểm/thứ tự; không đổi tập ứng viên, số đếm, hard filter hay tạo hard constraint. `like` vẫn là wish giống nơi riêng (§8); compare không học phần khác biệt. Không thao tác thì không có delta, giữ nguyên thứ tự. Feedback hiện có chỉ thuộc phiên; learner không gọi consumer hồ sơ dài hạn.
 
 ## 13. Khả thi của tổ hợp
 
@@ -376,13 +383,12 @@ Giờ mở cửa `UNCERTAIN` / `OUTDATED` không làm fail; chúng tạo cảnh 
 ### 13.2 Kết quả
 
 ```text
-Khả thi           → cho xác nhận, chuyển Planning
-Khả thi một phần  → chỉ ra nơi gây xung đột → constraint bị vượt → bỏ / thay thì được gì → user chọn
-Không khả thi     → giải thích mất khớp tổng thể (thời gian cần > thời gian có, thiếu ngân sách,
-                    anchor xung đột, quá nhiều cụm xa nhau) → quay lại tuyển chọn
+Khả thi           → handoff lựa chọn sang Planning
+Khả thi một phần  → giữ xung đột trong output → Planning kiểm và xử lý từng nơi
+Không khả thi     → giữ ước lượng quá tải trong output → Planning dựng phương án hợp lệ
 ```
 
-Gợi ý sửa luôn kèm cái giá cụ thể, dựa trên cùng phép tính: "Bỏ C giúp ngày 2 bớt một cụm xa, khoảng 40 phút di chuyển (ước lượng)".
+Các trạng thái trên là ước lượng, không phải cổng handoff: harness vẫn chuyển lựa chọn sang Lịch trình để kiểm và xếp từng nơi. Không nới hard/physical constraint, không tự bỏ lựa chọn. `not_applicable` không tạo xung đột hoặc đề nghị nới; yêu cầu ăn chay chỉ kiểm khi eating.
 
 ### 13.3 Nơi user khóa gây xung đột
 
@@ -406,9 +412,13 @@ Nơi đã chọn / khóa không bị loại âm thầm khi chạy lại; nếu c
 
 Output cuối cùng, đầu vào của Planning & Validation (`docs/PLANNING.md` §Đầu vào).
 
+`Tools.apply(sid, "confirm", {"for_planning": true}, emit)` dùng cho handoff nội bộ: giữ nguyên lựa chọn, `hard_filters`, `relaxed` và feasibility, kể cả khi có nơi fail/unknown; cờ từng nơi ghi rõ điều kiện chưa đạt/chưa xác minh để Planning kiểm trước khi xếp. Đây không phải xác nhận lịch khả thi. Confirm mặc định vẫn yêu cầu feasibility phù hợp.
+
 Confirm và draft khả thi kiểm lại chỗ ở corpus đã chọn hoặc đã đặt theo hard requirements
-hiện tại, kể cả sau rebase. Không tự bỏ selection hoặc đổi chỗ ở khi kiểm fail/unknown;
+hiện tại, kể cả sau rebase; pets chỉ giữ trong handoff để Planning kiểm, không chặn lựa chọn chỗ ở (§6.2). Không tự bỏ selection hoặc đổi chỗ ở khi kiểm fail/unknown;
 confirm trả conflict, draft thường trả `None`. `draft(any=True)` giữ dữ liệu để tìm chỗ ở thay thế.
+
+Câu trả lời ở cổng trước Lịch trình (hard constraint, đi cùng ai, ngày, di chuyển…) chạy `Tools.rebase`: `selected`, `locked`, `dropped`, chỗ ở đã chọn giữ nguyên, kể cả nơi trượt hoặc chưa xác minh được ràng buộc mới; Lựa chọn không nhắc hay chặn. Nơi đó hiện trong `feasibility` (conflict `relax:<id>:<feature>` hoặc cảnh báo "chưa xác minh được…") kèm tên nơi và lý do để Lịch trình xử lý. Khóa bằng `tests/decision/test_gate_keeps_selected.py`.
 
 Read `Tools.read(sid, "evidence", {place, feature, context?})` trả public `PlaceEvidence`:
 binding, value/status serving, quote/source/observation pointer và reason khi thiếu. Input validate
@@ -457,7 +467,7 @@ unknowns      budget, dietary
 ⑥ Đa dạng       4 quán cà phê view đồi gần trùng → 1 nhóm, đại diện + 3 thay thế
                 shortlist nhỏ, chia nhóm: cà phê view · thiên nhiên dễ đi · ăn uống
 ⑦ So sánh       trong nhóm cà phê: A gần trung tâm nhưng đông; B yên tĩnh, cùng cụm TikTok 2
-⑧ Tuyển chọn    user chọn B sau so sánh → tín hiệu mạnh: crowd_low > khoảng cách ngắn
+⑧ Tuyển chọn    user chọn B sau so sánh → tín hiệu nhẹ từ thuộc tính có bằng chứng; không suy quan hệ ưu tiên
                 user bỏ một vườn hoa, lý do "Đông quá" → crowd tolerance ↓ → xếp lại phần chưa chọn
 ⑨ Khả thi       chọn 11 nơi, pace thong thả → khả thi một phần: ngày 2 dư thời gian cần
                 gợi ý: bỏ 2 nơi ít điểm nhất ở cụm xa, hoặc chuyển sang ngày 3
@@ -501,7 +511,7 @@ python -m decision serve [--port 8767] # HTTP + SSE độc lập
 corpus binding, đọc root/version đó; không chọn pointer độc lập. Thiếu snapshot trả lỗi.
 `Data(records)` dựng một vùng trong RAM cho test. Mỗi phiên giữ memo ba tầng (screen, fit,
 score) theo input của từng tầng (`frame.table`), nên `select` / `lock` / `undo` không tính lại
-phần không đổi. `corpus.ontology.load` parse YAML một lần cho mỗi phiên bản file (theo mtime và kích thước): mỗi request validate Search Input nhiều lần, parse lại tốn ~1,4 s ở lượt tạo phiên đầu.
+phần không đổi. Kết quả pipeline được giữ khi Search Input, State, hidden ids, history và cỡ shortlist đầu không đổi; đổi vùng snapshot hoặc config hủy memo. Restore/rebase không đổi đầu vào giữ kết quả, không dựng lại thẻ hay đa dạng hóa. Tìm tên lọc trên cột snapshot trước khi dựng ứng viên, chỉ tính ứng viên khớp. `corpus.ontology.load` parse YAML một lần cho mỗi phiên bản file (theo mtime và kích thước): mỗi request validate Search Input nhiều lần, parse lại tốn ~1,4 s ở lượt tạo phiên đầu.
 
 Search Input, snapshot và Decision Output giữ binding của journey; adapter từ chối binding
 lệch Engine, kể cả restore/rebase. Decision Output validate binding khớp `trip_context`, giữ
@@ -581,3 +591,24 @@ flowchart LR
 - **Không chặn, không đẩy:** prompt tĩnh cấm cảnh báo hay khuyên chọn; tool nhận mọi lựa chọn hợp lệ; bước nào bị từ chối (không nêu tên, quote lạ, nơi lạ) chỉ trả `error` cho model hỏi lại.
 - **Lời trả lời:** gửi một lần dạng `{"replace": say}`. `guard._bad_say` kiểm số và tên nơi (cho phép số / nơi trong kết quả tool, màn hình, lời người dùng); sai thì gửi lại một lần (`[note]` role `user`), vẫn sai thì dùng câu cố định (`DONE` / `NONE`). Lịch sử: `say` được ghi vào log phiên và nạp lại qua `agents.assistant.window`.
 - **Đo:** `python -m decision evaluate` không đổi (không đi qua trợ lý); bench Lựa chọn: `python -m decision bench [--live] [--model cx/gpt-6.1-terra] [--family f] [--limit n] [--trip]` (`src/decision/bench.py`, ca ở `config/bench_decision_assistant.yaml`: phiên Decision thật trên snapshot, `{p1}` = tên nơi đầu shortlist; không cờ = chỉ nạp ca; `--trip` dựng thêm Trip engine cho tool đọc dùng chung). Cổng: p50 ≤ 7,5 s, p90 ≤ 11 s, 0 số không nguồn, 0 câu chặn / răn người dùng, tool đúng ≥ 90 % mỗi nhóm.
+
+## 20. Tag và subtag
+
+Sở thích rộng ("tui thích săn mây, có kiểu nào hay") được chia thành vài **kiểu** (subtag), mỗi kiểu là nhóm nơi cùng loại, hiện thành thẻ; bấm thẻ mở dải thẻ nơi (`PlaceStage`). Chia bằng code thuần, không model: `src/corpus/tags/` (public `__init__.py`), từ điển và ngưỡng ở `config/tags.yaml`.
+
+```mermaid
+flowchart LR
+  Q[criteria của find_places] --> F[retrieval.find + admissible]
+  F --> P[PlaceTags: bằng chứng của từng nơi]
+  P --> S[split: một trục]
+  S --> L[nhãn tiếng Việt từ từ điển]
+```
+
+- **Bốn trục:** `category` (nhóm Maps), `experience` (feature `present` VERIFIED / OUTDATED, vd `cloud_hunting`, `sunset_view`, `flower_garden`), `style` (style tag đọc từ ảnh, `config/styles.yaml`), `dish` (món trên thực đơn, đơn trong review, tên quán; hỏi một món thì chia theo món con và biến thể "Bánh căn trứng cút"). Chưa có trục khu vực (dữ liệu chỉ có `area-N` không tên) và giờ mở cửa.
+- **Chọn trục (`split`):** bỏ trục query đã cố định; trục đạt khi 3–6 nhóm, mỗi nhóm ≥ 3 nơi và ≤ 70 % tập, hợp phủ ≥ 50 %, chia đều (entropy ≥ 0,6), nơi nằm ở hai nhóm ≤ 50 % (không áp cho biến thể món); điểm cao nhất thắng. Tập < 12 nơi hoặc không trục đạt → danh sách phẳng.
+- **Bằng chứng:** nơi vào nhóm chỉ khi có bằng chứng; `unknown` không vào nhóm nào; phần còn lại không thành nhóm giả. Danh sách nơi của nhóm giữ thứ tự xếp hạng của tập.
+- **Cờ membership:** `config/tags.yaml` → `membership.enabled` mặc định `false`, dùng vocabulary và membership legacy. Khi `true`, dùng `vocabulary_v2`: tag là lý do đáng đến, chỉ nhận Judge `yes`; `no/unclear` không fallback, chưa chấm dùng feature n≥3 **và** mention_rate≥1%. Style cần ảnh đã chấm; món khám phá cần bằng chứng nổi bật, không đồng nhất với lookup món đích danh. Category chỉ overlay tầng tag, không đổi `category_group` phục vụ Decision. Cặp experience–category dùng whitelist `subtag_categories` ở cả hai chiều; style chỉ ghép nhóm có ý nghĩa thiết kế trong `membership.style_groups`, không chia chéo sang món/trải nghiệm không liên quan. Dữ liệu và lệnh offline: `docs/CORPUS.md` §Membership tag offline. Cờ chỉ được bật sau kiểm holdout và chủ dự án duyệt trang review.
+- **Nhãn:** ghép từ từ điển, vd "Quán cà phê săn mây", "Cắm trại, sáng dậy thấy mây" (ghi đè trong `overrides`), "Quán cà phê kiểu Hàn", "Lẩu gà lá é".
+- **Hai Judge offline:** vocabulary v2 cấu hình reader `consensus` nhưng cờ vẫn tắt; chỉ đồng thuận `yes` tự thành membership, lệch/thiếu kết quả còn fresh giữ `unclear` chờ chủ dự án. Audit đo riêng từng Judge và phần đồng thuận, không đổi gold/ngưỡng theo kết quả holdout. Dữ liệu và tập duyệt bất đồng tối đa60 mục: `docs/CORPUS.md` §Membership tag offline.
+- **Hai tầng:** *tag* = một hướng lớn của thành phố (nhóm Maps hoặc trải nghiệm: "Quán cà phê", "Săn mây"), `corpus.tags.kinds`; *subtag* = các kiểu bên trong một sở thích, `corpus.tags.split`. Chọn tag mở subtag của nó, chọn subtag mở dải nơi.
+- **Dùng ở đâu:** (1) Tìm hiểu chuyến đi: tool `browse_tags` của Agent và lượt bấm thẻ tag (`docs/TRIP_UNDERSTANDING.md` §19, chính sách *khi nào tag, khi nào subtag, khi nào danh sách* ở `src/trip/domain/tag_policy.py`); (2) Lựa chọn: tool `group_list` của trợ lý chia **một tab** đang dài theo kiểu (`src/decision/kinds.py` gọi `corpus.tags.split` trên các nơi của tab, đã trừ nơi ẩn / đã bỏ), trả nhãn, số nơi và 3 nơi ví dụ để trợ lý nêu "tab này có những kiểu nào" và người dùng tự chọn; tab ngắn (< 12 nơi) hoặc không trục nào chia tốt thì không có nhóm và trợ lý nói vậy. `browse_tags` bị ẩn khỏi trợ lý Lựa chọn (nó tạo thẻ trong chat Trip). Trang chủ **không** dùng tag. Mọi danh sách vẫn qua `coverage.admissible` và nơi người dùng ẩn.

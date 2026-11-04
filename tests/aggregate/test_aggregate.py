@@ -431,3 +431,31 @@ def test_lodging_keeps_only_the_stay_features():
     assert "long_walk" not in feats and "rough_road_access" not in feats  # no silence inference outside the stay set
     cafe = aggregate_place([{**f(obs), "place": {"category": "Quán cà phê"}}], ONT)["features"]
     assert "food_quality" in cafe
+
+
+def test_run_fills_phone_and_website_from_maps_place_json_when_observation_predates_them(tmp_path, monkeypatch):
+    # observation files built before observe copied phone / website (3,295 of 3,298 in dalat) carry no such keys
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    (tmp_path / "gmaps" / "observations").mkdir(parents=True)
+    stale = {**f([o(1, "crowd", "high", "a")]), "place": {"category": "Quán cafe", "address": "1 A"}}
+    (tmp_path / "gmaps" / "observations" / "0x1_0x2.json").write_text(json.dumps({**stale, "place_fid": "0x1:0x2"}),
+                                                                      encoding="utf-8")
+    raw = tmp_path / "gmaps" / "places" / "0x1_0x2"
+    raw.mkdir(parents=True)
+    (raw / "place.json").write_text(json.dumps({"fid": "0x1:0x2", "category": "Other", "address": "elsewhere",
+                                                "phone": "0919419835", "website": None}), encoding="utf-8")
+    run("dalat")
+    ident = json.loads((tmp_path / "intel" / "places" / "0x1_0x2.json").read_text(encoding="utf-8"))["identity"]
+    assert ident["phone"] == "0919419835"
+    assert "website" not in ident  # no evidence: stays absent, never invented
+    assert ident["category"] == "Quán cafe" and ident["address"] == "1 A"  # the observation's own value wins
+
+
+def test_run_without_maps_place_json_leaves_identity_as_observed(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    (tmp_path / "gmaps" / "observations").mkdir(parents=True)
+    data = {**f([o(1, "crowd", "high", "a")]), "place": {"phone": "123"}}
+    (tmp_path / "gmaps" / "observations" / "F.json").write_text(json.dumps(data), encoding="utf-8")
+    run("dalat")
+    ident = json.loads((tmp_path / "intel" / "places" / "F.json").read_text(encoding="utf-8"))["identity"]
+    assert ident == {"phone": "123"}

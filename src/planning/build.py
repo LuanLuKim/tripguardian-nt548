@@ -7,7 +7,6 @@ prepare() does once what every variant shares; schedule_trip() lays the trip out
 from dataclasses import asdict, dataclass, field, replace
 
 import live
-from trip import RECOMMENDED_TRIP_DAYS
 
 from . import places as pl
 from .conditions import build_cond, crowd_sensitive, crowd_tips, describe, restricted_in
@@ -16,12 +15,13 @@ from .layout import DAWN_REST, allowed, assign, capacity, must_places, pull_earl
 from .model import Day, Item
 from .roles import ROLE_SLOTS, pin_order, takes_meal_slot
 from .route import order_day, _nearest_neighbour
-from .schedule import DayCtx, _SimulationCache, dawn_swapped, day_meals, pin_window, simulate
+from .schedule import DayCtx, _SimulationCache, dawn_swapped, day_meals, pin_hostable, pin_window, simulate
 from .settings import Settings, fmt, to_min
 from .settings import load as load_settings
 from .traits import preference
 from .travel import Travel, build_travel
-from .validate import validate
+from .validate import NO_BUDGET_CAP, validate
+from .safety import visit_warnings
 from .timefit import describe as time_description
 from .recommendations import recommend
 from .cache import day_key, fingerprint, put
@@ -84,11 +84,21 @@ def pin_warnings(ctxs, results) -> list[dict]:
             if told:
                 warning["text"] += " Giữ giờ đó thì vướng " + labels[told[0]] + "."
             out.append(warning)
+        # an edit can carry a place to a day that cannot reach its time of day at all (validate lets it be): say so
+        for it in getattr(result, "items", ()):
+            p = cx.places.get(it.place_id) if it.kind == "visit" else None
+            if p is not None and p.pins and it.place_id not in result.unpinned and not pin_hostable(p, cx):
+                warning = _warn("pin_dropped", day=cx.day.index + 1, name=p.name)
+                warning.update(day=cx.day.index + 1, place_id=p.id, reason="day_window", physical_conflicts=["day_window"])
+                warning["text"] += " Giữ giờ đó thì vướng " + labels["day_window"] + "."
+                out.append(warning)
     return out
 
 def _item(it: Item) -> dict:
     d = {"kind": it.kind, "start": fmt(it.start), "end": fmt(it.end), "place_id": it.place_id, "name": it.name,
          "from": it.from_id, "to": it.to_id, "mode": it.mode, "note": it.note}
+    if it.kind == "travel":
+        d.update(road_min=it.road_min, buffer_min=it.end - it.start - it.road_min)
     return {k: v for k, v in d.items() if v is not None}
 
 
@@ -150,6 +160,12 @@ def prepare(decision: dict, records: list[dict], cfg: Settings | None = None, li
     """weather: {"YYYY-MM-DD": {"rain_prob": 0..1, "rain_mm", "gust_kmh", "storm", "source", "fetched_at"}} or None.
     signals: {"YYYY-MM-DD": {"holiday": name | None, "events": [...], "advisories": [...]}} or None (see
     conditions.fetch_live). With neither, no day has a DayCond and the plan is what it was before conditions."""
+    from trip import RECOMMENDED_TRIP_DAYS
+
+    from . import pets
+
+    tc = decision['trip_context']
+    decision = {**decision, 'trip_context': {**tc, 'hard_filters': pets.filters(tc)}}
     cfg = cfg or load_settings()
     if (decision["trip_context"]["context"].get("days") or cfg.default_days) > cfg.chunk_days:
         cfg = replace(cfg, exact_n=min(cfg.exact_n, cfg.long_trip_exact_n))
@@ -177,7 +193,15 @@ def prepare(decision: dict, records: list[dict], cfg: Settings | None = None, li
     placed = [breakfast_estimate(p, cfg) for p in placed]
     # A place known for several times of day (sunset and cloud hunting) is visited for the one the user asked for.
     wants = {w["feature"] for w in tc.get("soft_weights") or [] if w.get("weight", 0) > 0 and w.get("value") == "present"}
-    placed = [replace(p, pins=pin_order(p.pins, wants)) for p in placed]
+    def timed_wants(p):
+        dawn = any(t.get("period") == "sunrise" and t.get("place_id") in (None, p.id)
+                   and t.get("activity") in (None, p.activity) for t in tc.get("time_preferences") or ())
+        dawn = dawn or any(t.get("period") == "sunrise" and
+                           (not t.get("kinds") or p.rec["identity"].get("category_group") in t["kinds"])
+                           and t.get("activity") in (None, p.activity) for t in frame.get("periods") or ())
+        return wants | ({"cloud_hunting"} if dawn else set())
+
+    placed = [replace(p, pins=pin_order(p.pins, timed_wants(p))) for p in placed]
     if frame and "live_music" not in wants:
         # A venue offering music does not mean a sightseeing visit attends it. Full frames keep evening music for
         # nightlife/bar/market visits; explicit timing preferences and the place's opening hours remain in force.
@@ -185,6 +209,9 @@ def prepare(decision: dict, records: list[dict], cfg: Settings | None = None, li
                   if p.activity not in {"nightlife", "drinking"} and
                   p.rec["identity"].get("category_group") not in {"bar", "market"} else p for p in placed]
     by_place = {p.id: p for p in placed}
+    warnings += pets.warnings(placed, tc['hard_filters'])
+    from .lodging import warnings as lodging_warnings
+    warnings += lodging_warnings(decision, by_id)
     # Near duplicates (the same kind of place, PLACE_DECISION §9.1) the user kept anyway: say so, never refuse.
     seen: dict = {}
     for p in placed:
@@ -243,6 +270,18 @@ def prepare(decision: dict, records: list[dict], cfg: Settings | None = None, li
             and not start_said(ctx, sources, 0, len(days)):
         landed = to_min(frame["arrive"]["at"][11:])     # never before the arrival, never later than the frame says
         days[0] = replace(days[0], start=max(landed, min(days[0].start, landed + cfg.realistic["arrive_buffer_min"])))
+    arrival_at = (frame.get('arrive') or {}).get('at')
+    if days and arrival_at and days[0].start > to_min(arrival_at[11:]):
+        warnings.append({'code': 'arrival_buffer', 'day': 0,
+                         'text': f"Đến lúc {arrival_at[11:]}; khung tham quan bắt đầu {fmt(days[0].start)} "
+                                 'theo khoảng đệm trong khung chuyến đi.' +
+                                 (' Chưa có điểm đến để kiểm chứng chặng vào thành phố.' if not entry else '')})
+    if days and leave_at:
+        warnings.append({'code': 'departure_buffer', 'day': len(days) - 1,
+                         'text': f"Giờ rời đi {leave_at[11:]}; lịch dành thời gian sau {fmt(days[-1].end)} "
+                                 'cho việc rời đi.' +
+                                 (' Chưa có điểm ra sân bay/bến xe để kiểm chứng đường đi; cần bổ sung điểm ra.'
+                                  if not exit_ else ' Chặng tới điểm ra đã nằm trong lịch.')})
     # A fixed-time block away from the lodging needs a place the plan knows; without one no road is invented (RULE §3).
     warnings += [_warn("event_location_unknown", day=d.index + 1, label=label) for d in days
                  for _, _, _, label, where in d.busy if where not in (None, "lodging") and where not in travel.index
@@ -265,9 +304,11 @@ def prepare(decision: dict, records: list[dict], cfg: Settings | None = None, li
     ctxs = [DayCtx(d, by_place, travel, cfg, pace,
                    sun_fn(d.date, *centre, live_cfg.tz_offset_h) if d.date and centre else None, rain_on(d), prefs,
                    build_cond(d, weather, signals, cfg), crowd_tol, ctx.get("purpose"), tuple(tc.get("time_preferences") or ()),
-                   mobility=mobility, require_meals=True, home=home,
+                   mobility=mobility, require_meals=True, home=home, pet='pet' in (ctx.get('companions') or []),
                    meal_skip=frozenset(_skips(frame)), rest=_rest(frame),
                    compact_estimates=bool(frame),
+                   diet_days=tuple(rule for rule in ctx.get("diet_days", [])
+                                   if d.date and str(rule["date"]) == d.date.isoformat()),
                    drop_bags=d.index == 0 and d.start_node == "@entry" and d.start < checkin)
             for d in days]
     warnings += condition_warnings(ctxs)
@@ -371,7 +412,7 @@ def schedule_trip(trip: Trip, weights: dict | None = None, *, kept=None, allow_s
             group, _ = split(week_ids, ctxs[start:start + cfg.chunk_days])
             per_day.extend(group)
     tc = trip.decision["trip_context"]
-    hard, budget = tc.get("hard_filters") or [], tc["context"].get("budget_vnd")
+    hard, budget = tc.get("hard_filters") or [], NO_BUDGET_CAP
     max_leg = (tc.get("pace") or {}).get("max_leg_min")
     anchors = must_places(trip)
     base = list(ctxs)                   # each day before a dawn pull
@@ -411,10 +452,10 @@ def schedule_trip(trip: Trip, weights: dict | None = None, *, kept=None, allow_s
 
     def _lay(k: int, day_ids: list, overfull: bool | str) -> tuple:
         cx, pid = pull_early(base[k], day_ids, trip.by_place, trip.travel)
-        # A time of day no day of the trip reaches (an evening market on trips whose days all end at 17:00) is given
-        # up from the start: the frame itself is the physical limit, and the user is told.
-        outside = tuple(i for i in day_ids if cx.places[i].pins and not hosts(k, cx.places[i])
-                        and not any(hosts(j, cx.places[i]) for j in range(len(base))))
+        # A time of day this day cannot reach (an evening market on a day that ends at 17:00, a sunset lake on a last
+        # morning) is given up from the start: the frame itself is the physical limit, and the user is told. The layout
+        # already prefers a day that hosts it (layout option key `miss`); it lands here only when that day had no room.
+        outside = tuple(i for i in day_ids if cx.places[i].pins and not hosts(k, cx.places[i]))
         if outside:
             cx = replace(cx, places={**cx.places, **{i: replace(cx.places[i], pins=()) for i in outside}})
         cx, r, pid = _lay_held(k, cx, pid, day_ids, overfull)
@@ -625,6 +666,7 @@ def schedule_trip(trip: Trip, weights: dict | None = None, *, kept=None, allow_s
                      for i in per_day[k] if i in trip.by_place and dawn_swapped(trip.by_place[i], cx)]
     warnings.extend(pin_warnings(ctxs, results))
     warnings.extend(restricted_warnings(ctxs, results))
+    warnings.extend(visit_warnings(ctxs, results, hard))
     for cx, r in zip(ctxs, results):
         for note in r.notes:
             code, _, meal = note.partition(":")
@@ -721,13 +763,27 @@ def with_home(trip: Trip, home_id: str | None) -> Trip:
                      *(n if trip.points.get(n) else None for n in ("@entry", "@exit")), tc.get("sources"))
     days = [replace(old, start_node=d.start_node, end_node=d.end_node) for d, old in zip(days, trip.days)]   # as prepared
     ctxs = [replace(cx, day=d, home=home_id) for cx, d in zip(trip.ctxs, days)]
-    return replace(trip, days=days, ctxs=ctxs)
+    warnings = [w for w in trip.warnings if not (home_id and w.get("code") == "base_unknown")]
+    return replace(trip, days=days, ctxs=ctxs, warnings=warnings)
 
 
-def itinerary(days: list, results: list) -> list[dict]:
-    return [{"day": d.index + 1, "date": d.date.isoformat() if d.date else None, "weekday": d.weekday,
-             "window": [fmt(d.start), fmt(d.end)], "method": r.method,
-             "items": [_item(i) for i in r.items]} for d, r in zip(days, results)]
+def itinerary(days: list, results: list, ctxs=()) -> list[dict]:
+    from . import pets
+    out = []
+    for k, (d, r) in enumerate(zip(days, results)):
+        cx = ctxs[k] if k < len(ctxs) else None
+        unknown = {w['place_id'] for w in pets.warnings(cx.places.values(), [pets.REQUIREMENT])
+                   if w['code'] == 'pets_unknown'} if cx and cx.pet else set()
+        items = []
+        for item in r.items:
+            row = _item(item)
+            text = 'Chưa rõ có cho mang thú cưng không'
+            if item.kind == 'visit' and item.place_id in unknown and text.lower() not in row.get('note', '').lower():
+                row['note'] = '; '.join(filter(None, [row.get('note'), text]))
+            items.append(row)
+        out.append({'day': d.index + 1, 'date': d.date.isoformat() if d.date else None, 'weekday': d.weekday,
+                    'window': [fmt(d.start), fmt(d.end)], 'method': r.method, 'items': items})
+    return out
 
 
 def chunk_view(itinerary_days: list, chunk_days: int = 7) -> dict:
@@ -787,8 +843,8 @@ def build_plan(decision: dict, records: list[dict], cfg: Settings | None = None,
     days = [cx.day for cx in sched.ctxs]      # schedule_trip may pull a later day's start earlier (early_start)
     return {
         "ok": not sched.violations,
-        **(chunk_view(itinerary(days, sched.results), trip.cfg.chunk_days) if len(days) > trip.cfg.chunk_days else {}),
-        "itinerary": itinerary(days, sched.results),
+        **(chunk_view(itinerary(days, sched.results, sched.ctxs), trip.cfg.chunk_days) if len(days) > trip.cfg.chunk_days else {}),
+        "itinerary": itinerary(days, sched.results, sched.ctxs),
         "travel_load": travel_load(days, sched.results),
         "time_suitability": time_description(sched.ctxs, sched.results),
         "recommendations": recommend(sched.ctxs, sched.results, decision, trip.by_id),

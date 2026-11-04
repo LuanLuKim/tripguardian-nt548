@@ -71,6 +71,7 @@ export function Swap({ day, replacing, candidates, people, busy, onOverview, onD
                     <div className="tg-it-rate">{p?.rating != null && <><Icon name="star" size={15} /><b>{p.rating.toFixed(1)}</b>{p.reviews != null && <span>({p.reviews.toLocaleString('vi-VN')} đánh giá)</span>}</>}</div>
                     <button type="button" className="tg-it-textbtn" onClick={() => onOpen(c.id)}><Icon name="pin" size={14} />Xem chi tiết</button>
                     <div className="tg-it-result__meta">{c.forThis && <b className="tg-tag">Hợp để thay {target}</b>} {c.why ?? (c.from === 'selection' ? 'Nơi bạn đã chọn, đang chưa có trong lịch' : 'Dự phòng đã kiểm tra')}</div>
+                    {c.warnings?.map((w, j) => <p key={j}><small className="tg-faint">{w.text}</small></p>)}
                     <div className="tg-it-result__act">
                       <span className="tg-faint">{price ? `Giá tham khảo ${price}` : 'Chưa có giá xác nhận'}</span>
                       <button type="button" className="tg-btn tg-btn--primary tg-btn--sm" disabled={busy} onClick={() => onPick(c)}><Icon name={replacing ? 'swap' : 'plus'} size={15} />{replacing ? 'Chọn thay thế' : 'Thêm vào lịch'}</button>

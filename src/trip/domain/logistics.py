@@ -5,10 +5,14 @@ coach or flight, and how a chosen coach / flight sets the day's window and the c
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 from datetime import date, datetime, timedelta
 
 from ..infrastructure.settings import Settings
 from .state import Base, Evidence, Transit, TripState, Update, apply, settle
+
+if TYPE_CHECKING:
+    from .frame import Moment
 
 CITY = (11.9404, 108.4583)  # Đà Lạt centre (Chợ Đà Lạt), the same point Place Decision measures from
 AIRPORT = Base(text="Sân bay Liên Khương", lat=11.7502, lng=108.3672)
@@ -65,6 +69,44 @@ def clock_after(t: str, minutes: int) -> str:
     """HH:MM of the ISO time t, minutes later (earlier when negative)."""
     x = datetime.fromisoformat(t) + timedelta(minutes=minutes)
     return f"{x:%H:%M}"
+
+
+def travel_moments(state: TripState) -> tuple[Moment | None, Moment | None]:
+    """Explicit physical moments take precedence over a selected transit."""
+    from .frame import Moment
+
+    arrive, leave = state.frame.arrive.value, state.frame.leave.value
+    if arrive is None and state.inbound.value:
+        arrive = Moment(at=state.inbound.value.arrive_at, how=state.inbound.value.mode)
+    if leave is None and state.outbound.value:
+        leave = Moment(at=state.outbound.value.depart_at, how=state.outbound.value.mode)
+    return arrive, leave
+
+
+def with_travel_points(state: TripState) -> TripState:
+    """Resolve the local airport for a flight without mutating user facts."""
+    arrive, leave = travel_moments(state)
+    updates = {}
+    for key, moment in (("entry_point", arrive), ("exit_point", leave)):
+        field = getattr(state, key)
+        if not field.known and moment and moment.how == "plane":
+            updates[key] = field.model_copy(update={"value": AIRPORT, "source": "inferred"})
+        elif field.value and field.value.text == AIRPORT.text and field.value.lat is None and field.value.lng is None:
+            updates[key] = field.model_copy(update={"value": field.value.model_copy(update={
+                "lat": AIRPORT.lat, "lng": AIRPORT.lng})})
+    return state.model_copy(update=updates) if updates else state
+
+
+def travel_bound(moment: Moment | None, buffer_min: int, entry_min: int, *, departing: bool = False,
+                 point: Base | None = None) -> datetime | None:
+    """One physical boundary for the frame, legacy hours and gate suggestions."""
+    if buffer_min < 0 or entry_min < 0:
+        raise ValueError("arrival buffer and entry road minutes must be nonnegative")
+    if moment is None:
+        return None
+    routed = point is not None and point.lat is not None and point.lng is not None
+    minutes = 0 if moment.how == "self" else buffer_min + (0 if routed else entry_min)
+    return datetime.fromisoformat(moment.at) + timedelta(minutes=-minutes if departing else minutes)
 
 
 def pick_transit(state: TripState, way: str, t: Transit, cfg: Settings, turn: int) -> TripState:

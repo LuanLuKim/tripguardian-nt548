@@ -25,12 +25,21 @@ def _safe(fid: str) -> str:
 
 
 def served(root: Path) -> dict:
-    """{fid: {name, category, area, rating_direction}} of the served corpus (data/serving/places.json)."""
+    """{fid: {name, category, group, area, rating_direction}} of the served corpus (data/serving/places.json)."""
     doc = _read(root.joinpath(*SERVING)) or {}
     return {r["id"]: {"name": (r.get("identity") or {}).get("name") or "", "category": (r.get("identity") or {}).get("category"),
+                      "group": (r.get("identity") or {}).get("category_group"),
                       "area": (r.get("identity") or {}).get("area"),
                       "rating_direction": ((r.get("provenance") or {}).get("rating_trend") or {}).get("direction")}
             for r in doc.get("records", []) if (r.get("identity") or {}).get("name")}
+
+
+def tagged(root: Path) -> list:
+    """corpus.tags.PlaceTags of every served place (data/serving/places.json + the current semantic index' style tags)."""
+    from ..tags import load_styles, of_record
+    doc = _read(root.joinpath(*SERVING)) or {}
+    styles = load_styles(root)
+    return [of_record(r, styles.get(r["id"], ())) for r in doc.get("records", []) if (r.get("identity") or {}).get("name")]
 
 
 def tiktok_videos(root: Path, fids: set, tz_h: int) -> dict:

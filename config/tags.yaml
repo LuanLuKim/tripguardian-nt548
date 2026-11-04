@@ -1,0 +1,1015 @@
+# Tag -> subtag (corpus.tags, docs/PLACE_DECISION.md §Tag và subtag): the words and thresholds that turn a ranked set of
+# places into a few named groups (subtags), and the tags the home page ranks by recent TikTok clips.
+# A place is in a group only when the corpus holds evidence for it (a VERIFIED / OUTDATED feature, a style tag read from
+# photos, a dish on its menu or in review orders, its Maps category). No evidence = in no group, never "not in".
+
+group:
+  min_places: 12      # a set smaller than this is a flat list
+  min_size: 3         # places a subtag needs
+  min_groups: 3       # subtags an axis needs to count as a split
+  max_groups: 6
+  dish_groups: [restaurant, dessert]  # the dish axis is offered only for a set mostly of these
+  dish_min_food: 0.6
+  min_cover: 0.5      # share of the set the subtags of an axis must hold together
+  max_similar: 0.75   # a group this close (Jaccard) to one already taken is a repeat
+  max_overlap: 0.5    # share of the groups' places that may sit in two groups: a split of one-kind-each, not of tags every place has
+  min_balance: 0.6    # 0..1: the groups must share the places this evenly (29 + 3 + 3 is not a split)
+  max_share: 0.7      # a group holding more than this share of the set does not split it
+  cards_per_subtag: 8 # place cards a block carries for each subtag
+  axis_bias:          # the better axis wins; a tie goes to the one with the higher bias
+    dish: 1.1
+    category: 1.0
+    experience: 0.95
+    style: 0.9
+
+# When the chat shows tags, subtags or a plain list (src/trip/domain/tag_policy.py, docs/TRIP_UNDERSTANDING.md §Tag, subtag
+# hay danh sách). The ask's own words decide, counted in "dimensions" it already fixes: a category group, a must feature,
+# a dish, a text. A prefer feature is a mood, not a dimension.
+policy:
+  tags_min_places: 40   # a vague ask (no dimension) shows tags only when the trip's allowed places are at least this many
+  flat_dims: 2          # an ask fixing this many dimensions is specific ("quán cà phê săn mây"): the plain list
+  repeat_back: 2        # the same tags / subtags block is not shown again when one of the last N blocks was it
+  kinds:                # the tags a vague ask is offered: the biggest kinds of the allowed places, a few per axis
+    min: 3
+    max: 6
+    min_size: 4         # places a kind needs
+    max_share: 0.6      # a kind held by more of the set than this is no choice
+    per_axis: {category: 3, experience: 3}
+
+# Maps category group -> label (standalone subtag name) and noun (what a composed label starts with:
+# "Quán cà phê săn mây").
+categories:
+  cafe:        {label: "Quán cà phê", noun: "Quán cà phê"}
+  restaurant:  {label: "Quán ăn & nhà hàng", noun: "Quán ăn"}
+  dessert:     {label: "Tiệm bánh, kem & chè", noun: "Tiệm bánh & kem"}
+  bar:         {label: "Bar & quán đêm", noun: "Quán bar"}
+  market:      {label: "Chợ & phố đi bộ", noun: "Chợ"}
+  nature:      {label: "Đồi & thác", noun: "Đồi"}
+  garden_farm: {label: "Vườn & nông trại", noun: "Vườn & nông trại"}
+  camping:     {label: "Cắm trại & glamping", noun: "Khu cắm trại"}
+  attraction:  {label: "Điểm tham quan", noun: "Điểm tham quan"}
+  museum:      {label: "Bảo tàng & di tích", noun: "Bảo tàng & di tích"}
+  religious:   {label: "Chùa & nhà thờ", noun: "Chùa & nhà thờ"}
+  amusement:   {label: "Khu vui chơi", noun: "Khu vui chơi"}
+  spa:         {label: "Spa & thư giãn", noun: "Spa"}
+  shop:        {label: "Cửa hàng & đặc sản", noun: "Cửa hàng"}
+  tour:        {label: "Tour & trải nghiệm", noun: "Tour"}
+  golf:        {label: "Sân golf", noun: "Sân golf"}
+
+# Experience / environment features usable as a tag. key = feature id, or "fid=value" for a feature whose value is not
+# "present". label: standalone; with: what follows a noun ("Quán cà phê săn mây"); home: offered as a topic on the home
+# page (false = too common or too plain to be a topic); split: false = a property of every kind of place, never a
+# subtag ("Yên tĩnh" would hold half of any set).
+features:
+  cloud_hunting:         {label: "Săn mây", with: "săn mây", home: true}
+  sunset_view:           {label: "Ngắm hoàng hôn, bình minh", with: "ngắm hoàng hôn", home: true}
+  scenic_view:           {label: "View núi đồi, thung lũng", with: "có view đẹp", home: true}
+  photo_spot:            {label: "Góc sống ảo", with: "nhiều góc chụp ảnh", home: true}
+  nature:                {label: "Thiên nhiên, rừng thông", with: "giữa thiên nhiên", home: true}
+  flower_garden:         {label: "Vườn hoa", with: "có vườn hoa", home: true}
+  heritage_architecture: {label: "Di tích & kiến trúc", with: "có kiến trúc cổ", home: true}
+  cozy_decor:            {label: "Decor ấm cúng", with: "decor ấm cúng", home: false}
+  laptop_friendly:       {label: "Ngồi làm việc, học bài", with: "ngồi làm việc được", home: true}
+  long_stay_chill:       {label: "Ngồi lâu, chill", with: "ngồi chill được lâu", home: true}
+  live_music:            {label: "Nhạc sống", with: "có nhạc sống", home: true}
+  adventure_activity:    {label: "Trò mạo hiểm", with: "có trò mạo hiểm", home: true}
+  hiking:                {label: "Đi bộ đường dài", with: "đi bộ đường dài", home: true}
+  animals:               {label: "Gần gũi thú nuôi", with: "có thú nuôi", home: true}
+  hands_on_workshop:     {label: "Workshop tự tay làm", with: "có workshop", home: true}
+  pick_your_own:         {label: "Tự hái trái cây", with: "cho tự hái", home: true}
+  cultural_show:         {label: "Văn hóa & biểu diễn", with: "có biểu diễn", home: true}
+  camping:               {label: "Cắm trại, ngủ lều", with: "cắm trại được", home: true}
+  tasting_available:     {label: "Nếm thử tại chỗ", with: "cho nếm thử", home: true}
+  costume_rental:        {label: "Thuê trang phục chụp ảnh", with: "cho thuê trang phục", home: true}
+  outdoor_seating:       {label: "Chỗ ngồi ngoài trời", with: "có chỗ ngồi ngoài trời", home: false, split: false}
+  local_specialty_food:  {label: "Đặc sản địa phương", with: "có đặc sản", home: false, split: false}
+  "weather_exposed=sheltered": {label: "Có mái che, trú mưa", with: "có mái che", home: true}
+  "setting=indoor":      {label: "Trong nhà", with: "trong nhà", home: false, split: false}
+  "crowd=low":           {label: "Vắng, ít khách", with: "vắng khách", home: false, split: false}
+  "noise=quiet":         {label: "Yên tĩnh", with: "yên tĩnh", home: false, split: false}
+
+# A label for one category x one fixed feature, when the composed one reads badly ("<category>+<feature>").
+overrides:
+  "camping+cloud_hunting": "Cắm trại, sáng dậy thấy mây"
+  "nature+cloud_hunting": "Đồi & điểm ngắm mây"
+  "attraction+cloud_hunting": "Điểm tham quan săn mây"
+  "restaurant+cloud_hunting": "Quán ăn có view mây"
+  "garden_farm+cloud_hunting": "Vườn & nông trại săn mây"
+
+# Style tags (config/styles.yaml): how each joins a noun ("Quán cà phê kiểu Hàn"); without a noun "Không gian ...".
+style_noun: "Không gian"
+style_with:
+  retro: "hoài cổ"
+  retro_saigon: "kiểu Sài Gòn xưa"
+  vintage_junk: "đồ cũ, ve chai"
+  french_colonial: "kiểu Pháp cổ"
+  indochine: "kiểu Đông Dương"
+  minimal: "tối giản"
+  industrial: "kiểu công nghiệp"
+  rustic: "mộc mạc"
+  korean: "kiểu Hàn"
+  japanese: "kiểu Nhật"
+  boho: "phong cách boho"
+  greenhouse: "nhà kính"
+
+# The scenes a tag card's cover must show (config/scenes.yaml names); a tag not listed takes the place's
+# first photo. Without this a restaurant holding "Thiên nhiên" put a plate of food on that card (owner 2026-10-30).
+cover_scenes:
+  experience:cloud_hunting: [view]
+  experience:sunset_view: [view]
+  experience:scenic_view: [view]
+  experience:nature: [view, exterior]
+  experience:flower_garden: [view, exterior]
+  experience:heritage_architecture: [exterior, view]
+  experience:photo_spot: [view, exterior, interior]
+  experience:cozy_decor: [interior]
+  experience:long_stay_chill: [interior, exterior]
+  category:cafe: [interior, exterior, drink]
+  category:restaurant: [food, interior]
+  category:dessert: [food, drink, interior]
+  category:bar: [interior, drink]
+  category:nature: [view, exterior]
+  category:attraction: [view, exterior]
+  category:garden_farm: [view, exterior]
+  category:camping: [view, exterior]
+  category:religious: [exterior, view]
+  category:museum: [exterior, interior]
+  category:market: [exterior, interior, food]
+  "dish:*": [food]   # every dish tag (a tag of its own listed above wins)
+
+# Dish kinds: a place is in one when a dish on its menu, a review order or its own name holds one of the phrases
+# (accents kept: "phở" is not "phô"). parent: a place with the child is not also counted under the parent.
+dishes:
+  - {id: banh_can,      label: "Bánh căn", phrases: ["bánh căn"]}
+  - {id: banh_uot,      label: "Bánh ướt", phrases: ["bánh ướt"]}
+  - {id: banh_beo,      label: "Bánh bèo, nậm, lọc", phrases: ["bánh bèo", "bánh nậm", "bánh lọc"]}
+  - {id: nem_nuong,     label: "Nem nướng", phrases: ["nem nướng"]}
+  - {id: banh_trang,    label: "Bánh tráng nướng", phrases: ["bánh tráng nướng"]}
+  - {id: banh_mi,       label: "Bánh mì, xíu mại", phrases: ["bánh mì", "xíu mại"]}
+  - {id: lau,           label: "Lẩu", phrases: ["lẩu"]}
+  - {id: lau_ga_la_e,   label: "Lẩu gà lá é", phrases: ["lẩu gà lá é"], parent: lau}
+  - {id: lau_thai,      label: "Lẩu Thái", phrases: ["lẩu thái"], parent: lau}
+  - {id: nuong,         label: "Đồ nướng, BBQ", phrases: ["nướng", "bbq"]}
+  - {id: bun_bo,        label: "Bún bò", phrases: ["bún bò"]}
+  - {id: pho,           label: "Phở", phrases: ["phở"]}
+  - {id: hu_tieu,       label: "Hủ tiếu, mì quảng", phrases: ["hủ tiếu", "mì quảng"]}
+  - {id: com,           label: "Cơm", phrases: ["cơm"], home: false}
+  - {id: chao,          label: "Cháo", phrases: ["cháo"], home: false}
+  - {id: pizza_y,       label: "Pizza & mì Ý", phrases: ["pizza", "mì ý"]}
+  - {id: bit_tet,       label: "Bít tết", phrases: ["bít tết", "bò né"]}
+  - {id: ca_phe_dac_biet, label: "Cà phê muối, cà phê trứng", phrases: ["cà phê muối", "cà phê trứng"]}
+  - {id: tra_sua,       label: "Trà sữa", phrases: ["trà sữa"]}
+  - {id: matcha,        label: "Matcha", phrases: ["matcha"], home: false}
+  - {id: sua_chua,      label: "Sữa chua", phrases: ["sữa chua"], home: false}
+  - {id: kem,           label: "Kem", phrases: ["kem"], home: false}
+  - {id: dau_tay,       label: "Dâu tây", phrases: ["dâu tây"]}
+  - {id: atiso,         label: "Atiso", phrases: ["atiso"]}
+  - {id: banh_ngot,     label: "Bánh ngọt", phrases: ["bánh ngọt", "tiramisu", "croissant", "bánh flan"]}
+  - {id: che,           label: "Chè", phrases: ["chè"]}
+  - {id: sua_dau_nanh,  label: "Sữa đậu nành", phrases: ["sữa đậu nành"]}
+  - {id: chay,          label: "Món chay", phrases: ["chay"]}
+
+# What a dish the user named comes with (bánh căn trứng cút, phở gà, lẩu cua): a place is in a variant when one dish
+# statement holds the dish and the variant's phrase together. label follows the dish name.
+variant_fold: {"trứng gà": "trứng", "trứng vịt": "trứng", "thịt bò": "bò", "thịt heo": "heo"}  # said another way = the same variant
+variants:
+  - {id: trung_cut,   label: "trứng cút", phrases: ["trứng cút"]}
+  - {id: trung,       label: "trứng", phrases: ["trứng"]}
+  - {id: thap_cam,    label: "thập cẩm", phrases: ["thập cẩm"]}
+  - {id: xiu_mai,     label: "xíu mại", phrases: ["xíu mại"]}
+  - {id: bo,          label: "bò", phrases: ["bò", "thịt bò"]}
+  - {id: ga,          label: "gà", phrases: ["gà"]}
+  - {id: heo,         label: "heo", phrases: ["heo", "thịt heo", "sườn", "ba chỉ"]}
+  - {id: ca,          label: "cá", phrases: ["cá"]}
+  - {id: tom,         label: "tôm", phrases: ["tôm"]}
+  - {id: cua,         label: "cua", phrases: ["cua"]}
+  - {id: hai_san,     label: "hải sản", phrases: ["hải sản", "mực"]}
+  - {id: nam,         label: "nấm", phrases: ["nấm"]}
+  - {id: chay,        label: "chay", phrases: ["chay"]}
+  - {id: pho_mai,     label: "phô mai", phrases: ["phô mai"]}
+  - {id: muoi,        label: "muối", phrases: ["muối"]}
+  - {id: dua,         label: "dừa", phrases: ["dừa"]}
+  - {id: sua,         label: "sữa", phrases: ["sữa"]}
+
+# Home page: tags ranked by the TikTok clips of the last `window_days` at the places that carry the tag.
+trend:
+  window_days: 30
+  min_places: 5       # places that carry the tag
+  max_share: 0.2      # a tag held by more than this share of all places is no topic ("Thiên nhiên", "Mộc mạc")
+  min_clips: 4        # distinct clips in the window
+  min_authors: 3      # distinct posters in the window
+  top_places: 6       # places a tag names as its examples (they give its cover photos)
+  max_items: 8
+  max_per_axis: {experience: 4, style: 2, dish: 3, category: 2}
+
+# Offline travel-motive definitions; unknown never means absent.
+membership:
+  enabled: false
+  reader: consensus
+  directory: tag_membership
+  fallback_min_mentions: 3
+  fallback_min_rate: 0.01
+  style_groups:
+  - cafe
+  - restaurant
+  - dessert
+  - bar
+  - stay
+  - spa
+  version: 2
+  secondary_judge:
+    model: cx/gpt-6.1-sol
+    reasoning_effort: high
+    key_env: AGENT_API_KEY
+    base_url_env: AGENT_BASE_URL
+    max_tokens: 12000
+    guided: false
+aliases:
+  experience:heritage_architecture: experience:historical_site
+definitions:
+  cloud_hunting:
+    include: Đến để ngắm biển mây hoặc mây tràn thung lũng từ chính nơi này.
+    exclude: Không phải tên có Mây, mưa/sương thường, đi chỗ khác săn mây, câu phủ định hoặc khuyến cáo không săn được.
+    example: Sáng sớm ở sân quán thấy biển mây.
+  sunset_view:
+    include: Ngắm mặt trời lặn/ánh hoàng hôn là trải nghiệm tại nơi này.
+    exclude: Không tính bình minh, tên quán Hoàng Hôn hay chỉ ăn lúc chiều.
+    example: View ngắm mặt trời lặn rất đẹp.
+  sunrise_view:
+    include: Ngắm mặt trời mọc/bình minh từ nơi này.
+    exclude: Không tính hoàng hôn, chỉ mở sáng hay tên Bình Minh.
+    example: Sáng ngắm mặt trời mọc trên đồi.
+  scenic_view:
+    include: Tầm nhìn rộng ra núi đồi, thung lũng, hồ hoặc rừng là lý do đến.
+    exclude: Không tính chỉ view đẹp chung chung, chợ đêm, phố, mái nhà kính hay trang trí.
+    example: Sân quán nhìn trọn thung lũng và đồi thông.
+  photo_spot:
+    include: Có góc/cảnh/tiểu cảnh cụ thể đáng đến chụp ảnh.
+    exclude: Không tính ảnh món ăn, ai cũng chụp được, lời khen đẹp chung chung.
+    example: Nhiều góc chụp ảnh với thác nước.
+  nature:
+    include: Trải nghiệm ở trong rừng, ven hồ/suối, cảnh tự nhiên rộng là lý do đến.
+    exclude: Không tính vài cây trang trí, sân vườn nhân tạo, không khí mát/trong lành hoặc chỉ nhìn rừng từ xa.
+    example: Quán nằm giữa rừng thông, bên suối tự nhiên.
+  flower_garden:
+    include: Vườn/cánh đồng hoa hoặc tuyến hoa có quy mô đáng ngắm/chụp.
+    exclude: Không tính bình hoa, vài chậu, hoa trang trí rải rác hay chỉ tên Vườn Hoa.
+    example: Cúc họa mi trải dọc con suối.
+  historical_site:
+    include: Di tích, công trình/tư liệu lịch sử hoặc nhà cổ có niên đại/bối cảnh cụ thể để tìm hiểu.
+    exclude: Không tính vibe hoài cổ, đồ vintage, xây đẹp, nhà thờ bất kỳ hoặc nhà mới giả cổ.
+    example: Nhà máy thủy điện xây năm 1942; ngôi nhà trăm năm.
+  architecture:
+    include: Công trình có hình khối, cấu trúc, phong cách kiến trúc cụ thể đáng khám phá.
+    exclude: Không tính decor đẹp, ấm cúng, đẹp chung chung, một nhà gỗ thông thường hay cổ điển không chi tiết.
+    example: Nhà thờ kiến trúc Gothic với cửa vòm và tháp chuông.
+  cozy_decor:
+    include: Không gian trang trí ấm cúng, gần gũi là nét nổi bật.
+    exclude: Không tính chỉ đẹp/xinh hoặc cảm giác ấm vì nhiệt độ.
+    example: Decor ấm cúng có gu.
+  laptop_friendly:
+    include: Có thể ngồi làm việc/học bài bằng laptop tại nơi này.
+    exclude: Không tính khách dùng điện thoại, nhân viên làm việc hay chỉ có wifi.
+    example: Có nhiều ổ điện, wifi mạnh và chỗ ngồi làm việc vài giờ.
+  long_stay_chill:
+    include: Phù hợp ngồi thư thả lâu, nhâm nhi cả buổi.
+    exclude: Không tính chữ chill chung chung hoặc chỉ ăn bữa nhanh.
+    example: Hợp ngồi nhâm nhi cả buổi.
+  live_music:
+    include: Có chương trình biểu diễn âm nhạc trực tiếp để khách nghe.
+    exclude: Không tính loa phát nhạc, karaoke tự hát, ca sĩ ghé tình cờ.
+    example: Acoustic live buổi tối cuối tuần.
+  adventure_activity:
+    include: Có hoạt động vận động/cảm giác mạnh cụ thể khách tham gia được.
+    exclude: Không tính đường đi nguy hiểm hoặc chỉ nói nhiều trò vui.
+    example: Trượt phao, zipline, go-kart.
+  hiking:
+    include: Có tuyến đi bộ thiên nhiên/leo đồi/trekking mà khách chủ động đi để trải nghiệm.
+    exclude: Không tính phải leo vài bậc vào quán hay phàn nàn đường dốc.
+    example: Cung trekking 10km lên đỉnh.
+  animals:
+    include: Có thú của địa điểm, khách có thể chủ động gặp, chơi hoặc cho ăn như một trải nghiệm đáng đến.
+    exclude: Không tính chuột/côn trùng, thú của khách, thú hoang tình cờ, chăn nuôi làm thịt, câu phàn nàn thú bẩn hay chỉ
+      thấy thú chạy qua.
+    example: Có khu chơi với mèo; cho thỏ ăn; bé poodle của quán thân thiện được nhiều khách yêu thích.
+  hands_on_workshop:
+    include: Khách được tham gia lớp/thao tác tự làm có hướng dẫn.
+    exclude: Không tính xem nhân viên làm hoặc chỉ đồ thủ công trang trí.
+    example: Workshop làm chocolate; lớp nấu ăn.
+  pick_your_own:
+    include: Khách được tự hái trái cây/cây trồng tại vườn.
+    exclude: Không tính chỉ bán trái cây, nhân viên hái, vườn cấm hái.
+    example: Tự hái dâu và cân mua mang về.
+  cultural_show:
+    include: Có tiết mục/giao lưu văn hóa truyền thống khách xem hoặc tham gia.
+    exclude: Không tính nhạc sống thông thường hoặc phong cách trang trí dân tộc.
+    example: Biểu diễn cồng chiêng cuối tuần.
+  camping:
+    include: Khách có thể cắm trại/ngủ lều qua đêm tại nơi này.
+    exclude: Không tính lều trang trí/chụp ảnh hay picnic không cho qua đêm.
+    example: Có gói thuê lều ngủ qua đêm.
+  tasting_available:
+    include: Khách được thử sản phẩm trước khi mua/chọn.
+    exclude: Không tính ăn món đã gọi trả tiền hoặc khen thưởng thức món ngon.
+    example: Quầy đặc sản cho ăn thử trước khi mua.
+  costume_rental:
+    include: Có dịch vụ thuê/mượn trang phục để khách mặc chụp ảnh.
+    exclude: Không tính đồ nhân viên hay phụ kiện không rõ cho thuê.
+    example: Thuê sườn xám 100k/bộ chụp ảnh.
+  outdoor_seating:
+    include: Có chỗ khách ngồi ngoài trời.
+    exclude: Không tính chỗ đậu xe hay chỉ đứng ngoài cửa.
+    example: Bàn ngoài ban công.
+  local_specialty_food:
+    include: Có món/sản phẩm đặc trưng Đà Lạt/Tây Nguyên được nêu rõ.
+    exclude: Không tính lời chung chung món địa phương, món phổ thông.
+    example: Hồng treo gió; gà cơm lam; món cá tầm đặc sản.
+  weather_exposed=sheltered:
+    include: Khách được che mưa tại khu trải nghiệm/chỗ ngồi.
+    exclude: Không suy từ tên quán, trời mưa hoặc không gian rộng.
+    example: Bạt trong suốt che mưa.
+  setting=indoor:
+    include: Có khu khách trải nghiệm/ngồi bên trong công trình.
+    exclude: Không tính chỉ có quầy/nhà vệ sinh hay chưa rõ ảnh.
+    example: Bàn khách trong nhà.
+  crowd=low:
+    include: Thường ít khách theo ngữ cảnh đã xác định.
+    exclude: Không khái quát một buổi vắng thành mọi thời điểm; mâu thuẫn không rõ ngữ cảnh là unclear.
+    example: Ngày thường vắng khách, không chen chúc.
+  noise=quiet:
+    include: Không gian yên tĩnh phù hợp trò chuyện/nghỉ ngơi.
+    exclude: Không suy từ chữ bình yên cảnh vật; nhiều bằng chứng ồn mâu thuẫn là unclear.
+    example: Quán yên tĩnh, xa tiếng xe.
+  category:cafe:
+    include: Quán phục vụ cà phê/trà và chỗ khách ngồi uống là hoạt động chính.
+    exclude: Quầy nước phụ ở điểm tham quan; tên có Coffee nhưng không có bằng chứng phục vụ.
+    example: Tiệm trà, quán cà phê có bàn khách.
+  category:restaurant:
+    include: Nơi phục vụ bữa ăn, quán ăn chuyên món hoặc nhà hàng.
+    exclude: Chỉ bánh ngọt/đồ uống; tên nhà hàng nhưng thực tế chỉ karaoke.
+    example: Quán bánh căn, cơm chay, nhà hàng món Việt.
+  category:dessert:
+    include: Tiệm chuyên bánh ngọt, kem, chè hoặc món tráng miệng.
+    exclude: Bánh căn, bánh ướt, bánh mì ăn bữa chính; bánh trong tên không chứng minh món ngọt.
+    example: Tiệm kem gelato, quán chè.
+  category:bar:
+    include: Bar/pub/lounge phục vụ đồ uống và không gian giao lưu buổi tối.
+    exclude: Karaoke phòng riêng, nhà hàng chỉ bán bia, tên bar không đủ khi loại nguồn mâu thuẫn.
+    example: Pub cocktail có quầy bar.
+  category:market:
+    include: Chợ hoặc phố đi bộ có không gian công cộng để dạo/chọn hàng.
+    exclude: Một cửa hàng riêng, địa chỉ gần chợ, chợ chỉ được nhắc trong chỉ đường.
+    example: Chợ đêm với dãy hàng ăn và mua sắm.
+  category:nature:
+    include: Đồi, hồ, thác, rừng, đèo/cung đường hoặc cảnh quan tự nhiên để đến ngắm/đi bộ.
+    exclude: Quán có vài cây, tiểu cảnh thác nhân tạo, khu dân cư chỉ có tên hồ/đồi.
+    example: Hồ tự nhiên, đèo ngắm cảnh, thác nước.
+  category:garden_farm:
+    include: Vườn/nông trại có khu khách vào tham quan hoặc trải nghiệm nông sản.
+    exclude: Chỉ cửa hàng bán trái cây, vườn riêng không mở khách, cây trang trí.
+    example: Vườn dâu mở khách tham quan và hái.
+  category:camping:
+    include: Khu cắm trại/glamping cung cấp hoặc cho phép ngủ lều qua đêm.
+    exclude: Lều trang trí, picnic trong ngày, quán chỉ có góc chụp lều.
+    example: Khu glamping cho thuê lều nghỉ đêm.
+  category:attraction:
+    include: Điểm có trải nghiệm tham quan cụ thể ngoài việc chỉ ăn/uống/mua hàng.
+    exclude: Nhãn Maps Điểm thu hút khách du lịch đơn lẻ khi tên là tiệm trà/quán ăn; cần câu gốc mô tả trải nghiệm.
+    example: Khu tham quan có đường đi, cảnh trưng bày và hoạt động cho khách.
+  category:museum:
+    include: Bảo tàng, di tích hoặc điểm mốc lịch sử cho khách tìm hiểu/tham quan.
+    exclude: Đại lý du lịch bị gán nhãn bảo tàng; tên doanh nghiệp mơ hồ cần mô tả, không suy từ chữ cổ.
+    example: Nguồn ghi Điểm mốc lịch sử; nhà trưng bày hiện vật.
+  category:religious:
+    include: Chùa, nhà thờ, tu viện, thiền viện hoặc cơ sở tín ngưỡng có nhận diện rõ.
+    exclude: Quán cạnh chùa, đồ decor tôn giáo, tên gọi có Temple không đủ.
+    example: Chùa hoặc nhà thờ có khu khách tham quan/lễ.
+  category:amusement:
+    include: Khu vui chơi có trò/hoạt động giải trí cụ thể cho khách tham gia.
+    exclude: Quán chỉ có góc chụp, đường đi nguy hiểm, lời khen vui chung chung.
+    example: Khu trò chơi trẻ em, công viên trò chơi.
+  category:spa:
+    include: Cơ sở cung cấp massage, chăm sóc cơ thể hoặc liệu trình thư giãn.
+    exclude: Khách sạn chỉ nhắc thư giãn, shop mỹ phẩm không có dịch vụ.
+    example: Spa có bảng dịch vụ massage.
+  category:shop:
+    include: Cửa hàng bán sản phẩm/đặc sản để khách đến chọn mua.
+    exclude: Quán ăn chỉ bán mang về, đại lý dịch vụ, địa chỉ không có hoạt động bán lẻ.
+    example: Cửa hàng hồng treo gió và trà atiso.
+  category:tour:
+    include: Hoạt động/tour có nội dung, nơi trải nghiệm và dịch vụ tham gia cụ thể trong câu gốc.
+    exclude: Đại lý chỉ bán tour, văn phòng du lịch hoặc nhãn Đại lý du lịch tham quan đơn lẻ; không đủ bằng chứng về trải nghiệm tại nơi.
+    example: Tour đạp xe có cung đường, hướng dẫn và lịch tham gia được mô tả.
+  category:golf:
+    include: Sân tập/sân golf có không gian và dịch vụ chơi golf.
+    exclude: Shop dụng cụ, khách sạn nhìn ra sân golf, tên Golf không đủ.
+    example: Sân golf mở khách đặt lượt chơi.
+  category:karaoke:
+    include: Cơ sở cho khách thuê phòng hoặc dịch vụ hát karaoke là hoạt động chính.
+    exclude: Bar có nhạc sống, khách tự hát tình cờ, quán chỉ có loa.
+    example: Karaoke có phòng hát theo giờ.
+  dish:banh_can:
+    include: Bánh căn là món chuyên, phổ biến hoặc được đề xuất cụ thể để đến ăn.
+    exclude: Bánh khọt/bánh nướng khác; tên món xuất hiện trong chỉ đường hoặc menu đơn lẻ không nổi bật.
+    example: Quán bánh căn trứng cút, xíu mại.
+  dish:banh_uot:
+    include: Bánh ướt, đặc biệt bánh ướt lòng gà, là món chuyên/phổ biến/được đề xuất.
+    exclude: Bánh cuốn hoặc tên quán khác chỉ được nhắc; không nhận mọi dòng menu.
+    example: Quán chuyên bánh ướt lòng gà.
+  dish:banh_beo:
+    include: Bánh bèo/nậm/lọc là món chuyên/phổ biến/được đề xuất cụ thể.
+    exclude: Bánh ngọt hoặc món bột khác; nhắc qua hay nguyên liệu không đủ.
+    example: Đĩa bánh bèo chén được khách đề xuất.
+  dish:nem_nuong:
+    include: Nem nướng phục vụ thành món ăn nổi bật/đặc trưng của quán.
+    exclude: Nem chua/rán hoặc thịt nướng chung; nước chấm nem không phải món nem.
+    example: Quán chuyên nem nướng cuốn rau.
+  dish:banh_trang:
+    include: Bánh tráng nướng là món chuyên/phổ biến/được đề xuất.
+    exclude: Bánh tráng cuốn/trộn chưa nướng, tên món trong so sánh không đủ.
+    example: Quầy bánh tráng nướng có trứng và topping.
+  dish:banh_mi:
+    include: Bánh mì ăn bữa hoặc xíu mại là món chuyên/phổ biến/được đề xuất.
+    exclude: Vụn bánh, bánh mì làm món kèm đơn lẻ, bánh ngọt; menu dòng phụ không đủ.
+    example: Quán chuyên bánh mì xíu mại.
+  dish:lau:
+    include: Lẩu là bữa ăn nước dùng sôi với thịt/rau/nấm để nhúng, chuyên/phổ biến/được đề xuất.
+    exclude: Lẩu Cafe, lẩu ly, tên combo đồ uống, sốt vị lẩu hoặc menu đơn lẻ không nổi bật.
+    example: Quán lẩu bò có món được nhiều khách gọi.
+  dish:lau_ga_la_e:
+    include: Lẩu gà với lá é là món chuyên/phổ biến/được đề xuất.
+    exclude: Gà nướng lá é, lẩu gà không có lá é, tên quán khác được nhắc.
+    example: Quán chuyên lẩu gà lá é.
+  dish:lau_thai:
+    include: Lẩu Thái là món chuyên/phổ biến/được đề xuất cụ thể.
+    exclude: Mì/sốt vị Thái, món Thái khác, menu đơn lẻ không nổi bật.
+    example: Nồi lẩu Thái chua cay được đề xuất.
+  dish:nuong:
+    include: Thịt, hải sản, rau/nấm nướng hoặc BBQ là bữa ăn chuyên/phổ biến/được đề xuất.
+    exclude: Bánh nướng, bánh mì nướng, trà sữa nướng, cà phê rang, sốt BBQ; chữ nướng trong mô tả không đủ.
+    example: Quán BBQ nướng thịt tại bàn.
+  dish:bun_bo:
+    include: Bún bò là món chuyên/phổ biến/được đề xuất cụ thể.
+    exclude: Món bún khác, thịt bò trong menu không có bún; nhắc quán khác.
+    example: Quán chuyên bún bò Huế.
+  dish:pho:
+    include: Tô phở là món chuyên/phổ biến/được đề xuất cụ thể.
+    exclude: Sốt phở, phở burger, từ trong tên quán khác; không nhận chỉ có hương vị phở.
+    example: Phở bò tái nạm được khách đề xuất.
+  dish:hu_tieu:
+    include: Hủ tiếu hoặc mì Quảng là món chuyên/phổ biến/được đề xuất cụ thể.
+    exclude: Các món mì khác; mì Quảng trong so sánh/địa chỉ không đủ.
+    example: Quán chuyên hủ tiếu Nam Vang.
+  dish:com:
+    include: Cơm ăn bữa với món mặn/chay là món chuyên/phổ biến/được đề xuất.
+    exclude: Cơm chỉ là món kèm, cơm trong thành ngữ, cơm chiên trong menu dài không nổi bật.
+    example: Quán cơm niêu có món được đề xuất.
+  dish:chao:
+    include: Cháo là món chuyên/phổ biến/được đề xuất cụ thể.
+    exclude: Cháo trong tên quán khác hoặc dòng menu không nổi bật.
+    example: Quán chuyên cháo gà.
+  dish:pizza_y:
+    include: Pizza kiểu Ý hoặc pasta/mì Ý là món chuyên/phổ biến/được đề xuất.
+    exclude: Pizza Đà Lạt là bánh tráng nướng; pizza toast/bánh mì, sốt pasta đơn lẻ.
+    example: Nhà hàng pizza đế bột và mì Ý.
+  dish:bit_tet:
+    include: Bít tết/steak/bò né là món chuyên/phổ biến/được đề xuất.
+    exclude: Thịt bò chung, sốt steak, món ăn được so sánh với bò né.
+    example: Quán chuyên bò né ăn với trứng.
+  dish:ca_phe_dac_biet:
+    include: Cà phê muối/trứng là món đặc trưng/phổ biến/được đề xuất cụ thể.
+    exclude: Cà phê thường, kem trứng ở bánh, menu có tên món nhưng không nổi bật.
+    example: Khách đề xuất cà phê muối của quán.
+  dish:tra_sua:
+    include: Trà sữa là sản phẩm chuyên/phổ biến/được đề xuất cụ thể để đến uống.
+    exclude: Sữa hoặc trà riêng; tên nguyên liệu/hương vị trong bánh; dòng menu đơn lẻ.
+    example: Tiệm trà sữa có món được khách gọi nhiều.
+  dish:matcha:
+    include: Đồ uống matcha là sản phẩm chuyên/phổ biến/được đề xuất cụ thể.
+    exclude: Chỉ hương matcha trong bánh, decor xanh hoặc dòng menu không nổi bật.
+    example: Matcha latte được khách đề xuất.
+  dish:sua_chua:
+    include: Sữa chua/yogurt ăn hoặc uống là món chuyên/phổ biến/được đề xuất.
+    exclude: Sữa chua chỉ là nguyên liệu, nước sốt, dòng phụ không nổi bật.
+    example: Sữa chua phô mai của tiệm được đề xuất.
+  dish:kem:
+    include: Kem lạnh/gelato là món chuyên/phổ biến/được đề xuất để đến ăn.
+    exclude: Bánh kem, kem trứng, kem topping, sốt kem, cà phê kem không phải kem lạnh.
+    example: Tiệm gelato với nhiều vị kem.
+  dish:dau_tay:
+    include: Dâu tây tươi/nguyên quả là sản phẩm nổi bật để đến ăn hoặc mua.
+    exclude: Trà/soda/yogurt/nước ép/sinh tố vị dâu, chỉ trang trí một quả trên bánh.
+    example: Vườn/quầy bán dâu tươi được khách đề xuất.
+  dish:atiso:
+    include: Trà/sản phẩm atiso thật là món đặc trưng/phổ biến/được đề xuất.
+    exclude: Atiso đỏ/hibiscus/bụp giấm, tên thương hiệu, dòng menu đơn lẻ.
+    example: Cửa hàng chuyên trà atiso Đà Lạt.
+  dish:banh_ngot:
+    include: Bánh ngọt/tiramisu/croissant/flan là món chuyên/phổ biến/được đề xuất.
+    exclude: Bánh căn/ướt/mì ăn bữa, bánh chỉ được nhắc làm decor hoặc menu không nổi bật.
+    example: Tiệm chuyên tiramisu được khách đề xuất.
+  dish:che:
+    include: Chè tráng miệng là món chuyên/phổ biến/được đề xuất.
+    exclude: Chè nghĩa là trà/cây chè; chè trong tên địa điểm không chứng minh món tráng miệng.
+    example: Quán chuyên chè bưởi và chè đậu.
+  dish:sua_dau_nanh:
+    include: Sữa đậu nành là món chuyên/phổ biến/được đề xuất cụ thể.
+    exclude: Sữa khác, đậu nành là nguyên liệu món mặn, dòng menu phụ.
+    example: Quầy sữa đậu nành nóng nổi tiếng.
+  dish:chay:
+    include: Quán chuyên chay hoặc nhiều món chính không thịt có bằng chứng phục vụ phù hợp người ăn chay.
+    exclude: Chỉ rau ăn kèm, một món chay đơn lẻ không nổi bật; chữ cháy không phải chay; chưa chứng minh an toàn dị ứng.
+    example: Cơm chay, phở chay, hủ tiếu chay trong quán chay.
+  style:retro:
+    include: Ảnh thật thể hiện tổ hợp đồ vật/nội thất gợi thời trước là chủ đích của không gian khách.
+    exclude: Một món đồ cũ đơn lẻ, ảnh đen trắng lọc màu, công trình cũ không có decor hoài cổ.
+    example: Radio, tivi cũ và bàn gỗ trong khu khách.
+  style:retro_saigon:
+    include: Ảnh thật cho thấy tổ hợp quán Sài Gòn xưa với gạch bông, bàn ghế cũ, phin, biển hiệu thời trước.
+    exclude: Chỉ đèn vàng hay gỗ; không suy địa danh/phong cách từ tên quán.
+    example: Góc quán gạch bông, phin và biển hiệu Sài Gòn xưa.
+  style:vintage_junk:
+    include: Ảnh thật có bộ sưu tập đồ cũ/ve chai dày thành chủ đề decor.
+    exclude: Một xe đạp cũ, đống rác/bừa bộn hoặc bộ lọc ảnh vintage.
+    example: Tivi, radio, biển hiệu cũ bày thành không gian sưu tầm.
+  style:french_colonial:
+    include: Ảnh thật cho thấy hình khối biệt thự/nhà Pháp với nhiều dấu hiệu kiến trúc nhất quán.
+    exclude: Chỉ tường vàng/cửa vòm đơn lẻ, nhà thờ bất kỳ hoặc văn bản gọi Pháp cổ không có ảnh.
+    example: Biệt thự mái ngói dốc, cửa chớp và cửa sổ vòm.
+  style:indochine:
+    include: Ảnh thật cho thấy tổ hợp decor Đông Dương với gỗ tối, mây tre, gạch bông và chi tiết Á Đông pha Pháp.
+    exclude: Gỗ hoặc đèn lồng riêng lẻ, chùa/nhà thờ được gán theo màu sắc.
+    example: Sảnh gạch bông, ghế mây, vòm và họa tiết Đông Dương.
+  style:minimal:
+    include: Ảnh thật cho thấy thiết kế tối giản có chủ ý, ít vật dụng và khoảng trống trong không gian khách.
+    exclude: Phòng trống chưa hoàn thiện, sân chùa trống, ảnh bị crop hết nội thất.
+    example: Quán tường be trơn, ít đồ, bàn ghế đơn giản.
+  style:industrial:
+    include: Ảnh thật cho thấy tổ hợp bê tông/gạch thô, sắt/ống lộ thành thiết kế không gian khách.
+    exclude: Công trình đang xây, một ống kim loại hoặc kho không phục vụ khách.
+    example: Quán có bê tông trần, khung sắt và đường ống lộ.
+  style:rustic:
+    include: Ảnh thật cho thấy gỗ thô/tre/đất và nội thất mộc tạo chủ đích thiết kế không gian khách.
+    exclude: Mọi nơi có cây, cảnh rừng, một bàn gỗ hoặc đồ thờ bằng gỗ.
+    example: Nhà gỗ thô và bàn ghế mộc trong quán.
+  style:korean:
+    include: Ảnh thật có tổ hợp decor quán kiểu Hàn với hình khối sạch, pastel/kem, gương và góc chụp nhất quán.
+    exclude: Chỉ trắng/kem, hoa khô đơn lẻ, chùa/nhà thờ; không suy xuất xứ từ tên.
+    example: Quán pastel, gương lớn, decor hoa và bàn ghế đồng bộ.
+  style:japanese:
+    include: Ảnh thật có dấu hiệu thiết kế Nhật cụ thể như tatami, shoji, noren, vườn đá nhất quán.
+    exclude: Gỗ sáng đơn lẻ, chùa Á Đông bất kỳ, món Nhật không chứng minh không gian.
+    example: Phòng tatami có cửa giấy và rèm noren.
+  style:boho:
+    include: Ảnh thật có tổ hợp macrame, mây đan, thảm hoa văn, đệm ngồi thể hiện decor boho.
+    exclude: Chỉ cây treo/ghế mây, đồ lễ tôn giáo, một chi tiết trang trí đơn lẻ.
+    example: Khu ngồi đệm thấp với thảm hoa văn và macrame.
+  style:greenhouse:
+    include: Ảnh thật cho thấy không gian khách nằm trong nhà/mái kính với cây xanh bên trong.
+    exclude: Nhà kính nông nghiệp ngoài xa, cửa kính quán thường, mái tôn sáng.
+    example: Quán dưới mái kính với cây bao quanh chỗ ngồi.
+subtag_categories:
+  cloud_hunting:
+  - cafe
+  - nature
+  - camping
+  - restaurant
+  - attraction
+  sunset_view:
+  - cafe
+  - nature
+  - camping
+  - restaurant
+  sunrise_view:
+  - cafe
+  - nature
+  - camping
+  scenic_view:
+  - cafe
+  - nature
+  - camping
+  - restaurant
+  animals:
+  - cafe
+  - garden_farm
+  - amusement
+  historical_site:
+  - museum
+  - religious
+  architecture:
+  - museum
+  - religious
+  - cafe
+  flower_garden:
+  - garden_farm
+  - cafe
+  - attraction
+  nature:
+  - nature
+  - camping
+  - cafe
+  camping:
+  - camping
+  - nature
+  pick_your_own:
+  - garden_farm
+  hands_on_workshop:
+  - garden_farm
+  - cafe
+  - attraction
+  live_music:
+  - cafe
+  - bar
+  adventure_activity:
+  - amusement
+  - nature
+  - attraction
+  hiking:
+  - nature
+  cultural_show:
+  - attraction
+  - restaurant
+  costume_rental:
+  - attraction
+  tasting_available:
+  - shop
+  - garden_farm
+dish_policy:
+  food_groups:
+  - restaurant
+  - dessert
+  drink_groups:
+  - cafe
+  - dessert
+  - restaurant
+  - bar
+  drinks:
+  - ca_phe_dac_biet
+  - tra_sua
+  - matcha
+  - sua_dau_nanh
+  - sua_chua
+  exclude:
+    nuong:
+    - bánh
+    - trà
+    - cà phê
+    - sốt bbq
+    - nước sốt
+    - caramel
+    lau:
+    - lẩu cafe
+    - lẩu ly
+    pho:
+    - sốt phở
+    - phở burger
+    - quán phở
+    kem:
+    - bánh kem
+    - kem trứng
+    - sốt kem
+    - cà phê kem
+    pizza_y:
+    - pizza đà lạt
+    - pizza toast
+    dau_tay:
+    - trà
+    - soda
+    - yogurt
+    - nước ép
+    - sinh tố
+
+# Pending vocabulary; only the new reader applies this when membership.enabled is true.
+vocabulary_v2:
+  categories:
+    cafe:
+      label: Quán cà phê
+      noun: Quán cà phê
+    restaurant:
+      label: Quán ăn & nhà hàng
+      noun: Quán ăn
+    dessert:
+      label: Tiệm bánh, kem & chè
+      noun: Tiệm bánh & kem
+    bar:
+      label: Bar & quán đêm
+      noun: Quán bar
+    market:
+      label: Chợ & phố đi bộ
+      noun: Chợ
+    nature:
+      label: Đồi, hồ, thác & cung đường
+      noun: Điểm thiên nhiên
+    garden_farm:
+      label: Vườn & nông trại
+      noun: Vườn & nông trại
+    camping:
+      label: Cắm trại & glamping
+      noun: Khu cắm trại
+    attraction:
+      label: Điểm tham quan
+      noun: Điểm tham quan
+    museum:
+      label: Bảo tàng & di tích
+      noun: Bảo tàng & di tích
+    religious:
+      label: Chùa & nhà thờ
+      noun: Chùa & nhà thờ
+    amusement:
+      label: Khu vui chơi
+      noun: Khu vui chơi
+    spa:
+      label: Spa & thư giãn
+      noun: Spa
+    shop:
+      label: Cửa hàng & đặc sản
+      noun: Cửa hàng
+    tour:
+      label: Tour & trải nghiệm
+      noun: Tour
+    golf:
+      label: Sân golf
+      noun: Sân golf
+    karaoke:
+      label: Karaoke
+      noun: Quán karaoke
+  features:
+    cloud_hunting:
+      label: Săn mây
+      with: săn mây
+      home: true
+    sunset_view:
+      label: Ngắm hoàng hôn
+      with: ngắm hoàng hôn
+      home: true
+    sunrise_view:
+      label: Đón bình minh
+      with: đón bình minh
+      home: true
+      source: sunset_view
+    scenic_view:
+      label: View núi đồi, thung lũng
+      with: có view đẹp
+      home: true
+    photo_spot:
+      label: Góc sống ảo
+      with: nhiều góc chụp ảnh
+      home: true
+    nature:
+      label: Thiên nhiên, rừng thông
+      with: giữa thiên nhiên
+      home: true
+    flower_garden:
+      label: Vườn hoa
+      with: có vườn hoa
+      home: true
+    historical_site:
+      label: Di tích & dấu ấn lịch sử
+      with: có dấu ấn lịch sử
+      home: true
+      source: heritage_architecture
+    architecture:
+      label: Kiến trúc đáng khám phá
+      with: có kiến trúc đặc sắc
+      home: true
+      source: heritage_architecture
+    cozy_decor:
+      label: Decor ấm cúng
+      with: decor ấm cúng
+      home: false
+    laptop_friendly:
+      label: Ngồi làm việc, học bài
+      with: ngồi làm việc được
+      home: true
+    long_stay_chill:
+      label: Ngồi lâu, chill
+      with: ngồi chill được lâu
+      home: true
+    live_music:
+      label: Nhạc sống
+      with: có nhạc sống
+      home: true
+    adventure_activity:
+      label: Trò mạo hiểm
+      with: có trò mạo hiểm
+      home: true
+    hiking:
+      label: Đi bộ đường dài
+      with: đi bộ đường dài
+      home: true
+    animals:
+      label: Gần gũi thú nuôi
+      with: có thú nuôi
+      home: true
+    hands_on_workshop:
+      label: Workshop tự tay làm
+      with: có workshop
+      home: true
+    pick_your_own:
+      label: Tự hái trái cây
+      with: cho tự hái
+      home: true
+    cultural_show:
+      label: Văn hóa & biểu diễn
+      with: có biểu diễn
+      home: true
+    camping:
+      label: Cắm trại, ngủ lều
+      with: cắm trại được
+      home: true
+    tasting_available:
+      label: Nếm thử tại chỗ
+      with: cho nếm thử
+      home: true
+    costume_rental:
+      label: Thuê trang phục chụp ảnh
+      with: cho thuê trang phục
+      home: true
+    outdoor_seating:
+      label: Chỗ ngồi ngoài trời
+      with: có chỗ ngồi ngoài trời
+      home: false
+      split: false
+    local_specialty_food:
+      label: Đặc sản địa phương
+      with: có đặc sản
+      home: false
+      split: false
+    weather_exposed=sheltered:
+      label: Có mái che, trú mưa
+      with: có mái che
+      home: true
+    setting=indoor:
+      label: Trong nhà
+      with: trong nhà
+      home: false
+      split: false
+    crowd=low:
+      label: Vắng, ít khách
+      with: vắng khách
+      home: false
+      split: false
+    noise=quiet:
+      label: Yên tĩnh
+      with: yên tĩnh
+      home: false
+      split: false
+  subtag_categories:
+    photo_spot:
+    - cafe
+    - nature
+    - garden_farm
+    - attraction
+    - museum
+    - religious
+    cozy_decor:
+    - cafe
+    - restaurant
+    - stay
+    - spa
+    laptop_friendly:
+    - cafe
+    long_stay_chill:
+    - cafe
+    - stay
+    - spa
+    weather_exposed=sheltered:
+    - cafe
+    - restaurant
+    - attraction
+    - museum
+    cloud_hunting:
+    - cafe
+    - nature
+    - camping
+    - restaurant
+    - attraction
+    sunset_view:
+    - cafe
+    - nature
+    - camping
+    - restaurant
+    sunrise_view:
+    - cafe
+    - nature
+    - camping
+    scenic_view:
+    - cafe
+    - nature
+    - camping
+    - restaurant
+    animals:
+    - cafe
+    - garden_farm
+    - amusement
+    historical_site:
+    - museum
+    - religious
+    architecture:
+    - museum
+    - religious
+    - cafe
+    flower_garden:
+    - garden_farm
+    - cafe
+    - attraction
+    nature:
+    - nature
+    - camping
+    - cafe
+    camping:
+    - camping
+    - nature
+    pick_your_own:
+    - garden_farm
+    hands_on_workshop:
+    - garden_farm
+    - cafe
+    - attraction
+    live_music:
+    - cafe
+    - bar
+    adventure_activity:
+    - amusement
+    - nature
+    - attraction
+    hiking:
+    - nature
+    cultural_show:
+    - attraction
+    - restaurant
+    costume_rental:
+    - attraction
+    tasting_available:
+    - shop
+    - garden_farm
+  aliases:
+    experience:heritage_architecture: experience:historical_site
+  cover_scenes:
+    experience:cloud_hunting:
+    - view
+    experience:sunset_view:
+    - view
+    experience:scenic_view:
+    - view
+    experience:nature:
+    - view
+    - exterior
+    experience:flower_garden:
+    - view
+    - exterior
+    experience:photo_spot:
+    - view
+    - exterior
+    - interior
+    experience:cozy_decor:
+    - interior
+    experience:long_stay_chill:
+    - interior
+    - exterior
+    category:cafe:
+    - interior
+    - exterior
+    - drink
+    category:restaurant:
+    - food
+    - interior
+    category:dessert:
+    - food
+    - drink
+    - interior
+    category:bar:
+    - interior
+    - drink
+    category:nature:
+    - view
+    - exterior
+    category:attraction:
+    - view
+    - exterior
+    category:garden_farm:
+    - view
+    - exterior
+    category:camping:
+    - view
+    - exterior
+    category:religious:
+    - exterior
+    - view
+    category:museum:
+    - exterior
+    - interior
+    category:market:
+    - exterior
+    - interior
+    - food
+    dish:*:
+    - food
+    experience:historical_site:
+    - exterior
+    - view
+    experience:architecture:
+    - exterior
+    - view
+    experience:sunrise_view:
+    - view

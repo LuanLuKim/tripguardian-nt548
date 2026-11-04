@@ -59,6 +59,29 @@ def test_h1_an_unconfirmed_trip_is_a_typed_conflict_with_the_readback_not_a_cras
     assert after["stage"] == "decision" and "planning" not in after["sessions"] and after["revision"] == v["revision"]
 
 
+def test_failed_selected_requirement_does_not_hide_the_trip_question_gate():
+    from decision import Data, Engine, Store, Tools, load_settings
+    from fixtures import hard, si, srec
+    from harness import TripNotReady
+
+    h, tools = make()
+    dt = Tools(Engine(Data([srec("meal", group="restaurant", usable=("meal",),
+                                features={"vegetarian_options": "no"})]), load_settings(), Store(None)))
+    h.tools["decision"] = dt
+    v = decision(h)
+    search = si(context={"days": 3}, hard_filters=[hard("vegetarian_options", "yes", "eq")],
+                activities={"meal": "eating"}).model_dump(mode="json")
+    dt.rebase(v["sessions"]["decision"], {"search_input": search})
+    v = run(h, v, "act", "select-meal", {"type": "select", "place_id": "meal"})
+    gated(tools, ["readback"])
+    with pytest.raises(TripNotReady) as caught:
+        run(h, v, "advance", "to-planning")
+    assert caught.value.missing == ["readback"]
+    assert caught.value.readback["digest"] == "d1"
+    assert h.load(v["id"])["stage"] == "decision"
+    assert dt.engine.store.get(v["sessions"]["decision"]).output is None
+
+
 def test_h2_the_readback_is_confirmed_from_the_decision_stage_and_planning_opens():
     h, tools = make()
     v = decision(h)

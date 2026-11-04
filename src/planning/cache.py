@@ -38,8 +38,8 @@ def _frozen_fp(obj, encode) -> str:
 
 
 def _cfg_fields(cfg) -> dict:
-    # Day-split weights choose membership; simulate() does not read them.
-    return {k: v for k, v in vars(cfg).items() if k != "weights"}
+    # Day-split weights and worker scheduling do not change a day's clock.
+    return {k: v for k, v in vars(cfg).items() if k not in {"weights", "direction_workers"}}
 
 
 def day_key(cx, ids) -> str:

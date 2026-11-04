@@ -6,6 +6,8 @@ UNCERTAIN (NEEDS_REVIEW, DISABLED) are never in the record, and the card does no
 
 from __future__ import annotations
 
+from ..serving import feature
+
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 GROUPS = ("experience", "environment", "service", "effort", "suitability")
 LISTS = ("order", "avoid", "activity", "photo_spot", "access", "booking", "bring", "situation")
@@ -37,8 +39,16 @@ def _hours(value: dict) -> dict[str, str]:
 
 
 def _features(record: dict, statuses: tuple[str, ...]) -> list[str]:
-    return [f"{fid}={f['value']}" for g in GROUPS for fid, f in (record.get(g) or {}).items()
-            if f and f.get("status") in statuses and f.get("value") is not None]
+    out = []
+    for group in GROUPS:
+        for fid in (record.get(group) or {}):
+            try:
+                f = feature(record, fid)
+            except KeyError:
+                continue
+            if f and f.get("status") in statuses and f.get("value") is not None:
+                out.append(f"{fid}={f['value']}")
+    return out
 
 
 def card(record: dict) -> dict:
@@ -55,7 +65,7 @@ def card(record: dict) -> dict:
     if fee := op.get("entry_fee"):
         out["fee"] = {k: fee.get(src) for k, src in (("min", "min_vnd"), ("typ", "typical_vnd"), ("max", "max_vnd"),
                                                       ("src", "source"), ("kind", "kind"))}
-        if ((record.get("service") or {}).get("entry_fee") or {}).get("reason") == FEE_CONFLICT:
+        if (feature(record, "entry_fee") or {}).get("reason") == FEE_CONFLICT:
             out["fee"]["conflict"] = True
     price = (op.get("price_per_person") or {}).get("value") or {}
     if price.get("max_vnd") is not None:

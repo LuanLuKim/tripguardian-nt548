@@ -77,8 +77,10 @@ class Tools:
         return self.engine.load(sid)
 
     def read(self, sid: str, operation: str, payload: dict | None = None) -> dict:
-        if operation not in {"readback", "search_input"}:
+        if operation not in {"readback", "search_input", "stage"}:
             raise ValueError(f"trip does not accept {operation}")
+        if operation == "stage":  # one level of the tag stage: read only, no turn (Engine.tag_stage)
+            return self.engine.tag_stage(sid, str((payload or {}).get("block", "")), str((payload or {}).get("path", "")))
         session = self.engine.store.get(sid)
         with session.lock:
             if operation == "readback":
@@ -123,6 +125,14 @@ class Tools:
 
     def places(self, query: str) -> list[dict]:
         return self.engine.places(query)
+
+    def tag(self, ref: str) -> dict:
+        """One home-page tag split into subtags with the place cards (Engine.tag_view)."""
+        return self.engine.tag_view(ref)
+
+    def tag_covers(self, items: list[dict]) -> list[dict]:
+        """Trending tags with the cover photos of their most posted places."""
+        return self.engine.tag_covers(items)
 
     def forget(self, user_id: str) -> bool:
         return self.engine.forget(user_id)
@@ -224,6 +234,11 @@ def warm_assistant(engine: Engine) -> None:
         pass
     finally:
         engine.warmed.set()
+    try:  # the tags of every place (broad asks, home topics): after the assistant is ready, not in its way
+        if engine.knowledge is not None:
+            engine.knowledge.browse.warm()
+    except Exception:  # best effort: the first use computes them
+        pass
 
 
 def drill_key(engine: Engine) -> str:

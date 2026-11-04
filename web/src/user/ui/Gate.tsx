@@ -190,7 +190,7 @@ export function GateAsk({ deck, busy, issues, lines, changed, error, onAnswer, o
   const reasons = Array.from(new Set(tab.options.filter(o => o.prefilled && selected.includes(o.id) && o.because).map(o => o.because)))
   const notes = issues.filter(i => i.key === tab.qid || i.key.startsWith(`${tab.qid}.`))
   const rest = issues.filter(i => !deck.tabs.some(t => i.key === t.qid || i.key.startsWith(`${t.qid}.`)))
-  const answered = (qid: string) => Object.keys(answers).some(k => k === qid || k.startsWith(`${qid}.`))
+  const { answered } = form
   const leftHere = deck.tabs.filter(t => !answered(t.qid)).length // the same set the cards show, falling as the user answers
   const [lead, tail] = split(tab.question)
   const bringForward = goTo

@@ -63,11 +63,12 @@ def test_bad_actions_raise(a):
         act(State(selected=["A"]), a, alternatives={"A": ["B"]})
 
 
-def test_pattern_question_after_three_drops_sharing_a_bad_value():
+def test_pattern_never_opens_but_legacy_explicit_answer_still_works():
     by_id = {k: srec(k, features={"crowd": "high"}) for k in "ABC"}
     s = State(dropped=[Drop(place_id=k) for k in "ABC"], last="drop")
-    p = pending(s, by_id, si(), {"slack": 0}, 20, {}, CFG)
-    assert p.qid == "pattern:crowd=high" and [c.id for c in p.chips] == ["yes", "no"]
+    assert pending(s, by_id, si(), {"slack": 0}, 20, {}, CFG) is None
+    p = Pending(qid="pattern:crowd=high", text="legacy", reason="legacy",
+                chips=[Chip(id="yes", label="Yes"), Chip(id="no", label="No")])
     s2 = act(s, {"type": "answer", "qid": p.qid, "chip": "yes"}, pend=p)
     assert (s2.profile.soft[0].feature, s2.profile.soft[0].value, s2.profile.soft[0].weight) == ("crowd", "high", -1)
     assert pending(s2, by_id, si(), {"slack": 0}, 20, {}, CFG) is None
@@ -75,15 +76,15 @@ def test_pattern_question_after_three_drops_sharing_a_bad_value():
     assert s3.profile.soft == [] and pending(s3, by_id, si(), {"slack": 0}, 20, {}, CFG) is None
 
 
-def test_rethink_and_gap_questions():
+def test_dropping_never_opens_rethink_or_gap_question():
     by_id = {k: srec(k) for k in KNOWN}
     many = State(dropped=[Drop(place_id=k) for k in "ABCDEF"], last="drop")
-    assert pending(many, by_id, si(), {"slack": 0}, 10, {}, CFG).qid == "rethink"
+    assert pending(many, by_id, si(), {"slack": 0}, 10, {}, CFG) is None
     one = State(dropped=[Drop(place_id="A")], last="drop")
     gap = pending(one, by_id, si(), {"slack": 200}, 10, {"A": "nature"}, CFG)
-    assert gap.qid == "gap:1" and gap.data == {"group": "nature"}
-    s = act(one, {"type": "answer", "qid": "gap:1", "chip": "similar"}, pend=gap)
-    assert s.suggest_group == "nature"
+    assert gap is None
+    with pytest.raises(ActionError):
+        act(one, {"type": "answer", "qid": "gap:1", "chip": "similar"})
     assert pending(State(dropped=[Drop(place_id="A")], last="select"), by_id, si(), {"slack": 200}, 10, {}, CFG) is None
     assert pending(one, by_id, si(), {"slack": None}, 10, {}, CFG) is None
 

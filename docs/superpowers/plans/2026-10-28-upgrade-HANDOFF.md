@@ -3,6 +3,10 @@
 > Plan làm việc (`RULE.md` §0.1), tạm thời. Spec: `docs/superpowers/specs/2026-10-26-production-and-course-upgrade-design.md`. Session mới đọc file này trước, rồi ledger của từng track. Xong hết thì gộp phần còn giá trị vào tài liệu chính thức và xoá file này.
 > Viết bởi session `tripguardian-77`, 2026-10-28 ~16:40.
 
+## CHỐT 2026-10-30 08:05 — đợt corpus-fill (đọc mục này trước tiên)
+
+Bàn giao đầy đủ ở `.superpowers/sdd/2026-10-30-corpus-fill/HANDOFF.md`: bảng track, job nền và marker, các bước build release và deploy. Báo cáo cho chủ dự án: `REPORT.md` cùng thư mục. Câu mở đầu cho session mới: "làm tiếp đợt corpus-fill: đọc .superpowers/sdd/2026-10-30-corpus-fill/HANDOFF.md rồi REPORT.md, common.md, controller log .superpowers/sdd/2026-10-30-wave/controller.md và dòng cuối ledger từng track".
+
 ## CHỐT 2026-10-30 ~04:00 — session `tripguardian-05` (đọc mục này trước tiên)
 
 Đã làm xong 6 việc của mục 02:05 bên dưới. Nhật ký: `.superpowers/sdd/2026-10-30-wave/controller.md`.

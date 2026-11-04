@@ -2,7 +2,8 @@
 every review (corpus.llm.REVIEW_QC), one file per place.
 
 REVIEW_QC reads all reviews of a place (newest, most relevant and extremes, in batches) and flags owner replies,
-spam / reward-for-review and non-reviews; observe drops them (llm.bad_reviews, corpus.observe.gmaps). Results go to
+spam / reward-for-review and non-reviews; unscored singleton retries get qc_unscored with the error reason.
+Observe drops all of these (llm.bad_reviews, corpus.observe.gmaps). Results go to
 data/gmaps/qc/<fid_dir>.json and data/gmaps/qc/summary.json. A place is checked again only when its place.json was
 re-fetched, its reviews changed or a prompt changed. When only reviews were added (relevant / extremes / keywords) and
 place.json is the same, the place verdict stands and the Extractor screens just the reviews not screened before
@@ -17,7 +18,7 @@ from datetime import UTC, datetime
 
 import openai
 
-from ...llm import PLACE_QC, REVIEW_QC, OutOfQuota
+from ...llm import PLACE_QC, REVIEW_QC, OutOfQuota, Runaway, SchemaError
 from ..common.files import data_dir, listed, load_config, now, safe_name, write_json
 from .crawl import count
 
@@ -90,6 +91,8 @@ def batches(reviews: list[dict]) -> list[list[dict]]:
 
 
 async def _ask(task, *args, **kwargs) -> dict:
+    if kwargs.get("attempts") == 1:
+        return await task.ask(*args, **kwargs)
     for tries in range(1, BUSY_TRIES + 1):
         try:
             return await task.ask(*args, **kwargs)
@@ -102,15 +105,27 @@ async def _ask(task, *args, **kwargs) -> dict:
 
 
 async def screen(client, model: str, place: dict, reviews: list[dict], city: str, sem: asyncio.Semaphore) -> list[dict]:
-    """REVIEW_QC over every review with text: [{review_id, problem, reason}]."""
+    """REVIEW_QC flags; content failures retry singly, then fail closed with an honest qc_unscored marker."""
     texts = [r for r in reviews if len((r.get("text") or "").strip()) >= MIN_TEXT]
 
-    async def one(batch: list[dict]) -> list[dict]:
+    async def one(batch: list[dict], retry: bool = False) -> list[dict]:
         refs = {f"r{i}": r for i, r in enumerate(batch, 1)}
         lines = "\n".join(f"{ref} ({r.get('rating') or '?'}): {' '.join(r['text'].split())}" for ref, r in refs.items())
-        async with sem:
-            ans = await _ask(REVIEW_QC, client, model, city=city, name=place.get("name"),
-                             category=place.get("category") or "unknown", reviews=lines)
+        options = {"max_tokens": min(REVIEW_QC.max_tokens, 1000), "frequency_penalty": 0.3,
+                   "presence_penalty": 0.2, "attempts": 1} if retry else {}
+        try:
+            async with sem:
+                ans = await _ask(REVIEW_QC, client, model, city=city, name=place.get("name"),
+                                 category=place.get("category") or "unknown", reviews=lines, **options)
+        except (Runaway, json.JSONDecodeError, SchemaError) as error:
+            if retry:
+                rid = batch[0]["review_id"]
+                return [{"review_id": rid, "problem": "qc_unscored",
+                         "reason": f"qc_failed: review_id={rid}; {type(error).__name__}: {str(error)[:300]}"}]
+            flagged = []
+            for review in batch:
+                flagged.extend(await one([review], retry=True))
+            return flagged
         return [{"review_id": refs[b["ref"]]["review_id"], "problem": b["problem"], "reason": b["reason"]}
                 for b in ans["bad"] if b["ref"] in refs]
 

@@ -1,7 +1,7 @@
-"""Gap G3 (docs/superpowers/specs/2026-10-29-assistant-tools-design.md 5B): which places have < min_scenes showable scenes.
+"""Gap G3 (docs/superpowers/specs/2026-10-29-assistant-tools-design.md 5B): which places have < min_photos photos a card can show.
 
 `python scripts/photo_targets.py [--out FILE]` prints coverage (before/after use) by scene kind and category group and, with
---out, writes the places under min_scenes, most reviewed first, as {"wanted": N, "places": [{"dir", "reviews", "scenes"}]}.
+--out, writes the places under min_photos, most reviewed first, as {"wanted": N, "places": [{"dir", "reviews", "scenes"}]}.
 The photos phase reads that file through GMAPS_PHOTO_TARGETS."""
 import argparse, collections, json, pathlib, sys
 
@@ -21,7 +21,7 @@ def rows():
         doc = scenes.load(f.parent.name)
         if not doc:
             continue
-        n = len(scenes.pick(doc, g, cfg)) if doc else 0
+        n = len(scenes.pick(doc, g, cfg, appeal=scenes.load_appeal(f.parent.name))) if doc else 0
         yield {"dir": f.parent.name, "group": g, "kind": scenes.kind_of(g, cfg), "reviews": p.get("reviews") or 0,
                "scenes": n, "photos": len((doc or {}).get("photos") or [])}
 
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     ap.add_argument("--out")
     ap.add_argument("--wanted", type=int, default=30)
     a = ap.parse_args()
-    need = scenes.config()["min_scenes"]
+    need = scenes.config()["min_photos"]
     rs = list(rows())
     print(json.dumps(report(rs, need), ensure_ascii=False, indent=1))
     if a.out:

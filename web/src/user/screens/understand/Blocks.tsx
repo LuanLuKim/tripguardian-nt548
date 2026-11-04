@@ -1,43 +1,14 @@
-import { useSnapshot } from '../../../data/store'
-import { fmtVnd, info } from '../../lib'
-import type { DishBlock, DishEvidence, ResultBlock, ServiceRow, ServicesBlock } from '../../tu/types'
-import { Icon } from '../../ui/icons'
+import type { DishBlock, ResultBlock, ServiceRow, ServicesBlock } from '../../tu/types'
+import { fold } from '../../search'
+import { SubtagBlock } from '../../tags/Subtags'
 import { PlaceStage } from './Places'
 
-// What a read tool found, shown as the backend returned it (src/trip/api/blocks.py): a dish -> the places that serve
-// it with the evidence line of each, or a list of services (ATM, pharmacy, rental, coach station), never place
-// cards. A field the backend did not send is not drawn.
-
-const SOURCE: Record<DishEvidence['source'], string> = {
-  menu_popular: 'Món nổi bật trong thực đơn của quán',
-  name: 'Tên quán nói về món này',
-  menu: 'Có trong thực đơn của quán',
-  menu_photo: 'Đọc từ ảnh thực đơn',
-  review_order: 'Khách đã gọi món này',
-}
+// Dish results open place cards; evidence and external links belong in the place sheet.
 
 function Dish({ block, busy, onLike }: { block: DishBlock; busy: boolean; onLike: (id: string, on: boolean) => void }) {
-  useSnapshot()
-  const names = new Map(block.cards.map(c => [c.id, c.name]))
-  return <section className="tg-cx-dish" aria-label={`Quán có món ${block.dish}`}>
-    <PlaceStage row={{ ids: block.places.map(p => p.id), why: `Quán có món “${block.dish}”`, cards: block.cards }} busy={busy} autoOpen={false} onLike={onLike} />
-    <ul className="tg-cx-dish__list">
-      {block.places.map(p => {
-        const maps = info(p.id)?.mapsUrl
-        return <li key={p.id}>
-          <b>{names.get(p.id) ?? info(p.id)?.name ?? 'Nơi này'}</b>
-          {p.evidence.map((e, i) => <p key={i}>
-            <span className="tg-cx-dish__src">{SOURCE[e.source] ?? e.source}</span>
-            {e.dish && <> · {e.dish}</>}
-            {e.section && <> ({e.section})</>}
-            {e.price_vnd ? <> · <span className="tg-cx-dish__price">{fmtVnd(e.price_vnd)}</span></> : null}
-            {e.n && e.n > 1 ? <> · {e.n} người nhắc</> : null}
-            {e.quote && <q>{e.quote}</q>}
-          </p>)}
-          {maps && <a className="tg-link" href={maps} target="_blank" rel="noreferrer">Xem trên Google Maps <Icon name="external" size={13} /></a>}
-        </li>
-      })}
-    </ul>
+  const dish = block.places.flatMap(p => p.evidence).map(e => e.dish).find(d => d && fold(d) === fold(block.dish)) ?? block.dish
+  return <section className="tg-cx-dish" aria-label={`Quán có món ${dish}`}>
+    <PlaceStage row={{ ids: block.places.map(p => p.id), why: `Quán có món “${dish}”`, cards: block.cards }} busy={busy} autoOpen={false} onLike={onLike} />
   </section>
 }
 
@@ -63,6 +34,7 @@ function Services({ block }: { block: ServicesBlock }) {
   </section>
 }
 
-export function Block({ block, busy, onLike }: { block: ResultBlock; busy: boolean; autoOpen?: boolean; onLike: (id: string, on: boolean) => void }) {
+export function Block({ block, busy, autoOpen, onLike }: { block: ResultBlock; busy: boolean; autoOpen?: boolean; onLike: (id: string, on: boolean) => void }) {
+  if (block.kind === 'tags') return <SubtagBlock block={block} autoOpen={autoOpen} onLike={onLike} />
   return block.kind === 'dish' ? <Dish block={block} busy={busy} onLike={onLike} /> : <Services block={block} />
 }

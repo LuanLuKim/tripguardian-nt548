@@ -76,3 +76,18 @@ Số agent đã đo trước đó (handoff §000): một nơi dùng kit có sẵ
 | Nơi đã đạt (đề thi) | `places/conga/`, `places/dinh3/`, `places/camly/`, `places/linhphuoc/` |
 | Ba nơi thử | `places/{duonghamdieukh,quangtruonglam,dinhibaodai}/` (`auto3d.json`, `NOTES_coord.md`, `place.json`, `COLOURS.md`) |
 | Log pilot | NAS `/AIClub_NAS/luanhh/tripguardian/splat/diorama/logs/auto3d_pilot_20261104.log` |
+
+## 7. Phiên 11-04 22:10 (dừng vì máy sắp reboot)
+
+Chủ dự án: "nếu workflow không được thì dùng agent cũng được, nhưng phải là automation" → được phép **chế độ lai**: `auto3d.py` vẫn điều phối; bước write/fix gọi `run_agent.sh sol …` tự động khi sandbox sống. Reboot sẽ gỡ mount `/run/nas-test` treo → kiểm lại `ps -eo stat,args | awk '$1~/D/' | grep -E "mount|bwrap"`.
+
+Đã đo:
+- **Ảnh rẻ, tính theo điểm ảnh:** sol ≈ 1 token / 840 px, không thu nhỏ (contact 2280×1296 cạnh 1400 = 1,3k token; cạnh 2048 = 2,8k). Ảnh gốc `photos/gNN.jpg` chỉ 768 px ≈ 400 token mỗi tấm → gửi 6–8 ảnh bằng chứng nguyên cỡ ≈ 3k token. Contact cạnh 1400 làm mỗi ảnh con còn ~175 px: giả thuyết "mắt kém" (§2.1) đúng.
+- **9router không báo `cached_tokens` và bỏ qua `previous_response_id`** (gọi lần 2 "không có câu trả lời trước"). Muốn rẻ phải gửi ít đi thật sự; trí nhớ giữa các lượt sửa phải tóm tắt vào prompt. Mỗi lời gọi có ≈ 2,5k token chi phí cố định của router.
+- Danh mục kit ≈ 7–8k token, ví dụ ≈ 3,5k.
+
+Đã viết, **chưa chạy thử**: `logs/splat/diorama/batch/route_fix.mjs <slug> [--all]` — build nơi, raster hoá mặt lát 0,25 m, kéo `walk` của điểm dừng về mặt lát gần nhất (≤ 8 m), dựng lại chặng hỏng bằng A* + thẳng hoá; thay lượt sol sửa lỗi boot "Walking route has no paved ground" (pilot tốn 2 × 30k). Thư mục thử `places/x_rt/` có thể xoá. Bản cũ workflow: `batch/auto3d_v1_20261104.py`.
+
+Kế hoạch v2 (chưa code): notes trả `signature` có id + ảnh + loại kit đại diện, và `evidence` ≤ 8 ảnh; write gửi ảnh bằng chứng nguyên cỡ + trả `signatureMap`; chuẩn hoá tất định trước boot (tên ảnh `gNN.jpg`, id trùng, route_fix); lỗi boot còn lại → sol vá không gửi danh mục/ảnh; review = lượt mới, checklist từng mục (ok/yếu/thiếu/sai, nguyên nhân data|kit), ghép mỗi điểm dừng render ↔ ảnh của nó; code quyết định đạt; fix trả **bản vá** + lịch sử lượt trước; mục `must` trượt vì kit → `needs_kit`; `exam` chạy lại trên bản sao `x_<slug>` của nơi đã duyệt để so.
+
+Lưu ý: `logs/` bị `.gitignore` → toàn bộ code 3D (`logs/splat/diorama/`) **không có trong git**, chỉ nằm trên đĩa.

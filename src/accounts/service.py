@@ -285,11 +285,15 @@ class Accounts:
         return self.session(self._upsert({"sub": "test:" + email, "email": email, "name": name}), user_agent)
 
     def session(self, user_id: str, user_agent: str = "", guest: bool = False) -> str:
-        token = secrets.token_urlsafe(32)
         with self.pool.connection() as conn:
-            conn.execute("INSERT INTO auth_sessions (token_hash, user_id, expires_at, user_agent) "
-                         "VALUES (%s, %s, now() + make_interval(hours => %s), %s)",
-                         (_hash(token), user_id, GUEST_HOURS if guest else SESSION_DAYS * 24, user_agent[:300]))
+            return self._session(conn, user_id, user_agent, guest)
+
+    @staticmethod
+    def _session(conn, user_id, user_agent: str, guest: bool) -> str:
+        token = secrets.token_urlsafe(32)
+        conn.execute("INSERT INTO auth_sessions (token_hash, user_id, expires_at, user_agent) "
+                     "VALUES (%s, %s, now() + make_interval(hours => %s), %s)",
+                     (_hash(token), user_id, GUEST_HOURS if guest else SESSION_DAYS * 24, user_agent[:300]))
         return token
 
     def user_for(self, token: str | None) -> tuple[dict | None, bool]:
@@ -328,12 +332,13 @@ class Accounts:
 
     def guest(self, user_agent: str = "") -> str:
         """A visitor without an account: a real users row (kind 'guest', no email, no Google) with a 24-hour session,
-        so every owner check keyed by user id works unchanged. Returns the session token."""
+        so every owner check keyed by user id works unchanged. Returns the session token. The user, profile and session
+        commit together: a concurrent purge_guests never sees the new guest without its live session."""
         self.purge_guests()
         with self.pool.connection() as conn:
             uid = conn.execute("INSERT INTO users (kind, last_login_at) VALUES ('guest', now()) RETURNING id").fetchone()["id"]
             conn.execute("INSERT INTO profiles (user_id) VALUES (%s)", (uid,))
-        return self.session(str(uid), user_agent, guest=True)
+            return self._session(conn, uid, user_agent, guest=True)
 
     def leave(self, token: str | None) -> None:
         """The browser says this guest's page is closing: mark the session; `purge_leavers` deletes the guest soon

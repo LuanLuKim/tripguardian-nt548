@@ -207,6 +207,30 @@ def test_guest_is_an_anonymous_user_with_a_short_session(accounts):
     assert accounts.user_for(login(accounts)["token"])[0]["guest"] is False
 
 
+def test_guest_sign_in_survives_a_concurrent_purge(accounts):
+    # Every guest sign-in purges expired guests first: another visitor's purge must never catch a new guest
+    # between its users row and its session (that deleted the user, the session insert hit the FK: a 502).
+    import threading
+    stop, errors = threading.Event(), []
+
+    def purge():
+        while not stop.is_set():
+            try:
+                accounts.purge_guests()
+            except Exception as e:  # noqa: BLE001 - surface any failure of the purger too
+                errors.append(e)
+
+    t = threading.Thread(target=purge)
+    t.start()
+    try:
+        tokens = [accounts.guest() for _ in range(40)]
+    finally:
+        stop.set()
+        t.join()
+    assert not errors
+    assert all(accounts.user_for(tok)[0]["guest"] for tok in tokens)
+
+
 def test_guest_session_slides_by_hours_not_days(accounts):
     token = accounts.guest()
     with accounts.pool.connection() as conn:

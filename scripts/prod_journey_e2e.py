@@ -855,11 +855,12 @@ def run_case(case: prod_cases.Case, run_dir: Path) -> dict:
         for e in case.edits:
             cur_view = apply_edit(case, api, e, cur_view, rec, texts)
 
-        # --- confirm, reload, trips list
+        # --- confirm, reload, trips list. Violations are warnings, not a gate (docs/PLANNING.md §Validate, owner
+        # 2026-11-08): the web asks once ("Chốt kế hoạch còn cảnh báo?") and confirms, so the runner does the same and
+        # lets the server refuse only what it really cannot lock.
         if not plan_ready(cur_view):
-            rec.setdefault("blocked", {})["confirmation"] = "edited draft still has violations"
-            rec["errors"].append("edited draft is not confirmable")
-            return finish(case, api, rec, texts, run_dir, t_start)
+            rec["confirmed_with_warnings"] = [v.get("code") or v.get("kind") or str(v)[:80]
+                                              for v in cur_view.get("violations") or []]
         cf_ = api.request("planning", "confirm")
         api.step("confirm", cf_.secs, cf_.status == 200)
         rec["confirm_status"] = cf_.status

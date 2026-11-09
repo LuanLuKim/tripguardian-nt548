@@ -381,6 +381,48 @@ def test_run_case_guest_skips_eve_and_invalid_draft_stops_before_edits(case, mon
         assert rec["blocked"]["confirmation"]
 
 
+def test_run_case_confirms_an_edited_draft_that_only_has_warnings(case, monkeypatch, tmp_path):
+    # Violations are warnings, not a gate (owner 2026-11-08): the runner confirms like the web and records them.
+    case.chat = [case.chat[0]]
+    case.sim_replies = 0
+    case.edits = [prod_cases.Edit(op="set_pace", level="slow")]
+    calls = []
+    base = {"ok": True, "state": {"chosen_variant": "main"}, "variants": [], "itinerary": [], "groups": [],
+            "selected": [], "feasibility": {}}
+    edited = base | {"violations": [{"code": "day_window"}]}
+
+    class Api:
+        sid = "session"
+
+        def guest(self):
+            pass
+
+        def create(self):
+            return {"result": {"transcript": []}}
+
+        def request(self, stage, op, payload=None, **kwargs):
+            calls.append((stage, op, payload))
+            events = [{"event": "done", "data": {"search_input": {"context": {}}}}] if op == "turn" and payload.get("kind") == "show" else []
+            return runner.Resp(200, 0, events=events, body={"result": {"view": edited if op == "act" else base}})
+
+        def load(self, stage):
+            return runner.Resp(200, 0, body={"result": {"view": base}, "stage": "planning"})
+
+        def raw(self, method, path, **kwargs):
+            return 200, [], 0
+
+        def step(self, *args):
+            pass
+
+    monkeypatch.setattr(runner, "Api", lambda *args: Api())
+    monkeypatch.setattr(runner, "pick_places", lambda case, api, view, rec: view)
+    monkeypatch.setattr(runner, "finish", lambda case, api, rec, *args: rec)
+    rec = runner.run_case(case, tmp_path)
+    assert any(op == "confirm" for stage, op, _ in calls)
+    assert rec["confirmed_with_warnings"] == ["day_window"]
+    assert "edited draft is not confirmable" not in rec["errors"]
+
+
 def test_repeated_outer_gate_stops_even_if_readback_digest_changes(case, monkeypatch, tmp_path):
     case.chat = [case.chat[0]]
     case.sim_replies = 0

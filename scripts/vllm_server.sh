@@ -6,7 +6,7 @@
 # VLLM_MAX_LEN, VLLM_MEM_UTIL, VLLM_EXTRA.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-export CUDA_VISIBLE_DEVICES="${VLLM_GPUS:-4,7}"
+export CUDA_VISIBLE_DEVICES="${VLLM_GPUS:-0,1}"
 export HF_HOME="$ROOT/.cache/hf" TMPDIR="$ROOT/.cache/tmp" VLLM_CACHE_ROOT="$ROOT/.cache/vllm" HF_HUB_OFFLINE=1
 export TRITON_CACHE_DIR="$ROOT/.cache/triton" TORCHINDUCTOR_CACHE_DIR="$ROOT/.cache/inductor" XDG_CACHE_HOME="$ROOT/.cache/xdg"
 export VLLM_RPC_BASE_PATH=/tmp/tg_vllm_rpc  # unix socket paths must be < 108 chars; the repo path is too long

@@ -25,7 +25,7 @@ def engine(records):
 
 
 @pytest.mark.parametrize('explicit', [False, True])
-def test_user_pet_banned_pick_is_retained_warned_and_confirmation_is_409(explicit):
+def test_user_pet_banned_pick_is_retained_warned_and_confirmation_stays_the_users(explicit):
     hard = [{'feature': 'pets', 'op': 'ne', 'value': 'not_allowed', 'unknown_policy': 'flag'}] if explicit else []
     d = pet_decision(['banned'], hard=hard, relaxed={'banned': ['pets']})
     e = engine([spot('banned', CENTRE, 0, features={'pets': 'not_allowed'})])
@@ -37,9 +37,9 @@ def test_user_pet_banned_pick_is_retained_warned_and_confirmation_is_409(explici
         p['place_id'] for p in view['unplaced']}
     e._base.clear()
     assert e.load(created['id'])['view']['ok'] is False
-    with pytest.raises(ToolError) as exc:
-        Tools(e).apply(created['id'], 'confirm', {}, lambda *a: None)
-    assert exc.value.status == 409
+    assert e.load(created['id'])['view']['violations']
+    confirmed = Tools(e).apply(created['id'], 'confirm', {}, lambda *a: None)   # a warning, never a gate
+    assert any(v['kind'] == 'hard' for v in confirmed['violations'])
 
 
 def test_pet_unknown_is_scheduled_with_explicit_uncertainty():

@@ -173,7 +173,7 @@
 /* topic cards; the first is lifted and tilted out of the row, as in the reference */
 .tg-hm__cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; padding-top: 14px; }
 .tg-hm__card { min-width: 0; display: flex; flex-direction: column; padding: 10px 10px 14px; border-radius: 18px; background: var(--tg-surface); box-shadow: 0 8px 22px -16px rgba(0, 0, 0, 0.3); transition: transform 360ms var(--tg-ease), rotate 360ms var(--tg-ease), box-shadow 360ms var(--tg-ease); animation: tg-hm-card 560ms var(--tg-ease) both; }
-.tg-hm__card:nth-child(2) { animation-delay: 60ms; } .tg-hm__card:nth-child(3) { animation-delay: 120ms; } .tg-hm__card:nth-child(4) { animation-delay: 180ms; } .tg-hm__card:nth-child(5) { animation-delay: 240ms; }
+.tg-hm__card:nth-child(2) { animation-delay: 60ms; } .tg-hm__card:nth-child(3) { animation-delay: 120ms; } .tg-hm__card:nth-child(4) { animation-delay: 180ms; } .tg-hm__card:nth-child(5) { animation-delay: 240ms; } .tg-hm__card:nth-child(n+6) { animation-delay: 300ms; }
 .tg-hm__card.is-lead { transform: translateY(-14px) scale(1.04); box-shadow: 0 22px 40px -18px rgba(0, 0, 0, 0.4); }
 .tg-hm__card:hover { transform: translateY(-6px); box-shadow: 0 18px 34px -16px rgba(0, 0, 0, 0.35); }
 .tg-hm__card.is-lead:hover { transform: translateY(-20px) scale(1.05); }
@@ -226,13 +226,6 @@
 .tg-hm__open small svg { flex: none; color: var(--hf-icon); }
 
 /* saved themes, recent */
-.tg-sv-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 26px; }
-.tg-sv-theme { position: relative; }
-.tg-sv-theme > button:first-child { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px; border-radius: 12px; background: rgba(255, 255, 255, 0.6); text-align: left; }
-.tg-sv-theme img { width: 54px; height: 54px; border-radius: 9px; object-fit: cover; }
-.tg-sv-theme b { display: block; font-weight: 500; }
-.tg-sv-theme small { color: var(--tg-ink-3); font-size: 0.78rem; }
-.tg-sv-theme .tg-pc__save { top: 50%; right: 10px; transform: translateY(-50%); }
 .tg-recent { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .tg-recent button { display: flex; align-items: center; gap: 14px; width: 100%; padding: 10px; border-radius: 13px; background: rgba(255, 255, 255, 0.6); text-align: left; }
 .tg-recent button:hover { background: #fff; }
@@ -304,7 +297,6 @@
 @media (prefers-reduced-motion: reduce) {
   .tg-home *, .tg-home *::before, .tg-home *::after { transition: none !important; }
 }
-.tg-sv-theme .tg-pc__save:hover { transform: translateY(-50%) scale(1.08); }
 
 /* the cover growing into the Tìm hiểu chat (Discover.tsx plan()) */
 ::view-transition-group(tg-trip-start) { animation-duration: 560ms; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }

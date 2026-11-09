@@ -59,8 +59,7 @@ def test_edit_reports_remaining_violation_even_when_its_key_already_existed():
     turn = PlanTurn(e, sid, 'bắt đầu muộn hơn', date(2026, 11, 4))
     result = turn.commit({'type': 'set_day_window', 'day': 0, 'start': '20:55', 'end': '21:00'})
     assert result.get('flagged') and 'fixed' in result['note']
-    with pytest.raises(NotConfirmable):
-        e.confirm(sid)
+    assert e.confirm(sid)['violations']   # flagged, not gated: the user may still confirm
 
 
 def test_timeout_draft_preview_is_read_only_and_its_token_can_apply(monkeypatch):

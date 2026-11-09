@@ -9,13 +9,12 @@ import { deleteTrip, tripSummaries } from '../pd/api'
 import { useDecision } from '../pd/decision'
 import { useFriends } from '../social'
 import type { TripSummary } from '../pd/types'
-import { toast, toggleSaved, toggleTheme, useUi } from '../store'
+import { toast, toggleSaved, useUi } from '../store'
 import { STEPS, useTrip } from '../trip'
 import { ArtCup, ArtHills, ArtRoute, Busy, Empty, go, Link, placeHref, PlacePhoto } from '../ui/common'
 import { HeartFill, Icon, type IconName } from '../ui/icons'
 import { Page, useTitle } from '../ui/Shell'
-import { openShare, openTheme, useBegin } from '../home/dialogs'
-import { themeOf } from '../home/themes'
+import { openShare, useBegin } from '../home/dialogs'
 import { GuestNotice } from './Guest'
 import { TourButton } from '../tour'
 
@@ -42,7 +41,9 @@ export function Trips() {
   const account = useAccount()
   const member = !!account && !account.guest
   useEffect(() => {
-    tripSummaries().then((l) => {
+    // A trip still at Tìm hiểu is only a chat (it lives in the chat history); Chuyến của tôi lists trips that reached Lựa chọn.
+    tripSummaries().then((all) => {
+      const l = all.filter((t) => t.stage !== 'trip')
       setList(l)
       const first = (['building', 'confirmed', 'done'] as const).find((k) => l.some((t) => kindOf(t) === k))
       if (first) setTab(first)
@@ -114,7 +115,6 @@ const GROUPS: [string, string][] = [['all', 'Tất cả'], ['sight', 'Tham quan 
 export function Saved() {
   useTitle('Đã lưu')
   const saved = useUi((u) => u.saved)
-  const themes = useUi((u) => u.savedThemes).map(themeOf).filter((t) => t !== undefined)
   const { view, act, busy } = useDecision()
   const [f, setF] = useState('all')
   useWarm(saved)
@@ -124,16 +124,6 @@ export function Saved() {
   return (
     <Page>
       <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Đã lưu</p><h1>Địa điểm bạn đã lưu</h1><p>Lưu theo tài khoản, mở được trên mọi máy. Nơi đã lưu không tự vào lịch; thêm vào chuyến khi nơi đó nằm trong gợi ý.</p></div></header>
-      {themes.length > 0 && (
-        <section className="tg-sv-themes" aria-label="Chủ đề đã lưu">
-          {themes.map((t) => (
-            <article key={t.id} className="tg-sv-theme">
-              <button type="button" onClick={() => openTheme(t.id)}><img src={t.photo} alt="" /><span><b>{t.short}</b><small>{t.category}</small></span></button>
-              <button type="button" className="tg-pc__save is-on" onClick={() => toggleTheme(t.id, t.short)} aria-label={`Bỏ lưu ${t.short}`}><HeartFill size={16} /></button>
-            </article>
-          ))}
-        </section>
-      )}
       <div className="tg-tabs" role="tablist" aria-label="Nhóm">
         {GROUPS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={f === k} className="tg-tab" onClick={() => setF(k)}>{l}<b>{count(k)}</b></button>)}
       </div>
@@ -167,7 +157,7 @@ export function Account() {
   useTitle('Hồ sơ')
   const account = useAccount()
   const friends = useFriends(!!account && !account.guest)
-  const savedN = useUi((u) => u.saved.length + u.savedThemes.length)
+  const savedN = useUi((u) => u.saved.length)
   const [trips, setTrips] = useState<TripSummary[] | null>(null)
   // The numbers are the server's, read again every half minute and when the tab comes back; a failed read keeps the
   // last numbers (or shows a dash), never a made-up zero.

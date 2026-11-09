@@ -4,10 +4,10 @@ import { MiniCalendar } from '../home/MiniCalendar'
 import { Pulse, usePulse } from '../home/Pulse'
 import { Who } from '../home/Who'
 import { useSnapshot } from '../../data/store'
-import { matches, THEMES, type Theme } from '../home/themes'
-import { toast, toggleTheme, useUi } from '../store'
+import { matches, THEMES } from '../home/themes'
+import { toast } from '../store'
 import { hasTrip, useTrip } from '../trip'
-import { HeartFill, Icon } from '../ui/icons'
+import { Icon } from '../ui/icons'
 import { useTitle } from '../ui/Shell'
 
 export { useBegin } from '../home/dialogs'
@@ -67,13 +67,13 @@ export function Discover() {
             </div>
             <span className="tg-hm__headact">
               {hasTrip(trip) && <button type="button" className="tg-hb-link" onClick={() => { setFamiliar(!familiar); toast(familiar ? 'Chuyến mới sẽ thử một hướng khác' : 'Chuyến mới sẽ theo gu quen thuộc') }}>{familiar ? 'Theo gu quen thuộc' : 'Lần này khác'}<Icon name="chevronRight" size={12} /></button>}
-              <button type="button" className="tg-hm__more" onClick={() => openCreate(q.trim())}>Kể chuyến đi</button>
+              <button type="button" className="tg-hm__more" onClick={() => openCreate(q.trim())}>Tạo chuyến đi</button>
             </span>
           </div>
           <div className="tg-hm__cards">
             {shown.map((t, i) => (
               <article key={t.id} className={`tg-hm__card ${i === 0 ? 'is-lead' : ''}`}>
-                <div className="tg-hm__ph"><button type="button" onClick={(e) => openTheme(t.id, e.currentTarget.querySelector('img'))} aria-label={`Khám phá ${t.short}`}><img src={t.photo} alt={t.alt} loading="lazy" /></button><Save t={t} /></div>
+                <div className="tg-hm__ph"><button type="button" onClick={(e) => openTheme(t.id, e.currentTarget.querySelector('img'))} aria-label={`Khám phá ${t.short}`}><img src={t.photo} alt={t.alt} loading="lazy" /></button></div>
                 <p>{t.category}</p>
                 <button type="button" className="tg-hm__ct" onClick={(e) => openTheme(t.id, e.currentTarget.closest('.tg-hm__card')?.querySelector('img'))}>{t.short}</button>
               </article>
@@ -96,7 +96,6 @@ export function Discover() {
                   <span className="tg-hm__n" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
                   <span className="tg-hm__tx"><b>{t.short}</b><small><Icon name={t.icon} size={14} />{t.subtitle}</small></span>
                 </button>
-                <Save t={t} />
               </li>
             ))}
           </ol>
@@ -106,7 +105,3 @@ export function Discover() {
   )
 }
 
-function Save({ t }: { t: Theme }) {
-  const on = useUi((u) => u.savedThemes.includes(t.id))
-  return <button type="button" className="tg-hb-icon tg-hb-save" aria-pressed={on} aria-label={`${on ? 'Bỏ lưu' : 'Lưu'} ${t.short}`} onClick={() => toggleTheme(t.id, t.short)}>{on ? <HeartFill size={16} /> : <Icon name="heart" size={16} />}</button>
-}

@@ -3,7 +3,7 @@ import { json } from '../journey'
 import { useTrip } from '../trip'
 import { go, Link } from '../ui/common'
 import { Icon } from '../ui/icons'
-import { FlowBar, Page, useTitle } from '../ui/Shell'
+import { Page, useTitle } from '../ui/Shell'
 import { GuestNotice } from './Guest'
 
 const QS: [string, string][] = [['fit', 'Gợi ý có đúng gu của bạn?'], ['clear', 'Lý do dễ hiểu?'], ['realistic', 'Lịch có thực tế?'], ['confident', 'Bạn tự tin hơn về chuyến đi?']]
@@ -27,7 +27,6 @@ export function Done() {
   }
   return (
     <>
-      <FlowBar step="done" />
       <Page narrow className="tg-done">
         <GuestNotice />
         {state !== 'sent' ? (

@@ -91,12 +91,13 @@ def test_lodging_safety_unknown_is_flagged_after_pass_but_pet_unknown_still_excl
     assert not candidates(places(), trip(hard=[{"feature": "pets", "op": "ne", "value": "not_allowed"}]), CFG, records)
 
 
-def test_proven_safety_failure_is_still_a_physical_violation_and_not_confirmable():
+def test_proven_safety_failure_is_still_a_physical_violation_the_user_may_still_confirm():
     records, d = setup_safety()
     records[0]["effort"] = records[3]["effort"]
     engine = engine_for(records, Store(None))
     out = engine.create(d)
     sched = schedule_trip(prepared(d, records))
     assert any(v.kind == "hard" and v.physical for v in sched.violations)
-    with pytest.raises(NotConfirmable):
-        engine.confirm(out["id"])
+    engine.route_fn = lambda *a: None   # no road service in the test
+    confirmed = engine.confirm(out["id"])   # a warning, never a gate: the user decides
+    assert any(v["kind"] == "hard" and v["physical"] for v in confirmed["violations"])

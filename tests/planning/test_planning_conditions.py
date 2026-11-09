@@ -75,12 +75,13 @@ def test_a_severe_day_keeps_weather_exposed_places_off_that_day():
     assert not {"s1", "s2", "s3"} & set(s.per_day[0]) and {"s1", "s2", "s3"} <= set(s.per_day[1])
 
 
-def test_when_no_day_is_safe_the_plan_is_refused_not_adjusted():
+def test_when_no_day_is_safe_the_plan_opens_flagged_not_adjusted():
     d, recs = exposed_trip()
     out = build_variants(d, recs, cfg=CFG, live_cfg=FakeLive(), geocode_fn=no_geocode, matrix_fn=fake_matrix,
                          sun_fn=fixed_sun, weather={SAT: SEVERE, SUN: SEVERE}, signals=sig(**{SAT: {}, SUN: {}}))
     assert not out["ok"] and {v["kind"] for v in out["violations"]} == {"hazard"}
-    assert {"s1", "s2", "s3"} <= set(out["back_to_decision"]["places"])
+    assert out["back_to_decision"] is None and out["variants"]
+    assert {"s1", "s2", "s3"} <= {v["place_id"] for v in out["violations"]}
 
 
 def test_heavy_weather_is_not_a_hard_stop_but_counts_as_rain():

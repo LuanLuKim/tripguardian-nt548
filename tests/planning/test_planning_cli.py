@@ -67,12 +67,12 @@ def test_variants_reads_a_forecast_file_and_writes_the_plan_output(tmp_path, mon
     assert "rain" in plan["variants"][0]["backups"]["places"][0]["reasons"]
 
 
-def test_variants_exits_two_and_points_back_to_place_decision(tmp_path, monkeypatch, capsys, offline):
+def test_variants_exits_two_and_names_the_violation_on_a_flagged_draft(tmp_path, monkeypatch, capsys, offline):
     monkeypatch.setattr(cli, "load_records", lambda: [rec("a", 11.94, 108.45)])
     path = write_decision(tmp_path, ["a", "gone"], roles={"gone": "anchor"})
     assert cli.main(["variants", str(path)]) == 2
     out = capsys.readouterr().out
-    assert "quay lại chọn địa điểm (gone)" in out and out.rstrip().endswith("KHÔNG hợp lệ.")
+    assert "X anchor" in out and out.rstrip().endswith("KHÔNG hợp lệ.")
 
 
 def test_lodging_prints_a_cho_o_block_and_exits_zero_when_the_plan_is_valid(tmp_path, monkeypatch, capsys, offline):
@@ -82,12 +82,12 @@ def test_lodging_prints_a_cho_o_block_and_exits_zero_when_the_plan_is_valid(tmp_
     assert "Chỗ ở:" in out and "Không chỗ ở" in out and out.rstrip().endswith("Hợp lệ.")
 
 
-def test_lodging_exits_two_and_points_back_to_place_decision(tmp_path, monkeypatch, capsys, offline):
+def test_lodging_exits_two_and_names_the_violation_on_a_flagged_draft(tmp_path, monkeypatch, capsys, offline):
     monkeypatch.setattr(cli, "load_records", lambda: [rec("a", 11.94, 108.45)])
     path = write_decision(tmp_path, ["a", "gone"], roles={"gone": "anchor"})
     assert cli.main(["lodging", str(path)]) == 2
     out = capsys.readouterr().out
-    assert "quay lại chọn địa điểm (gone)" in out and out.rstrip().endswith("KHÔNG hợp lệ.")
+    assert "X anchor" in out and out.rstrip().endswith("KHÔNG hợp lệ.")
 
 
 def test_serve_is_a_known_subcommand(capsys):

@@ -95,7 +95,7 @@ Tốc độ production: `web/scripts/make_thumbs.py` tạo WebP rộng ≤ 480 p
 Cron trên gpu156 (`crontab -e`, giữ các job khác):
 
 ```cron
-* * * * * /usr/bin/python3 /workingspace_aiclub/WorkingSpace/Personal/vannk/tripguardian/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
+* * * * * /usr/bin/python3 /workingspace_aiclub/WorkingSpace/Unsorted/luanhh/tripguardian/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
 ```
 
 Kiểm tra thủ công và xem log:

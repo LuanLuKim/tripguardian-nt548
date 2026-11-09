@@ -43,6 +43,10 @@ def test_late_effort_constraint_is_visible_in_actual_planning(value, policy):
         if 'hill' in scheduled:
             assert any(v['kind'] == 'hard' and v['place_id'] == 'hill' for v in view['violations'])
         assert view['ok'] is False
-        with pytest.raises(ToolError) as exc:
-            Tools(engine).apply(created['id'], 'confirm', {}, lambda *_: None)
-        assert exc.value.status == 409
+        if 'hill' in scheduled:   # a warning, never a gate: the user may confirm the plan that carries it
+            confirmed = Tools(engine).apply(created['id'], 'confirm', {}, lambda *_: None)
+            assert any(v['kind'] == 'hard' and v['place_id'] == 'hill' for v in confirmed['violations'])
+        else:
+            with pytest.raises(ToolError) as exc:
+                Tools(engine).apply(created['id'], 'confirm', {}, lambda *_: None)
+            assert exc.value.status == 409

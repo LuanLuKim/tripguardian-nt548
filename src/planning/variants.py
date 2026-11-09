@@ -81,8 +81,7 @@ def overload_text(trip, ov: dict, left) -> tuple[str, list[dict]]:
 def plan_cards(trip, *, protected=()) -> dict:
     """overload.plan_or_directions plus what its readers need around it:
     - back_to_decision names the places (place_id + name) no day had room for;
-    - a dietary failure keeps an editable draft; other invalid fitting plans return to Place Decision;
-      no invalid draft is confirmable;
+    - an invalid fitting plan opens as an editable draft whose violations stay on its rows (never an empty screen);
     - fields the web still reads until the plan screen is rebuilt: each card's `dropped_by_plan`, the overload card's
       `text`, `selection_places`, `keep_all_valid` (always False: keeping every pick does not fit)."""
     out = plan_or_directions(trip, protected=protected)
@@ -103,16 +102,9 @@ def plan_cards(trip, *, protected=()) -> dict:
     elif ov is None and not out["ok"]:
         main = out["variants"][0]
         violations = main["violations"]
-        places = sorted({v["place_id"] for v in violations if v.get("place_id")})
-        if not places:          # a violation with no place (a day past its end): name that day's places
-            days = {v["day"] for v in violations if v.get("day") is not None}
-            places = sorted({pid for k, r in enumerate(main["_results"]) if k in days for pid in r.order})
-        back = {"reason": "no_valid_variant", "places": places, "leftover": []}
-        if any(cx.diet_days for cx in main['_ctxs']):
-            main.update(editable=True, confirmable=False)
-            back = None
-        else:
-            out = {**out, "variants": []}
+        # The plan always opens, flagged on the rows that fail; the user decides whether to keep it (owner decision 2026-11-08).
+        main.update(editable=True, confirmable=False)
+        back = None
     return {**out, "back_to_decision": back, "violations": violations}
 
 

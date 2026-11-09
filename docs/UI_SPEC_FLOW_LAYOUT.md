@@ -17,7 +17,7 @@ Không chép lại ở đây:
  Landing / ── Bắt đầu ──► Hiểu chuyến đi (câu mẫu là lượt đầu)
  /app  ── chưa có tài khoản ──► Vào ứng dụng ── Dùng thử / đăng nhập ──► Khám phá
                                                                          │ gõ một câu · chủ đề
- ══════ TRONG LUỒNG (stepper 3 bước) ════════════════════════════════════╪═══════════
+ ══════ TRONG LUỒNG (3 bước; rail có hai nút Lựa chọn / Lịch trình) ════════════════════════════════════╪═══════════
  Bước 1  Hiểu chuyến đi ── agent đủ hiểu / Tiếp tục đến chọn nơi ───────────────────┤ trip → decision
  Bước 2  Chọn nơi ⇄ Chi tiết ⇄ So sánh  + trợ lý  + thanh "Đã chọn"       │ (khả thi + lịch ngầm)
           └──────── Xem lịch trình ───────────────────────────────────────┤ decision → planning
@@ -52,7 +52,7 @@ Route và mục bắt buộc từng màn: `docs/UI_SPEC_USER_WEB.md` §3–4. Ro
 | Chi tiết | `Báo thông tin sai` | hộp nhập | gửi vào hàng chờ | T4 |
 | Lịch trình | chọn hành trình, đổi chỗ nghỉ, thay dự phòng | ở lại | dòng báo + Hoàn tác | T5 |
 | Lịch trình | `Tối ưu lịch` / `Xem đề xuất` | ngăn Tối ưu | | T4 |
-| Lịch trình | `+ Thêm nơi` / `Quay lại chọn nơi` / bước 2 trên stepper | Chọn nơi | `planning → decision`, giữ lựa chọn | T1 ngược |
+| Lịch trình | `+ Thêm nơi` / `Quay lại chọn nơi` / nút "Lựa chọn" ở rail | Chọn nơi | `planning → decision`, giữ lựa chọn | T1 ngược |
 | Lịch trình | `Chốt kế hoạch này` | Phản hồi | | T1 |
 | Phản hồi | `Gửi` | trạng thái đã gửi | | T5 |
 | Phản hồi | `Bỏ qua` / `Đến Chuyến của tôi` | Chuyến của tôi | | T1 |
@@ -93,9 +93,8 @@ FLOW (Chọn nơi, Lịch trình, Phản hồi; Hiểu chuyến đi dùng CHAT)
 NAV (Khám phá, Chuyến của tôi, Đã lưu, Hồ sơ): rail trái 76px — logo · 4 icon có tooltip · avatar
 ```
 
-- Stepper: đã xong = dấu tích, bấm được để lùi; đang ở = nền trắng nổi; chưa tới = nhạt. Phản hồi hiện cả ba đã xong.
+- Hai nút "Lựa chọn" và "Lịch trình" nằm kề nhau trong rail, chỉ hiện khi có chuyến đang lập; màn đang mở có nền đậm.
 - Hiểu chuyến đi dùng khung CHAT riêng, mở vé từ `Sửa` hoặc `Xem đầy đủ`; `(●)` trên FLOW là avatar / icon hồ sơ.
-- Không bao giờ hiện cùng lúc stepper và rail.
 - Trợ lý ở Chọn nơi là tab nhỏ mép phải, mở thành ngăn 380px bên phải; ghim thì lưới còn 2 cột.
 
 ## 5. Bố cục từng màn

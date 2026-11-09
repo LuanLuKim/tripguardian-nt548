@@ -5,7 +5,7 @@ import type { View, Variant } from '../../planning/types'
 import { PlacePhoto } from '../../ui/common'
 import { Icon } from '../../ui/icons'
 import { Stamp } from '../../ui/Stamp'
-import { FlowBar, Page } from '../../ui/Shell'
+import { Page } from '../../ui/Shell'
 import { LongTripWarning } from '../../ui/LongTripWarning'
 import { KeepAll, NoHotel, Tradeoff } from './parts'
 import { costText, placeName, visits } from './shared'
@@ -51,7 +51,6 @@ export function Choose({ variants, keepAll, overload, locked, current, busy, has
   const days = variants[0]?.itinerary.length ?? 0
   return (
     <>
-      <FlowBar step="plan" />
       <div className="tg-it-crumb"><button type="button" className="tg-it-crumb__back" aria-label="Quay lại" onClick={onCancel ?? onBack}><Icon name="arrowLeft" size={18} /></button><span>Lập lịch trình</span><Icon name="chevronRight" size={14} /><strong>Chọn phương án</strong></div>
       <Page className={`tg-it-choose ${why ? 'is-why' : ''}`}>
         <header className="tg-it-title" aria-hidden={why || undefined}>

@@ -41,7 +41,7 @@ def test_real_decision_and_planning_tools_preserve_selection_on_handoff(tmp_path
 
 
 @pytest.mark.parametrize("features", [{}, {"vegetarian_options": "no"}])
-def test_hard_meal_handoff_reaches_planning_without_scheduling_an_unsafe_meal(tmp_path, features):
+def test_hard_meal_handoff_reaches_planning_flagging_the_unsafe_meal(tmp_path, features):
     from decision import Data, Engine as DecisionEngine, Store as DecisionStore, Tools as DecisionTools, load_settings
     from planning import Engine as PlanningEngine, Tools as PlanningTools
     from harness import Harness, Store
@@ -65,10 +65,9 @@ def test_hard_meal_handoff_reaches_planning_without_scheduling_an_unsafe_meal(tm
     assert v["outputs"]["decision"]["confirmed"][0]["relaxed"] == []
     plan = v["result"]["view"]
     assert plan["ok"] is False
-    assert plan["back_to_decision"]["reason"] == "no_valid_variant"
-    assert "meal" in plan["back_to_decision"]["places"]
-    assert plan["itinerary"] is None
-    assert plan["variants"] == []
+    assert plan["back_to_decision"] is None   # the plan opens, flagged; the user decides (owner decision 2026-11-08)
+    assert any(v["kind"] == "hard" and v["place_id"] == "meal" for v in plan["violations"])
+    assert plan["active_variant"]["confirmable"] is False
 
 
 def test_real_overload_handoff_offers_tradeoffs_and_confirms_only_valid_drafts(tmp_path):

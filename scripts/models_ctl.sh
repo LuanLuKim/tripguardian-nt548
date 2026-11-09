@@ -3,14 +3,16 @@
 #   scripts/models_ctl.sh start [clef|gemma|gateway|all]   (default all)
 #   scripts/models_ctl.sh stop  [clef|gemma|gateway|all]
 #   scripts/models_ctl.sh status
-# clef = one nf4 replica per "gpu:port" in CLEF_REPLICAS (default "4:30011"; add e.g. "6:30012" for more req/s), gateway :30000
+# clef = one nf4 replica per "gpu:port" in CLEF_REPLICAS (default "1:30011": the team sees GPUs 0 and 1 only, since the
+# 2026-11-06 renumbering; GPU 0 is shared with a teammate). The prod harness holds about 2.4 GiB of GPU 1, so a 10 GiB nf4
+# replica no longer fits beside it there: host Clef elsewhere (Slurm) or stop the harness GPU use), gateway :30000
 # balances them. gemma is off since 2026-10-29 (shared GPUs); "all" = clef + gateway. Logs: logs/clef, logs/gemma.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 export HF_HOME="$ROOT/.cache/hf" TMPDIR="$ROOT/.cache/tmp"
 mkdir -p logs/clef logs/gemma "$TMPDIR"
-CLEF_REPLICAS="${CLEF_REPLICAS:-4:30011}"
+CLEF_REPLICAS="${CLEF_REPLICAS:-1:30011}"
 
 pattern() {
   # bracket trick: the pattern does not match this script's own command line
@@ -35,10 +37,10 @@ start() {
       done ;;
     gemma)
       # live recipe (2026-10-29): Q4_0 on GPUs 4,7, 8 slots x 8192, q8_0 KV, GPU 4 carries less (a foreign process may sit on it)
-      GEMMA_GPUS="${GEMMA_GPUS:-4,7}" GEMMA_QUANT="${GEMMA_QUANT:-Q4_0}" GEMMA_NP="${GEMMA_NP:-8}" GEMMA_CTX="${GEMMA_CTX:-65536}" \
+      GEMMA_GPUS="${GEMMA_GPUS:-0,1}" GEMMA_QUANT="${GEMMA_QUANT:-Q4_0}" GEMMA_NP="${GEMMA_NP:-8}" GEMMA_CTX="${GEMMA_CTX:-65536}" \
       GEMMA_EXTRA="${GEMMA_EXTRA:--ctk q8_0 -ctv q8_0 -ts 40,60}" nohup scripts/gemma_server.sh > logs/gemma/server.log 2>&1 & ;;
     vllm)
-      # NOT started by "all": needs the same GPUs as gemma (VLLM_GPUS, default 4,7), see docs/LLM_PROVIDER.md
+      # NOT started by "all": needs the same GPUs as gemma (VLLM_GPUS, default 0,1), see docs/LLM_PROVIDER.md
       mkdir -p logs/vllm
       nohup scripts/vllm_server.sh > logs/vllm/server.log 2>&1 < /dev/null & echo $! > logs/vllm/server.pid ;;
     gateway)

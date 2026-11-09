@@ -7,7 +7,7 @@ import { requestStageEntry } from '../journey'
 import { openAssistant, setUi, toggleCmp, useUi } from '../store'
 import { WaitLine } from '../ui/SlowHint'
 import '../css/fixes.css'
-import { STEPS, useTrip } from '../trip'
+import { useTrip } from '../trip'
 import { placesDelta } from '../tu/labels'
 import { AssistantFloat, AssistantPinned } from '../ui/Assistant'
 import { ArtHills, Empty, go, PlacePhoto } from '../ui/common'
@@ -18,7 +18,7 @@ import { PlaceCard } from '../ui/PlaceCard'
 import { Pager } from '../ui/Pager'
 import { SelectedBar } from '../ui/SelectedBar'
 import { reducedMotion, useStagedList } from '../ui/useStagedList'
-import { FlowBar, Page, useTitle } from '../ui/Shell'
+import { Page, useTitle } from '../ui/Shell'
 import { LongTripWarning } from '../ui/LongTripWarning'
 import { LODGING_TAB, LodgingPanel, useLodgingList } from './Lodging'
 
@@ -35,7 +35,7 @@ export function useEditTicket() {
 export function Explore() {
   useTitle('Lựa chọn')
   const { trip } = useTrip()
-  const { view, error, act, busy, reload, more, loadingMore, toPlan } = useDecision()
+  const { view, error, act, busy, reload, more, loadingMore } = useDecision()
   const tab = useUi((u) => u.tab)
   const cmp = useUi((u) => u.cmp)
   const [dropFor, setDropFor] = useState<Card | null>(null)
@@ -116,14 +116,12 @@ export function Explore() {
   if (!trip.decisionId)
     return (
       <>
-        <FlowBar step="explore" />
         <Page narrow><Empty art={<ArtHills />} title="Chưa có gợi ý" body={error ?? 'Bắt đầu từ bước Tìm hiểu, chỉ vài câu thôi.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/understand')}>Tìm hiểu</button>} /></Page>
       </>
     )
   if (!view)
     return (
       <>
-        <FlowBar step="explore" />
         <Page>
           {error ? (
             <Empty art={<ArtHills />} title="Chưa tải được gợi ý" body={`${error} Lựa chọn của bạn vẫn còn nguyên.`} action={<button type="button" className="tg-btn tg-btn--primary" onClick={reload}><Icon name="refresh" size={18} /> Thử lại</button>} />
@@ -150,7 +148,6 @@ export function Explore() {
   )
   return (
     <>
-      <FlowBar step="explore" onAhead={(t) => { if (t === 'plan' && view?.selected.length) void toPlan(); else go(STEPS.find((x) => x.id === t)!.path) }} />
       <Page>
         <div className={`tg-xlayout ${pinned ? 'is-pinned' : ''}`}>
           <div className="tg-xmain">
@@ -180,21 +177,12 @@ export function Explore() {
               </>
             )}
 
-            {view.filter && (view.filter.active.length > 0 || total > 0) && (
+            {view.filter && view.filter.active.length > 0 && (
               <div className="tg-xfilter" role="group" aria-label="Bộ lọc">
-                {view.filter.active.length > 0 ? (
-                  <>
-                    <b>Đang lọc</b>
-                    {view.filter.active.map((f) => <span key={`${f.key}=${f.value}`} className="tg-chip tg-chip--soft">{f.label}</span>)}
-                    <span className="tg-faint">{view.filter.hidden} nơi đang ẩn</span>
-                    <button type="button" className="tg-link" disabled={busy} onClick={() => act({ type: 'unfilter' })}>Bỏ lọc</button>
-                  </>
-                ) : (
-                  <>
-                    <span className="tg-faint">Lọc nhanh</span>
-                    <button type="button" className="tg-chip" disabled={busy} onClick={() => act({ type: 'filter', key: 'opens_by', value: '07:00' })}>Mở cửa trước 7h</button>
-                  </>
-                )}
+                <b>Đang lọc</b>
+                {view.filter.active.map((f) => <span key={`${f.key}=${f.value}`} className="tg-chip tg-chip--soft">{f.label}</span>)}
+                <span className="tg-faint">{view.filter.hidden} nơi đang ẩn</span>
+                <button type="button" className="tg-link" disabled={busy} onClick={() => act({ type: 'unfilter' })}>Bỏ lọc</button>
               </div>
             )}
 
@@ -214,9 +202,9 @@ export function Explore() {
                 ) : (
                   <>
                     <label className="tg-xsearch">
-                      <Icon name="search" size={18} />
                       <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }} placeholder="Tìm theo tên hoặc loại nơi, ví dụ “bánh căn”, “chùa”, “kem”" aria-label="Tìm địa điểm trong mọi nhóm" />
                       {query && <button type="button" className="tg-xsearch__clear" aria-label="Xóa ô tìm" onClick={() => setQuery('')}><Icon name="x" size={16} /></button>}
+                      <Icon name="search" size={22} />
                     </label>
                     {searching ? <SearchResults q={query.trim()} found={found} groups={groups} cmp={cmp} onCmp={onCmp} onDrop={setDropFor} pinned={pinned} onClear={() => setQuery('')} /> : <>
                     <div className="tg-tabs" role="tablist" aria-label="Nhóm địa điểm" onKeyDown={(e) => {

@@ -3,7 +3,6 @@ import { dayLabel, fmtMin, info, toMin } from '../../lib'
 import type { CrowdTip, DayConditions, ItineraryDay, ItineraryItem } from '../../planning/types'
 import { PlacePhoto } from '../../ui/common'
 import { Icon } from '../../ui/icons'
-import { FlowBar } from '../../ui/Shell'
 import { Conditions, VisitDuration } from './parts'
 import { useSlide, useStopDrag } from './reorder'
 import { BLOCK, BLOCK_NOTE, MEAL_LABEL, dayAreas, shortDate, visits } from './shared'
@@ -113,7 +112,6 @@ export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange
   const endName = route?.end.name ?? 'Điểm kết thúc'
   return (
     <>
-      <FlowBar step="plan" />
       <main className="tg-it-day">
         <section className="tg-it-day__pane" aria-label={`Lịch ngày ${d?.day ?? ''}`}>
           <div className="tg-it-crumb">

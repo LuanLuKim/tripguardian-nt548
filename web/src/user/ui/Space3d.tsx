@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './icons'
 
-// "Khám phá 3D" tab of the place sheet (docs/Role_Web_Functional_Design.md §6). The model runs in a same-origin iframe
+// "Xem 360°" tab of the place sheet (docs/Role_Web_Functional_Design.md §6). The model runs in a same-origin iframe
 // built by web/scripts/build_space3d.mjs: its scene owns the whole window, and removing the frame frees the GPU.
 // The tab exists only for a place in /space3d/index.json; the poster holds the stage until the model has drawn.
 
@@ -48,7 +48,7 @@ export function Space3d({ slug, name }: { slug: string; name: string }) {
 
   return (
     <div className="tg-s3">
-      <h3>Khám phá 3D</h3>
+      <h3>Xem 360°</h3>
       <p className="tg-pano__note">
         <Icon name="info" size={16} />
         <span>Mô hình minh họa dựng từ ảnh thực tế của nơi này. Tỷ lệ và chi tiết chỉ để tham khảo, có thể khác ngoài đời.</span>

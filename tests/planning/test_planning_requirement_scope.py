@@ -90,8 +90,7 @@ def test_swap_keeps_eating_activity_for_cafe_and_revalidates_diet(diet, confirma
     if confirmable:
         assert any(i.get("place_id") == "cafe" for d in e.confirm(sid)["itinerary"] for i in d["items"])
     else:
-        with pytest.raises(NotConfirmable):
-            e.confirm(sid)
+        assert e.confirm(sid)['violations']   # flagged, not gated
 
 
 def test_adding_a_recommended_coffee_backup_keeps_the_explicit_activity():

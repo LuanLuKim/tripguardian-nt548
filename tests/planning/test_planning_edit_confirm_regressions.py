@@ -21,7 +21,7 @@ def visit(view):
     return next(i for d in view["itinerary"] for i in d["items"] if i["kind"] == "visit")
 
 
-def test_an_unconfirmable_edit_names_the_problem_and_a_resolution_before_confirm():
+def test_an_edit_with_a_problem_names_it_and_a_resolution_and_confirm_stays_the_users():
     e, sid = started()
     e.act(sid, {"type": "move_place", "place": "horizon", "day": 0})
     view = e.act(sid, {"type": "set_day_window", "day": 0, "start": "20:50", "end": "21:00"})["view"]
@@ -29,11 +29,10 @@ def test_an_unconfirmable_edit_names_the_problem_and_a_resolution_before_confirm
     notes = [w for w in view["warnings"] if w["code"] == "plan_violation"]
     assert notes and all(w.get("resolution") and "chốt" in w["text"] for w in notes)
     assert any("Horizon" in w["text"] or "Ngày 1" in w["text"] for w in notes)
-    with pytest.raises(NotConfirmable):
-        e.confirm(sid)
+    assert e.confirm(sid)["violations"]   # flagged, not gated: the user may still confirm
     e.act(sid, {"type": "undo"})
     assert not [w for w in e.load(sid)["view"]["warnings"] if w["code"] == "plan_violation"]
-    e.confirm(sid)
+    assert e.confirm(sid)["violations"] == []
 
 
 def test_exact_stop_time_and_another_edit_are_one_undoable_replayable_turn():

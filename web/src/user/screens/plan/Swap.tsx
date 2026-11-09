@@ -3,7 +3,6 @@ import { info, priceText } from '../../lib'
 import type { ItineraryDay } from '../../planning/types'
 import { PlacePhoto } from '../../ui/common'
 import { Icon } from '../../ui/icons'
-import { FlowBar } from '../../ui/Shell'
 import type { Candidate } from './candidates'
 import { norm, shortDate } from './shared'
 
@@ -26,7 +25,6 @@ export function Swap({ day, replacing, candidates, people, busy, onOverview, onD
   const target = replacing ? info(replacing)?.name ?? replacing : null
   return (
     <>
-      <FlowBar step="plan" />
       <div className="tg-it-crumb">
         <button type="button" className="tg-it-crumb__back" aria-label="Về ngày đang sửa" onClick={onDay}><Icon name="arrowLeft" size={18} /></button>
         <button type="button" onClick={onOverview}>Tổng quan</button><Icon name="chevronRight" size={14} />

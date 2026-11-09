@@ -9,7 +9,7 @@ import '../css/pulse.css'
 // Trending (docs/CORPUS.md §Nhịp, "Hạng xu hướng"): the bulletin comes from GET /api/harness/pulse. The rail is a short,
 // photo-led list: the few places that rank highest (one score from the server, no counts shown), each a real photo, a name and
 // one word for why it is rising. Places without a photo the rules allow are skipped (a trend with no picture is not a card).
-// One dated event may sit above them. No "xem thêm": what is not worth the rail is not drawn (owner, 2026-11-04).
+// A dated event ranks in the same list by how near it is. No "xem thêm": what is not worth the rail is not drawn (owner, 2026-11-04).
 type Source = { type: string; label: string; url?: string; date?: string }
 export type Item = {
   id: string; kind: string; title: string; text: string; place_id: string | null; sources: Source[]
@@ -64,78 +64,63 @@ function pinned(b: Bulletin): Item | null {
   return items(b, 'event').find((e) => e.on && daysTo(e.on, today) >= 0 && daysTo(e.on, today) <= EVENT_DAYS) ?? null
 }
 
+// One ranking for everything notable in Đà Lạt, by a 0-100 trending level. A place's level is the server's score (TikTok authors,
+// review jump, rising rating, sites that name it). An event has no crowd to count, so its level is how close it is: 100 on the day,
+// 3 less for every day away, so it climbs the list as it nears and drops out of the top when it is far.
+const EVENT_STEP = 3
+const levelOf = (it: Item, today: string) => (it.kind === 'event' ? Math.max(0, 100 - EVENT_STEP * daysTo(it.on!, today)) : it.score ?? 0)
+// Flames show the level without a number: 3 from 40 up, 2 from 30, otherwise 1.
+const flames = (level: number) => (level >= 40 ? 3 : level >= 30 ? 2 : 1)
+
 const open = (it: Item, e: { currentTarget: HTMLElement }) => { if (it.place_id) openPlace(it.place_id, e.currentTarget.querySelector('figure') ?? e.currentTarget) }
 
-function Meta({ id }: { id: string }) {
-  const p = info(id)
-  const bits = [p?.category, p?.rating ? `★ ${p.rating.toFixed(1)}` : null].filter(Boolean)
-  return bits.length ? <small className="tg-pulse__meta">{bits.join(' · ')}</small> : null
-}
-
-function Why({ it }: { it: Item }) {
-  return <span className="tg-pulse__why"><Icon name={it.rising && it.kind !== 'trend' ? 'trendUp' : 'flame'} size={13} />{whyOf(it)}</span>
-}
-
-function Lead({ it }: { it: Item }) {
-  return (
-    <li className="tg-pulse__lead" style={{ '--i': 0 } as CSSProperties}>
-      <button type="button" onClick={(e) => open(it, e)} aria-label={`Hạng 1: ${it.title}`}>
-        <PlacePhoto id={it.place_id!} name={it.title} eager sizes="320px" />
-        <span className="tg-pulse__shade" aria-hidden="true" />
-        <b className="tg-pulse__rank" aria-hidden="true">1</b>
-        <span className="tg-pulse__cap">
-          <Why it={it} />
-          <strong title={it.title}>{it.title}</strong>
-          <Meta id={it.place_id!} />
-        </span>
-      </button>
-    </li>
-  )
-}
-
-function Row({ it, n }: { it: Item; n: number }) {
-  return (
-    <li className="tg-pulse__row" style={{ '--i': n - 1 } as CSSProperties}>
-      <button type="button" onClick={(e) => open(it, e)} aria-label={`Hạng ${n}: ${it.title}`}>
-        <span className="tg-pulse__th"><PlacePhoto id={it.place_id!} name={it.title} sizes="120px" /><b aria-hidden="true">{n}</b></span>
-        <span className="tg-pulse__tx">
-          <strong title={it.title}>{it.title}</strong>
-          <Meta id={it.place_id!} />
-          <Why it={it} />
-        </span>
-      </button>
-    </li>
-  )
-}
-
-// One dated event: its day in a small tile and how long is left.
-function Event({ it }: { it: Item }) {
-  const iso = it.on!
-  const left = daysTo(iso, new Date().toISOString().slice(0, 10))
+// One row: photo (or a calendar for an event) flush left with its rank, name on one line ("…" when long), kind and rating (or the
+// days left), and the visible reason with its flames.
+function Row({ it, n, level }: { it: Item; n: number; level: number }) {
+  const event = it.kind === 'event'
+  const p = !event && it.place_id ? info(it.place_id) : undefined
+  const left = event ? daysTo(it.on!, new Date().toISOString().slice(0, 10)) : 0
+  const meta = event
+    ? `Sự kiện · ${left === 0 ? 'Hôm nay' : left === 1 ? 'Ngày mai' : `còn ${left} ngày`} (${dm(it.on!)})`
+    : [p?.category, p?.rating ? `★ ${p.rating.toFixed(1)}` : null].filter(Boolean).join(' · ')
+  const why = event ? 'Sắp diễn ra' : whyOf(it)
   const body = (
     <>
-      <span className="tg-pulse__date" aria-hidden="true"><b>{Number(iso.slice(8, 10))}</b><small>Th{Number(iso.slice(5, 7))}</small></span>
-      <span className="tg-pulse__tx"><strong title={it.title}>{it.title}</strong><small>{left === 0 ? 'Hôm nay' : left === 1 ? 'Ngày mai' : `Còn ${left} ngày`} · {dm(iso)}</small></span>
+      <figure className="tg-pulse__th">
+        {event ? <span className="tg-pulse__cal" aria-hidden="true"><Icon name="calendar" size={26} /></span> : <PlacePhoto id={it.place_id!} name={it.title} eager={n === 1} sizes="140px" />}
+        <b aria-hidden="true">{n}</b>
+      </figure>
+      <span className="tg-pulse__tx">
+        <strong title={it.title}>{it.title}</strong>
+        {meta && <small>{meta}</small>}
+        <span className="tg-pulse__why" aria-hidden="true">{Array.from({ length: flames(level) }, (_, k) => <Icon key={k} name="flame" size={12} />)}{why}</span>
+      </span>
     </>
   )
-  return <div className="tg-pulse__event">{it.place_id ? <button type="button" onClick={(e) => open(it, e)}>{body}</button> : <div>{body}</div>}</div>
+  return (
+    <li className="tg-pulse__row" style={{ '--i': n - 1 } as CSSProperties}>
+      {event && !it.place_id
+        ? <div className="tg-pulse__btn" aria-label={`Hạng ${n}: ${it.title}. ${why}`}>{body}</div>
+        : <button type="button" className="tg-pulse__btn" onClick={(e) => open(it, e)} aria-label={`Hạng ${n}: ${it.title}. ${why}`}>{body}</button>}
+    </li>
+  )
 }
 
 export function Pulse({ b }: { b: Bulletin }) {
   useSnapshot() // photos and ratings come from the web's snapshot once it lands
-  const shown = ranked(b).filter((it) => it.place_id && info(it.place_id)?.photos.length).slice(0, SHOWN)
+  const today = new Date().toISOString().slice(0, 10)
   const event = pinned(b)
-  if (!shown.length && !event) return null
+  const places = ranked(b).filter((it) => it.place_id && info(it.place_id)?.photos.length)
+  const shown = [...places, ...(event ? [event] : [])].map((it) => ({ it, level: levelOf(it, today) })).sort((x, y) => y.level - x.level).slice(0, SHOWN)
+  if (!shown.length) return null
   return (
     <div className="tg-hm__trend tg-pulse" data-tour="trending">
       <div className="tg-hm__thead">
         <h2><Icon name="flame" size={18} />Trending</h2>
         <p>{b.stale && b.day ? `Chưa làm mới từ ${dm(b.day)}` : 'Đà Lạt đang được nhắc tới tuần này'}</p>
       </div>
-      {event && <Event it={event} />}
       <ol className="tg-pulse__list">
-        {shown[0] && <Lead it={shown[0]} />}
-        {shown.slice(1).map((it, i) => <Row key={it.id} it={it} n={i + 2} />)}
+        {shown.map(({ it, level }, i) => <Row key={it.id} it={it} n={i + 1} level={level} />)}
       </ol>
     </div>
   )

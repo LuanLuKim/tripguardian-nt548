@@ -53,9 +53,8 @@ function FriendsPanel({ member, close }: { member: boolean; close: () => void })
   const f = useFriends(member)
   const recent = useUi((u) => u.recent)
   const saved = useUi((u) => u.saved)
-  const savedThemes = useUi((u) => u.savedThemes)
   const rows = recent.length ? recent.map((r) => ({ ...r, sub: 'Đã xem gần đây' }))
-    : [...savedThemes.map((id) => ({ kind: 'theme' as const, id, sub: 'Đã lưu chủ đề' })), ...saved.map((id) => ({ kind: 'place' as const, id, sub: 'Đã lưu' }))]
+    : saved.map((id) => ({ kind: 'place' as const, id, sub: 'Đã lưu' }))
   const shown = rows.filter((r) => (r.kind === 'theme' ? themeOf(r.id) : info(r.id))).slice(0, 5)
   const unread = f?.friends.reduce((n, p) => n + (p.unread ?? 0), 0) ?? 0
   return (

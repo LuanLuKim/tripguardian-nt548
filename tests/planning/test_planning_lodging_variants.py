@@ -55,8 +55,8 @@ def test_no_lodging_is_not_counted_as_an_unknown_cost():
     assert lt["metrics"]["cost_unknown"] == 8  # the 8 places only, not +1 for "no lodging" having no price
 
 
-def test_no_valid_schedule_for_any_lodging_goes_back_to_place_decision():
+def test_no_valid_schedule_for_any_lodging_still_opens_flagged():
     d, recs = sample_trip()
     d["confirmed"].append({"id": "gone", "name": "Gone", "role": "anchor", "flags": [], "relaxed": []})
     out = run(d, recs, [hit(0)])
-    assert not out["ok"] and out["lodging"] is None and out["back_to_decision"]["places"] == ["gone"]
+    assert not out["ok"] and out["back_to_decision"] is None and [v["kind"] for v in out["violations"]] == ["anchor"]

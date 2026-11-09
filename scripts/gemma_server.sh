@@ -9,7 +9,7 @@
 #   .cache/llama.cpp/bin/cudart-*  libcudart / libcublas 12.8 from the llama.cpp release
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GPUS="${GEMMA_GPUS:-3,4,5,7}"
+GPUS="${GEMMA_GPUS:-0,1}"
 PORT="${GEMMA_PORT:-30002}"
 # llama.cpp lists CUDA devices in CUDA_VISIBLE_DEVICES order: CUDA0..CUDA(n-1)
 DEVICES="$(seq -s, -f 'CUDA%g' 0 $(( $(echo "$GPUS" | tr ',' '\n' | wc -l) - 1 )))"

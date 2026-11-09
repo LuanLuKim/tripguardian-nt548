@@ -56,10 +56,6 @@
 .tg-bl__go:active { transform: translateY(0) scale(0.98); }
 .tg-bl__go svg { transition: transform 220ms var(--bl-ease); }
 .tg-bl__go:hover svg { transform: translateX(3px); }
-.tg-bl__save { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; border: 1px solid rgba(43, 39, 32, 0.22); color: var(--bl-ink); transition: background 180ms, color 180ms, transform 220ms var(--bl-ease); }
-.tg-bl__save:hover { background: rgba(43, 39, 32, 0.08); }
-.tg-bl__save:active { transform: scale(0.92); }
-.tg-bl__save[aria-pressed='true'] { background: var(--bl-ink); border-color: var(--bl-ink); color: var(--bl-paper); }
 
 /* the words rise one after another (the page is keyed by the idea, so a tab switch replays this) */
 .tg-bl__page > :is(.tg-bl__title, .tg-bl__desc, .tg-bl__cat, .tg-bl__act) { animation: tg-bl-up 560ms var(--bl-ease) var(--d) both; }

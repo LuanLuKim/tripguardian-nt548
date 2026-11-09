@@ -36,7 +36,8 @@ try {
   await page.waitForSelector('.tg-hm', { timeout: 60000 })
   await shot('discover')
   await page.locator('.tg-hf__new').click()
-  await page.fill('#tg-hd-prompt', '3 ngày ở Đà Lạt cho hai người, đi xe máy, thích chill, cà phê, săn mây')
+  await page.waitForURL(/understand/) // "Tạo chuyến đi" opens the chat at once, no dialog
+  await page.locator('.tg-cx-root textarea').first().fill('3 ngày ở Đà Lạt cho hai người, đi xe máy, thích chill, cà phê, săn mây')
   await page.keyboard.press('Enter')
   step('understand: first turn')
   // The opening question is a conversation: wait for "Mình đã hiểu như này", then agree to go on.

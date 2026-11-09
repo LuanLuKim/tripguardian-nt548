@@ -25,7 +25,6 @@ export interface Opened { kind: 'place' | 'theme'; id: string; at: string }
 interface Ui {
   optimized: Record<string, Optimized>
   saved: string[] // place ids, newest first
-  savedThemes: string[]
   recent: Opened[]
   trips: string[]
   toast: string | null
@@ -57,7 +56,6 @@ const TRIPS = 'tg.trips.v1'
 let ui: Ui = {
   optimized: {},
   saved: read<string[]>(SAVED, []),
-  savedThemes: [],
   recent: [],
   trips: read<string[]>(TRIPS, []),
   toast: null,
@@ -99,14 +97,14 @@ export function flash(id: string | null) {
   flashTimer = setTimeout(() => setUi({ flashId: null }), 1200)
 }
 
-if (typeof window !== 'undefined') addEventListener(FORGET_EVENT, () => setUi({ saved: [], savedThemes: [], recent: [], trips: [], optimized: {}, cmp: [] }))
+if (typeof window !== 'undefined') addEventListener(FORGET_EVENT, () => setUi({ saved: [], recent: [], trips: [], optimized: {}, cmp: [] }))
 
-// Saved places and themes belong to the account (GET/POST /api/harness/me/library); they never enter a trip on their
+// Saved places belong to the account (GET/POST /api/harness/me/library); they never enter a trip on their
 // own. Places saved in this browser before the library existed go up once, then the browser copy is dropped.
 type Library = { saved: { kind: Opened['kind']; id: string }[]; recent: Opened[] }
 const LIBRARY = '/api/harness/me/library'
 function keepLibrary(l: Library) {
-  setUi({ saved: l.saved.filter((i) => i.kind === 'place').map((i) => i.id), savedThemes: l.saved.filter((i) => i.kind === 'theme').map((i) => i.id), recent: l.recent })
+  setUi({ saved: l.saved.filter((i) => i.kind === 'place').map((i) => i.id), recent: l.recent })
 }
 const saveItem = (kind: Opened['kind'], id: string, on: boolean) =>
   fetch(LIBRARY, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id, on }) }).then((r) => {
@@ -125,15 +123,14 @@ export async function loadLibrary() {
   } catch { /* offline: the page shows what it has */ }
 }
 function toggleItem(kind: Opened['kind'], id: string, label: string) {
-  const set = (list: string[]) => setUi(kind === 'place' ? { saved: list } : { savedThemes: list })
-  const before = kind === 'place' ? ui.saved : ui.savedThemes
+  const set = (list: string[]) => setUi({ saved: list })
+  const before = ui.saved
   const on = !before.includes(id)
   set(on ? [id, ...before] : before.filter((x) => x !== id))
   if (on) toast(`Đã lưu ${label}`)
   saveItem(kind, id, on).then(keepLibrary, () => { set(before); toast('Chưa lưu được, bạn thử lại nhé') })
 }
 export const toggleSaved = (id: string, name?: string) => toggleItem('place', id, name ?? 'nơi này')
-export const toggleTheme = (id: string, title: string) => toggleItem('theme', id, title)
 
 // Journeys started in this browser, newest first: what "Chuyến của tôi" asks the server about.
 export function rememberTrip(id: string) {

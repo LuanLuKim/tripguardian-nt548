@@ -3,9 +3,10 @@ import { signOut, useAccount } from '../account'
 import { tripSummaries } from '../pd/api'
 import { useDecision } from '../pd/decision'
 import { loadLibrary, useUi } from '../store'
-import { hasTrip, STEPS, stepOf, useTrip } from '../trip'
+import { hasTrip, STEPS, stepOf, useTrip, type StepId } from '../trip'
 import { go, Link, PlacePhoto } from '../ui/common'
 import { Icon, Logo, type IconName } from '../ui/icons'
+import { useFlowNav } from '../ui/Shell'
 import { Who } from './Who'
 import { HomeDialogs, openCreate } from './dialogs'
 
@@ -54,6 +55,11 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/saved', label: 'Đã lưu', icon: 'heart' },
   { to: '/recent', label: 'Đã xem gần đây', icon: 'clock' },
 ]
+// The trip in progress: Lựa chọn and Lịch trình side by side, so the user flips between them at once (Tìm hiểu is the chat the trip began in).
+const FLOW: { id: StepId; label: string; icon: IconName }[] = [
+  { id: 'explore', label: 'Lựa chọn', icon: 'grid' },
+  { id: 'plan', label: 'Lịch trình', icon: 'calendar' },
+]
 const ACCOUNT_NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/profile', label: 'Cài đặt', icon: 'settings' },
   { to: '/support', label: 'Hỗ trợ', icon: 'info' },
@@ -69,9 +75,11 @@ export function FlowSide({ path }: { path: string }) {
 // The sidebar is a slim rail of icons (after Pinterest's): the name of each button shows as a tooltip on hover or focus.
 // Three blocks (new trip · places and trips · settings and support), the logo above them and sign-out alone at the bottom.
 export function Sidebar({ path }: { path: string }) {
-  const saved = useUi((u) => u.saved.length + u.savedThemes.length)
+  const saved = useUi((u) => u.saved.length)
   const account = useAccount()
   const guest = !!account?.guest
+  const { trip } = useTrip()
+  const flow = useFlowNav(path)
   const item = (n: { to: string; label: string; icon: IconName }) => {
     const on = n.to === '/' ? path === '' : path.startsWith(n.to)
     return (
@@ -87,6 +95,20 @@ export function Sidebar({ path }: { path: string }) {
     <nav className="tg-hf__side" aria-label="Điều hướng chính">
       <Link to="/" className="tg-hf__logo" aria-label="Về Khám phá"><Logo size={19} /></Link>
       <div className="tg-hf__mids">
+        {hasTrip(trip) && (
+          <ul className="tg-hf__blk tg-hf__nav" aria-label="Chuyến đang lập">
+            {FLOW.map((f) => {
+              const on = path.startsWith(f.id === 'explore' ? '/explore' : '/plan')
+              return (
+                <li key={f.id}>
+                  <button type="button" className={`tg-hf__item ${on ? 'is-on' : ''}`} data-tour={`nav-${f.id}`} data-tip={f.label} aria-label={f.label} aria-current={on ? 'page' : undefined} aria-busy={flow.going === f.id || undefined} onClick={() => { void flow.goTo(f.id) }}>
+                    <Icon name={f.icon} size={26} />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
         <ul className="tg-hf__blk tg-hf__nav">{NAV.map(item)}</ul>
         <ul className="tg-hf__blk tg-hf__nav">{ACCOUNT_NAV.map(item)}</ul>
       </div>

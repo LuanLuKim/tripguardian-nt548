@@ -148,6 +148,7 @@ function Body({ stage, pinned, inDialog = false, busy, send, chips, intro, place
   }
   return (
     <>
+      <img className="tg-asst__cat" src="/img/brand/cat-peek.webp" alt="" width={120} height={63} aria-hidden="true" />
       <header className="tg-asst__head">
         <div><Icon name="sparkle" size={18} />{inDialog ? <Dialog.Title>Hỏi TripGuardian</Dialog.Title> : <h2>Hỏi TripGuardian</h2>}</div>
         <div className="tg-asst__ops">

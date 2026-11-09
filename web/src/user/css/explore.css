@@ -149,8 +149,8 @@
 @keyframes tg-wait { from { opacity: 0.35; } to { opacity: 1; } }
 
 /* Lựa chọn: search over every tab, and the pages of one tab */
-.tg-xsearch { position: relative; display: flex; align-items: center; gap: 10px; min-height: 48px; margin-bottom: 14px; padding: 0 14px; border-radius: var(--tg-r-s); border: 1px solid var(--tg-line-2); background: var(--tg-surface); color: var(--tg-ink-3); transition: border-color 150ms, box-shadow 150ms; }
-.tg-xsearch:focus-within { border-color: var(--tg-pine); box-shadow: 0 0 0 3px var(--tg-pine-soft); }
+.tg-xsearch { position: relative; display: flex; align-items: center; gap: 10px; min-height: 52px; margin-bottom: 14px; padding: 0 20px 0 24px; border-radius: 999px; border: 2px solid var(--tg-ink); background: var(--tg-surface); color: var(--tg-ink); transition: box-shadow 150ms; }
+.tg-xsearch:focus-within { box-shadow: 0 0 0 4px var(--tg-line); }
 .tg-xsearch input { flex: 1; min-width: 0; min-height: 46px; border: 0; background: transparent; color: var(--tg-ink); font-size: 1rem; }
 .tg-xsearch input:focus { outline: none; }
 .tg-xsearch input::-webkit-search-cancel-button { display: none; }

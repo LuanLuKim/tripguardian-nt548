@@ -1,18 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { tripTitle } from '../../home/dialogs'
-import { dateRange } from '../../lib'
 import { tripSummaries } from '../../pd/api'
 import type { TripSummary } from '../../pd/types'
-import { STEPS } from '../../trip'
 import { Icon } from '../../ui/icons'
 
-// A chat is named after its first message (like ChatGPT); a trip with no words yet, or one listed by an older harness, falls back to its place and days.
+// A chat is one line, named after its first message (like ChatGPT) and cut with "…" when it does not fit (the full text is the tooltip); a trip with no words yet, or one listed by an older harness, falls back to its place and days.
 const chatName = (t: TripSummary) => t.title || (t.days ? tripTitle(t) : 'Cuộc trò chuyện mới')
 
 // A chat nobody has typed in yet holds nothing to come back to: it stays out of the list unless it is the one open now.
 const isBlank = (t: TripSummary) => !t.title && !t.days && !t.places.length && t.stage === 'trip'
-
-const STAGE_LABEL = { trip: STEPS[0].label, decision: STEPS[1].label, planning: STEPS[2].label } as const
 
 const DAY = 86_400_000
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
@@ -29,23 +25,6 @@ const GROUPS = [
   { key: 'week', label: '7 ngày qua', has: (age: number) => age > 0 && age < 7 },
   { key: 'older', label: 'Cũ hơn', has: (age: number) => age >= 7 },
 ] as const
-
-function when(iso: string | null | undefined, now: Date) {
-  const age = ageInDays(iso, now)
-  if (age === null || !iso) return null
-  const at = new Date(iso)
-  if (age === 0) return at.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
-  if (age === 1) return 'Hôm qua'
-  if (age < 7) return at.toLocaleDateString('vi-VN', { weekday: 'long' }).replace(/^./, c => c.toUpperCase())
-  const day = `${String(at.getDate()).padStart(2, '0')}/${String(at.getMonth() + 1).padStart(2, '0')}`
-  return at.getFullYear() === now.getFullYear() ? day : `${day}/${at.getFullYear()}`
-}
-
-// The quiet line under a title, from what the trip really has: where it stopped, then its dates (or length) and party size.
-function facts(t: TripSummary) {
-  const span = dateRange(t.start_date, t.days) ?? (t.days ? `${t.days} ngày` : null)
-  return [span, t.people ? `${t.people} người` : null].filter(Boolean).join(' · ')
-}
 
 export function History({ active, busy, onNew, onOpen }: { active: string | null; busy: boolean; onNew: () => void; onOpen: (trip: TripSummary) => void }) {
   const [list, setList] = useState<TripSummary[] | null>(null)
@@ -89,16 +68,9 @@ export function History({ active, busy, onNew, onOpen }: { active: string | null
             <section key={g.key} className="tg-history__group" aria-label={g.label}>
               <h3 className="tg-history__label">{g.label}</h3>
               {g.items.map(t => {
-                const line = facts(t)
-                const stamp = when(t.updated_at, now)
                 return (
                   <button key={t.id} type="button" className={`tg-history__entry ${t.id === active ? 'is-active' : ''}`} aria-current={t.id === active ? 'true' : undefined} title={chatName(t)} disabled={busy} onClick={() => open(t)}>
                     <strong>{chatName(t)}</strong>
-                    <small className="tg-history__meta">
-                      <span className={`tg-history__stage ${t.confirmed ? 'is-done' : ''}`}>{t.confirmed && <Icon name="check" size={12} />}{t.confirmed ? 'Đã chốt' : STAGE_LABEL[t.stage]}</span>
-                      {line && <span className="tg-history__facts">{line}</span>}
-                      {stamp && <time className="tg-history__time" dateTime={t.updated_at ?? undefined}>{stamp}</time>}
-                    </small>
                   </button>
                 )
               })}

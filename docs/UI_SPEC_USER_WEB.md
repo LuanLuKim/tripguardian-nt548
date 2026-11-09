@@ -51,11 +51,11 @@ Không được làm: dùng số sao / phần trăm trần làm tín hiệu chí
 
 ```text
 NAV   rail trái: logo · Khám phá · Chuyến của tôi · Đã lưu · Hồ sơ · avatar
-FLOW  Chọn nơi / Lịch trình: thanh trên logo · stepper 3 bước · avatar
+FLOW  Chọn nơi / Lịch trình: rail trái có thêm hai nút kề nhau "Lựa chọn" và "Lịch trình" (chỉ khi có chuyến đang lập), không có thanh trên
 CHAT  Hiểu chuyến đi: rail homepage + lịch sử | chat | tiến độ (Trang 3)
 ```
 
-Bước đã xong trên stepper bấm được để quay lại; hành trình trên máy chủ lùi theo (`back`), không bao giờ tiến hộ. Vé đầy đủ của Hiểu chuyến đi mở từ `Sửa` / `Xem đầy đủ`; tiến độ tám nhóm nằm cố định ở cột phải.
+Từ Lịch trình bấm "Lựa chọn" là lùi một bước: hành trình trên máy chủ lùi theo (`back`), không bao giờ tiến hộ; từ Lựa chọn bấm "Lịch trình" thì các nơi đã chọn được chuyển sang Planning trước (`useFlowNav` ở `user/ui/Shell.tsx`). Vé đầy đủ của Hiểu chuyến đi mở từ `Sửa` / `Xem đầy đủ`; tiến độ tám nhóm nằm cố định ở cột phải.
 
 ---
 
@@ -103,7 +103,7 @@ Không gian trò chuyện theo mẫu người dùng duyệt ngày 15/10/2026, d�
 | Các kiểu (`kinds`) | Sau thẻ dấu hiệu, hoặc ảnh user gửi | Lưới thẻ: một ảnh lớn + hai ảnh nhỏ của các nơi thật, vòng tích khi chọn, tên kiểu, tên vài nơi, số nơi; ô `Gửi ảnh kiểu bạn thích`; `Xong (N)` · `Không kiểu nào giống`. Bấm ảnh mở chi tiết nơi đó |
 | Có phải nơi này? (`photo_pick`) | Ảnh user gửi khớp rõ một nơi | Ảnh + tên nơi (mở chi tiết); `Đúng nơi này` · `Không phải` |
 
-- **Chat gọn**: không nhắc lại thông tin đã nằm ở cột phải; giữ câu xác nhận khi hiểu từ mơ hồ theo một nghĩa cụ thể. Khi chờ chỉ có dấu đang xử lý (`role="status"`, `aria-busy`); hoàn tất không giữ dòng thời gian, bước ghi nhận hay danh sách trace. Trace backend vẫn lưu. Khối món chỉ dành cho món cụ thể người dùng nêu, không cho kiểu quán; chat giữ lối mở thẻ nơi, không in link Maps hay trích thực đơn dài. Chi tiết mở trong sheet nơi khi bấm. Bỏ qua thẻ đáp một câu ngắn, hành vi không đổi; bản đọc lại trước lịch đầu tiên vẫn bắt buộc.
+- **Chat gọn**: không nhắc lại thông tin đã nằm ở cột phải; giữ câu xác nhận khi hiểu từ mơ hồ theo một nghĩa cụ thể. Chưa có bước nào thì chỉ có dấu đang xử lý (`role="status"`, `aria-busy`); khi server gửi tiến trình thì khối bước (`Turn.tsx` `Steps`) mở sẵn trong lúc xử lý để người dùng thấy bot hiểu gì và tìm gì (ghi nhận từng điều bạn nói, tìm quán có món / loại nơi, tìm trên web, thời tiết, đường đi); các bước máy móc lặp mỗi lượt (`read`, `split`, `cues`, `find:`) bị ẩn, lượt không còn bước nào đáng mở thì không có khối; tiêu đề chạy ánh sáng; xong lượt thì gấp lại thành một dòng "Đã xử lý trong N giây", bấm để mở lại. Khối món chỉ dành cho món cụ thể người dùng nêu, không cho kiểu quán; chat giữ lối mở thẻ nơi, không in link Maps hay trích thực đơn dài. Chi tiết mở trong sheet nơi khi bấm. Bỏ qua thẻ đáp một câu ngắn, hành vi không đổi; bản đọc lại trước lịch đầu tiên vẫn bắt buộc.
 
 - **Ô nhắn** là một thẻ trắng cố định cuối cột: chữ nhắn ở trên, hàng nút bên dưới (kẹp giấy, ảnh ở trái, gửi ở phải); kẹp giấy (danh sách nơi dạng file, đọc ở trình duyệt), ảnh, kéo-thả, dán; Enter gửi. Dòng nhỏ dưới ô: "Ảnh bạn gửi chỉ dùng trong chuyến này."
 
@@ -252,7 +252,7 @@ Tiêu đề *"Kế hoạch đã chốt."* → *"Cảm ơn bạn."* · bốn than
 | Cảnh báo tại điểm dừng | nhẹ / nặng |
 | Bong bóng hội thoại + chip trả lời | câu hỏi · đang nghĩ · đã trả lời (sửa được) |
 | Bottom sheet | nhiều độ cao; dùng cho panel hiểu chuyến đi, lý do bỏ, danh sách đã chọn |
-| Stepper 3 bước | bước hiện tại · đã xong (bấm để quay lại) · chưa tới |
+| Hai nút của luồng ở rail | "Lựa chọn" · "Lịch trình": màn đang mở nền đậm; bấm để chuyển nhanh |
 | Trạng thái rỗng | mỗi loại một câu dẫn hành động, có minh họa |
 | Đang tải | dữ liệu địa điểm · một lượt hỏi · đang xếp lịch |
 | Lỗi | lỗi tải dữ liệu · lỗi một hành động (thử lại được) |
@@ -305,7 +305,7 @@ Hướng **editorial dẫn bằng ảnh thật**, nền sáng. Tông **trắng�
 
 - Chữ: tiêu đề **Playfair Display**, nội dung **Inter**, số / giờ / giá / cỡ mẫu **JetBrains Mono**. Nội dung ≥16px, chú thích ≥12px.
 - Bo 16–20px, bóng rất nhẹ, icon SVG nét mảnh tự vẽ (`user/ui/icons.tsx`), không emoji. Cảnh báo / đánh đổi luôn có icon và chữ, không chỉ dựa vào màu.
-- Ảnh bìa và gallery (≤ 12 ảnh, tab Hình ảnh của `PlaceSheet`) là **ảnh thật của chính nơi đó** (Google Maps hoặc frame clip, chọn offline bằng `web/scripts/pick_covers.py`: không người chiếm khung, bỏ ảnh gần trùng, Gemma xếp ảnh đẹp và thể hiện đúng nơi lên trước), luôn ghi nguồn. Ảnh sinh (`web/scripts/gen_ui_images.py`, `web/public/img/gen/`) chỉ dùng cho không khí và minh họa (hero, bìa hành trình), không bao giờ làm ảnh của một nơi có tên, không ghi nhãn trên giao diện; nguồn gốc nằm trong `manifest.json`.
+- Ảnh bìa và gallery (tab Hình ảnh của `PlaceSheet`: mọi ảnh qua luật không người; ảnh đầu trang chi tiết chỉ vài ảnh đẹp nhất) là **ảnh thật của chính nơi đó** (Google Maps hoặc frame clip, chọn offline bằng `web/scripts/pick_covers.py`: không người chiếm khung, bỏ ảnh gần trùng, Gemma xếp ảnh đẹp và thể hiện đúng nơi lên trước), luôn ghi nguồn. Ảnh sinh (`web/scripts/gen_ui_images.py`, `web/public/img/gen/`) chỉ dùng cho không khí và minh họa (hero, bìa hành trình), không bao giờ làm ảnh của một nơi có tên, không ghi nhãn trên giao diện; nguồn gốc nằm trong `manifest.json`.
 - Chuyển cảnh: sang bước mờ + dịch 24px 280ms · chờ máy dùng khung xương và chữ nói đúng việc đang làm (không % giả) · lớp phủ 240ms · cập nhật tại chỗ nháy nền nhạt 600ms. `prefers-reduced-motion` tắt hết.
 
 ## 9. Khung và kích thước
@@ -326,7 +326,7 @@ Sáng / tối: không bắt buộc cho MVP. Làm thì làm đủ, không nửa v
 | Panel dính | Panel "Mình đang hiểu" và thanh "Đã chọn" không bị cuộn mất; trên desktop thanh "Đã chọn" là thanh dính dưới full width, **không** phải bottom sheet |
 | Hover | Thẻ địa điểm hover hiện đủ thao tác (Thêm / Bỏ / Khóa / So sánh); dấu "chưa xác nhận", nhãn độ tin cậy và cỡ mẫu comment mở bằng hover tooltip **ngoài ra vẫn phải mở được bằng click** (mobile không có hover) |
 | So sánh | 3 nơi cạnh nhau thoải mái, cột thuộc tính bên trái dính khi cuộn ngang |
-| Thanh trên | Hai chế độ (§3): trong luồng là stepper, ngoài luồng là nav ngang. Không bao giờ hiện cả hai |
+| Thanh trên | Không có; luồng và ngoài luồng cùng dùng rail trái (§3) |
 | Bàn phím | Tab đi đúng thứ tự đọc; `Enter` chọn; `Esc` đóng sheet; mũi tên đổi tab nhóm / tab ngày. Vẽ rõ **focus ring** — đây là bề mặt có bàn phím |
 | Mật độ | Dày hơn mobile nhưng **không dày như Admin Web**: đây vẫn là sản phẩm người dùng, không phải phòng điều khiển |
 | Chiều cao | Trang dài cuộn được là bình thường; đừng nhồi mọi thứ vào một màn 900px |

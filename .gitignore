@@ -41,3 +41,26 @@ tests/fixtures/tiktok/
 /src_live.new/
 /src_live.old/
 /src_live.bak_*/
+
+# Machine-local state and caches. Symlinks are not matched by a trailing slash, so no slash here.
+/.cache
+/.cache.old-nfs/
+/.venv
+/.venv-vllm/
+/.venv.old-nfs/
+/.aws/
+/.codex/
+/.claude/worktrees/
+
+# Large local files that must stay out of git (keep git status and the editor fast)
+/*.mp4
+/Screen Recording*
+/Huong-dan-su-dung-server-*.pdf
+/frontend_images/
+*.safetensors
+*.gguf
+*.ckpt
+*.pth
+*.pt
+*.npy
+*.parquet

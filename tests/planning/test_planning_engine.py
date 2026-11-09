@@ -200,24 +200,23 @@ def test_undo_with_nothing_to_undo_is_an_action_error():
         e.act(sid, {"type": "undo"})
 
 
-def test_confirm_refuses_an_unvalidated_plan():
+def test_confirm_keeps_violations_as_warnings_the_user_decides():
     from dataclasses import replace as _r
 
-    from planning.engine import NotConfirmable
     e, sid = started()
     e.act(sid, {"type": "move_place", "place": "a", "day": 0})   # fine
     out = e.confirm(sid)
-    assert out["chosen"]
+    assert out["chosen"] and out["violations"] == []
     # confirm() re-derives violations from the cached results' items via validate() -- it never trusts a DayResult's
     # own .violations field (docs/PLANNING.md ⓔ: "validate.py là nơi duy nhất kết luận pass / fail").
     # Corrupt a day's first item to start before the day opens, which validate() catches independently of anything
-    # simulate() itself noticed.
+    # simulate() itself noticed. The plan is still the user's to confirm; the violation rides on the output.
     pos = e.store.get(sid).position
     day0 = e._schedules[sid][pos][0]
     bad_items = (_r(day0.items[0], start=-100),) + day0.items[1:]
     e._schedules[sid][pos] = [_r(day0, items=bad_items), *e._schedules[sid][pos][1:]]
-    with pytest.raises(NotConfirmable):
-        e.confirm(sid)
+    out = e.confirm(sid)
+    assert out["chosen"] and out["violations"]
 
 
 def two_day_started(**kw):

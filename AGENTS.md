@@ -21,7 +21,7 @@ Hệ thống place intelligence + lập lịch trình cá nhân hóa.
 - Tài liệu viết **tiếng Việt**; code, comment, identifier, tên file viết **tiếng Anh** (`RULE.md` §0).
 - Offline ghi Place Intelligence. Online chỉ đọc nó; online chỉ ghi lịch trình và user / session profile.
 - Không bao giờ bịa địa điểm. Không có bằng chứng → `unknown`, không phải `false`. Hard constraint: có bằng chứng trượt thì loại; chưa rõ thì vẫn hiện, xếp sau, chỉ cảnh báo ở ô Đánh đổi của thẻ nơi và khi xếp lịch (chủ dự án 04/11/2026).
-- Physical constraint không có đường code nào nới được.
+- Physical constraint không có đường code nào nới được. Hệ thống chỉ cảnh báo, quyết định cuối cùng luôn của người dùng: lịch có vi phạm vẫn hiện và chốt được (chủ dự án 08/11/2026).
 - User Profile là prior, không phải fact hay constraint: bối cảnh chuyến đi hiện tại thắng, `unknown` ≠ không thích, đã đến ≠ đã thích.
 - Module **chỉ** giao tiếp qua public API (`__init__.py`). Không deep import.
 - Gọi model theo **vai trò** (ASR, Extractor, Judge, Agent); model cụ thể nằm trong config, key trong `.env`.

@@ -87,12 +87,13 @@ def test_forecast_entries_with_a_missing_or_null_fetched_at_or_a_null_day_do_not
     assert out["provenance"]["weather"] == [{"source": "open-meteo", "fetched_at": None}]
 
 
-def test_no_valid_variant_goes_back_to_place_decision_with_the_places_that_broke_it():
+def test_an_invalid_plan_opens_as_a_flagged_draft_never_an_empty_screen():
     d, recs = sample_trip()
     d["confirmed"].append({"id": "gone", "name": "Gone", "role": "anchor", "flags": [], "relaxed": []})
     out = run(d, recs)
-    assert not out["ok"] and out["variants"] == [] and out["comparison"] == []
-    assert out["back_to_decision"] == {"reason": "no_valid_variant", "places": ["gone"], "leftover": []}
+    assert not out["ok"] and out["back_to_decision"] is None
+    (draft,) = out["variants"]
+    assert draft["editable"] and not draft["confirmable"]
     assert [v["kind"] for v in out["violations"]] == ["anchor"]
 
 

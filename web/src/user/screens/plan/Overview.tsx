@@ -3,7 +3,6 @@ import { dayLabel, fmtMin, info } from '../../lib'
 import type { ItineraryDay, Robustness, Variant } from '../../planning/types'
 import { Hint, PlacePhoto } from '../../ui/common'
 import { Icon, type IconName } from '../../ui/icons'
-import { FlowBar } from '../../ui/Shell'
 import { TripMap } from './TripMap'
 import { dayAreas, placeName, shortDate, visits } from './shared'
 
@@ -37,7 +36,6 @@ export function Overview({ days, variant, robustness, travelMin, visitMin, dropp
   const label = variant?.label ?? 'Lịch trình'
   return (
     <>
-      <FlowBar step="plan" />
       <div className="tg-it-crumb">
         <button type="button" className="tg-it-crumb__back" aria-label="Quay lại chọn phương án" onClick={onChangeVariant}><Icon name="arrowLeft" size={18} /></button>
         <span>Chuyến đi của bạn</span><Icon name="chevronRight" size={14} /><strong>Tổng quan</strong>

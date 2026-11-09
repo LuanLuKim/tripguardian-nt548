@@ -12,8 +12,10 @@
 #   ./run.sh db-backup  pg_dump into data/backup/pg/<date>.sql.gz, keep the newest 14
 # Logs: logs/run/<name>.log. PIDs: logs/run/<name>.pid.
 # Env overrides: PYTHON (default .venv python, else python on PATH), PUBLIC_PORT (28899),
+#   SKIP_CLEF=1 (prod: do not start the self-hosted Clef; the Judge fails open),
 #   TUNNEL_TOKEN_FILE (default ~/.cloudflared/tripguardian.token; no file = no tunnel),
-#   HARNESS_GPU (default 7: the GPU the harness embeds on, corpus.index; GPUs 0-3 and 5 belong to other users).
+#   HARNESS_GPU (default 1: the GPU the harness embeds on, corpus.index, about 2.4 GiB. The team has GPUs 0 and 1 only (renumbered
+#   by the admin 2026-11-06); GPU 0 is shared with a teammate's training, so prod stays off it).
 # prod also starts the self-hosted Clef (scripts/models_ctl.sh: nf4 on GPU 4 + gateway :30000) when
 #   .env points CLEF_BASE_URL at it; prod-stop leaves Clef running (offline jobs use it too): models_ctl.sh stop.
 cd "$(dirname "$0")" || exit 1
@@ -42,7 +44,7 @@ web|5173|node web/node_modules/vite/bin/vite.js web --port 5173 --strictPort"
 # Production: only what the internet may reach (web/server.mjs keeps /admin and the review API private).
 # The harness never inherits a dev APP_BASE_URL / TG_TEST_LOGIN from this shell (it reads the public one from .env:
 # a dev value 403s every POST, test login must stay off); it gets one shared GPU for corpus.index (Trip looks and photos).
-HARNESS_GPU=${HARNESS_GPU:-7}
+HARNESS_GPU=${HARNESS_GPU:-1}
 PROD_SERVICES="harness|8769|env -u APP_BASE_URL -u TG_TEST_LOGIN CUDA_VISIBLE_DEVICES=$HARNESS_GPU $PYTHON -m harness serve --port 8769
 public|$PUBLIC_PORT|node web/server.mjs $PUBLIC_PORT"
 
@@ -270,6 +272,8 @@ smoke() {
 # while it is down, so a slow start only delays, never blocks, the deploy.
 clef_start() {
   case "$(env_value CLEF_BASE_URL)" in http://127.0.0.1:30000*) ;; *) return 0 ;; esac
+  # SKIP_CLEF=1 ./run.sh prod: deploy without Clef (the Judge fails open, rule guard off) until it has a host
+  [ "${SKIP_CLEF:-0}" = 1 ] && { echo "[clef] skipped (SKIP_CLEF=1): Judge runs fail-open"; return 0; }
   scripts/models_ctl.sh start clef
   curl -s -m 2 http://127.0.0.1:30000/health >/dev/null || scripts/models_ctl.sh start gateway
   for _ in $(seq 1 60); do

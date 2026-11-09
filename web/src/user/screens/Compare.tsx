@@ -8,7 +8,7 @@ import { useTrip } from '../trip'
 import { ArtHills, Busy, Empty, go, placeHref, PlacePhoto } from '../ui/common'
 import { Icon } from '../ui/icons'
 import { SelectedBar } from '../ui/SelectedBar'
-import { FlowBar, Page, useTitle } from '../ui/Shell'
+import { Page, useTitle } from '../ui/Shell'
 import { useEditTicket } from './Explore'
 
 // Only what differs (src/decision/compare.py); a third place is compared with the first one.
@@ -31,7 +31,6 @@ export function Compare({ ids }: { ids: string[] }) {
   if (list.length < 2 || err)
     return (
       <>
-        <FlowBar step="explore" />
         <Page narrow><Empty art={<ArtHills />} title={err ? 'Chưa so sánh được' : 'Chọn ít nhất hai nơi'} body={err ? 'Một trong các nơi này không còn trong danh sách gợi ý.' : 'Bấm So sánh trên hai hoặc ba thẻ để đặt cạnh nhau.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={back}>Về danh sách gợi ý</button>} /></Page>
       </>
     )
@@ -47,7 +46,6 @@ export function Compare({ ids }: { ids: string[] }) {
   const names = list.map((id, i) => cards.get(id)?.name ?? (i === 0 ? res?.[0]?.a.name : res?.[i - 1]?.b.name) ?? info(id)?.name ?? id)
   return (
     <>
-      <FlowBar step="explore" />
       <Page className="tg-compare">
         <button type="button" className="tg-back" onClick={back}><Icon name="arrowLeft" size={18} /> Về danh sách gợi ý</button>
         <header className="tg-xhead"><div><p className="tg-kicker">So sánh nhanh</p><h1>Chỉ những điểm khác nhau</h1><p>Điểm giống nhau đã được ẩn. Bạn là người bấm giữ, mình không chọn thay.</p></div></header>

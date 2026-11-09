@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { track } from '../events'
 import { flushSync } from 'react-dom'
 import { isNegative, signalPhrase } from '../../data/labels'
-import { DAYS, mapsEmbed, openWindows, placeById, signal, useAllReviews, useDetail, useGallery, visible } from '../../data/store'
+import { DAYS, mapsEmbed, openWindows, placeById, signal, useAllPhotos, useAllReviews, useDetail, useGallery, visible } from '../../data/store'
 import type { Place, Quote, Video } from '../../data/types'
 import { navigate } from '../../router'
 import { canTransition, startTransition } from '../../viewTransition'
@@ -16,10 +16,8 @@ import { openAssistant, toggleCmp, toggleSaved, useUi } from '../store'
 import { useTrip } from '../trip'
 import { go, Photo, Trust, Unconfirmed, warmPhoto } from './common'
 import { HeartFill, Icon } from './icons'
-import { Pano } from './Pano'
 import { Space3d, useSpace3d } from './Space3d'
 import { askAssistant } from './askAssistant'
-import { PlaceWalk, walkOf } from './PlaceWalk'
 import { DetailsOverview, KnownFor } from './PlaceDetails'
 import { PhoneLink, SiteLink, phoneText, siteOf } from './contact'
 
@@ -27,7 +25,8 @@ import { PhoneLink, SiteLink, phoneText, siteOf } from './contact'
 // link page (/explore/place/:id). As a modal it lives in the URL (?place=<id>), so the browser's Back closes it.
 
 const SLOTS: [string, string][] = [['early_morning', 'Sớm'], ['morning', 'Sáng'], ['noon', 'Trưa'], ['afternoon', 'Chiều'], ['evening', 'Tối']]
-const TABS = [['overview', 'Tổng quan'], ['photos', 'Hình ảnh'], ['space3d', 'Khám phá 3D'], ['pano', 'Xem 360°'], ['plan', 'Gợi ý lịch trình'], ['reviews', 'Đánh giá']] as const
+// 'video' only for a place with clips, 'space3d' ("Xem 360°") only for a place that has a 3D model.
+const TABS = [['overview', 'Tổng quan'], ['photos', 'Hình ảnh'], ['video', 'Video'], ['space3d', 'Xem 360°'], ['plan', 'Gợi ý lịch trình'], ['reviews', 'Đánh giá']] as const
 type Tab = (typeof TABS)[number][0]
 const HERO = 'tg-hero' // view-transition-name shared by the photo that opened the sheet and the sheet's big photo
 const EASE = 'cubic-bezier(.2,.8,.2,1)'
@@ -166,13 +165,13 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
   const [dropping, setDropping] = useState(false)
   const [report, setReport] = useState<'closed' | 'form' | 'sending' | 'sent' | 'error'>('closed')
   const [reportText, setReportText] = useState('')
-  const [walking, setWalking] = useState(false) // "Đi một vòng": the scene photo walk
   const [viewing, setViewing] = useState<number | null>(null) // the clip open in the TikTok-style viewer
   const tabsRef = useRef<HTMLDivElement>(null)
   const gallery = useGallery(id)
+  const album = useAllPhotos(id) // every photo the person-free rule lets through, for the Hình ảnh tab; the header keeps the best few
   const detailed = useDetail(id) // its evidence loads first; the basics are on screen already
   const model = useSpace3d(id)
-  useEffect(() => { setG(0); setTab('overview'); setViewing(null); setWalking(false) }, [id])
+  useEffect(() => { setG(0); setTab('overview'); setViewing(null) }, [id])
   const Title = onClose ? Dialog.Title : 'h1'
   if (!p || !snap)
     return (
@@ -186,7 +185,6 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
   const card: Card | undefined = view ? [...view.groups.flatMap((c) => c.cards), ...view.unverified.cards].find((c) => c.id === id) : undefined
   const photos = gallery.length ? gallery : p.photos
   const shots = photos.length
-  const walk = walkOf(gallery) // plain call: cheap, and this sits below the early return so no hook here
   const others = photos.map((_, j) => j).filter((j) => j !== g).slice(0, 3)
   const quote = p.quotes[0]?.text
   const today = hoursToday(snap)
@@ -278,7 +276,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
       </header>
 
       <div className="tg-ps__tabs" role="tablist" aria-label="Thông tin về nơi này" ref={tabsRef}>
-        {TABS.filter(([k]) => k !== 'space3d' || model).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}</button>)}
+        {TABS.filter(([k]) => (k !== 'space3d' || model) && (k !== 'video' || p.videos.length > 0)).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}</button>)}
       </div>
 
       <section className="tg-ps__pane" role="tabpanel">
@@ -295,7 +293,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
                 {snap.phone && phoneText(snap.phone) && <div><dt>Điện thoại</dt><dd><PhoneLink id={id} phone={snap.phone} /></dd></div>}
                 {snap.website && siteOf(snap.website) && <div><dt>Trang web</dt><dd><SiteLink id={id} website={snap.website} /></dd></div>}
                 {card && card.location.minutes !== null && <div><dt>Khoảng cách</dt><dd>≈ {card.location.minutes} phút <span className="tg-faint">· ước tính từ {card.location.center}</span></dd></div>}
-                <div><dt>Nguồn</dt><dd>{p.voices ? `${p.voices.toLocaleString('vi-VN')} người đã viết về nơi này` : 'Google Maps'}{asOf ? `, dữ liệu cập nhật ${asOf}` : ''}{card && <> <Trust level={TRUST[card.confidence.level]} why={card.confidence.reason} /></>}</dd></div>
+                <div><dt>Nguồn</dt><dd>{p.voices ? `${p.voices.toLocaleString('vi-VN')} người đã đánh giá nơi này` : 'Google Maps'}{asOf ? `, dữ liệu cập nhật ${asOf}` : ''}{card && <> <Trust level={TRUST[card.confidence.level]} why={card.confidence.reason} /></>}</dd></div>
               </dl>
               <div className="tg-ps__side">
                 {shots > 0 && <div className="tg-ps__mini">{photos.slice(0, 4).map((ph, j) => <button key={ph.src} type="button" aria-pressed={j === g} onClick={() => setG(j)} aria-label={`Xem ảnh ${j + 1}`}><Photo photo={ph} alt="" className="tg-disc__ph" /></button>)}</div>}
@@ -321,19 +319,21 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
         {tab === 'photos' && (
           <>
             <h3>Hình ảnh</h3>
-            {walk.length > 0 && <button type="button" className="tg-btn tg-btn--soft tg-btn--sm tg-ps__walkbtn" onClick={() => setWalking(true)}><Icon name="route" size={15} /> Đi một vòng ({walk.length} chỗ)</button>}
-            {walking && <PlaceWalk name={p.name} steps={walk} onClose={() => setWalking(false)} />}
-            {shots ? (
-              <ul className="tg-ps__gal">{photos.map((ph, j) => <li key={ph.src}><Photo photo={ph} alt={`${p.name}, ảnh ${j + 1}`} className="tg-ps__gp" sizes="(max-width: 600px) 92vw, 260px" /><small>Ảnh: {ph.credit}</small></li>)}</ul>
+            {album.length ? (
+              <ul className="tg-ps__gal">{album.map((ph, j) => <li key={ph.src}><Photo photo={ph} alt={`${p.name}, ảnh ${j + 1}`} className="tg-ps__gp" sizes="(max-width: 600px) 92vw, 260px" /><small>Ảnh: {ph.credit}</small></li>)}</ul>
             ) : <p className="tg-faint">Chưa có ảnh của nơi này.</p>}
           </>
         )}
 
-        {tab === 'space3d' && model && <Space3d key={id} slug={model} name={p.name} />}
-
-        {tab === 'pano' && (
-          <Pano key={id} id={id} name={p.name} lat={p.lat} lng={p.lng} />
+        {tab === 'video' && (
+          <>
+            <h3>Video</h3>
+            <p className="tg-faint tg-ps__vnote">Clip TikTok của người đã đến. Rê chuột để xem nhanh, bấm để xem từng clip.</p>
+            <ul className="tg-ps__clips">{p.videos.map((v, k) => <Clip key={v.id} v={v} onOpen={() => setViewing(k)} />)}</ul>
+          </>
         )}
+
+        {tab === 'space3d' && model && <Space3d key={id} slug={model} name={p.name} />}
 
         {tab === 'plan' && (
           <>
@@ -360,21 +360,15 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
             <h3>Đánh giá</h3>
             {p.rating ? <p className="tg-ps__score"><b>{p.rating.toFixed(1).replace('.', ',')}</b>{p.reviews ? `${p.reviews.toLocaleString('vi-VN')} lượt đánh giá trên Google` : 'trên Google'}</p> : <p className="tg-faint">Chưa có điểm trên Google.</p>}
             <Reviews id={id} />
-            {p.videos.length > 0 && (
-              <>
-                <h4>Clip của người đã đến</h4>
-                <ul className="tg-ps__clips">{p.videos.slice(0, 6).map((v, k) => <Clip key={v.id} v={v} onOpen={() => setViewing(k)} />)}</ul>
-              </>
-            )}
             {!detailed && <p className="tg-faint" role="status">Đang tải bằng chứng của nơi này…</p>}
-            {detailed && !reviewsOf(id).length && !p.videos.length && <p className="tg-faint">Chưa có bằng chứng trải nghiệm cho nơi này; chỉ có thông tin cơ bản từ Google.</p>}
+            {detailed && !reviewsOf(id).length && <p className="tg-faint">Chưa có bằng chứng trải nghiệm cho nơi này; chỉ có thông tin cơ bản từ Google.</p>}
             <p className="tg-ps__foot"><button type="button" className="tg-link tg-link--quiet" onClick={() => setReport('form')}><Icon name="flag" size={14} /> Báo thông tin sai</button></p>
           </>
         )}
       </section>
 
       <DropSheet card={dropping && card ? card : null} onClose={() => setDropping(false)} />
-      {viewing !== null && <ClipViewer videos={p.videos.slice(0, 6)} at={viewing} place={p.name} placeId={id} onAt={setViewing} onClose={() => setViewing(null)} />}
+      {viewing !== null && <ClipViewer videos={p.videos} at={viewing} place={p.name} placeId={id} onAt={setViewing} onClose={() => setViewing(null)} />}
       <Dialog.Root open={report !== 'closed'} onOpenChange={(o) => !o && setReport('closed')}>
         <Dialog.Portal><Dialog.Overlay className="tg tg-overlay tg-ps__over" /><Dialog.Content className="tg tg-modal tg-ps__over" aria-describedby={undefined}>
           {report === 'sent' ? (

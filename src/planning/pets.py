@@ -27,5 +27,5 @@ def warnings(places, hard: list[dict]) -> list[dict]:
         elif result == 'fail':
             resolution = 'Bỏ nơi này khỏi lịch hoặc chọn nơi cho mang thú cưng; không thể nới quy định của địa điểm.'
             out.append({'code': 'plan_violation', 'place_id': p.id, 'rule': 'hard', 'feature': 'pets', 'resolution': resolution,
-                        'text': f'{p.name}: nơi này cấm thú cưng, chưa thể chốt. {resolution}'})
+                        'text': f'{p.name}: nơi này cấm thú cưng; bạn vẫn có thể chốt nếu muốn. {resolution}'})
     return out

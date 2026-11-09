@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { DayKey, Place, PriceRange, Quote, Signal, Snapshot } from './types'
 
 let cache: Promise<Snapshot> | null = null
@@ -210,6 +210,18 @@ export function useGallery(id: string): Cover[] {
   return coversOf(id)
 }
 
+// The Hình ảnh tab: the place's gallery plus every other photo the person-free list allows (the cover set and the card pick
+// hold the best few; the list holds all that pass). The header and the cards keep using `useGallery`, which stays short.
+export function useAllPhotos(id: string): Cover[] {
+  const gallery = useGallery(id)
+  return useMemo(() => {
+    const have = new Set(gallery.map((c) => c.src.slice(c.src.lastIndexOf('/') + 1)))
+    const rest: Cover[] = [...(allow[id] ?? [])].filter((f) => !have.has(f))
+      .map((f) => ({ src: `/media/gmaps/${id.replace(/:/g, '_')}/photos/${f}`, credit: 'Google Maps', kind: 'gmaps', w: 768, h: 768 }))
+    return rest.length ? [...gallery, ...rest] : gallery
+  }, [id, gallery])
+}
+
 // Every written review of a place (export_reviews.py), fetched once when its Đánh giá tab opens: the snapshot itself
 // carries only a few quotes per signal. null while loading and when the place has no file.
 const reviewFiles = new Map<string, Quote[] | null>()
@@ -380,17 +392,6 @@ export function travelMin(a: { lat: number; lng: number }, b: { lat: number; lng
 export function mapsEmbed(q: { lat: number; lng: number } | string, zoom = 15) {
   const query = typeof q === 'string' ? encodeURIComponent(q) : `${q.lat},${q.lng}`
   return `https://maps.google.com/maps?q=${query}&z=${zoom}&hl=vi&output=embed`
-}
-
-// Unofficial keyless Street View embed (output=svembed): it shows the panorama nearest to the point, which may be the
-// street in front of the place or a visitor's photosphere nearby. docs/Role_Web_Functional_Design.md §6, "Xem 360°".
-export function streetViewEmbed(q: { lat: number; lng: number }) {
-  return `https://maps.google.com/maps?q=&layer=c&cbll=${q.lat},${q.lng}&cbp=11,0,0,0,0&output=svembed&hl=vi`
-}
-
-// Official keyless Maps URL for the same point; opens in a new tab.
-export function streetViewLink(q: { lat: number; lng: number }) {
-  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${q.lat},${q.lng}`
 }
 
 export function mapsRouteEmbed(stops: { lat: number; lng: number }[]) {

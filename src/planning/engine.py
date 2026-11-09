@@ -696,7 +696,7 @@ class Engine:
                 reason = v['detail']
             warnings.insert(0, {"code": "plan_violation", "day": day, "place_id": pid, "rule": v["kind"],
                                 "resolution": resolution,
-                                "text": f"{label}: {reason}, chưa thể chốt. {resolution}"})
+                                "text": f"{label}: {reason}; bạn vẫn có thể chốt nếu muốn. {resolution}"})
         return {"ok": choice["ok"], "variants": [{k: v for k, v in v.items() if not k.startswith("_")} for v in offered],
                "needs_hotel": needs_hotel,
                "overload": choice["overload"],
@@ -2059,8 +2059,7 @@ class Engine:
                 raise NotConfirmable("required places cannot be scheduled")
             if set(by_place) - {pid for r in results for pid in r.order}:
                 raise NotConfirmable("selected places do not fit the days: choose which to leave out")
-            if violations:
-                raise NotConfirmable("plan has unresolved violations")
+            # Violations are warnings, not a gate: the plan is the user's to keep (owner decision 2026-11-08).
             variant = self._variant_dict(base, s, results, ctxs)
             coords = {**{p.id: (p.lat, p.lng) for p in by_place.values()},
                      **{n: (pt.lat, pt.lng) for n, pt in trip.points.items() if pt},
@@ -2073,6 +2072,7 @@ class Engine:
             from .lodging import warnings as lodging_warnings
             point = (s.state.lodging_point or {'place_id': s.state.lodging_id}) if s.state.lodging_touched else None
             out['warnings'] = [w for w in out['warnings'] if w.get('code') != 'lodging_requirement']
+            out['violations'] = [asdict(v) for v in violations]   # kept on the confirmed plan, shown as warnings
             out['warnings'] += lodging_warnings(s.decision, self.by_id, point)
             s.output = out
             self.store.save(s)

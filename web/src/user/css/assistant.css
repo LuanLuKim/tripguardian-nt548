@@ -1,6 +1,7 @@
 .tg-asst { display: flex; flex-direction: column; background: var(--tg-surface); border: 1px solid var(--tg-line); }
 .tg-asst.is-float { position: fixed; z-index: 50; right: 20px; top: calc(var(--tg-top) + 16px); bottom: calc(var(--tg-bar) + 36px); width: 380px; border-radius: 22px; box-shadow: var(--tg-sh-2); animation: tg-in-r 240ms var(--tg-ease); }
 .tg-asst.is-pinned { position: sticky; top: calc(var(--tg-top) + 20px); height: calc(100vh - var(--tg-top) - var(--tg-bar) - 60px); border-radius: 22px; box-shadow: var(--tg-sh-1); }
+.tg-asst__cat { position: absolute; right: 34px; bottom: 100%; margin-bottom: -1px; width: 120px; height: auto; pointer-events: none; user-select: none; } /* the cat leans on the frame's top edge */
 .tg-asst__head { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 10px 20px; border-bottom: 1px solid var(--tg-line); }
 .tg-asst__head > div:first-child { display: flex; align-items: center; gap: 8px; color: var(--tg-pine); }
 .tg-asst__head h2 { font: 700 0.95rem var(--tg-sans); letter-spacing: 0; color: var(--tg-ink); }

@@ -15,7 +15,7 @@ import { ArtRoute, Busy, Empty, go } from '../ui/common'
 import { AssistantFloat } from '../ui/Assistant'
 import { Icon } from '../ui/icons'
 import { RouteStory } from '../ui/RouteStory'
-import { FlowBar, Page, useTitle } from '../ui/Shell'
+import { Page, useTitle } from '../ui/Shell'
 import { LongTripWarning } from '../ui/LongTripWarning'
 import { LODGING_TAB } from './Lodging'
 import { candidatesOf, type Candidate } from './plan/candidates'
@@ -59,6 +59,7 @@ export function Plan() {
   const [swapFor, setSwapFor] = useState<string | null>(null) // the place a swap replaces; null: add one
   const [dropAsk, setDropAsk] = useState<string | null>(null)
   const [pickAsk, setPickAsk] = useState<string | null>(null) // another way chosen while a hand-made order exists
+  const [warnAsk, setWarnAsk] = useState(false) // confirming a plan that still carries warnings: the user decides
   const [droppedOpen, setDroppedOpen] = useState(false)
   const [costOpen, setCostOpen] = useState(false)
   const [story, setStory] = useState(false)
@@ -101,14 +102,12 @@ export function Plan() {
   if (!trip.planningId)
     return (
       <>
-        <FlowBar step="plan" />
         <Page narrow><Empty art={<ArtRoute />} title="Chưa có lịch trình" body="Bạn chọn nơi ở bước Lựa chọn rồi bấm Lập lịch để TripGuardian xếp chuyến đi nhé." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/explore')}>Lựa chọn</button>} /></Page>
       </>
     )
   if (!view)
     return (
       <>
-        <FlowBar step="plan" />
         <Page>
           {error ? <Empty art={<ArtRoute />} title="Chưa tải được lịch trình" body={error} action={isStaleText(error)
             ? <button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/trips')}>Về chuyến của tôi</button>
@@ -126,7 +125,6 @@ export function Plan() {
   if (!view.variants.length)
     return (
       <>
-        <FlowBar step="plan" />
         <Page narrow>
           <Empty art={<ArtRoute />} title="Chưa xếp được lịch" body={view.back_to_decision?.places.length ? `Vướng ở: ${view.back_to_decision.places.map((id) => info(id)?.name ?? id).join(', ')}. Bỏ hoặc đổi nơi này rồi xem lại.` : 'Các nơi đã chọn chưa đủ để xếp thành lịch trình.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => back('/explore')}>Chọn lại địa điểm</button>} />
           {view.warnings.length > 0 && <ul className="tg-notes">{view.warnings.map((w, i) => <li key={i}><Icon name="warn" size={14} /><span>{w.text}</span></li>)}</ul>}
@@ -169,8 +167,8 @@ export function Plan() {
   const planDropped = (variant?.dropped_by_plan ?? []).filter((x) => (view.state.plan_dropped ?? []).includes(x.place_id))
   const userDropped = view.state.dropped.filter((x) => !planDropped.some((p) => p.place_id === x.place_id))
   const droppedCount = planDropped.length + userDropped.length
-  const blocked = !!view.violations?.length || variant?.confirmable === false
-  const onConfirm = async () => { if (await confirm()) go('/done') }
+  const warned = !!view.violations?.length || variant?.confirmable === false // a warning is never a gate: the user may confirm anyway
+  const onConfirm = async () => { if (warned && !warnAsk) { setWarnAsk(true); return } setWarnAsk(false); if (await confirm()) go('/done') }
   const openDay = (i: number) => { setDayIdx(i); setScreen('day') }
   const startSwap = (place: string | null) => { setSwapFor(place); setScreen('swap') }
   const candidates = candidatesOf(view, variant, days, swapFor)
@@ -188,7 +186,7 @@ export function Plan() {
       : null
   const confirmButton = confirmed && !diff
     ? <span className="tg-it-confirmed" role="status"><Icon name="check" size={16} /> Kế hoạch đã chốt</span>
-    : <button type="button" className="tg-btn tg-btn--primary" disabled={busy || blocked} title={blocked ? 'Lịch còn lỗi hoặc phương án chưa đạt yêu cầu; sửa trước khi chốt.' : undefined} onClick={onConfirm}>{confirmed ? 'Chốt lại thay đổi' : 'Chốt kế hoạch này'} <Icon name="arrow" size={18} /></button>
+    : <button type="button" className="tg-btn tg-btn--primary" disabled={busy} onClick={onConfirm}>{confirmed ? 'Chốt lại thay đổi' : 'Chốt kế hoạch này'} <Icon name="arrow" size={18} /></button>
 
   const notices = (
     <div className="tg-it-notices">
@@ -200,8 +198,8 @@ export function Plan() {
       {better && !optimized.seen && (
         <div className="tg-it-note is-good" role="status"><Icon name="sparkle" size={20} /><div><b>Mình đã tìm được cách xếp tốt hơn</b><p>Giảm khoảng {fmtMin(optimized.before - optimized.after)} di chuyển mà không đổi chỗ ở, nhịp độ hay nơi đã khóa.</p></div><button type="button" className="tg-btn tg-btn--primary tg-btn--sm" onClick={() => setOpt(true)}>Xem đề xuất</button></div>
       )}
-      {blocked && !view.violations?.length && <div className="tg-it-note is-attention" role="status"><Icon name="warn" size={18} /><span>Phương án này chưa đạt yêu cầu nên chưa chốt được. Chọn phương án khác hoặc sửa lịch.</span></div>}
-      {!!view.violations?.length && <div className="tg-it-note is-attention" role="status"><Icon name="warn" size={18} /><ul>{view.violations.map((v, i) => <li key={i}>{v.day !== null ? `Ngày ${v.day + 1} · ` : ''}{v.place_id ? `${info(v.place_id)?.name ?? v.place_id}: ` : ''}{VIOLATION[v.kind] ?? 'Lịch còn xung đột cần xử lý trước khi chốt.'}</li>)}</ul></div>}
+      {warned && !view.violations?.length && <div className="tg-it-note is-attention" role="status"><Icon name="warn" size={18} /><span>Phương án này còn điểm chưa đạt yêu cầu. Bạn vẫn có thể chốt, hoặc chọn phương án khác và sửa lịch.</span></div>}
+      {!!view.violations?.length && <div className="tg-it-note is-attention" role="status"><Icon name="warn" size={18} /><ul>{view.violations.map((v, i) => <li key={i}>{v.day !== null ? `Ngày ${v.day + 1} · ` : ''}{v.place_id ? `${info(v.place_id)?.name ?? v.place_id}: ` : ''}{VIOLATION[v.kind] ?? 'Lịch còn một điểm cần lưu ý.'}</li>)}</ul></div>}
     </div>
   )
   const delta = variant?.delta_vs_selection ? `So với danh sách đã chọn: ${variant.delta_vs_selection.places > 0 ? '+' : ''}${variant.delta_vs_selection.places} nơi · Di chuyển ${variant.delta_vs_selection.travel_min === null ? 'chưa so được' : `${variant.delta_vs_selection.travel_min > 0 ? '+' : ''}${variant.delta_vs_selection.travel_min} phút`} · Chi phí địa điểm đã biết ${variant.delta_vs_selection.cost_vnd === null ? 'chưa so được' : `${variant.delta_vs_selection.cost_vnd > 0 ? '+' : ''}${fmtVnd(variant.delta_vs_selection.cost_vnd)}`}` : null
@@ -281,6 +279,15 @@ export function Plan() {
           {!!editPreview?.make_room.length && <div className="tg-backup"><b>Cách tạo chỗ trống</b><span>Chọn một đề xuất đã được kiểm tra; máy chủ không tự bỏ nơi.</span>{editPreview.make_room.map((a: Action, i: number) => <button key={i} type="button" className="tg-btn tg-btn--soft tg-btn--sm" disabled={busy} onClick={async () => await previewAct(a)}>Xem cách này</button>)}</div>}
           {!editPreview?.confirmable && <p className="tg-faint">Lịch sau thay đổi chưa thể chốt. Máy chủ sẽ kiểm tra lại khi chốt.</p>}
           <footer><button type="button" className="tg-btn tg-btn--ghost" onClick={() => dismissPreview()}>Để sau</button><button type="button" className="tg-btn tg-btn--primary" disabled={busy || !editPreview || (editPreview.action.type === 'set_visit_duration' && !editPreview.confirmable)} onClick={async () => { if (!editPreview) return; const ok = await act({ ...editPreview.action, _preview_token: editPreview.token }); dismissPreview(); if (ok) setScreen((s) => (s === 'swap' ? 'day' : s)) }}>Áp dụng thay đổi đã xem</button></footer>
+        </Dialog.Content></Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root open={warnAsk} onOpenChange={(o) => { if (!o) setWarnAsk(false) }}>
+        <Dialog.Portal><Dialog.Overlay className="tg tg-overlay" /><Dialog.Content className="tg tg-it-dlg" aria-describedby={undefined}>
+          <header><Dialog.Title>Chốt kế hoạch còn cảnh báo?</Dialog.Title><Dialog.Close className="tg-icon-btn" aria-label="Đóng"><Icon name="x" size={18} /></Dialog.Close></header>
+          <p>Mình chỉ báo để bạn biết, quyết định là của bạn.</p>
+          {!!view.violations?.length && <ul className="tg-notes">{view.violations.map((v, i) => <li key={i}><Icon name="warn" size={14} /><span>{v.day !== null ? `Ngày ${v.day + 1} · ` : ''}{v.place_id ? `${info(v.place_id)?.name ?? v.place_id}: ` : ''}{VIOLATION[v.kind] ?? 'Lịch còn một điểm cần lưu ý.'}</span></li>)}</ul>}
+          <footer><button type="button" className="tg-btn tg-btn--ghost" onClick={() => setWarnAsk(false)}>Xem lại lịch</button><button type="button" className="tg-btn tg-btn--primary" disabled={busy} onClick={() => { void onConfirm() }}>Vẫn chốt</button></footer>
         </Dialog.Content></Dialog.Portal>
       </Dialog.Root>
 

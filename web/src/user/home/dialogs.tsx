@@ -12,8 +12,6 @@ import { go } from '../ui/common'
 import { Icon } from '../ui/icons'
 import { themeOf } from './themes'
 import { ThemeBlog } from './ThemeBlog'
-import { dropToken, hasToken, TagPicker, toggleToken } from './TagPicker'
-import { loadTopics } from './tagTopics'
 
 // The home frame's dialogs: one at a time, opened from anywhere in the frame (sidebar, home, friends column, trips).
 type Open =
@@ -86,72 +84,46 @@ const say = (e: unknown) => {
   return ERR[m] ?? (m.startsWith('nickname:') ? 'Nickname 3–24 ký tự: chữ thường không dấu, số, dấu chấm, gạch dưới.' : 'Chưa làm được, bạn thử lại nhé.')
 }
 
+// "Tạo chuyến đi" has no form of its own: it opens Tìm hiểu (the chat) at once, with the idea it was given, if any.
 export function HomeDialogs() {
   const o = useHomeState()
+  const begin = useBegin()
   const theme = o?.kind === 'theme' ? themeOf(o.id) : null
-  useEffect(() => { void loadTopics() }, []) // the tags of "Kể chuyến đi" are in hand before the dialog opens
+  const prompt = o?.kind === 'create' ? o.prompt : null
+  useEffect(() => {
+    if (prompt === null) return
+    close()
+    if (prompt) begin({ startText: prompt, startWith: null })
+    else begin({ startWith: 'nothing', startText: null })
+  }, [prompt]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The theme's idea plus the kinds the user picked on its page: what is sent is what Tìm hiểu reads first.
+  const start = (t: { prompt: string }, kinds: string[]) => openCreate(kinds.length ? `${t.prompt} Mình thích kiểu: ${kinds.join(', ')}.` : t.prompt)
   return (
     <>
-      <ThemeBlog id={theme?.id ?? null} from={blogFrom} onPick={(id) => openTheme(id)} onStart={(t) => openCreate(t.prompt)} onClose={close} />
-      {o && o.kind !== 'theme' && <HomeDialog o={o} />}
+      <ThemeBlog id={theme?.id ?? null} from={blogFrom} onPick={(id) => openTheme(id)} onStart={start} onClose={close} />
+      {o && o.kind !== 'theme' && o.kind !== 'create' && <HomeDialog o={o} />}
     </>
   )
 }
 
-function HomeDialog({ o }: { o: Exclude<Open, { kind: 'theme' } | null> }) {
-  const title = o.kind === 'create' ? 'Kể mình nghe chuyến đi của bạn' : o.kind === 'friends' ? 'Bạn bè' : o.kind === 'chat' ? o.friend.name : 'Gửi lịch trình cho bạn'
+function HomeDialog({ o }: { o: Exclude<Open, { kind: 'theme' } | { kind: 'create'; prompt: string } | null> }) {
+  const title = o.kind === 'friends' ? 'Bạn bè' : o.kind === 'chat' ? o.friend.name : 'Gửi lịch trình cho bạn'
   return (
     <Dialog.Root open onOpenChange={(v) => { if (!v) close() }}>
       <Dialog.Portal>
         <Dialog.Overlay className="tg-hd__veil" />
-        <Dialog.Content className={`tg tg-home tg-hd ${o.kind === 'chat' ? 'tg-hd--chat' : ''} ${o.kind === 'create' ? 'tg-hd--create' : ''}`} aria-describedby={undefined} onOpenAutoFocus={o.kind === 'chat' ? (e) => e.preventDefault() : undefined}>
+        <Dialog.Content className={`tg tg-home tg-hd ${o.kind === 'chat' ? 'tg-hd--chat' : ''}`} aria-describedby={undefined} onOpenAutoFocus={o.kind === 'chat' ? (e) => e.preventDefault() : undefined}>
           {o.kind === 'chat' ? <ChatWindow friend={o.friend} key={o.friend.id} /> : (
             <div className="tg-hd__top">
               <Dialog.Title>{title}</Dialog.Title>
               <Dialog.Close className="tg-hd__x" aria-label="Đóng"><Icon name="x" size={16} /></Dialog.Close>
             </div>
           )}
-          {o.kind === 'create' && <CreateBody prompt={o.prompt} />}
           {o.kind === 'friends' && <FriendsBody />}
           {o.kind === 'share' && <ShareBody trip={o.trip} />}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  )
-}
-
-// What the tags do not say: how long, with whom, how to get around, the pace and the budget. The taste (cà phê, săn mây, ...) is in the tags above.
-// `one`: the choices exclude each other ("2 ngày" and "3 ngày"), so a new one replaces the old.
-const DETAILS: { label: string; one?: boolean; chips: string[] }[] = [
-  { label: 'Bao lâu', one: true, chips: ['1 ngày', '2 ngày', '3 ngày', '4 ngày', '5 ngày trở lên'] },
-  { label: 'Đi cùng ai', chips: ['Đi một mình', '2 người', 'Đi với người yêu', 'Đi với gia đình', 'Đi với bạn bè', 'Có trẻ nhỏ', 'Có người lớn tuổi', 'Có thú cưng'] },
-  { label: 'Di chuyển', one: true, chips: ['Xe máy', 'Ô tô', 'Taxi, Grab', 'Đi bộ là chính'] },
-  { label: 'Nhịp chuyến đi', chips: ['Thong thả', 'Lịch trình dày', 'Dậy sớm', 'Ngủ nướng', 'Ít đông', 'Tiết kiệm', 'Thoải mái chi'] },
-]
-function CreateBody({ prompt }: { prompt: string }) {
-  const begin = useBegin()
-  const [text, setText] = useState(prompt)
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => { ref.current?.focus() }, [])
-  const chip = (c: string, group: string[], one?: boolean) => setText((t) => toggleToken(one ? dropToken(t, ...group.filter((g) => g !== c)) : t, c))
-  return (
-    <form className="tg-hd__body" onSubmit={(e) => { e.preventDefault(); close(); if (text.trim()) begin({ startText: text.trim(), startWith: null }); else begin({ startWith: 'nothing', startText: null }) }}>
-      <h3>Chuyến tới, bạn muốn gì?</h3>
-      <p>Nói một câu là được. Mình sẽ hỏi thêm để hiểu đúng chuyến đi của bạn.</p>
-      <label htmlFor="tg-hd-prompt">Ý tưởng chuyến đi</label>
-      <textarea id="tg-hd-prompt" ref={ref} rows={4} maxLength={1000} value={text} placeholder="3 ngày ở Đà Lạt, đi cùng người yêu, thích cà phê và săn mây…" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit() } }} />
-      <TagPicker text={text} setText={setText} />
-      <h4 className="tg-tp__h">Thêm vài chi tiết</h4>
-      <div className="tg-dt">
-        {DETAILS.map((g) => (
-          <div key={g.label} className="tg-dt__row" role="group" aria-label={g.label}>
-            <span className="tg-dt__l">{g.label}</span>
-            <div className="tg-hd__chips">{g.chips.map((c) => <button key={c} type="button" aria-pressed={hasToken(text, c)} onClick={() => chip(c, g.chips, g.one)}>{c}</button>)}</div>
-          </div>
-        ))}
-      </div>
-      <button type="submit" className="tg-hb-go tg-hd__act">{text.trim() ? 'Bắt đầu tìm hiểu chuyến đi' : 'Bắt đầu, chưa có gì trong đầu'}<Icon name="arrow" size={16} /></button>
-    </form>
   )
 }
 

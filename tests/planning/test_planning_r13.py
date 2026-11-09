@@ -80,9 +80,7 @@ def test_invalid_edit_offers_a_verified_single_drop_recovery():
     sid = created['id']
     _invalid_clock(e, sid)
     view = e.load(sid)['view']
-    with pytest.raises(NotConfirmable):
-        e.confirm(sid)
-    assert view['recovery_actions']
+    assert view['violations'] and view['recovery_actions']   # the user may still confirm; the way out is offered
     action = view['recovery_actions'][0]
     assert action['reason'] and action['confirmable']
     repaired = e.act(sid, action['action'])['view']

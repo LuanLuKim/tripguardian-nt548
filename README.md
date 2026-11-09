@@ -103,7 +103,7 @@ tail -n 5 logs/run/keepalive.log
 
 Mỗi request giới hạn 15 giây; khóa file tránh chạy chồng. Log ghi giờ UTC, HTTP status, độ trễ và `ok`, xoay vòng tối đa khoảng 3 MiB (`keepalive.log`, `.1`, `.2`); exit code 1 khi lỗi. Tắt ping: xóa riêng dòng có nhãn `# tripguardian-keepalive` trong `crontab -e`. `prod-stop` không xóa cron; khi stack dừng, ping ghi lỗi. Ping không tự khởi động lại tiến trình hay bảo đảm uptime khi máy/mạng ngừng hoạt động; chưa gửi cảnh báo ra ngoài.
 
-**Vị trí trên gpu156 và sao lưu.** Repo nằm trên ổ cục bộ `/data/work/luanhh/local/tripguardian/checkout` (`/workingspace_aiclub/WorkingSpace/Unsorted/luanhh/tripguardian` là symlink tới đây). Thư mục repo chỉ chứa code (cộng `data/`, `logs/` đã gitignore); thứ không phải code nằm ở `/data/work/luanhh/local/tripguardian-store/`: `venv` (`.venv` là symlink), `venv-vllm` (`.venv-vllm`), `cache` (`.cache`; trong đó `hf` → `hf-repo` là trọng số model, `uv` → `uv-repo`), `uv-python` (Python 3.12 mà các venv dùng, không phụ thuộc home), `hf` (model sinh ảnh / 3D), `imggen-venv`, `splat` (dữ liệu dựng 3D), `osm` (bản OSM tải ngày 02/11; code không dùng, OSRM dùng bản trong `osrm-data/`). Docker rootless (Postgres, OSRM, SearXNG) có `data-root` `/data/work/luanhh/local/docker` cùng ổ. Sao lưu ra NAS `/data/work/luanhh/nas/tripguardian/`: `pg-backup/` (dump hằng đêm), `data/` (bản sao `data/`, chép lại bằng `rsync -aH data/ /data/work/luanhh/nas/tripguardian/data/`), `archive-<ngày>/` (log, file làm việc đã dọn khỏi repo).
+**Vị trí trên gpu156 và sao lưu.** Repo nằm trên ổ cục bộ `/data/work/luanhh/local/tripguardian` (`/workingspace_aiclub/WorkingSpace/Unsorted/luanhh/tripguardian` là symlink tới đây). Thư mục repo chỉ chứa code (cộng `data/`, `logs/` đã gitignore); thứ không phải code nằm ở `/data/work/luanhh/local/tripguardian-store/`: `venv` (`.venv` là symlink), `venv-vllm` (`.venv-vllm`), `cache` (`.cache`; trong đó `hf` → `hf-repo` là trọng số model, `uv` → `uv-repo`), `uv-python` (Python 3.12 mà các venv dùng, không phụ thuộc home), `hf` (model sinh ảnh / 3D), `imggen-venv`, `splat` (dữ liệu dựng 3D). Docker rootless (Postgres, OSRM, SearXNG) có `data-root` `/data/work/luanhh/local/docker` cùng ổ. Sao lưu ra NAS `/data/work/luanhh/nas/tripguardian/`: `pg-backup/` (dump hằng đêm), `data/` (bản sao `data/`, chép lại bằng `rsync -aH data/ /data/work/luanhh/nas/tripguardian/data/`), `archive-<ngày>/` (log, file làm việc đã dọn khỏi repo).
 Khi `:5433` từ chối kết nối hoặc harness báo `PoolTimeout`: xem `df -h /data/work/luanhh/local` và `docker logs --tail 30 tripguardian-pg` trước.
 
 | Dịch vụ | Cổng | Lệnh tương đương |
@@ -124,12 +124,12 @@ CLI/API module chạy độc lập khi cần: `python -m trip serve` (:8766), `p
 Trên gpu156 (`crontab -e`, giữ các job khác; mỗi job một nhãn để gỡ riêng):
 
 ```cron
-@reboot sleep 120; cd /data/work/luanhh/local/tripguardian/checkout && PATH=$HOME/node/bin:/usr/local/bin:/usr/bin:/bin ./run.sh prod >> logs/run/reboot.log 2>&1 # tripguardian-reboot
-* * * * * /usr/bin/python3 /data/work/luanhh/local/tripguardian/checkout/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
-*/10 * * * * /data/work/luanhh/local/tripguardian/checkout/scripts/disk_guard.sh # tripguardian-disk-guard
-30 2 * * * /data/work/luanhh/local/tripguardian/checkout/scripts/pg_backup_nas.sh # tripguardian-pg-backup
-15 3 * * * cd /data/work/luanhh/local/tripguardian/checkout && ./run.sh prewarm >> logs/prewarm_transit.log 2>&1
-0 4 * * * /data/work/luanhh/local/tripguardian/checkout/scripts/pulse_daily.sh dalat --once # tripguardian-pulse
+@reboot sleep 120; cd /data/work/luanhh/local/tripguardian && PATH=$HOME/node/bin:/usr/local/bin:/usr/bin:/bin ./run.sh prod >> logs/run/reboot.log 2>&1 # tripguardian-reboot
+* * * * * /usr/bin/python3 /data/work/luanhh/local/tripguardian/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
+*/10 * * * * /data/work/luanhh/local/tripguardian/scripts/disk_guard.sh # tripguardian-disk-guard
+30 2 * * * /data/work/luanhh/local/tripguardian/scripts/pg_backup_nas.sh # tripguardian-pg-backup
+15 3 * * * cd /data/work/luanhh/local/tripguardian && ./run.sh prewarm >> logs/prewarm_transit.log 2>&1
+0 4 * * * /data/work/luanhh/local/tripguardian/scripts/pulse_daily.sh dalat --once # tripguardian-pulse
 ```
 
 - `@reboot`: Docker rootless tự lên (linger bật), 120 giây sau chạy lại toàn bộ `./run.sh prod` (build, Clef, harness, web, worker, tunnel, smoke); log `logs/run/reboot.log`.

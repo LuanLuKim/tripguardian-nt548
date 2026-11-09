@@ -15,8 +15,8 @@
 #   SKIP_CLEF=1 (prod: do not start the self-hosted Clef; the Judge fails open),
 #   TUNNEL_TOKEN_FILE (default ~/.cloudflared/tripguardian.token; no file = no tunnel),
 #   HARNESS_GPU (default 1: the GPU the harness embeds on, corpus.index, about 2.4 GiB. The team has GPUs 0 and 1 only (renumbered
-#   by the admin 2026-11-06); GPU 0 is shared with a teammate's training, so prod stays off it).
-# prod also starts the self-hosted Clef (scripts/models_ctl.sh: nf4 on GPU 4 + gateway :30000) when
+#   by the admin 2026-11-06); GPU 1 is reserved for the harness and Clef takes GPU 0, so the two never share a card).
+# prod also starts the self-hosted Clef (scripts/models_ctl.sh: nf4 on GPU 0 + gateway :30000) when
 #   .env points CLEF_BASE_URL at it; prod-stop leaves Clef running (offline jobs use it too): models_ctl.sh stop.
 cd "$(dirname "$0")" || exit 1
 export PYTHONIOENCODING=utf-8

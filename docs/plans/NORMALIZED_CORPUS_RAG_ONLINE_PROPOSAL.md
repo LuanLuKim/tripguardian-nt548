@@ -5,8 +5,8 @@ chức năng bên dưới đều đã có. **Bàn giao phiên tiếp theo:**
 `CORPUS_NORMALIZATION_HANDOFF.md` §Điểm tiếp tục ghi code đã làm, test, pointer và việc còn lại. Phạm vi người dùng chọn: hoàn tất contract normalization trước, rồi dùng dữ liệu
 nhất quán để cải thiện ba module; chưa ưu tiên thêm reasoning sâu hoặc redesign toàn sản phẩm.
 
-Thiết kế nền: `../superpowers/specs/2026-10-14-corpus-normalization-design.md`.
-Ý tưởng Trip: `../superpowers/specs/2026-10-13-trip-understanding-redesign-design.md`, đặc biệt §12.
+Thiết kế nền: `docs/CORPUS.md` §Chuẩn hóa và release offline.
+Ý tưởng Trip: `docs/TRIP_UNDERSTANDING.md`.
 Hiện trạng build và regression: `CORPUS_NORMALIZATION_HANDOFF.md`.
 
 ## 1. Kết luận đề xuất

@@ -1,4 +1,4 @@
-"""corpus.snapshot: what online reads (docs/superpowers/specs/2026-10-13-corpus-snapshot-design.md). Offline compiles
+"""corpus.snapshot: what online reads (docs/plans/2026-10-13-corpus-snapshot-design.md). Offline compiles
 it (python -m corpus snapshot, and at the end of python -m corpus serving); online only reads it."""
 
 from .compile import compile_snapshot

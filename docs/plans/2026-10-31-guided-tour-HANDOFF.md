@@ -1,6 +1,6 @@
 # Bàn giao: hướng dẫn có linh vật (Guided Tour)
 
-Ngày 2026-10-31. Người nhận: session làm tiếp. Đọc file này trước, rồi `docs/superpowers/specs/2026-10-31-guided-tour-design.md` (thiết kế, đã được chủ sản phẩm duyệt, nhưng xem "Quyết định đã đổi" bên dưới vì vài chỗ trong spec đã bị chủ sản phẩm đổi sau) và `docs/superpowers/plans/2026-10-31-guided-tour-demo.md` (kế hoạch đợt 1).
+Ngày 2026-10-31. Người nhận: session làm tiếp. Đọc file này trước, rồi `docs/plans/2026-10-31-guided-tour-design.md` (thiết kế, đã được chủ sản phẩm duyệt, nhưng xem "Quyết định đã đổi" bên dưới vì vài chỗ trong spec đã bị chủ sản phẩm đổi sau) và `docs/plans/2026-10-31-guided-tour-demo.md` (kế hoạch đợt 1).
 
 ## 1. Đã xong (đợt 1, chạy được, chưa triển khai lên trang thật)
 

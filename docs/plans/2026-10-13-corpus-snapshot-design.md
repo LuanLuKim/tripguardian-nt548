@@ -1,6 +1,6 @@
 # Spec: corpus snapshot — truy vấn corpus nhanh nhất cho Place Decision và agent
 
-File làm việc tạm (`RULE.md` §0.1). Khi xong: gộp vào `docs/CORPUS.md` (§Data model, §Place Decision dùng corpus thế nào, §Kiểm soát chi phí và hiệu năng), `docs/PLACE_DECISION.md` §18, `README.md` (CLI), rồi xóa spec này và plan `docs/superpowers/plans/2026-10-13-corpus-snapshot.md`. Spec này thay §2 "Mask tất định cho Place Decision" của `2026-10-12-corpus-semantic-index-design.md`.
+File làm việc tạm (`RULE.md` §0.1). Khi xong: gộp vào `docs/CORPUS.md` (§Data model, §Place Decision dùng corpus thế nào, §Kiểm soát chi phí và hiệu năng), `docs/PLACE_DECISION.md` §18, `README.md` (CLI), rồi xóa spec này và plan `docs/plans/2026-10-13-corpus-snapshot.md`. Spec này thay §2 "Mask tất định cho Place Decision" của `2026-10-12-corpus-semantic-index-design.md`.
 
 ## 1. Mục tiêu
 

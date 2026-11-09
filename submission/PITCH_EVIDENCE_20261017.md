@@ -1,6 +1,6 @@
 # Bằng chứng pitch theo thang điểm 100 — 17/10/2026
 
-Bảng ngắn theo 6 tiêu chí nằm ngay đầu [pitch_desk.md](../pitch_desk.md). File này chỉ để tra nguồn khi phản biện. Các điểm 20/15/20/20/15/10 là trọng số của ban giám khảo, không phải điểm tự chấm.
+Bảng ngắn theo 6 tiêu chí nằm ngay đầu [pitch_desk.md](pitch_desk.md). File này chỉ để tra nguồn khi phản biện. Các điểm 20/15/20/20/15/10 là trọng số của ban giám khảo, không phải điểm tự chấm.
 
 ## 1. Số nào dùng ngay
 

@@ -10,7 +10,7 @@
 
 **Tech Stack:** React 18 + TypeScript (Vite), CSS thường theo token, Playwright (full chromium-1169) để kiểm bằng mắt, Python + 9router cho ảnh.
 
-**Spec:** `docs/superpowers/specs/2026-10-31-guided-tour-design.md`
+**Spec:** `docs/plans/2026-10-31-guided-tour-design.md`
 
 ## Global Constraints
 

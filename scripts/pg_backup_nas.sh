@@ -3,6 +3,7 @@
 ROOT=$(cd "$(dirname "$0")/.." && pwd)  # repo root, so the script survives a move of the checkout
 DIR=${PG_BACKUP_DIR:-/data/work/luanhh/nas/tripguardian/pg-backup}  # /AIClub_NAS symlinks are removed 2026-11-12
 LOG=$ROOT/logs/pg_backup_nas.log
+umask 077  # dumps hold account data: owner only
 mkdir -p "$DIR" "$ROOT/logs"
 out="$DIR/$(date +%Y%m%d-%H%M).sql.gz"
 if docker exec tripguardian-pg pg_dump -U postgres tripguardian | gzip > "$out" && gzip -t "$out"; then

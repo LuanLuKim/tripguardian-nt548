@@ -49,7 +49,7 @@ Quy tắc làm việc (bắt buộc): `RULE.md`. Hướng dẫn cho agent: `AGEN
 
 Mục tiêu: clone code, tải gói dữ liệu, chạy được cả hệ thống như máy đang phát triển. Dữ liệu không nằm trong git.
 
-**Cần cài trước:** Python ≥ 3.12 (đang dùng 3.13), Node ≥ 20.19 (đang dùng 24), Git Bash (Windows; `run.sh` là shell script, dùng `netstat`/`taskkill`), Google Chrome bản thường (Playwright mở Chrome qua `channel="chrome"`), Docker (chỉ cho OSRM). Chỉ khi crawl: ffmpeg trên `PATH`, GPU cho ASR.
+**Cần cài trước:** Python ≥ 3.12 (đang dùng 3.12), Node ≥ 20.19 (đang dùng 24), Git Bash (Windows; `run.sh` là shell script, dùng `netstat`/`taskkill`), Google Chrome bản thường (Playwright mở Chrome qua `channel="chrome"`), Docker (chỉ cho OSRM). Chỉ khi crawl: ffmpeg trên `PATH`, GPU cho ASR.
 
 ```sh
 git clone https://github.com/hohoangluan/tripguardian && cd tripguardian
@@ -65,7 +65,7 @@ cp .env.example .env                                     # điền key: docs/LLM
 3. **OSRM** (thời gian di chuyển cho Planning): `bash scripts/osrm_setup.sh` một lần mỗi máy — tải OSM Việt Nam, dựng chỉ mục vào `osrm-data/`, mở `127.0.0.1:5000`. Lần sau chỉ cần chạy lại container (dòng `docker run ... -p 127.0.0.1:5000:5000` cuối script). Không có OSRM thì Planning ước lượng thô và gắn cảnh báo. Endpoint và TTL ở `config/live.yaml`; `LIVE_CONTACT` trong `.env` là liên hệ gửi kèm request.
 4. **Postgres** (tài khoản, hành trình, event, thông báo; cần Docker): điền `POSTGRES_PASSWORD`, `DATABASE_URL`, `DATABASE_URL_READONLY` trong `.env`, rồi `./run.sh db` — tạo container `tripguardian-pg` ở `127.0.0.1:5433`, role, database và chạy migration (chạy lại an toàn). `./run.sh db-backup` sao lưu vào `data/backup/pg/`. Quên mật khẩu cần thư: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` (`docs/ACCOUNTS.md` §2c). Đăng nhập Google, Calendar và web push cần thêm `APP_BASE_URL`, `GOOGLE_*`, `TOKEN_ENC_KEY`, `VAPID_*` (`.env.example`, `docs/ACCOUNTS.md`). Hành trình cũ dạng file: `python -m harness import-files data/harness/sessions data/harness/feedback.jsonl`.
 5. **Agent endpoint và web search.** `AGENT_BASE_URL` trỏ `127.0.0.1:<cổng>` thì `./run.sh start` tự bật **9router** (cần `npm i -g 9router`; không có thì Agent trả lời theo policy dự phòng). `./run.sh prod` bật thêm **SearXNG** (`127.0.0.1:8888`, Docker; `docker/searxng/README.md`) cho tool `web_search` của Trip agent; `web_base_url` trống ở `config/trip.yaml` thì agent không có tool web.
-6. **Chỉ mục ngữ nghĩa** (ảnh / câu → "vibe", "chỗ như này"): nằm trong gói dữ liệu ở `data/index/`. Harness nạp embedder trên GPU `HARNESS_GPU` (mặc định `1,3`); dựng lại: `python -m corpus index` (`docs/CORPUS.md` §Chỉ mục ngữ nghĩa).
+6. **Chỉ mục ngữ nghĩa** (ảnh / câu → "vibe", "chỗ như này"): nằm trong gói dữ liệu ở `data/index/`. Harness nạp embedder trên GPU `HARNESS_GPU` (mặc định `1`); dựng lại: `python -m corpus index` (`docs/CORPUS.md` §Chỉ mục ngữ nghĩa).
 7. **Chỉ khi crawl:** đăng nhập tài khoản phụ một lần mỗi máy, `python -m corpus login tiktok`, `python -m corpus login gmaps` (profile lưu ở `.browser/`, đã gitignore). Chạy dịch vụ và Planning lodging không cần đăng nhập.
 
 Người giữ dữ liệu tạo gói mới: `python scripts/pack_data.py [--no-photos] [--out <thư mục>]` (cái gì bị bỏ và vì sao: docstring của script), rồi đưa zip lên Drive. Sửa `data/` xong mà web cần thấy: `python web/scripts/export_snapshot.py` trước khi đóng gói.
@@ -86,17 +86,13 @@ Production (gpu156, public qua Cloudflare tunnel):
 
 Prod chạy code từ **bản đông cứng `src_live/`** (không phải `src/`): `./run.sh prod` chép `src/` → `src_live.new/`, kiểm import, dừng dịch vụ cũ rồi đổi tên và khởi động harness + worker thông báo với `PYTHONPATH=src_live`. Sửa `src/` (người hay agent, kể cả worker quá tải `spawn` nạp lại `planning` mỗi lượt) không vào prod cho tới lần deploy sau. `src_live*` nằm ngoài git.
 
-`web/server.mjs` chỉ phục vụ phần public: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media` (jpg), thumbnail `/media/thumb` (WebP) và proxy `/api/harness/*`, `/api/auth/*` (keep-alive); `/admin`, analytics, mọi `/api` khác và video trả 404. Cần Postgres đang chạy (`./run.sh db`). Route hostname → cổng nằm trong dashboard Cloudflare của tunnel; `prod` in ra các route nhận được để thấy ngay khi token sai. Đổi cổng / token: `PUBLIC_PORT`, `TUNNEL_TOKEN_FILE`. Tiến trình chạy bằng `nohup`, không tự khởi động lại khi máy reboot.
+`web/server.mjs` chỉ phục vụ phần public: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media` (jpg), thumbnail `/media/thumb` (WebP) và proxy `/api/harness/*`, `/api/auth/*` (keep-alive); `/admin`, analytics, mọi `/api` khác và video trả 404. Cần Postgres đang chạy (`./run.sh db`). Route hostname → cổng nằm trong dashboard Cloudflare của tunnel; `prod` in ra các route nhận được để thấy ngay khi token sai. Đổi cổng / token: `PUBLIC_PORT`, `TUNNEL_TOKEN_FILE`. Tiến trình chạy bằng `nohup`; sau khi máy reboot, job cron `@reboot` (nhãn `# tripguardian-reboot`, §Cron production) chạy lại `./run.sh prod`. Tiến trình chết giữa chừng không tự lên lại.
 
 Tốc độ production: `web/scripts/make_thumbs.py` tạo WebP rộng ≤ 480 px cho mọi ảnh bìa vào `data/thumbs/<nguồn>/` (chỉ ảnh mới); `npm run build:prod` = `vite build` + `web/scripts/prod_assets.mjs`: `dist/data/snapshot.json` chỉ giữ trường User Web đọc (27 → 16 MB, `public/data` vẫn đủ cho dev/admin) và mọi file văn bản có bản `.br` / `.gz` (cache theo hash ở `web/node_modules/.cache/tg-prod`). `server.mjs` gửi bản nén client nhận, gắn `ETag` (lần sau 304); `/data` cache 5 phút + revalidate, `/media` 7 ngày, `/assets` immutable.
 
 **Ping production qua Cloudflare (Linux).** `scripts/keepalive.py` dùng Python 3 chuẩn và `curl`, GET `/app` cùng `/api/harness/me` mỗi phút qua domain public. Script không gửi cookie, không tạo tài khoản/journey hay gọi model; query riêng mỗi lượt tránh dùng lại cache. Thành công khi `/app` trả 200 có app shell và API trả đúng 401 với JSON `{"error":"sign in first"}`. Đây là kiểm tra đường HTTP đến backend, chưa kiểm tra DB, model hay toàn bộ hành trình.
 
-Cron trên gpu156 (`crontab -e`, giữ các job khác):
-
-```cron
-* * * * * /usr/bin/python3 /workingspace_aiclub/WorkingSpace/Unsorted/luanhh/tripguardian/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
-```
+Cron trên gpu156: §Cron production (dòng `# tripguardian-keepalive`).
 
 Kiểm tra thủ công và xem log:
 
@@ -105,12 +101,10 @@ python3 scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk
 tail -n 5 logs/run/keepalive.log
 ```
 
-Mỗi request giới hạn 15 giây; khóa file tránh chạy chồng. Log ghi giờ UTC, HTTP status, độ trễ và `ok`, xoay vòng tối đa khoảng 3 MiB (`keepalive.log`, `.1`, `.2`); exit code 1 khi lỗi. Tắt ping: xóa riêng dòng có nhãn `# tripguardian-keepalive` trong `crontab -e`. `prod-stop` không xóa cron; khi stack dừng, ping ghi lỗi. Cron vẫn được giữ qua reboot nhưng app/tunnel chạy bằng `nohup` không tự lên lại. Ping không tự khởi động lại tiến trình hay bảo đảm uptime khi máy/mạng ngừng hoạt động; chưa gửi cảnh báo ra ngoài.
+Mỗi request giới hạn 15 giây; khóa file tránh chạy chồng. Log ghi giờ UTC, HTTP status, độ trễ và `ok`, xoay vòng tối đa khoảng 3 MiB (`keepalive.log`, `.1`, `.2`); exit code 1 khi lỗi. Tắt ping: xóa riêng dòng có nhãn `# tripguardian-keepalive` trong `crontab -e`. `prod-stop` không xóa cron; khi stack dừng, ping ghi lỗi. Ping không tự khởi động lại tiến trình hay bảo đảm uptime khi máy/mạng ngừng hoạt động; chưa gửi cảnh báo ra ngoài.
 
-**Ổ cục bộ và sao lưu DB (từ 04/11/2026).** Dữ liệu Postgres (`tripguardian-pg`) nằm trên ổ cục bộ `/` của gpu156 (volume Docker trong `~/.local/share/docker`), không phải ổ NFS của repo. Ngày 03/11 ổ này đầy 100% làm Postgres tắt. Hai job cron:
-- `scripts/disk_guard.sh` (mỗi 10 phút, nhãn `# tripguardian-disk-guard`): `/` còn dưới 5 GiB thì ghi `logs/disk_guard.log` và chạy `CHECKPOINT`.
-- `scripts/pg_backup_nas.sh` (02:30 hằng đêm, nhãn `# tripguardian-pg-backup`): `pg_dump` sang `/AIClub_NAS/luanhh/tripguardian/pg-backup/`, giữ 14 bản mới nhất, log `logs/pg_backup_nas.log`.
-Khi `:5433` từ chối kết nối hoặc harness báo `PoolTimeout`: xem `df -h /` và `docker logs --tail 30 tripguardian-pg` trước.
+**Vị trí trên gpu156 và sao lưu.** Repo nằm trên ổ cục bộ `/data/work/luanhh/local/tripguardian/checkout` (`/workingspace_aiclub/WorkingSpace/Unsorted/luanhh/tripguardian` là symlink tới đây). Cache model (`.cache/hf`), venv (`.venv`) và cache khác nằm ở thư mục cha `/data/work/luanhh/local/tripguardian/` (`hf-repo`, `venv`, `cache`, …). Docker rootless (Postgres, OSRM, SearXNG) có `data-root` `/data/work/luanhh/local/docker` cùng ổ. Sao lưu ra NAS `/data/work/luanhh/nas/tripguardian/`: `pg-backup/` (dump hằng đêm), `data/` (bản sao `data/`, chép lại bằng `rsync -aH data/ /data/work/luanhh/nas/tripguardian/data/`), `archive-<ngày>/` (log, file làm việc đã dọn khỏi repo).
+Khi `:5433` từ chối kết nối hoặc harness báo `PoolTimeout`: xem `df -h /data/work/luanhh/local` và `docker logs --tail 30 tripguardian-pg` trước.
 
 | Dịch vụ | Cổng | Lệnh tương đương |
 |---|---|---|
@@ -121,13 +115,28 @@ Khi `:5433` từ chối kết nối hoặc harness báo `PoolTimeout`: xem `df -
 | 9router (endpoint của Agent) | theo `AGENT_BASE_URL` | `9router` |
 | SearXNG (`web_search`, chỉ prod) | 8888 | container `tripguardian-searxng` |
 
-Xe khách cho câu hỏi hậu cần được tra trước mỗi ngày vào cache `data/live/vexere/` (phạm vi: `config/live.yaml` `transit_prewarm`; một nguồn lỗi 8 lần liền thì dừng nguồn đó). Chuyến bay không dùng cache (`config/live.yaml` `flight_cache: false`): mỗi câu hỏi mở Google Flights trực tiếp, prewarm bỏ qua chuyến bay. Máy không có Chrome: `run.sh` tự trỏ Playwright vào Chromium trong `.cache/ms-playwright` cho harness và cho lệnh này. Cron trên máy production:
-
-```sh
-15 3 * * * cd <repo> && ./run.sh prewarm >> logs/prewarm_transit.log 2>&1
-```
+Xe khách cho câu hỏi hậu cần được tra trước mỗi ngày vào cache `data/live/vexere/` (phạm vi: `config/live.yaml` `transit_prewarm`; một nguồn lỗi 8 lần liền thì dừng nguồn đó). Chuyến bay không dùng cache (`config/live.yaml` `flight_cache: false`): mỗi câu hỏi mở Google Flights trực tiếp, prewarm bỏ qua chuyến bay. Máy không có Chrome: `run.sh` tự trỏ Playwright vào Chromium trong `.cache/ms-playwright` cho harness và cho lệnh này. Cron: §Cron production.
 
 CLI/API module chạy độc lập khi cần: `python -m trip serve` (:8766), `python -m decision serve` (:8767), `python -m planning serve` (:8768). User Web dùng harness và journey chung; contract ở `docs/AGENT_HARNESS.md`.
+
+### Cron production
+
+Trên gpu156 (`crontab -e`, giữ các job khác; mỗi job một nhãn để gỡ riêng):
+
+```cron
+@reboot sleep 120; cd /data/work/luanhh/local/tripguardian/checkout && PATH=$HOME/node/bin:/usr/local/bin:/usr/bin:/bin ./run.sh prod >> logs/run/reboot.log 2>&1 # tripguardian-reboot
+* * * * * /usr/bin/python3 /data/work/luanhh/local/tripguardian/checkout/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
+*/10 * * * * /data/work/luanhh/local/tripguardian/checkout/scripts/disk_guard.sh # tripguardian-disk-guard
+30 2 * * * /data/work/luanhh/local/tripguardian/checkout/scripts/pg_backup_nas.sh # tripguardian-pg-backup
+15 3 * * * cd /data/work/luanhh/local/tripguardian/checkout && ./run.sh prewarm >> logs/prewarm_transit.log 2>&1
+0 4 * * * /data/work/luanhh/local/tripguardian/checkout/scripts/pulse_daily.sh dalat --once # tripguardian-pulse
+```
+
+- `@reboot`: Docker rootless tự lên (linger bật), 120 giây sau chạy lại toàn bộ `./run.sh prod` (build, Clef, harness, web, worker, tunnel, smoke); log `logs/run/reboot.log`.
+- `disk_guard.sh`: ổ chứa Docker data-root còn dưới 5 GiB thì ghi `logs/disk_guard.log` và chạy `CHECKPOINT` (ngày 03/11 ổ cũ đầy 100% làm Postgres tắt).
+- `pg_backup_nas.sh`: `pg_dump` sang `/data/work/luanhh/nas/tripguardian/pg-backup/` (đổi bằng `PG_BACKUP_DIR`), giữ 14 bản mới nhất, log `logs/pg_backup_nas.log`.
+- `prewarm`: cache xe khách (đoạn trên).
+- `pulse_daily.sh`: làm mới bản tin Nhịp Đà Lạt (`docs/CORPUS.md` §Nhịp Đà Lạt); bản tin cũ quá `stale_after_days` thì web báo chưa được làm mới.
 
 ### Test Trip bằng Streamlit
 
@@ -156,7 +165,7 @@ python -m corpus tiktok all --city dalat --headed
 python -m corpus aggregate && python -m corpus serving   # serving cũng biên dịch snapshot cho phần online
 python -m corpus snapshot                            # chỉ biên dịch lại snapshot từ data/serving/places.json
 python -m corpus views all --city dalat             # khí hậu, lịch, vùng hạn chế → data/dalat/views/ (docs/CORPUS.md §View toàn cầu)
-python -m corpus pulse --city dalat                  # Nhịp Đà Lạt: bản tin xu hướng từ dữ liệu đã crawl → data/dalat/pulse/ (docs/CORPUS.md §Nhịp Đà Lạt; mỗi 24 giờ: logs/pulse_daily.sh)
+python -m corpus pulse --city dalat                  # Nhịp Đà Lạt: bản tin xu hướng từ dữ liệu đã crawl → data/dalat/pulse/ (docs/CORPUS.md §Nhịp Đà Lạt; mỗi 24 giờ: scripts/pulse_daily.sh)
 python -m corpus index                               # chỉ mục ngữ nghĩa: vector theo GPU (vectors) rồi gộp vào data/index/ (compile)
 python -m corpus normalize --city dalat              # chuẩn hóa, báo membership/source/schema; không đổi serving pointer
 python -m corpus normalize --rebuild --city dalat    # dựng release staging chỉ từ dữ liệu đã lưu, không model/network
@@ -203,8 +212,11 @@ Không thuộc tài liệu chính thức (`RULE.md` §0.1), chỉ để tra khi 
 |---|---|
 | `submission/TECHNICAL_REPORT.md` | Proposal & Technical Specification (đặc tả kỹ thuật, số đo kèm ngày) |
 | `submission/PITCH_EVIDENCE_20261017.md`, `submission/evidence/` | Bằng chứng chạy thật cho phần thuyết trình (2026-10-17) |
-| `pitch_desk.md` | Kịch bản 13 slide, 11 phút 15 giây |
-| `ARCHITECTURE_MODULES.md` | Kiến trúc các module hỗ trợ (Live Context, …) cho ban giám khảo |
+| `submission/pitch_desk.md`, `submission/PRESENTATION_TRIPGUARDIAN.md` | Kịch bản 13 slide, 11 phút 15 giây; nội dung thuyết trình |
+| `submission/ARCHITECTURE_MODULES.md` | Kiến trúc các module hỗ trợ (Live Context, …) cho ban giám khảo |
+| `submission/2026-10-06_de_tai_08_tour_guide_agent.docx` | Đề đồ án |
+| `submission/surveys/` | Hai khảo sát người dùng (CSV) và notebook lọc / trực quan hóa |
+| `submission/research/` | Ý tưởng, báo cáo kiểm và tóm tắt bench dùng làm nguồn cho báo cáo |
 
 ## Làm việc nhóm
 

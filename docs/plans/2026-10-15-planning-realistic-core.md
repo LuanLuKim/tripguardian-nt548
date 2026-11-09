@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, pytest, dataclasses, pydantic (State), corpus serving JSON.
 
-**Spec:** `docs/superpowers/specs/2026-10-15-planning-realistic-redesign-design.md` (§4–§8, §11, §13). Kế hoạch này là phần 1/3; Web §9 và gỡ phần sau chốt §10 là kế hoạch riêng, viết khi lõi xong (dùng tên dữ liệu thật của task 6–8).
+**Spec:** `docs/plans/2026-10-15-planning-realistic-redesign-design.md` (§4–§8, §11, §13). Kế hoạch này là phần 1/3; Web §9 và gỡ phần sau chốt §10 là kế hoạch riêng, viết khi lõi xong (dùng tên dữ liệu thật của task 6–8).
 
 **Ngoài kế hoạch này (chuyển sang kế hoạch 2, cùng Plan Output §9):** `days[i].header`, `risk`, `rain_swap`, `frame_report`; phí buổi đông khi `crowd_tolerance: avoid` và luật "tháng mưa: nơi ngoài trời ưu tiên sáng" (§5); xen kẽ nơi cho bé `interleave_kids` và trần 60′ nơi người lớn (§6); nghỉ tại quán gần thay khối nghỉ (§6); "Tự chọn nơi bỏ" dùng act có sẵn (`pick_variant` + `drop_place` / khôi phục) do Web nối. Học từ việc sửa lịch (§12 việc 10) là kế hoạch 3.
 
@@ -73,7 +73,7 @@
 Thêm vào cuối `config/planning.yaml`:
 
 ```yaml
-# Realistic itinerary (docs/superpowers/specs/2026-10-15-planning-realistic-redesign-design.md). Minutes unless noted.
+# Realistic itinerary (docs/plans/2026-10-15-planning-realistic-redesign-design.md). Minutes unless noted.
 realistic:
   wait_max: 20               # a wait longer than this becomes free time or a rest at the lodging
   rest_home_min: 90          # free time at least this long, with the lodging near, is spent resting there
@@ -549,7 +549,7 @@ CHECKS = {f.__name__: f for f in (no_long_wait, meals, every_pick_accounted, tim
 
 ```python
 """Spec §11: every realistic case passes the 12 checks. PENDING lists the checks a later task of
-docs/superpowers/plans/2026-10-15-planning-realistic-core.md turns green; each task deletes its entries."""
+docs/plans/2026-10-15-planning-realistic-core.md turns green; each task deletes its entries."""
 
 import pytest
 
@@ -2303,7 +2303,7 @@ git commit -m "feat(planning): keep the user's order, hint a shorter one only wh
 
 **Files:**
 - Delete: `src/planning/cluster.py`, `tests/planning/test_planning_cluster.py`; trong `src/planning/days.py` các hàm chỉ `schedule_trip` cũ dùng (`assign_days`, `_greedy`, `isolate_constrained`, `day_cost` nếu không còn ai gọi); trong `src/planning/composer.py` `_select`, `_quality`, `_detour`, `compose`, `render_profile`, `profile_violations`, `PRESETS`/`LABELS`/`DEFINITIONS`/`TRADEOFFS` nếu không còn ai gọi
-- Modify: `src/planning/engine.py` (bỏ nhánh objectives `choose(...)` không còn dùng), `docs/superpowers/specs/2026-10-15-planning-realistic-redesign-design.md` §3 (sửa câu "vòng K+1 chỗ ở trong create": thực tế vòng này chỉ ở CLI `lodging`)
+- Modify: `src/planning/engine.py` (bỏ nhánh objectives `choose(...)` không còn dùng), `docs/plans/2026-10-15-planning-realistic-redesign-design.md` §3 (sửa câu "vòng K+1 chỗ ở trong create": thực tế vòng này chỉ ở CLI `lodging`)
 
 - [ ] **Step 1: Tìm chỗ còn gọi**
 
@@ -2335,6 +2335,6 @@ Báo user đường dẫn `logs/planning_realistic/before/` và `after/`, kèm b
 - [ ] **Step 7: Commit**
 
 ```bash
-git add -A src/planning tests/planning docs/superpowers/specs/2026-10-15-planning-realistic-redesign-design.md
+git add -A src/planning tests/planning docs/plans/2026-10-15-planning-realistic-redesign-design.md
 git commit -m "refactor(planning): remove the cluster split and composer subset search the realistic core replaced"
 ```

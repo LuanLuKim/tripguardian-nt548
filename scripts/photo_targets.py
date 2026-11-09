@@ -1,4 +1,4 @@
-"""Gap G3 (docs/superpowers/specs/2026-10-29-assistant-tools-design.md 5B): which places have < min_photos photos a card can show.
+"""Gap G3 (docs/plans/2026-10-29-assistant-tools-design.md 5B): which places have < min_photos photos a card can show.
 
 `python scripts/photo_targets.py [--out FILE]` prints coverage (before/after use) by scene kind and category group and, with
 --out, writes the places under min_photos, most reviewed first, as {"wanted": N, "places": [{"dir", "reviews", "scenes"}]}.

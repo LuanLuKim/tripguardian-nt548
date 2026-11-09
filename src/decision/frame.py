@@ -388,7 +388,7 @@ def _cached(memo, tier: str, key: str, fn):
 def table(region, si, profile, days, relaxed, ctrs, anchors: list, keep: set, n_missing: int, cfg,
           memo: dict | None = None) -> Table:
     """Role, screen, fit and score of every place of the region; the numbers pipeline.run reads. memo: per session,
-    three tiers keyed by exactly the inputs each one reads (docs/superpowers/specs/2026-10-13-corpus-snapshot-design.md
+    three tiers keyed by exactly the inputs each one reads (docs/plans/2026-10-13-corpus-snapshot-design.md
     §6.2): screen (hard filters, days, relaxed, activities), fit (+ context, pace, anchors, profile), score (+ soft
     weights, Trip wishes, liked groups, novelty, vibes, live set)."""
     index = region.index

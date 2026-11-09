@@ -1,6 +1,6 @@
 # Bàn giao: nâng cấp theo spec 2026-10-26 (bản 2026-10-28 chiều)
 
-> Plan làm việc (`RULE.md` §0.1), tạm thời. Spec: `docs/superpowers/specs/2026-10-26-production-and-course-upgrade-design.md`. Session mới đọc file này trước, rồi ledger của từng track. Xong hết thì gộp phần còn giá trị vào tài liệu chính thức và xoá file này.
+> Plan làm việc (`RULE.md` §0.1), tạm thời. Spec: `docs/plans/2026-10-26-production-and-course-upgrade-design.md`. Session mới đọc file này trước, rồi ledger của từng track. Xong hết thì gộp phần còn giá trị vào tài liệu chính thức và xoá file này.
 > Viết bởi session `tripguardian-77`, 2026-10-28 ~16:40.
 
 ## CHỐT 2026-10-30 08:05 — đợt corpus-fill (đọc mục này trước tiên)
@@ -22,7 +22,7 @@ Bàn giao đầy đủ ở `.superpowers/sdd/2026-10-30-corpus-fill/HANDOFF.md`:
 
 **Git:** branch `upgrade/2026-10-30-wave`, 6 commit theo khu vực, chưa push. Ngoài git, cố ý để lại:
 - Các file bị xoá ở thư mục gốc: `*.mp4`, `pitch_desk.md`. Chủ dự án quyết.
-- `2026-10-06_de_tai_08_tour_guide_agent.docx`.
+- `submission/2026-10-06_de_tai_08_tour_guide_agent.docx`.
 - Ảnh trong `frontend_images/`.
 
 **Còn mở (chưa lên lịch):**
@@ -60,7 +60,7 @@ Chủ dự án sắp hết usage, chuyển tài khoản. Usage Codex cũng hết
 **Đang chạy lúc bàn giao** (xem ledger trước khi làm gì):
 - `crawl-local`: XONG (xem mục "Nếu session cũ đã tắt").
 - `tiktok-retry`: XONG (xem dòng tiktok-retry ở mục "Nếu session cũ đã tắt").
-- `plan-chat` **CHỐT (backend)**: 21 tool (8 đọc, 13 ghi; không có relax/confirm/đổi chỗ ở), mỗi lượt gộp thành một version, một lần undo là hoàn cả lượt; sửa nào thêm vi phạm thì bị hoàn ngay. Đã nối harness (`planning.turn`). Test: 364 pass (harness + planning engine/turn/assistant/bench). Spec `docs/superpowers/specs/2026-10-30-planning-assistant-design.md`. **Chưa làm:** UI panel ở Plan (dùng lại `Assistant.tsx`), bench live 31 ca (`.venv/bin/python -m planning bench --live --trip --model cx/gpt-6.1-terra`, `SSL_CERT_FILE` từ certifi, `CUDA_VISIBLE_DEVICES=6`; cần Codex hồi). Cần restart harness để lên prod.
+- `plan-chat` **CHỐT (backend)**: 21 tool (8 đọc, 13 ghi; không có relax/confirm/đổi chỗ ở), mỗi lượt gộp thành một version, một lần undo là hoàn cả lượt; sửa nào thêm vi phạm thì bị hoàn ngay. Đã nối harness (`planning.turn`). Test: 364 pass (harness + planning engine/turn/assistant/bench). Spec `docs/plans/2026-10-30-planning-assistant-design.md`. **Chưa làm:** UI panel ở Plan (dùng lại `Assistant.tsx`), bench live 31 ca (`.venv/bin/python -m planning bench --live --trip --model cx/gpt-6.1-terra`, `SSL_CERT_FILE` từ certifi, `CUDA_VISIBLE_DEVICES=6`; cần Codex hồi). Cần restart harness để lên prod.
 - `ui-qa`: **DỪNG giữa chừng** (subagent hết giới hạn 5 giờ lúc ~02:10, hồi 03:30), chưa có kết quả. Làm lại từ brief trong controller log (01:58).
 - `screens`: **DỪNG giữa chừng** (cùng lý do), mới có 19 ảnh trong `frontend_images/2026-10-30/`; script `logs/screens_capture.py` đã viết (ledger: "script has all sections"). Chạy lại script, rồi viết `INDEX.md`.
 - `bench-final`: terra vs sol; phần Decision INVALID vì Codex hết usage → chạy lại khi hồi.
@@ -74,7 +74,7 @@ Chủ dự án sắp hết usage, chuyển tài khoản. Usage Codex cũng hết
   - `ui-qa`, `screens`: chạy lại từ brief trong controller log (01:58, 01:30).
 - `git status --short | head` để thấy các file đang sửa; không commit dở.
 
-**Câu mở đầu cho session mới:** "làm tiếp docs/superpowers/plans/2026-10-28-upgrade-HANDOFF.md từ mục CHỐT 2026-10-30 02:05; đọc controller log .superpowers/sdd/2026-10-30-wave/controller.md và dòng cuối ledger từng track 2026-10-30 trước khi làm gì".
+**Câu mở đầu cho session mới:** "làm tiếp docs/plans/2026-10-28-upgrade-HANDOFF.md từ mục CHỐT 2026-10-30 02:05; đọc controller log .superpowers/sdd/2026-10-30-wave/controller.md và dòng cuối ledger từng track 2026-10-30 trước khi làm gì".
 
 **Việc tiếp theo, theo thứ tự:**
 1. Chạy lại `ui-qa` → sửa lỗi UI một lượt (Sonnet, theo `ui-common.md`; luôn dùng tài khoản dev để xem màn sau đăng nhập).
@@ -183,7 +183,7 @@ Session điều phối tối 29/10 bàn giao vì context đã quá dài. Nhật 
 Session `tripguardian-31` hết context; chủ dự án sắp đổi account (còn ~34 % usage). Mọi agent đã được dặn dừng ở ranh giới task và ghi `HANDOFF: next = …, state = …` cuối `progress.md`. Đọc dòng đó trước khi giao lại; ledger là nguồn sự thật.
 
 **Chủ dự án quyết hôm nay (không hỏi lại):**
-- Trợ lý mới theo spec `docs/superpowers/specs/2026-10-29-assistant-tools-design.md`: terra quyết ý định và chọn tool (chậm chút cũng được), từ khóa / Clef chỉ chạy sẵn vào cache; thẻ hiện trước, chữ sau; lõi chung `src/agents/assistant/` cho cả Tìm hiểu và Lựa chọn; bộ tool dùng hết corpus (§5A), corpus thiếu ghi §5B và crawl bù.
+- Trợ lý mới theo spec `docs/plans/2026-10-29-assistant-tools-design.md`: terra quyết ý định và chọn tool (chậm chút cũng được), từ khóa / Clef chỉ chạy sẵn vào cache; thẻ hiện trước, chữ sau; lõi chung `src/agents/assistant/` cho cả Tìm hiểu và Lựa chọn; bộ tool dùng hết corpus (§5A), corpus thiếu ghi §5B và crawl bù.
 - Rule chặn R1–R8 (spec §4) đã duyệt; câu lạc đề terra tự lái về du lịch; câu du lịch nói thô không chặn.
 - Local Expert chạy nền sau chốt lịch (xong, `expert.enabled: true`).
 - **Commit khi xong đợt này** (nhiều thay đổi chưa commit): tạo branch trước (đang ở `main`), commit theo khu vực, kiểm `.env.example` và file lớn, không push nếu chưa được bảo.
@@ -217,7 +217,7 @@ Session `tripguardian-31` hết context; chủ dự án sắp đổi account (c�
 
 **Cập nhật 2026-10-29 13:20 (session `tripguardian-31`):** 4 track trên đã xong (ledger từng track). Đã giao 6 track Sonnet chạy nền, mỗi track có `brief.md` + `progress.md` trong `.superpowers/sdd/2026-10-29-<track>/`: `profile` (mục 2, thêm W1), `planning` (mục 3), `replan-expert` (mục 4), `booking-flights` (mục 5), `web-user` (mục 6 trừ W1), `pulse` (mục 7 phần A.5). Chờ `AFTER_CHAIN_DONE` (từ 13:23 chuỗi là `logs/gmaps_coverage_observe_restart.sh`, PID 646823, observe trên LAN 38 + UIT 38 + self-host 8) mới giao: mục 1, `dish` C7, `corpus-next`. Session khác: đọc dòng cuối các ledger này trước, đừng giao trùng. **~13:55:** `tripguardian-b3`/`-75` nhận rồi trả lại; từ ~14:00 `tripguardian-31` điều phối mọi việc 2026-10-29 còn lại (agent của b3 đã dừng; ghi chú chia việc trong `NOTE_DUPLICATE.md` của profile và booking-flights).
 
-**Cập nhật 2026-10-29 ~16:45 (`tripguardian-31`):** xong `web-user`, `planning`, `profile`, `booking-flights`, `pulse` (gồm sửa lỗi gốc: dữ liệu chuẩn bị gửi như `system` thứ hai bị 9router bỏ qua), `replan-expert` (`eve_replan.enabled: true`, 8/8). Chủ dự án duyệt thiết kế trợ lý mới + rule chặn R1–R8: spec `docs/superpowers/specs/2026-10-29-assistant-tools-design.md` (lõi chung `src/agents/assistant/` cho Tìm hiểu và Lựa chọn, bộ tool dùng hết corpus, §5B corpus còn thiếu). Đang chạy: `asst-core`, `asst-perceive`, `asst-knowledge`, `expert-async`; `asst-decision` giao khi `asst-core` ghi `API READY:`. Ledger `.superpowers/sdd/2026-10-29-<track>/`.
+**Cập nhật 2026-10-29 ~16:45 (`tripguardian-31`):** xong `web-user`, `planning`, `profile`, `booking-flights`, `pulse` (gồm sửa lỗi gốc: dữ liệu chuẩn bị gửi như `system` thứ hai bị 9router bỏ qua), `replan-expert` (`eve_replan.enabled: true`, 8/8). Chủ dự án duyệt thiết kế trợ lý mới + rule chặn R1–R8: spec `docs/plans/2026-10-29-assistant-tools-design.md` (lõi chung `src/agents/assistant/` cho Tìm hiểu và Lựa chọn, bộ tool dùng hết corpus, §5B corpus còn thiếu). Đang chạy: `asst-core`, `asst-perceive`, `asst-knowledge`, `expert-async`; `asst-decision` giao khi `asst-core` ghi `API READY:`. Ledger `.superpowers/sdd/2026-10-29-<track>/`.
 
 **Cập nhật ~17:00:** `expert-async` xong (Local Expert chạy nền sau chốt lịch, `expert.enabled: true`). Đang chạy thêm: `asst-decision`, crawl bù corpus `crawl-photos` (gmaps_b2, G3), `crawl-places` (gmaps_d, G1/G6/G9/G10), `crawl-local` (G4/G7, `local extract` 785 Document), `crawl-stay-bus` (G5/G8), `dish` (C7/G2); luật chung `.superpowers/sdd/2026-10-29-crawl-common.md`. **Việc cho lượt release:** 5 test planning đọc `data/serving/places.json` thật trượt sau khi chuỗi build ghi lại file lúc 16:15 (`test_planning_realism[travel_vs_nn, overload_explained]`, `test_planning_overload_round1[rainy_month]` ×2, `test_planning_better_order`); ví dụ ngày 1 đi đường 118′ trong khi xếp gần-nhất 98′. Lúc 15:00 trên dữ liệu cũ pass. Xử lý sau khi dữ liệu crawl bù xong và build release, cùng `test_equivalence`.
 
@@ -338,7 +338,7 @@ Mỗi tài khoản một runner và một cổng DevTools; không để hai trì
 
 ## Việc chưa làm, theo thứ tự đề xuất
 
-Mỗi dòng là một track. Track chưa có plan thì viết plan trước (superpowers writing-plans) vào `docs/superpowers/plans/`, rồi giao một subagent.
+Mỗi dòng là một track. Track chưa có plan thì viết plan trước (superpowers writing-plans) vào `docs/plans/`, rồi giao một subagent.
 
 | # | Việc | Spec | Phụ thuộc | Ghi chú |
 |---|---|---|---|---|
@@ -371,7 +371,7 @@ Chưa sửa vì không chặn việc nào khác. Ai làm D.3, Local Expert hoặ
 | 7 | `rain_prob` từ khí hậu 11 năm dùng ngưỡng 2,5 mm | `config/views.yaml` `climate.rain_mm`; tháng 7 ra 0,74. Chưa đối chiếu với số liệu trạm. | Đối chiếu trạm, hoặc ghi đè tháng ở `rain_prob_override_by_month`. |
 | 8 | Kiểm ngân sách chưa đọc giá phòng theo ngày | `stay_prices.load(city, max_age_h)` đã sẵn (`data/serving/stay_prices/<city>.json`). Giá có thể cũ tới ~1 ngày; mỗi dòng có `observed_at`. | Nối vào kiểm ngân sách, hiển thị tuổi giá. (đã xử lý 2026-10-28, xem ledger planning-notes) |
 | 9 | Planning import `corpus.views` | Đã thêm `corpus.views` vào `ALLOWED_CORPUS` trong `tests/planning/test_planning_boundaries.py` để không phải mở rộng API `live`. | Xem lại nếu có cách sạch hơn. |
-| 10 | Task 9 của plan planning cũ chưa làm | Gỡ phần cũ, đo trước/sau, cho người dùng đọc (`docs/superpowers/plans/2026-10-15-planning-realistic-core.md`). | Làm khi dọn Planning. (đã xử lý 2026-10-29: gỡ `cluster.py`, `assign_days`... ; số đo trước/sau ở `logs/planning_realistic/{before,after}`). |
+| 10 | Task 9 của plan planning cũ chưa làm | Gỡ phần cũ, đo trước/sau, cho người dùng đọc (`docs/plans/2026-10-15-planning-realistic-core.md`). | Làm khi dọn Planning. (đã xử lý 2026-10-29: gỡ `cluster.py`, `assign_days`... ; số đo trước/sau ở `logs/planning_realistic/{before,after}`). |
 | 11 | D.3, D.2 (Local Expert) | **Đã xử lý 2026-10-29**: link thông báo → `/app/plan`, `eve_of_trip` đọc điểm đầu của ngày 1 (`notify.plan.trip_point`), D.3 + Local Expert đã code (xem `docs/PLANNING.md`). **Xong 2026-10-29 (`expert-async`)**: event lịch Google nay gắn `/app/plan`; Local Expert chạy nền sau chốt (`expert.enabled: true`), `ClimateNormal` áp ở kiểm tra tối. (Từng sót: `src/companion/calendar.py` dòng 83 gắn link `APP_BASE_URL/app/today?stop=<id>` vào event lịch Google (không phải thông báo; màn `/app/today` còn route nhưng không có trên thanh điều hướng, sản phẩm dừng ở chốt lịch) → đã đổi.) | Sửa `companion/calendar.py` + `docs/COMPANION.md` dòng 48 cùng lúc. |
 | 12 | Số đo cũ đều đo lúc OSRM tắt | Số mới có OSRM: lịch đầu p95 1,33 s, `set_day_window` max 0,17 s. | Dùng số mới làm mốc. |
 | 13 | `tests/decision/test_wish_speed.py` trượt khi máy tải ~40/40 | Chạy riêng thì pass. | Đừng đọc đó là hồi quy. |

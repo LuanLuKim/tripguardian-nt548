@@ -2,7 +2,7 @@
 
 > Spec làm việc (`RULE.md` §0.1). Khi duyệt và làm xong, gộp phần còn giá trị vào tài liệu chính thức rồi xoá file này.
 > Ngày 2026-10-26; dọn lại 2026-10-28 theo các ghi chú của chủ dự án ở bản 2026-10-27, rồi đối chiếu với code cùng ngày (mục nào đã có trong code thì chỉ còn một dòng trỏ) (bản trước: `logs/spec-2026-10-28-before-cleanup.md`, `logs/spec-2026-10-27-before-modules.md`, `logs/spec-2026-10-26-before-simplify.md`).
-> Đề đồ án: `2026-10-06_de_tai_08_tour_guide_agent.docx` — là hệ quả, không quyết định kiến trúc (§E.3).
+> Đề đồ án: `submission/2026-10-06_de_tai_08_tour_guide_agent.docx` — là hệ quả, không quyết định kiến trúc (§E.3).
 
 ## 0. Tóm tắt
 
@@ -600,7 +600,7 @@ Nền hiện có: `docs/PLANNING.md`, `docs/COMPANION.md`.
 
 ### D.1 Còn dở từ đợt trước
 
-Plan `docs/superpowers/plans/2026-10-15-planning-realistic-core.md`: Task 1–8 **đã có code và test** (`overload.py` 3 hướng, `ghosts.py`, `roles.py`, `layout.py`, `frame.py`, thứ tự tốt hơn); kiểm độ thật `tests/planning/test_planning_realism.py` không còn mục chờ (`PENDING = {}`). Mục tiêu trong `tests/planning/bench_realistic.py` tính theo **p95**. Số đo mới nhất `logs/planning_realistic/bench_t8_after.txt` (16/10, OSRM tắt):
+Plan `docs/plans/2026-10-15-planning-realistic-core.md`: Task 1–8 **đã có code và test** (`overload.py` 3 hướng, `ghosts.py`, `roles.py`, `layout.py`, `frame.py`, thứ tự tốt hơn); kiểm độ thật `tests/planning/test_planning_realism.py` không còn mục chờ (`PENDING = {}`). Mục tiêu trong `tests/planning/bench_realistic.py` tính theo **p95**. Số đo mới nhất `logs/planning_realistic/bench_t8_after.txt` (16/10, OSRM tắt):
 
 | Thao tác | p50 | p95 | max | Mục tiêu p95 | |
 |---|---|---|---|---|---|

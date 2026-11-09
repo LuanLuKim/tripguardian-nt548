@@ -8,7 +8,7 @@
 
 Khi danh sách đã chọn quá tải, TripGuardian cần cho người dùng so sánh **Tiết kiệm**, **Trải nghiệm tốt nhất** và **Gọn tuyến**, biết mỗi hướng giữ/bỏ nơi nào, rồi tự chọn và chỉnh lịch. **Giữ tất cả** là lịch đối chiếu riêng, có kết luận validator và độ vững của chính nó.
 
-Đợt này kiểm tra phần Luna triển khai theo `docs/OVERLOAD_AND_THREE_PLANS_IDEAS.md` và sửa các lỗi được ghi trong báo cáo implementation. Phần composer, session và UI đã có được giữ lại; các thay đổi tập trung vào lỗi runtime và đường đi thật từ Decision qua harness đến Planning/Web.
+Đợt này kiểm tra phần Luna triển khai theo `research/OVERLOAD_AND_THREE_PLANS_IDEAS.md` và sửa các lỗi được ghi trong báo cáo implementation. Phần composer, session và UI đã có được giữ lại; các thay đổi tập trung vào lỗi runtime và đường đi thật từ Decision qua harness đến Planning/Web.
 
 | Yêu cầu liên quan trong báo cáo kỹ thuật | Nội dung cập nhật |
 |---|---|
@@ -90,7 +90,7 @@ Contract chi tiết và hành vi runtime chỉ duy trì tại `docs/PLANNING.md`
 | Browser tổng hợp | 1 passed, 1 skipped | 91,56 giây; Chromium và HTTP/Decision/Planning thật, nguồn live và đăng nhập giả lập |
 | Web build | Pass | TypeScript + Vite; còn cảnh báo config và chunk size có sẵn |
 
-Các hàng focused là phạm vi kiểm bổ sung, **không cộng** vào số pass của suite tổng để tạo một tổng mới. Chi tiết lệnh chạy và RED/GREEN nằm trong `docs/LUNA_OVERLOAD_THREE_PLANS_IMPLEMENTATION_REPORT.md` §Kiểm chứng.
+Các hàng focused là phạm vi kiểm bổ sung, **không cộng** vào số pass của suite tổng để tạo một tổng mới. Chi tiết lệnh chạy và RED/GREEN nằm trong `research/LUNA_OVERLOAD_THREE_PLANS_IMPLEMENTATION_REPORT.md` §Kiểm chứng.
 
 ### 4.2. Kịch bản hồi quy
 
@@ -133,6 +133,6 @@ Không triển khai production, không stage/commit và không dọn các thay �
 | Regression backend | `tests/planning/test_planning_overload_edits.py`, `test_planning_composer.py`; `tests/harness/test_tools.py`, `test_harness_server.py`, `test_overload_browser.py` |
 | Regression Web | `web/scripts/test_planning_state.mjs`, `test_overload_ui.mjs` |
 | Tài liệu runtime | `docs/PLANNING.md`, `docs/AGENT_HARNESS.md`, `docs/Role_Web_Functional_Design.md` |
-| Báo cáo kiểm tra chi tiết | `docs/LUNA_OVERLOAD_THREE_PLANS_IMPLEMENTATION_REPORT.md` |
+| Báo cáo kiểm tra chi tiết | `research/LUNA_OVERLOAD_THREE_PLANS_IMPLEMENTATION_REPORT.md` |
 
 Danh sách này chỉ là phạm vi của đợt sửa; không nhận toàn `git diff` của checkout là thay đổi của task. Báo cáo này là phần bổ sung để tham khảo khi biên tập §13 và §17 của `TECHNICAL_REPORT.md`.

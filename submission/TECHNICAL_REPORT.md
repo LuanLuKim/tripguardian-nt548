@@ -1166,7 +1166,7 @@ Hạn chế lớn nhất là *bằng chứng đánh giá*: chưa có thử nghi�
 
 ## 20. References — Tài liệu tham khảo
 
-Các tài liệu dưới đây là danh sách đang dùng trong `docs/IDEA.md`; trích dẫn trong báo cáo theo số thứ tự này.
+Trích dẫn trong báo cáo theo số thứ tự này.
 
 [1] J.-Y. Park, S. Jang, "Confused by too many choices? Choice overload in tourism," *Tourism Management*, 35, 2013.
 [8] I. Kostric, K. Balog, F. Radlinski, "Soliciting User Preferences in Conversational Recommender Systems via Usage-related Questions," RecSys 2021.
@@ -1267,7 +1267,7 @@ Các sơ đồ trong tài liệu này (mermaid): kiến trúc tổng (§9.1), of
 | Ontology v11, 57 feature | `config/ontology.yaml` | 11/10/2026 |
 | Coverage effort/suitability | `data/intel/summary.json` | 08/10/2026 |
 | Decision evaluate | `data/decision/eval.json` | — |
-| Bench offline/live | `data/bench/offline-20261007/summary.csv`, `data/bench/live-20261007/summary.csv`; `docs/plans/TRIP_DECISION_PLANNING_SUMMARY.md` | 07/10/2026 |
+| Bench offline/live | `data/bench/offline-20261007/summary.csv`, `data/bench/live-20261007/summary.csv`; `submission/research/TRIP_DECISION_PLANNING_SUMMARY.md` | 07/10/2026 |
 | Độ trễ sửa lịch | `tests/planning/bench_edits.py --runs 10`; bảng ở bản trước của file này | 11/10/2026 |
 | Số dòng code, số test | Đếm trực tiếp `src/`, `web/src`, `tests/`; `pytest --collect-only` | 11/10/2026 |
 | Kết quả pytest | Chạy toàn bộ, log trong scratchpad của phiên | 11/10/2026 |

@@ -380,9 +380,10 @@ db() {
 }
 
 db_backup() {
-  mkdir -p data/backup/pg
+  (umask 077; mkdir -p data/backup/pg)
+  chmod 700 data/backup/pg
   out="data/backup/pg/$(date +%Y-%m-%d_%H%M).sql.gz"
-  docker exec "$PG_CONTAINER" pg_dump -U postgres tripguardian | gzip > "$out" || { echo "[db] backup FAILED"; rm -f "$out"; exit 1; }
+  (umask 077; docker exec "$PG_CONTAINER" pg_dump -U postgres tripguardian | gzip > "$out") || { echo "[db] backup FAILED"; rm -f "$out"; exit 1; }
   echo "[db] backup $out"
   ls -1t data/backup/pg/*.sql.gz | tail -n +15 | while read -r old; do rm -f "$old"; done
 }

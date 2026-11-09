@@ -1,6 +1,6 @@
 # Pitch deck — nội dung slide 8, 9, 11
 
-> **Mốc đo cũ trong ngày 17/10.** Khi trình bày, dùng [bản pitch hiện tại](../pitch_desk.md) và [bằng chứng chạy lại](PITCH_EVIDENCE_20261017.md): 2.950 pass / 0 fail; số Planning và hội thoại cũng đã cập nhật. Nội dung dưới giữ để đối chiếu, không lấy 22 fail làm hiện trạng.
+> **Mốc đo cũ trong ngày 17/10.** Khi trình bày, dùng [bản pitch hiện tại](pitch_desk.md) và [bằng chứng chạy lại](PITCH_EVIDENCE_20261017.md): 2.950 pass / 0 fail; số Planning và hội thoại cũng đã cập nhật. Nội dung dưới giữ để đối chiếu, không lấy 22 fail làm hiện trạng.
 
 Mọi số liệu dưới đây được **đo lại ngày 17/10/2026** trên code và dữ liệu hiện tại (nhánh `fix/scoped-trip-requirements`, corpus release `20261016T105302`). Không dùng số của các báo cáo trước. Lệnh chạy lại ở cuối file.
 

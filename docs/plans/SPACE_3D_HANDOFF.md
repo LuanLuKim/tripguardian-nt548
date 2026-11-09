@@ -1,6 +1,6 @@
 # Bàn giao: xem 3D từng địa điểm (spike Chùa Linh Sơn, 2026-11-03)
 
-Đọc file này trước. Chỉ đọc thêm thứ được trỏ tới. Spec gốc: `docs/superpowers/specs/2026-10-26-production-and-course-upgrade-design.md` §E.2 (còn bản cũ, mục dưới đây thay thế các điểm "nút xem phần dựng thêm" và "để mờ").
+Đọc file này trước. Chỉ đọc thêm thứ được trỏ tới. Spec gốc: `docs/plans/2026-10-26-production-and-course-upgrade-design.md` §E.2 (còn bản cũ, mục dưới đây thay thế các điểm "nút xem phần dựng thêm" và "để mờ").
 
 ## 1. Việc cần làm và tiêu chuẩn "xong"
 

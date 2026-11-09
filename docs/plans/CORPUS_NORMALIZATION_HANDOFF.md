@@ -5,7 +5,7 @@ Ngày cập nhật: 2026-10-15
 ## Mục đích
 
 Tài liệu này ghi lại trạng thái thực tế sau khi triển khai thiết kế trong
-`docs/superpowers/specs/2026-10-14-corpus-normalization-design.md`, các phần còn dang dở,
+`docs/plans/2026-10-14-corpus-normalization-design.md`, các phần còn dang dở,
 và thứ tự công việc cho agent tiếp theo. Không xem migration hoàn tất về mặt phát hành cho
 đến khi xây dựng được release đầy đủ và kích hoạt release đó theo cơ chế atomic.
 

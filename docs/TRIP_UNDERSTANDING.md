@@ -697,7 +697,7 @@ flowchart TD
 
 ### Lõi trợ lý chung, thẻ trước, chặn theo rule (29/10/2026)
 
-Vòng tool, đăng ký tool, cache lượt, thẻ trước, cửa sổ lịch sử và guard Clef nằm ở module chung `src/agents/assistant/` (public API trong `__init__.py`); Trip và Lựa chọn (`docs/PLACE_DECISION.md` §19) chỉ cắm tool hành động và khối `CURRENT CONTEXT` của mình. Spec: `docs/superpowers/specs/2026-10-29-assistant-tools-design.md`.
+Vòng tool, đăng ký tool, cache lượt, thẻ trước, cửa sổ lịch sử và guard Clef nằm ở module chung `src/agents/assistant/` (public API trong `__init__.py`); Trip và Lựa chọn (`docs/PLACE_DECISION.md` §19) chỉ cắm tool hành động và khối `CURRENT CONTEXT` của mình. Spec: `docs/plans/2026-10-29-assistant-tools-design.md`.
 
 ```mermaid
 sequenceDiagram

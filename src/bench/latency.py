@@ -1,4 +1,4 @@
-"""python -m bench latency: how long the corpus-backed steps take (docs/superpowers/specs/2026-10-13-corpus-snapshot-design.md
+"""python -m bench latency: how long the corpus-backed steps take (docs/plans/2026-10-13-corpus-snapshot-design.md
 §7). Offline: no model, no network. Writes data/bench/latency/<timestamp>.json and prints a table."""
 
 import json

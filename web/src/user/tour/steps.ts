@@ -1,5 +1,5 @@
 // The tour's script (it starts on the home page; the sign-in screen is not part of it): chapters of stops, each stop = one real element (data-tour="<target>"), a pose of the acorn and a line.
-// The words are fixed text in the product's voice ("mình" / "bạn"), never model output. Spec: docs/superpowers/specs/2026-10-31-guided-tour-design.md §5.
+// The words are fixed text in the product's voice ("mình" / "bạn"), never model output. Spec: docs/plans/2026-10-31-guided-tour-design.md §5.
 export type Pose =
   | 'idle' | 'curious' | 'wait' | 'happy' | 'shy' | 'mail' | 'sad'
   | 'wave' | 'wow' | 'wink' | 'love' | 'cheer' | 'bow' | 'point' | 'point_up' | 'walk_a' | 'walk_b'

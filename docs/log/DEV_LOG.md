@@ -52,7 +52,7 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 
 ## tag-subtag-2026-10-30 — Tag, subtag hay danh sách: chọn đúng lúc (Tìm hiểu và Lựa chọn)
 
-- file: `src/corpus/tags/` (`kinds`, `split`), `config/tags.yaml` (`policy`), `src/trip/domain/tag_policy.py`, `src/trip/infrastructure/browse.py`, `src/trip/agent/{knowledge_tools,prompt,tools}.py`, `src/trip/api/{blocks,engine}.py` (`_tag`, `tags_block_wins`), `src/decision/{kinds,assistant,tool_schemas}.py` (`group_list`), `src/bench/assistant.py` (`level:`), `config/bench_assistant_tags.yaml`, `web/src/user/tags/{Subtags,TagStage,tree,env}.ts(x)`, `web/src/user/css/tags.css`, `src/trip/domain/covers.py`, `src/harness/{dispatch,session,pgstore}.py`, `web/src/user/screens/Understand.tsx`, `understand/{Turn,Blocks,Ask}.tsx`, `tu/types.ts`; docs `docs/superpowers/specs/2026-10-30-tag-subtag.md`
+- file: `src/corpus/tags/` (`kinds`, `split`), `config/tags.yaml` (`policy`), `src/trip/domain/tag_policy.py`, `src/trip/infrastructure/browse.py`, `src/trip/agent/{knowledge_tools,prompt,tools}.py`, `src/trip/api/{blocks,engine}.py` (`_tag`, `tags_block_wins`), `src/decision/{kinds,assistant,tool_schemas}.py` (`group_list`), `src/bench/assistant.py` (`level:`), `config/bench_assistant_tags.yaml`, `web/src/user/tags/{Subtags,TagStage,tree,env}.ts(x)`, `web/src/user/css/tags.css`, `src/trip/domain/covers.py`, `src/harness/{dispatch,session,pgstore}.py`, `web/src/user/screens/Understand.tsx`, `understand/{Turn,Blocks,Ask}.tsx`, `tu/types.ts`; docs `docs/plans/2026-10-30-tag-subtag.md`
 - cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv -q tests/tags tests/trip tests/decision tests/bench tests/harness`; `cd web && node_modules/.bin/tsc -b`; ảnh `frontend_images/2026-10-30/subtag-v3/`; thêm `tests/trip/test_covers.py`, `tests/trip/test_tag_stage.py`, `tests/harness/test_corpus_binding.py`
 
 ### Hiện tại (2026-10-30, chiều: sân khấu tag -> subtag -> nơi)
@@ -88,7 +88,7 @@ Trước đó: chưa có.
 - cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/trip tests/agents tests/bench tests/harness -q`; `python -m bench assistant --family evidence` (…compare, status, dishes, route, journey, climate, stays, tips, saveact; cần Agent thật); ledger `.superpowers/sdd/2026-10-29-asst-knowledge/progress.md`
 
 ### Hiện tại (2026-10-29)
-- hành vi: `docs/TRIP_UNDERSTANDING.md` §19 (Tool đọc mở rộng). Journey tìm tọa độ nơi xuất phát bằng `live.geosearch` (không phải `live.geocode`, vì hàm đó thêm ", Đà Lạt" vào tên). Khoảng trống dữ liệu: spec `docs/superpowers/specs/2026-10-29-assistant-tools-design.md` §5B.
+- hành vi: `docs/TRIP_UNDERSTANDING.md` §19 (Tool đọc mở rộng). Journey tìm tọa độ nơi xuất phát bằng `live.geosearch` (không phải `live.geocode`, vì hàm đó thêm ", Đà Lạt" vào tên). Khoảng trống dữ liệu: spec `docs/plans/2026-10-29-assistant-tools-design.md` §5B.
 
 ### Trước đó
 - _chưa có_
@@ -585,7 +585,7 @@ _không có_
 ### Hiện tại (2026-10-13)
 - hành vi: lớp B (tag phong cách từ ảnh Maps, ngoài ontology để không trích lại corpus) và lớp C (SigLIP2 cho 29.820 ảnh Maps + frame TikTok, bge-m3 cho 476.666 câu trích dẫn) của `docs/CORPUS.md` §Chỉ mục ngữ nghĩa; 8 GPU: ảnh Maps 376 s, frame 203 s, câu trích dẫn 70 s (2026-10-13; ảnh đọc từ ổ mạng là nút thắt, GPU dùng thấp). `compile` ghi `data/index/<version>/` (LanceDB) và `current`. API online: `search_photos`, `places_by_photos`, `similar_places`, `clusters`, `dominant_style`.
 - `style_observe` chạy được trên UIT (`EXTRACTOR_ON_UIT=1`) hoặc host LAN; chung key với Judge thì 429, làm lại phần lỗi.
-- chưa làm (`docs/superpowers/specs/2026-10-12-corpus-semantic-index-design.md`): lớp A (feature tiện ích), mask numpy / ma trận độ giống cho Decision, bộ câu khó để đo precision.
+- chưa làm (`docs/plans/2026-10-12-corpus-semantic-index-design.md`): lớp A (feature tiện ích), mask numpy / ma trận độ giống cho Decision, bộ câu khó để đo precision.
 
 ### Trước đó
 - _không có_
@@ -877,7 +877,7 @@ _không có_
 ## corpus-resolve-p7 — `gmaps resolve`: nominee của sol → Maps → kho (`docs/CORPUS.md` §Resolve nominee)
 
 - file: `src/corpus/crawl/gmaps/resolve.py` (phase, trình duyệt qua `search.search`), `src/corpus/navigate/resolve.py` (`pending`, `decide`, `record`; public `pending_nominees` / `decide_resolution` / `record_resolution`), `src/corpus/__main__.py` (`gmaps resolve`, `--limit`), `config/navigate.yaml` (khối `resolve:`)
-- cách kiểm chứng: `pytest --collect-in-virtualenv tests/navigate tests/crawl/gmaps/test_resolve.py tests/views/test_cli.py -q` (searcher giả, không mở trình duyệt); chưa có lần chạy thật; plan `docs/superpowers/plans/2026-10-28-resolve-p7.md`, ledger `.superpowers/sdd/2026-10-28-resolve-p7/progress.md`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/navigate tests/crawl/gmaps/test_resolve.py tests/views/test_cli.py -q` (searcher giả, không mở trình duyệt); chưa có lần chạy thật; plan `docs/plans/2026-10-28-resolve-p7.md`, ledger `.superpowers/sdd/2026-10-28-resolve-p7/progress.md`
 
 ### Hiện tại (2026-10-28)
 - hành vi: nominee `missing` (`resolve_queue.jsonl`) và `maybe` (báo cáo compare mới nhất) được tra trên Maps; chỉ một nơi rõ ràng, trong `area`, đủ review mới được ghi (khuôn `search`) vào `data/gmaps/search/<city>/resolve.jsonl` để `filter` → `counts` → `list` kiểm tiếp; mơ hồ / không khớp / ngoài khu / ít review chỉ ghi sổ `data/<city>/navigate/resolved.jsonl`. Không có trạng thái "không tồn tại".

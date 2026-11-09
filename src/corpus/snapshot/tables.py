@@ -1,4 +1,4 @@
-"""Serving records -> the snapshot tables (docs/superpowers/specs/2026-10-13-corpus-snapshot-design.md §5). Pure: no
+"""Serving records -> the snapshot tables (docs/plans/2026-10-13-corpus-snapshot-design.md §5). Pure: no
 I/O. Derived columns repeat the per-place formulas of decision / requirements, which corpus cannot import;
 tests/snapshot/test_tables.py checks each copy against its original."""
 

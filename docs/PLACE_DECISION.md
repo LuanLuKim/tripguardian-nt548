@@ -571,7 +571,7 @@ Web: `web/src/user/pd/` (`types.ts`, `api.ts`, `decision.tsx` — `DecisionProvi
 
 ## 19. Trợ lý Lựa chọn (lõi chung với Tìm hiểu)
 
-Chủ dự án 2026-10-29: chatbot Lựa chọn thông minh như Tìm hiểu và dùng chung lõi `src/agents/assistant/` (vòng tool `run_loop`, đăng ký tool, `window` lịch sử, `CURRENT CONTEXT`). Spec: `docs/superpowers/specs/2026-10-29-assistant-tools-design.md` §5.9.
+Chủ dự án 2026-10-29: chatbot Lựa chọn thông minh như Tìm hiểu và dùng chung lõi `src/agents/assistant/` (vòng tool `run_loop`, đăng ký tool, `window` lịch sử, `CURRENT CONTEXT`). Spec: `docs/plans/2026-10-29-assistant-tools-design.md` §5.9.
 
 ```mermaid
 flowchart LR

@@ -46,7 +46,7 @@ tests/fixtures/tiktok/
 /.cache
 /.cache.old-nfs/
 /.venv
-/.venv-vllm/
+/.venv-vllm
 /.venv.old-nfs/
 /.aws/
 /.codex/

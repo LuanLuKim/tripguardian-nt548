@@ -45,7 +45,8 @@ try {
       } else {
         const hasNotes = !['none', 'empty'].includes(state)
         const time = page.locator('.tg-sidecard').filter({ has: page.getByRole('heading', { name: 'Giờ ghé · Ngày 2', exact: true }) })
-        assert.equal(await time.getByText('chưa rõ có cho mang thú cưng không', { exact: true }).count(), hasNotes ? state === 'ghost-only' ? 1 : 2 : 0)
+        assert.equal(await time.getByText('chưa rõ có cho mang thú cưng không', { exact: true }).count(), hasNotes && state !== 'ghost-only' ? 1 : 0)
+        assert.equal(await page.locator('.tg-ghost').getByText('chưa rõ có cho mang thú cưng không', { exact: true }).count(), hasNotes ? 1 : 0)
         assert.equal(await time.getByText('Giờ mở cửa <chưa xác minh> & cần kiểm tra', { exact: true }).count(), hasNotes && state !== 'ghost-only' ? 1 : 0)
         const backup = page.locator('.tg-sidecard').filter({ has: page.getByRole('heading', { name: 'Phương án dự phòng · Ngày 2', exact: true }) })
         assert.equal(await backup.getByText('chưa rõ có cho mang thú cưng không', { exact: true }).count(), hasNotes ? 1 : 0)

@@ -53,7 +53,7 @@
 .tg-pc__alert { display: flex; gap: 6px; align-items: center; font-weight: 600; font-size: 0.82rem; color: var(--tg-warn); }
 .tg-pc__facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 0.82rem; color: var(--tg-ink-2); margin-top: auto; padding-top: 4px; }
 .tg-pc__crowd { color: var(--tg-sun-ink); font-weight: 600; }
-.tg-pc__act { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tg-pc__act { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .tg-pc__more { display: flex; gap: 2px; opacity: 0; transform: translateX(6px); transition: opacity 200ms, transform 240ms var(--tg-ease); }
 .tg-pc:hover .tg-pc__more, .tg-pc:focus-within .tg-pc__more { opacity: 1; transform: none; }
 @media (hover: none) { .tg-pc__more { opacity: 1; transform: none; } }
@@ -61,7 +61,7 @@
 .tg-pc__ic:hover { background: var(--tg-pine-soft); color: var(--tg-pine); }
 .tg-pc__ic.is-on { background: var(--tg-pine-soft); color: var(--tg-pine); }
 .tg-pc__ic span { display: none; }
-.tg-pc:hover .tg-pc__ic span, .tg-pc:focus-within .tg-pc__ic span { display: inline; }
+.tg-pc__ic:hover span, .tg-pc__ic:focus-visible span { display: inline; } /* one label at a time: all four together were wider than the card */
 
 /* ---- explore chrome ---- */
 .tg-xhead { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px; margin-bottom: 24px; }
@@ -132,12 +132,13 @@
 .tg-xhead__ops { position: relative; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* the pointer under the Lưới / Đĩa xoay switch: a small dark bubble whose tip points at the switch */
-.tg-seghint { position: absolute; z-index: 5; top: calc(100% + 12px); right: 0; width: max-content; max-width: min(340px, 86vw); display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 14px; background: var(--tg-ink); color: var(--tg-surface); font-size: 0.86rem; line-height: 1.4; box-shadow: var(--tg-sh-2); animation: tg-seghint 320ms var(--tg-ease) both; }
-.tg-seghint::before { content: ''; position: absolute; top: -6px; right: 52px; width: 12px; height: 12px; background: var(--tg-ink); transform: rotate(45deg); border-radius: 2px; }
-.tg-seghint b { font-weight: 700; }
-.tg-seghint button { flex: none; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--tg-surface); color: var(--tg-ink); font-weight: 600; font-size: 0.82rem; }
-.tg-seghint .tg-seghint__x { width: 32px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--tg-surface); opacity: 0.7; }
-.tg-seghint .tg-seghint__x:hover { opacity: 1; }
+.tg-seghint { position: absolute; z-index: 5; top: calc(100% + 12px); right: 0; width: max-content; max-width: min(340px, 86vw); display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 16px; background: rgba(255, 255, 255, 0.92); border: 1px solid rgba(0, 0, 0, 0.08); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); color: var(--tg-ink); font-size: 0.86rem; line-height: 1.4; box-shadow: 0 16px 36px -16px rgba(0, 0, 0, 0.4); animation: tg-seghint 320ms var(--tg-ease) both; }
+.tg-xhead .tg-seghint { margin-top: 0; max-width: min(340px, 86vw); color: var(--tg-ink); } /* `.tg-xhead p` (ink-2, 62ch) outranks a bare .tg-seghint */
+.tg-seghint::before { content: ''; position: absolute; top: -6px; right: 52px; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.96); border-left: 1px solid rgba(0, 0, 0, 0.08); border-top: 1px solid rgba(0, 0, 0, 0.08); transform: rotate(45deg); border-radius: 3px 0 0 0; }
+.tg-seghint b { font-weight: 700; color: var(--tg-brand); }
+.tg-seghint button { flex: none; min-height: 32px; padding: 0 14px; border-radius: 999px; background: var(--tg-ink); color: #fff; font-weight: 500; font-size: 0.82rem; }
+.tg-seghint .tg-seghint__x { width: 32px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--tg-ink-3); }
+.tg-seghint .tg-seghint__x:hover { color: var(--tg-ink); }
 @keyframes tg-seghint { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tg-seghint { animation: none; } }
 

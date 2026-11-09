@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { info } from '../lib'
 import { whyNot } from '../pd/api'
 import { useDecision } from '../pd/decision'
@@ -22,6 +22,13 @@ import '../css/plan-chat.css'
 export type AssistantStage = 'decision' | 'planning'
 const stageOf = new Map<number, AssistantStage>()
 const tag = (id: number, stage: AssistantStage) => { stageOf.set(id, stage); return id }
+
+// The assistant's face: a soft, slowly turning orb (CSS only).
+function Orb({ size = 36 }: { size?: number }) {
+  return <span className="tg-orb" style={{ '--orb': `${size}px` } as CSSProperties} aria-hidden="true"><i /></span>
+}
+const HELLO: Record<AssistantStage, string> = { decision: 'Bạn muốn lọc thế nào?', planning: 'Bạn muốn đổi gì trong lịch?' }
+const SUB: Record<AssistantStage, string> = { decision: 'Lọc nơi theo ý bạn', planning: 'Hỏi hoặc sửa lịch theo ý bạn' }
 
 const PLAN_CHIPS = ['Dời một chỗ sang ngày khác', 'Thêm một chỗ ăn trưa', 'Vì sao xếp ngày 1 như vậy?', 'Ngày nào đi lại nhiều nhất?']
 const CHIPS = ['Yên tĩnh hơn', 'Ít di chuyển hơn', 'Thêm một chỗ ăn trưa', 'Vì sao không gợi ý Langbiang?']
@@ -148,19 +155,24 @@ function Body({ stage, pinned, inDialog = false, busy, send, chips, intro, place
   }
   return (
     <>
-      <img className="tg-asst__cat" src="/img/brand/cat-peek.webp" alt="" width={120} height={63} aria-hidden="true" />
       <header className="tg-asst__head">
-        <div><Icon name="sparkle" size={18} />{inDialog ? <Dialog.Title>Hỏi TripGuardian</Dialog.Title> : <h2>Hỏi TripGuardian</h2>}</div>
+        <Orb size={36} />
+        <div className="tg-asst__who">{inDialog ? <Dialog.Title>Hỏi TripGuardian</Dialog.Title> : <h2>Hỏi TripGuardian</h2>}<small>{SUB[stage]}</small></div>
         <div className="tg-asst__ops">
           {canPin && <button type="button" className="tg-link" onClick={() => pinAssistant(!pinned)} aria-pressed={pinned}>{pinned ? 'Bỏ ghim' : 'Ghim'}</button>}
           <button type="button" className="tg-icon-btn" onClick={() => openAssistant(false)} aria-label="Thu lại"><Icon name="x" size={18} /></button>
         </div>
       </header>
       <div className="tg-asst__log" role="log" aria-live="polite">
-        {msgs.length === 0 && <p className="tg-asst__intro">{intro}</p>}
+        {msgs.length === 0 && <div className="tg-asst__hello">
+          <Orb size={68} />
+          <h3>{HELLO[stage]}</h3>
+          <p className="tg-asst__intro">{intro}</p>
+          <div className="tg-asst__quick" role="group" aria-label="Gợi ý câu hỏi">{chips.map((c) => <button key={c} type="button" className="tg-qchip" disabled={busy} onClick={() => submit(c)}>{c}</button>)}</div>
+        </div>}
         {msgs.map((m) => (
           <div key={m.id} className={`tg-msg is-${m.role}`}>
-            <p>{m.text || (m.role === 'bot' ? '…' : '')}</p>
+            <p>{m.text || (m.role === 'bot' ? <span className="tg-typing" role="status" aria-label="Đang trả lời"><i /><i /><i /></span> : '')}</p>
             {cards.get(m.id) && <PlaceStage row={cards.get(m.id)!} busy={busy} autoOpen={stage === 'decision'} onLike={(id) => onLike(id)} />}
             {daysOf.get(m.id) && onOpenDay && (
               <ul className="tg-msg__days" aria-label="Các ngày đã đổi">
@@ -179,11 +191,11 @@ function Body({ stage, pinned, inDialog = false, busy, send, chips, intro, place
         ))}
         <div ref={endRef} />
       </div>
-      <div className="tg-asst__chips" role="group" aria-label="Gợi ý câu hỏi">{chips.map((c) => <button key={c} type="button" className="tg-chip" disabled={busy} onClick={() => submit(c)}>{c}</button>)}</div>
-      <form className="tg-asst__in" onSubmit={(e) => { e.preventDefault(); submit(text) }}>
+      {msgs.length > 0 && <div className="tg-asst__chips" role="group" aria-label="Gợi ý câu hỏi">{chips.map((c) => <button key={c} type="button" className="tg-chip" disabled={busy} onClick={() => submit(c)}>{c}</button>)}</div>}
+      <form className={`tg-asst__in ${busy ? 'is-busy' : ''}`} onSubmit={(e) => { e.preventDefault(); submit(text) }}>
         <label className="tg-sr" htmlFor="tg-asst-in">Nói với mình</label>
         <input id="tg-asst-in" className="tg-line-input" value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} placeholder={placeholder} autoComplete="off" />
-        <button type="submit" className="tg-icon-btn" disabled={busy} aria-label="Gửi"><Icon name="send" size={18} /></button>
+        <button type="submit" className="tg-send" disabled={busy || !text.trim()} aria-label="Gửi"><Icon name="send" size={18} /></button>
       </form>
     </>
   )
@@ -194,7 +206,7 @@ function DecisionBody({ pinned, inDialog }: { pinned: boolean; inDialog?: boolea
   const send = useDecisionSend()
   return <Body stage="decision" pinned={pinned} inDialog={inDialog} busy={busy} send={send} chips={CHIPS} onLike={send.like} canPin onAsk={send.askWhyNot}
     intro='Nói điều bạn muốn đổi trong danh sách, ví dụ "bỏ mấy chỗ đông đi" hay "thêm một quán ăn tối gần hồ". Mọi thay đổi hiện ngay trên lưới và hoàn tác được.'
-    placeholder="Nói với mình, ví dụ: yên tĩnh hơn đi" />
+    placeholder="Ví dụ: yên tĩnh hơn đi" />
 }
 
 // The heart on a place card in Lịch trình saves the place to the user's list, the same list the place sheet's heart uses.
@@ -202,7 +214,7 @@ function PlanningBody({ inDialog, onOpenDay }: { inDialog?: boolean; onOpenDay?:
   const send = usePlanningSend()
   return <Body stage="planning" pinned={false} inDialog={inDialog} busy={send.busy} send={send} chips={PLAN_CHIPS} canPin={false} onLike={(id) => { void toggleSaved(id) }} onOpenDay={onOpenDay}
     intro='Hỏi về lịch này hoặc nói điều bạn muốn đổi, ví dụ "dời chỗ này sang ngày 2" hay "vì sao ghé hồ trước?". Một lượt đổi lịch hoàn tác được bằng một lần bấm.'
-    placeholder="Nói với mình, ví dụ: thêm một quán cà phê chiều" />
+    placeholder="Ví dụ: thêm một quán cà phê chiều" />
 }
 
 export function AssistantPinned() {
@@ -232,7 +244,7 @@ export function AssistantFloat({ stage = 'decision', onOpenDay }: { stage?: Assi
       {!a.open && (
         <div className="tg-asst-fab">
           {a.nudge && <div className="tg-nudge" role="status"><span>{a.nudge}</span><button type="button" className="tg-link" onClick={() => openAssistant(true)}>Xem</button><button type="button" className="tg-icon-btn" onClick={dismissNudge} aria-label="Tắt gợi ý"><Icon name="x" size={16} /></button></div>}
-          <button type="button" className="tg-fab" onClick={() => openAssistant(true)} aria-keyshortcuts="/" aria-label={fab.aria} title={`${fab.aria}  ( / )`}><Icon name="sparkle" size={22} /><span className="tg-fab__label">{fab.label}</span>{a.nudge && <i className="tg-fab__dot" aria-hidden="true" />}</button>
+          <button type="button" className="tg-fab" onClick={() => openAssistant(true)} aria-keyshortcuts="/" aria-label={fab.aria} title={`${fab.aria}  ( / )`}><Orb size={40} /><Icon name="sparkle" size={18} /><span className="tg-fab__label">{fab.label}</span>{a.nudge && <i className="tg-fab__dot" aria-hidden="true" />}</button>
         </div>
       )}
       {a.open && float && (

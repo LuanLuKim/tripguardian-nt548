@@ -1,13 +1,11 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef } from 'react'
 import { reducedMotion } from '../lib'
 import { Icon } from '../ui/icons'
 import { Stamp } from '../ui/Stamp'
-import { loadSubs, type Sub } from './tagTopics'
 import { THEMES, themeOf, type Theme } from './themes'
-import '../css/tagpick.css'
 
-// A theme as a postcard-style blog page (ui_mock_for_design reference: cream card, photo in a frame, a stamp on the corner,
+// A theme as a postcard-style blog page (docs/design/mock reference: cream card, photo in a frame, a stamp on the corner,
 // the other pages as tabs on the right edge). Opens over a blurred page; the photo flies in from the card it was clicked on.
 // Colours of the paper live in blog.css; everything else is the app's tokens.
 
@@ -19,6 +17,8 @@ const split = (title: string): [string, string] => {
   const k = Math.ceil(w.length / 2)
   return [w.slice(0, k).join(' '), w.slice(k).join(' ')]
 }
+
+const TABS = 5
 
 // Flight: the photo starts as the card it was clicked on (same place, same width, cropped to its shape) and settles into the frame.
 function fly(node: HTMLElement, a: DOMRect) {
@@ -38,7 +38,7 @@ function fly(node: HTMLElement, a: DOMRect) {
   )
 }
 
-export function ThemeBlog({ id, from, onPick, onStart, onClose }: { id: string | null; from: HTMLElement | null; onPick: (id: string) => void; onStart: (t: Theme, kinds: string[]) => void; onClose: () => void }) {
+export function ThemeBlog({ id, from, onPick, onStart, onClose }: { id: string | null; from: HTMLElement | null; onPick: (id: string) => void; onStart: (t: Theme) => void; onClose: () => void }) {
   const keep = useRef(id ?? THEMES[0].id)
   if (id) keep.current = id
   const t = themeOf(keep.current) ?? THEMES[0]
@@ -49,16 +49,9 @@ export function ThemeBlog({ id, from, onPick, onStart, onClose }: { id: string |
     fly(node, from.getBoundingClientRect())
   }, [from])
   const [lead, tail] = split(t.title)
-  // The kinds inside this theme's tag: the user narrows the theme here, and the picks ride along into the first turn.
-  const [subs, setSubs] = useState<Sub[] | null>(null)
-  const [kinds, setKinds] = useState<string[]>([])
-  useEffect(() => {
-    let live = true
-    setSubs(null)
-    setKinds([])
-    void loadSubs(t.ref).then((s) => { if (live) setSubs(s) })
-    return () => { live = false }
-  }, [t.ref])
+  // The edge shows five tabs however many themes there are: a window that slides to keep the open one in view (the arrow keys still walk all of them).
+  const at = THEMES.findIndex((x) => x.id === t.id)
+  const first = Math.min(Math.max(at - 2, 0), Math.max(THEMES.length - TABS, 0))
   const tabKey = (e: React.KeyboardEvent) => {
     const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0
     if (!d) return
@@ -87,18 +80,12 @@ export function ThemeBlog({ id, from, onPick, onStart, onClose }: { id: string |
             <Dialog.Title className="tg-bl__title"><span>{lead}</span> <em>{tail}</em></Dialog.Title>
             <p id="tg-bl-desc" className="tg-bl__desc">{t.description}</p>
             <p className="tg-bl__cat">{t.category} · Ảnh địa điểm thật</p>
-            {!!subs?.length && (
-              <div className="tg-bl__kinds" role="group" aria-label={`Kiểu của ${t.tab}`}>
-                <p>Bạn thích kiểu nào? <span>Chọn nhiều cũng được</span></p>
-                <div className="tg-tp__chips">{subs.map((x) => <button key={x.id} type="button" aria-pressed={kinds.includes(x.label)} onClick={() => setKinds((k) => (k.includes(x.label) ? k.filter((y) => y !== x.label) : [...k, x.label]))}>{kinds.includes(x.label) && <Icon name="check" size={13} />}{x.label}</button>)}</div>
-              </div>
-            )}
             <div className="tg-bl__act">
-              <button type="button" className="tg-bl__go" onClick={() => onStart(t, kinds)}>Bắt đầu với ý tưởng này<Icon name="arrow" size={16} /></button>
+              <button type="button" className="tg-bl__go" onClick={() => onStart(t)}>Bắt đầu với ý tưởng này<Icon name="arrow" size={16} /></button>
             </div>
           </div>
           <div className="tg-bl__tabs" role="tablist" aria-orientation="vertical" aria-label="Các ý tưởng">
-            {THEMES.map((x, k) => (
+            {THEMES.slice(first, first + TABS).map((x, k) => (
               <button key={x.id} id={`tg-bl-tab-${x.id}`} type="button" role="tab" aria-selected={x.id === t.id} tabIndex={x.id === t.id ? 0 : -1}
                 style={{ '--i': k } as React.CSSProperties} onClick={() => onPick(x.id)} onKeyDown={tabKey}>
                 <span>{x.tab}</span>

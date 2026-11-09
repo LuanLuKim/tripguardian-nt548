@@ -1,5 +1,5 @@
 /* Lịch trình (screens/Plan.tsx, screens/plan/*): choose a way, overview, one screen per day, swap / add a place.
-   Layout from ui_mock_for_design/designs/itinerary; colours, type and motion are the flow's own tokens. */
+   Layout from docs/design/mock/designs/itinerary; colours, type and motion are the flow's own tokens. */
 
 /* ---- bar under the flow bar ---- */
 .tg-it-crumb { display: flex; align-items: center; gap: 14px; height: 64px; padding: 0 40px; flex: none; border-bottom: 1px solid var(--tg-line); background: var(--tg-bg); color: var(--tg-ink-2); font-size: 1rem; }
@@ -61,7 +61,7 @@
 .tg-it-stage { position: relative; display: grid; }
 .tg-it-stage > * { grid-area: 1 / 1; }
 .tg-it-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; align-items: stretch; transition: filter 700ms var(--tg-ease), opacity 700ms var(--tg-ease), scale 700ms var(--tg-ease); }
-/* the card of a way (a photo, what it keeps, what it sets aside); a white card with a dark button, in the manner of ui_mock_for_design */
+/* the card of a way (a photo, what it keeps, what it sets aside); a white card with a dark button, in the manner of docs/design/mock */
 .tg-it-choice { display: flex; flex-direction: column; overflow: hidden; border-radius: 24px; background: var(--tg-surface); border: 1.5px solid transparent; box-shadow: var(--tg-sh-1); cursor: pointer; transition: border-color 160ms, box-shadow 220ms, transform 320ms var(--tg-ease); animation: tg-pop 380ms var(--tg-ease) backwards; animation-delay: calc(var(--i, 0) * 70ms); }
 .tg-it-choice:hover:not(.is-off) { transform: translateY(-4px); box-shadow: var(--tg-sh-2); }
 .tg-it-choice.is-on { border-color: var(--tg-brown); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-brown) 14%, transparent), var(--tg-sh-2); }
@@ -249,11 +249,6 @@
 .tg-it-stop.is-slot .tg-it-card { opacity: 0.28; border-style: dashed; border-color: var(--tg-pine-line); background: var(--tg-pine-soft); box-shadow: none; }
 .tg-it-ghost { position: fixed; z-index: 100; margin: 0; pointer-events: none; border-color: var(--tg-pine) !important; background: var(--tg-surface); box-shadow: var(--tg-sh-2); transform-origin: center; will-change: left, top; cursor: grabbing; }
 body.tg-it-dragging, body.tg-it-dragging * { cursor: grabbing !important; user-select: none !important; }
-.tg-it-add { display: grid; justify-items: center; gap: 7px; margin: 22px 0 18px; }
-.tg-it-add button { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: var(--tg-pine); color: #fff; transition: background 150ms, transform 200ms var(--tg-ease); }
-.tg-it-add button:hover:not(:disabled) { background: var(--tg-pine-d); transform: scale(1.06); }
-.tg-it-add button:disabled { opacity: 0.45; }
-.tg-it-add span { font-size: 0.86rem; font-weight: 600; }
 .tg-it-empty { padding: 30px; border-radius: 22px; background: var(--tg-surface); border: 1px dashed var(--tg-line-2); color: var(--tg-ink-2); }
 .tg-it-extras { display: grid; gap: 14px; margin-top: 22px; }
 .tg-it-extras .tg-sidecard { margin: 0; }

@@ -51,6 +51,11 @@ def test_the_request_asks_for_a_full_geojson_overview(cfg, route):
     assert "/route/v1/" in route[0]
 
 
+def test_a_route_may_turn_round_at_a_stop_like_the_matrix(cfg, route):
+    client.route_shape(PTS, "car", cfg)
+    assert "continue_straight=false" in route[0]
+
+
 def test_the_route_cache_is_separate_from_the_matrix_cache(cfg, route, monkeypatch):
     table = json.loads((FIXTURES / "osrm_table.json").read_text(encoding="utf-8"))
     both = []

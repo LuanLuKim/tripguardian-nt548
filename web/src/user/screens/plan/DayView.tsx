@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { dayLabel, fmtMin, info, toMin } from '../../lib'
-import type { CrowdTip, DayConditions, ItineraryDay, ItineraryItem } from '../../planning/types'
+import type { CrowdTip, DayConditions, Ghost, ItineraryDay, ItineraryItem } from '../../planning/types'
 import { PlacePhoto } from '../../ui/common'
 import { Icon } from '../../ui/icons'
+import { GhostSlot } from './GhostSlot'
 import { Conditions, VisitDuration } from './parts'
 import { useSlide, useStopDrag } from './reorder'
 import { BLOCK, BLOCK_NOTE, MEAL_LABEL, dayAreas, shortDate, visits } from './shared'
@@ -10,7 +11,7 @@ import { MapsLink, TripMap } from './TripMap'
 import type { MapDayRoute } from './useRoutes'
 import '../../css/day.css'
 
-// Mẫu ui_mock_for_design/designs/itinerary (màn từng ngày): the day's stops on the left, its route on the right.
+// Mẫu docs/design/mock/designs/itinerary (màn từng ngày): the day's stops on the left, its route on the right.
 // The day bar stays put, the list scrolls on its own. Order is changed by dragging a card or with the up / down buttons;
 // the server lays the day out again (times and legs) and sends it back.
 
@@ -42,12 +43,13 @@ function Block({ it }: { it: ItineraryItem }) {
 
 const MODE_ICON: Record<string, 'walk' | 'bike' | 'car'> = { walk: 'walk', motorbike: 'bike', car: 'car' }
 
-export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange, durationOverrides, cond, tips, vehicle, extras, footer, summary, route,
+export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange, durationOverrides, cond, tips, vehicle, extras, footer, summary, route, ghosts, onAddGhost,
   onBack, onOpen, onSwap, onDrop, onMoveDay, onReorder, onDuration }: {
   days: ItineraryDay[]; dayIdx: number; week: number; onDay: (i: number) => void; busy: boolean; locked: string[]
   durationRange?: [number, number]; durationOverrides: Record<string, number>; cond: DayConditions | undefined; tips: CrowdTip[]
   vehicle: string; extras: ReactNode; footer: ReactNode; summary: string
   route: MapDayRoute | null // this day's road from planning/routes; null while it loads or when the day has none
+  ghosts: Ghost[]; onAddGhost: (place: string) => void // empty-slot suggestions (all days); a tap adds the place to this day
   onBack: () => void; onOpen: (id: string) => void; onSwap: (place: string | null) => void; onDrop: (place: string) => void
   onMoveDay: (place: string, day: number) => void; onReorder: (day: number, order: string[]) => Promise<boolean>
   onDuration: (place: string, minutes: number | null) => void
@@ -65,6 +67,18 @@ export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange
   const shown = dragOrder ?? waiting ?? baseOrder
   const order = [...shown.filter((id) => byId.has(id)), ...baseOrder.filter((id) => !shown.includes(id))]
   const stale = !!dragOrder || !!waiting
+  // each empty slot sits above the first stop that starts at or after it; a slot after the last stop closes the list
+  const slotsAt = useMemo(() => {
+    const at = new Map<string, Ghost[]>()
+    const end: Ghost[] = []
+    for (const g of ghosts) {
+      if (!d || g.day !== d.day - 1 || !g.items.length) continue
+      const next = stops.find((x) => toMin(x.it.start) >= g.start)
+      if (!next) { end.push(g); continue }
+      at.set(next.id, [...(at.get(next.id) ?? []), g])
+    }
+    return { at, end }
+  }, [ghosts, d, stops])
   const picked = sel && byId.has(sel) ? sel : null
   const lit = hot ?? picked
   const listRef = useRef<HTMLOListElement>(null)
@@ -72,7 +86,11 @@ export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange
   useEffect(() => {
     const bar = tabsRef.current
     const tab = bar?.querySelector<HTMLElement>('[aria-selected="true"]')
-    if (bar && tab) bar.scrollTo({ left: tab.offsetLeft - (bar.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' })
+    if (bar && tab) {
+      bar.style.setProperty('--x', `${tab.offsetLeft}px`) // the sliding highlight under the chosen day
+      bar.style.setProperty('--w', `${tab.offsetWidth}px`)
+      bar.scrollTo({ left: tab.offsetLeft - (bar.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' })
+    }
   }, [dayIdx, week])
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -164,6 +182,7 @@ export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange
                     onClick={(e) => { if (!drag.justDragged() && !(e.target as HTMLElement).closest('button, a, select, summary, label, details, input')) setSel((v) => (v === id ? null : id)) }}
                     className={`tg-it-stop ${lit === id ? 'is-hot' : ''} ${picked === id ? 'is-picked' : ''} ${drag.dragging === id ? 'is-slot' : ''} ${stale ? 'is-stale' : ''}`}>
                     {s.pre.map((b, k) => <Block key={k} it={b} />)}
+                    {!stale && slotsAt.at.get(id)?.map((g) => <GhostSlot key={`${g.kind}${g.start}`} slot={g} day={d.day} busy={busy} onAdd={onAddGhost} onOpen={onOpen} />)}
                     {(s.leg > 0 || s.buffer > 0) && <p className="tg-it-leg"><Icon name={MODE_ICON[s.mode ?? ''] ?? 'bike'} size={14} /><span>{s.leg > 0 && <>≈ {s.leg} phút{vehicle ? ` ${vehicle}` : ''} · ước tính</>}{s.buffer > 0 && <small>{s.leg > 0 ? ' · ' : ''}+{s.buffer} phút đệm</small>}</span></p>}
                     <article className="tg-it-card" aria-current={picked === id ? 'true' : undefined}>
                       <span className="tg-it-dot" aria-hidden="true">{i + 1}</span>
@@ -209,10 +228,12 @@ export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange
                 )
               })}
               {tail.map((b, k) => <li key={`t${k}`} className={`tg-it-tail ${stale ? 'is-stale' : ''}`}><Block it={b} /></li>)}
+              {!stale && slotsAt.end.length > 0 && stops.length > 0 && <li className="tg-it-tail">{slotsAt.end.map((g) => <GhostSlot key={`${g.kind}${g.start}`} slot={g} day={d.day} busy={busy} onAdd={onAddGhost} onOpen={onOpen} />)}</li>}
               {stops.length > 0 && <li className={`tg-it-endrow is-end ${stale ? 'is-stale' : ''}`}><span className="tg-it-node" aria-hidden="true" /><small>Kết thúc ngày{last ? ` · ${last.end}` : ''}</small><b>{endName}</b></li>}
             </ol>
             {!stops.length && <p className="tg-it-empty">Ngày tự do: bạn có thể nghỉ, tự khám phá hoặc thêm một nơi muốn ghé.</p>}
-            <div className="tg-it-add"><button type="button" aria-label="Thêm trải nghiệm" disabled={busy} onClick={() => onSwap(null)}><Icon name="plus" size={20} /></button><span>Thêm trải nghiệm</span></div>
+            {!stops.length && d && slotsAt.end.map((g) => <GhostSlot key={`${g.kind}${g.start}`} slot={g} day={d.day} busy={busy} onAdd={onAddGhost} onOpen={onOpen} />)}
+            <button type="button" className="tg-it-add" disabled={busy} onClick={() => onSwap(null)}><span className="tg-it-add__ic"><Icon name="plus" size={20} /></span><span><b>Thêm trải nghiệm</b><small>Tìm thêm nơi muốn ghé trong ngày này</small></span><Icon name="chevronRight" size={16} /></button>
             <div className="tg-it-extras">{extras}</div>
             <p className="tg-it-small">Giờ giấc và đường đi là ước tính. Ảnh và đánh giá: catalog Google Maps.</p>
           </div>

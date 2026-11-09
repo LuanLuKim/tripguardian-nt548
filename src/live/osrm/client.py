@@ -1,4 +1,6 @@
 """OSRM on this machine: a duration matrix and the shape of one route.
+A route asks for continue_straight=false: the car profile's default forbids turning round at a stop, so a day that visits
+a place off the main road would be drawn with a loop past it that the matrix (which has no such rule) never charged for.
 
 The matrix is cached mode-free (roads do not care about the vehicle); the mode factor is applied on the way out.
 """
@@ -45,11 +47,11 @@ def route_shape(points: list[Point], mode: str | None, cfg: Settings) -> dict:
     """{"coords": [[lat, lng]], "minutes": int, "source", "fetched_at"} — the line one day's route draws."""
     if len(points) < 2:
         raise ValueError("route_shape needs at least two points")
-    payload = {"kind": "route", "profile": cfg.osrm_profile, "points": _rounded(points)}
+    payload = {"kind": "route", "profile": cfg.osrm_profile, "points": _rounded(points), "turn_at_stops": True}
     hit = cache_get("osrm", payload, cfg.ttl_s["osrm"])
     if hit is None:
         url = (f"{cfg.osrm_url}/route/v1/{cfg.osrm_profile}/{_coords(points)}"
-               "?overview=full&geometries=geojson&steps=false")
+               "?overview=full&geometries=geojson&steps=false&continue_straight=false")
         doc = get_json(url, cfg.user_agent, cfg.timeout_s)
         if doc.get("code") != "Ok" or not doc.get("routes"):
             raise Unavailable(f"osrm route: code={doc.get('code')!r}")
@@ -65,11 +67,11 @@ def route_steps(points: list[Point], mode: str | None, cfg: Settings) -> dict:
     consecutive points, in driving order (a pass shows up by its OSM name, e.g. "Đèo Mimosa")."""
     if len(points) < 2:
         raise ValueError("route_steps needs at least two points")
-    payload = {"kind": "steps", "profile": cfg.osrm_profile, "points": _rounded(points)}
+    payload = {"kind": "steps", "profile": cfg.osrm_profile, "points": _rounded(points), "turn_at_stops": True}
     hit = cache_get("osrm", payload, cfg.ttl_s["osrm"])
     if hit is None:
         url = (f"{cfg.osrm_url}/route/v1/{cfg.osrm_profile}/{_coords(points)}"
-               "?overview=false&geometries=geojson&steps=true")
+               "?overview=false&geometries=geojson&steps=true&continue_straight=false")
         doc = get_json(url, cfg.user_agent, cfg.timeout_s)
         if doc.get("code") != "Ok" or not doc.get("routes"):
             raise Unavailable(f"osrm steps: code={doc.get('code')!r}")

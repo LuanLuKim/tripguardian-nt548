@@ -10,7 +10,7 @@ import { useFlowNav } from '../ui/Shell'
 import { Who } from './Who'
 import { HomeDialogs, openCreate } from './dialogs'
 
-// The app frame of every page that is not a step of the trip flow (ui_mock_for_design/designs/homepage):
+// The app frame of every page that is not a step of the trip flow (docs/design/mock/designs/homepage):
 // a sidebar card | the page (friends and your activity drop down from the icon in its top corner), and the trip in progress along the bottom while it is not yet confirmed.
 export function Frame({ path, children }: { path: string; children: ReactNode }) {
   const account = useAccount()
@@ -55,11 +55,16 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/saved', label: 'Đã lưu', icon: 'heart' },
   { to: '/recent', label: 'Đã xem gần đây', icon: 'clock' },
 ]
-// The trip in progress: Lựa chọn and Lịch trình side by side, so the user flips between them at once (Tìm hiểu is the chat the trip began in).
+// The three steps of a trip, on the screens of the trip flow only (the chat, Lựa chọn, place pages, Lịch trình, Hoàn tất):
+// the user flips between them at once. Pages of the frame (home, trips, saved…) do not show them; the bar at the bottom leads back.
 const FLOW: { id: StepId; label: string; icon: IconName }[] = [
+  { id: 'understand', label: 'Trò chuyện', icon: 'chat' },
   { id: 'explore', label: 'Lựa chọn', icon: 'grid' },
   { id: 'plan', label: 'Lịch trình', icon: 'calendar' },
 ]
+const FLOW_PATHS = ['/understand', '/explore', '/plan', '/done']
+const onStep = (path: string, id: StepId) => (id === 'understand' ? path === '/understand' : id === 'explore' ? path.startsWith('/explore') : path === '/plan' || path === '/done')
+
 const ACCOUNT_NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/profile', label: 'Cài đặt', icon: 'settings' },
   { to: '/support', label: 'Hỗ trợ', icon: 'info' },
@@ -95,13 +100,16 @@ export function Sidebar({ path }: { path: string }) {
     <nav className="tg-hf__side" aria-label="Điều hướng chính">
       <Link to="/" className="tg-hf__logo" aria-label="Về Khám phá"><Logo size={19} /></Link>
       <div className="tg-hf__mids">
-        {hasTrip(trip) && (
+        {FLOW_PATHS.some((x) => path.startsWith(x)) && (
           <ul className="tg-hf__blk tg-hf__nav" aria-label="Chuyến đang lập">
             {FLOW.map((f) => {
-              const on = path.startsWith(f.id === 'explore' ? '/explore' : '/plan')
+              const on = onStep(path, f.id)
+              // A step the trip has not reached yet cannot open: Lựa chọn needs what the chat handed on, Lịch trình needs a pick.
+              const off = !on && ((f.id === 'explore' && !hasTrip(trip)) || (f.id === 'plan' && !trip.decisionId && !trip.planningId))
+              const tip = off ? `${f.label} · kể chuyến đi trước đã` : f.label
               return (
                 <li key={f.id}>
-                  <button type="button" className={`tg-hf__item ${on ? 'is-on' : ''}`} data-tour={`nav-${f.id}`} data-tip={f.label} aria-label={f.label} aria-current={on ? 'page' : undefined} aria-busy={flow.going === f.id || undefined} onClick={() => { void flow.goTo(f.id) }}>
+                  <button type="button" className={`tg-hf__item ${on ? 'is-on' : ''}`} data-tour={`nav-${f.id}`} data-tip={tip} aria-label={tip} aria-current={on ? 'page' : undefined} aria-disabled={off || undefined} aria-busy={flow.going === f.id || undefined} onClick={() => { if (!off && !on) void flow.goTo(f.id) }}>
                     <Icon name={f.icon} size={26} />
                   </button>
                 </li>
@@ -127,16 +135,12 @@ function JourneyBar() {
   const step = stepOf(trip)
   const ctx = trip.searchInput?.context
   const selected = view?.selected ?? trip.selected
-  const steps = STEPS
   return (
-    <footer className="tg-hf__bar" aria-label="Chuyến đang lập" style={{ '--tg-prog': `${((step.index + 0.5) / steps.length) * 100}%` } as CSSProperties}>
+    <footer className="tg-hf__bar" aria-label="Chuyến đang lập" style={{ '--tg-prog': `${((step.index + 0.5) / STEPS.length) * 100}%` } as CSSProperties}>
       <button type="button" className="tg-hf__trip" onClick={() => go(step.path)}>
-        {selected[0] ? <PlacePhoto id={selected[0]} /> : <img src="/img/home/lake.jpg" alt="" />}
+        <span className="tg-hf__ring">{selected[0] ? <PlacePhoto id={selected[0]} /> : <img src="/img/home/lake.jpg" alt="" />}</span>
         <span><strong>Đà Lạt{ctx?.days ? ` ${ctx.days} ngày` : ''}</strong><small>{[ctx?.people ? `${ctx.people} người` : null, `${selected.length} nơi đã chọn`, `Đang ở ${step.label}`].filter(Boolean).join(' · ')}</small></span>
       </button>
-      <ol className="tg-hf__steps" aria-label={`Bước ${step.index + 1} trên ${steps.length}: ${step.label}`}>
-        {steps.map((s, i) => <li key={s.id} className={i < step.index ? 'is-done' : i === step.index ? 'is-now' : ''}><i>{i < step.index ? <Icon name="check" size={12} /> : i + 1}</i>{s.label}</li>)}
-      </ol>
       <span className="tg-hf__bact">
         <Link to="/saved" className="tg-hb-icon" aria-label="Xem mục đã lưu"><Icon name="heart" size={16} /></Link>
         <button type="button" className="tg-hb-go" onClick={() => go(step.path)}>Đi tiếp<Icon name="arrow" size={15} /></button>

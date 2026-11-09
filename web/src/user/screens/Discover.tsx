@@ -4,7 +4,7 @@ import { MiniCalendar } from '../home/MiniCalendar'
 import { Pulse, usePulse } from '../home/Pulse'
 import { Who } from '../home/Who'
 import { useSnapshot } from '../../data/store'
-import { matches, THEMES } from '../home/themes'
+import { HOME_THEMES, matches, THEMES } from '../home/themes'
 import { toast } from '../store'
 import { hasTrip, useTrip } from '../trip'
 import { Icon } from '../ui/icons'
@@ -15,12 +15,13 @@ export { useBegin } from '../home/dialogs'
 // The pastel square behind each trend's number.
 const TONES = ['#fbf6b8', '#d9f4ae', '#d2e5fb', '#fbdce5', '#e5def9']
 
-// "Dành cho bạn": the home page of the app (ui_mock_for_design/designs/homepage). Every theme is a way into a trip.
+// "Dành cho bạn": the home page of the app (docs/design/mock/designs/homepage). Every theme is a way into a trip.
 export function Discover() {
   useTitle('Dành cho bạn')
   const { trip } = useTrip()
   const familiar = useFamiliar()
   const [q, setQ] = useState('')
+  const [allThemes, setAllThemes] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -31,6 +32,8 @@ export function Discover() {
     return () => removeEventListener('keydown', key)
   }, [])
   const shown = THEMES.filter((t) => matches(t, q))
+  const folded = !allThemes && !q.trim() && shown.length > HOME_THEMES // a search shows every match; otherwise "Xem thêm" opens the rest
+  const listed = folded ? shown.slice(0, HOME_THEMES) : shown
   const { snap } = useSnapshot()
   const pulse = usePulse()
   const ctx = hasTrip(trip) ? trip.searchInput?.context : null
@@ -67,11 +70,11 @@ export function Discover() {
             </div>
             <span className="tg-hm__headact">
               {hasTrip(trip) && <button type="button" className="tg-hb-link" onClick={() => { setFamiliar(!familiar); toast(familiar ? 'Chuyến mới sẽ thử một hướng khác' : 'Chuyến mới sẽ theo gu quen thuộc') }}>{familiar ? 'Theo gu quen thuộc' : 'Lần này khác'}<Icon name="chevronRight" size={12} /></button>}
-              <button type="button" className="tg-hm__more" onClick={() => openCreate(q.trim())}>Tạo chuyến đi</button>
+              {!q.trim() && shown.length > HOME_THEMES && <button type="button" className="tg-hm__more" aria-expanded={allThemes} aria-controls="tg-hm-cards" onClick={() => setAllThemes((v) => !v)}>{allThemes ? 'Thu gọn' : 'Xem thêm'}</button>}
             </span>
           </div>
-          <div className="tg-hm__cards">
-            {shown.map((t, i) => (
+          <div className="tg-hm__cards" id="tg-hm-cards">
+            {listed.map((t, i) => (
               <article key={t.id} className={`tg-hm__card ${i === 0 ? 'is-lead' : ''}`}>
                 <div className="tg-hm__ph"><button type="button" onClick={(e) => openTheme(t.id, e.currentTarget.querySelector('img'))} aria-label={`Khám phá ${t.short}`}><img src={t.photo} alt={t.alt} loading="lazy" /></button></div>
                 <p>{t.category}</p>

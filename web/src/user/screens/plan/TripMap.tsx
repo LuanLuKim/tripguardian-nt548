@@ -96,6 +96,51 @@ function placeLabel(x: number, y: number, r: number, width: number, w: number, h
 
 type Path = NonNullable<DayRoute['route']>
 
+const LANE = 4.6 // px a leg is shifted to the right of its direction of travel
+
+// The polyline shifted `d` px to the right of its direction (screen y points down). Each vertex moves along the averaged normal of its two segments.
+function lane(pts: readonly (readonly [number, number])[], d: number): [number, number][] {
+  if (pts.length < 2) return pts.map(([x, y]) => [x, y])
+  const seg = pts.slice(1).map(([x, y], i) => { const dx = x - pts[i][0], dy = y - pts[i][1], len = Math.hypot(dx, dy) || 1; return [-dy / len, dx / len] as const })
+  return pts.map(([x, y], i) => {
+    const p = seg[Math.max(0, i - 1)], q = seg[Math.min(seg.length - 1, i)]
+    let nx = p[0] + q[0], ny = p[1] + q[1]
+    const m = Math.hypot(nx, ny)
+    if (m < 0.2) { nx = p[0]; ny = p[1] } else { nx /= m; ny /= m }
+    const k = Math.min(d / Math.max(0.5, (p[0] * nx + p[1] * ny)), d * 2)
+    return [x + nx * k, y + ny * k]
+  })
+}
+
+// Small white chevrons along a leg, pointing the way it is travelled.
+function arrows(g: CanvasRenderingContext2D, pts: [number, number][], gap: number) {
+  const step = 52
+  let carry = step / 2
+  g.save()
+  g.setLineDash([])
+  g.strokeStyle = '#fff'
+  g.lineWidth = 1.8
+  g.lineCap = 'round'
+  g.lineJoin = 'round'
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]
+    const len = Math.hypot(x1 - x0, y1 - y0)
+    if (!len) continue
+    const ux = (x1 - x0) / len, uy = (y1 - y0) / len
+    let at = carry
+    for (; at <= len; at += step) {
+      const x = x0 + ux * at, y = y0 + uy * at, s = gap / 2
+      g.beginPath()
+      g.moveTo(x - ux * s - uy * s, y - uy * s + ux * s)
+      g.lineTo(x + ux * s * 0.6, y + uy * s * 0.6)
+      g.lineTo(x - ux * s + uy * s, y - uy * s - ux * s)
+      g.stroke()
+    }
+    carry = at - len
+  }
+  g.restore()
+}
+
 // Index of the path vertex nearest to each stop, never going back: where each leg of the road starts and ends.
 function legStarts(path: Path, pts: [number, number][]) {
   const v = path.coords.map(([lat, lng]) => project({ lat, lng }))
@@ -314,28 +359,32 @@ export function TripMap({ groups, title, className = '', hot, onHot, onOpen, lab
       const road = roads[li]
       if (road) {
         const edge = css.getPropertyValue('--tg-surface').trim()
-        const thick = soft ? 7 : 5
+        const thick = soft ? 5 : 4.5
         const anchors = [li === 0 ? endPts[0] : null, ...line.map((s) => s.xy), li === 0 ? endPts[1] : null]
         const vertices = [0, ...road.at, road.v.length - 1]
         const near = (point: [number, number], i: number) => Math.hypot(point[0] - road.v[i][0], point[1] - road.v[i][1]) * 40075016.686 * Math.cos(road.path.coords[i][0] * Math.PI / 180) / (Z.n * Z.size) <= 150
         const sketch = (from: [number, number], to: [number, number]) => {
           g.strokeStyle = brand; g.lineWidth = 2.5; g.setLineDash([5, 6]); trace([at(from), at(to)])
         }
+        // Each leg is shifted to the right of its direction of travel (as vehicles drive), so a road used on the way out and again on the
+        // way back shows as two lanes side by side instead of one line over the other. Casings first, then the lines, then direction arrows.
+        const legs: { part: [number, number][]; active: boolean }[] = []
         for (let i = 1; i < anchors.length; i++) {
           const from = anchors[i - 1], to = anchors[i]
           if (!from || !to) continue
           const a = vertices[i - 1], b = vertices[i]
           if (b > a && near(from, a) && near(to, b)) {
-            const part = road.v.slice(a, b + 1).map(at)
             const active = li === 0 && hotAt === i - 1
-            g.setLineDash([])
-            g.globalAlpha = hotAt >= 0 && !active ? 0.45 : 1
-            g.strokeStyle = edge; g.lineWidth = thick + (active ? 7 : 4); trace(part)
-            g.strokeStyle = brand; g.lineWidth = thick + (active ? 2 : 0); trace(part)
-            g.globalAlpha = 1
+            legs.push({ part: lane(road.v.slice(a, b + 1).map(at), LANE), active })
             sketch(from, road.v[a]); sketch(road.v[b], to)
           } else sketch(from, to)
         }
+        const dim = (active: boolean) => { g.globalAlpha = hotAt >= 0 && !active ? 0.45 : 1 }
+        g.setLineDash([])
+        for (const { part, active } of legs) { dim(active); g.strokeStyle = edge; g.lineWidth = thick + (active ? 6 : 3); trace(part) }
+        for (const { part, active } of legs) { dim(active); g.strokeStyle = brand; g.lineWidth = thick + (active ? 2 : 0); trace(part) }
+        for (const { part, active } of legs) { dim(active); arrows(g, part, active ? 8 : 7) }
+        g.globalAlpha = 1
         return
       }
       const pts = [...(li === 0 && endPts[0] ? [endPts[0]] : []), ...line.map((s) => s.xy), ...(li === 0 && endPts[1] ? [endPts[1]] : [])].map(at)

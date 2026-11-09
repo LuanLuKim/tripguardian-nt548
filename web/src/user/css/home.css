@@ -1,4 +1,4 @@
-/* App frame + home page (layout of ui_mock_for_design/designs/homepage): glass, sidebar | page | friends,
+/* App frame + home page (layout of docs/design/mock/designs/homepage): glass, sidebar | page | friends,
    the trip in progress along the bottom. Colours come from tokens.css (white and black); pages inside the frame inherit it. */
 .tg .tg-home, .tg.tg-home {
   --tg-sans: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -48,6 +48,9 @@
 .tg-hf__item:hover { background: var(--tg-pine-soft); color: var(--tg-ink); }
 .tg-hf__item.is-on, .tg-hf__item.is-on:hover { background: var(--tg-night); color: #fff; box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.55); }
 .tg-hf__item.is-on svg { color: #fff; }
+.tg-hf__item[aria-disabled='true'] { opacity: 0.38; cursor: not-allowed; }
+.tg-hf__item[aria-disabled='true']:hover { background: none; }
+.tg-hf__item[aria-disabled='true']:hover svg { transform: none; }
 .tg-hf__count { position: absolute; top: 3px; right: 1px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center; background: var(--tg-night); color: #fff; font-size: 0.64rem; font-weight: 600; border: 2px solid var(--tg-surface); box-sizing: content-box; }
 .tg-hf__item.is-on .tg-hf__count { background: #fff; color: var(--tg-night); border-color: var(--tg-night); }
 /* the foot: sign-out, a card like the others */
@@ -108,21 +111,19 @@
 .tg-av.is-online::after { content: ''; position: absolute; right: -1px; bottom: 0; width: 7px; height: 7px; border-radius: 50%; background: #7fa877; border: 2px solid #f6f6f6; }
 
 /* trip in progress */
-.tg-hf__bar { position: fixed; z-index: 25; left: 110px; right: 326px; bottom: 13px; display: grid; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.2fr) minmax(180px, 1fr); gap: 18px; align-items: center; min-height: 72px; padding: 12px 18px; border-radius: 22px; background: rgba(255, 255, 255, 0.96); border: 1px solid var(--tg-line); box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.35); backdrop-filter: blur(20px); }
-.tg-hf__bar::before, .tg-hf__bar::after { content: ''; position: absolute; left: 22px; top: 0; height: 2px; border-radius: 10px; }
-.tg-hf__bar::before { right: 22px; background: var(--tg-line); }
-.tg-hf__bar::after { width: var(--tg-prog, 0%); max-width: calc(100% - 44px); background: linear-gradient(90deg, var(--tg-sun), var(--tg-pine-line)); }
-.tg-hf__trip { display: flex; align-items: center; gap: 11px; min-width: 0; text-align: left; }
-.tg-hf__trip > img, .tg-hf__trip .tg-photo, .tg-hf__trip .tg-photo img { width: 42px; height: 42px; flex: none; border-radius: 9px; object-fit: cover; overflow: hidden; }
-.tg-hf__trip strong { display: block; font-size: 0.92rem; font-weight: 600; }
-.tg-hf__trip small { display: block; margin-top: 3px; font-size: 0.78rem; color: var(--tg-ink-3); }
-.tg-hf__steps { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; gap: 10px; }
-.tg-hf__steps li { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; color: var(--tg-ink-3); white-space: nowrap; }
-.tg-hf__steps li + li::before { content: ''; width: 20px; height: 1px; margin-right: 3px; background: var(--tg-line-2); }
-.tg-hf__steps i { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--tg-line-2); font: normal 500 0.72rem var(--tg-sans); }
-.tg-hf__steps .is-done i { background: var(--tg-pine-line); border-color: transparent; color: var(--tg-pine-d); }
-.tg-hf__steps .is-now { color: var(--tg-pine); font-weight: 500; }
-.tg-hf__steps .is-now i { border: 1.5px solid var(--tg-sun); color: var(--tg-pine); }
+/* the trip in progress: a compact frosted pill centred between the rail and the right column; the ring round the photo is how far along the trip is */
+.tg-hf__bar { position: fixed; z-index: 25; left: 110px; right: 326px; bottom: 16px; width: fit-content; max-width: calc(100vw - 460px); margin-inline: auto; display: flex; align-items: center; gap: 14px; padding: 7px 8px 7px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 16px 36px -14px rgba(0, 0, 0, 0.35); backdrop-filter: blur(20px) saturate(1.5); animation: tg-bar-in 480ms var(--tg-ease) both; }
+@keyframes tg-bar-in { from { opacity: 0; transform: translateY(14px); } }
+.tg-hf__trip { display: flex; align-items: center; gap: 12px; min-width: 0; padding-right: 4px; border-radius: 999px; text-align: left; }
+.tg-hf__ring { display: grid; place-items: center; flex: none; width: 48px; height: 48px; border-radius: 50%; background: conic-gradient(var(--tg-ink) var(--tg-prog, 0%), rgba(0, 0, 0, 0.12) 0); transition: transform 240ms var(--tg-ease); }
+.tg-hf__trip:hover .tg-hf__ring { transform: scale(1.05); }
+.tg-hf__ring > img, .tg-hf__ring .tg-photo, .tg-hf__ring .tg-photo img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; overflow: hidden; box-shadow: 0 0 0 2px #fff; }
+.tg-hf__trip > span:last-child { min-width: 0; }
+.tg-hf__trip strong { display: block; font-size: 0.92rem; font-weight: 600; white-space: nowrap; }
+.tg-hf__trip small { display: block; margin-top: 2px; overflow: hidden; font-size: 0.78rem; color: var(--tg-ink-2); text-overflow: ellipsis; white-space: nowrap; }
+.tg-hf__bar .tg-hb-go { min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--tg-ink); color: #fff; font-weight: 500; transition: background 160ms, transform 220ms var(--tg-ease); }
+.tg-hf__bar .tg-hb-go:hover:not(:disabled) { background: #000; transform: translateX(2px); }
+.tg-hf__bar .tg-hb-icon { width: 40px; height: 40px; border-radius: 50%; }
 .tg-hf__bact { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 
 /* shared controls */
@@ -140,7 +141,7 @@
 
 /* home page */
 /* Home page: the centre (search, the big card, the topics) | a tinted right column (you, the calendar, the top trends),
-   after the layout of the travel dashboard in ui_mock_for_design. */
+   after the layout of the travel dashboard in docs/design/mock. */
 .tg-hf__main:has(> .tg-hm) { padding: 0; overflow: hidden; display: flex; }
 .tg-hm { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
 .tg-hm__center { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--tg-line-2) transparent; padding: 26px 30px 24px; }
@@ -291,10 +292,10 @@
   .tg-hm { grid-template-columns: 1fr; }
   .tg-hm__rail { border-left: 0; border-top: 1px solid var(--tg-line); }
   .tg-hm__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .tg-hf__bar { grid-template-columns: 1fr auto; }
-  .tg-hf__steps { display: none; }
+  .tg-hf__bar { right: 24px; max-width: calc(100vw - 134px); }
 }
 @media (prefers-reduced-motion: reduce) {
+  .tg-hf__bar { animation: none; }
   .tg-home *, .tg-home *::before, .tg-home *::after { transition: none !important; }
 }
 

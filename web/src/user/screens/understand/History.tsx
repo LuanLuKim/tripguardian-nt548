@@ -4,8 +4,13 @@ import { tripSummaries } from '../../pd/api'
 import type { TripSummary } from '../../pd/types'
 import { Icon } from '../../ui/icons'
 
-// A chat is one line, named after its first message (like ChatGPT) and cut with "…" when it does not fit (the full text is the tooltip); a trip with no words yet, or one listed by an older harness, falls back to its place and days.
-const chatName = (t: TripSummary) => t.title || (t.days ? tripTitle(t) : 'Cuộc trò chuyện mới')
+// A chat is named after its first message (like ChatGPT) and fades out at the edge when it does not fit (the full text is the tooltip), with one line under it of what the trip holds so far; a trip with no words yet, or one listed by an older harness, falls back to its place and days.
+// A trip that went on to Lựa chọn without a typed word is a trip, not a new chat: it is named after the city and its picks.
+const chatName = (t: TripSummary) => t.title || (t.days ? tripTitle(t)
+  : t.stage !== 'trip' ? `${tripTitle(t)}${t.places.length ? ` · ${t.places.length} nơi` : ''}` : 'Cuộc trò chuyện mới')
+
+const STAGE: Record<TripSummary['stage'], string> = { trip: 'Tìm hiểu', decision: 'Lựa chọn', planning: 'Lịch trình' }
+const chatMeta = (t: TripSummary) => [t.days ? `${t.days} ngày` : null, t.people ? `${t.people} người` : null, t.places.length ? `${t.places.length} nơi` : null, t.confirmed ? 'Đã chốt' : STAGE[t.stage]].filter(Boolean).join(' · ')
 
 // A chat nobody has typed in yet holds nothing to come back to: it stays out of the list unless it is the one open now.
 const isBlank = (t: TripSummary) => !t.title && !t.days && !t.places.length && t.stage === 'trip'
@@ -71,6 +76,7 @@ export function History({ active, busy, onNew, onOpen }: { active: string | null
                 return (
                   <button key={t.id} type="button" className={`tg-history__entry ${t.id === active ? 'is-active' : ''}`} aria-current={t.id === active ? 'true' : undefined} title={chatName(t)} disabled={busy} onClick={() => open(t)}>
                     <strong>{chatName(t)}</strong>
+                    <small>{chatMeta(t)}</small>
                   </button>
                 )
               })}

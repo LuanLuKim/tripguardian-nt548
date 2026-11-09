@@ -1,32 +1,65 @@
-.tg-asst { display: flex; flex-direction: column; background: var(--tg-surface); border: 1px solid var(--tg-line); }
-.tg-asst.is-float { position: fixed; z-index: 50; right: 20px; top: calc(var(--tg-top) + 16px); bottom: calc(var(--tg-bar) + 36px); width: 380px; border-radius: 22px; box-shadow: var(--tg-sh-2); animation: tg-in-r 240ms var(--tg-ease); }
-.tg-asst.is-pinned { position: sticky; top: calc(var(--tg-top) + 20px); height: calc(100vh - var(--tg-top) - var(--tg-bar) - 60px); border-radius: 22px; box-shadow: var(--tg-sh-1); }
-.tg-asst__cat { position: absolute; right: 34px; bottom: 100%; margin-bottom: -1px; width: 120px; height: auto; pointer-events: none; user-select: none; } /* the cat leans on the frame's top edge */
-.tg-asst__head { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 10px 20px; border-bottom: 1px solid var(--tg-line); }
-.tg-asst__head > div:first-child { display: flex; align-items: center; gap: 8px; color: var(--tg-pine); }
-.tg-asst__head h2 { font: 700 0.95rem var(--tg-sans); letter-spacing: 0; color: var(--tg-ink); }
-.tg-asst__ops { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
-.tg-asst__log { flex: 1; overflow: auto; padding: 18px 20px; display: grid; align-content: start; gap: 16px; }
-.tg-asst__intro { color: var(--tg-ink-2); font-size: 0.92rem; }
+/* ---- the assistant (ui/Assistant.tsx): a frosted panel with soft colour washes and a turning orb; it floats in Lịch trình and pins in Lựa chọn ---- */
+.tg-orb { --orb: 36px; position: relative; display: inline-block; flex: none; width: var(--orb); height: var(--orb); overflow: hidden; border-radius: 50%; background: #ececec; box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.7); }
+.tg-orb i { position: absolute; inset: -30%; background: conic-gradient(from 0deg, #fafafa, #bdbdbd, #4a4a4a, #e4b69c, #fafafa); filter: blur(calc(var(--orb) * 0.14)); animation: tg-orb-spin 12s linear infinite; }
+.tg-orb::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.95) 0, rgba(255, 255, 255, 0) 46%); }
+@keyframes tg-orb-spin { to { rotate: 360deg; } }
+.tg-asst { position: relative; display: flex; flex-direction: column; border: 1px solid rgba(255, 255, 255, 0.85);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(247, 247, 247, 0.96));
+  -webkit-backdrop-filter: blur(26px) saturate(1.5); backdrop-filter: blur(26px) saturate(1.5); }
+.tg-asst.is-float { position: fixed; z-index: 50; right: 20px; top: calc(var(--tg-top) + 16px); bottom: calc(var(--tg-bar) + 36px); width: 380px; border-radius: 28px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 30px 70px -24px rgba(0, 0, 0, 0.45); animation: tg-in-r 240ms var(--tg-ease); }
+.tg-asst.is-pinned { position: sticky; top: calc(var(--tg-top) + 20px); height: calc(100vh - var(--tg-top) - var(--tg-bar) - 60px); border-radius: 28px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 24px 56px -28px rgba(0, 0, 0, 0.4); }
+.tg-asst__head { display: flex; align-items: center; gap: 12px; padding: 16px 14px 10px 18px; }
+.tg-asst__who { flex: 1; min-width: 0; display: grid; }
+.tg-asst__who > :first-child { margin: 0; font: 700 0.98rem var(--tg-sans); letter-spacing: 0; color: var(--tg-ink); }
+.tg-asst__who small { font-size: 0.78rem; color: var(--tg-ink-3); }
+.tg-asst__log { flex: 1; overflow: auto; padding: 10px 20px 16px; display: grid; align-content: start; gap: 16px; }
+.tg-asst__hello { display: grid; justify-items: center; gap: 10px; padding: 14px 2px 2px; text-align: center; animation: tg-pop 320ms var(--tg-ease); }
+.tg-asst__hello .tg-orb { box-shadow: 0 14px 30px -10px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.7); }
+.tg-asst__hello h3 { margin: 6px 0 0; font: 600 1.5rem/1.2 var(--tg-display); text-wrap: balance; color: var(--tg-ink); }
+.tg-asst__intro { margin: 0; max-width: 34ch; color: var(--tg-ink-2); font-size: 0.84rem; line-height: 1.5; text-wrap: balance; }
+.tg-asst__quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin-top: 8px; }
+.tg-qchip { display: flex; align-items: center; min-height: 58px; padding: 10px 14px; border-radius: 16px; border: 1px solid rgba(0, 0, 0, 0.07); background: rgba(255, 255, 255, 0.72); text-align: left; font-size: 0.82rem; font-weight: 500; line-height: 1.3; color: var(--tg-ink); transition: transform 220ms var(--tg-ease), background 160ms, box-shadow 220ms; }
+.tg-qchip:hover:not(:disabled) { transform: translateY(-2px); background: #fff; box-shadow: 0 12px 24px -16px rgba(0, 0, 0, 0.4); }
+.tg-qchip:disabled { opacity: 0.55; }
 .tg-msg { display: grid; gap: 10px; font-size: 0.93rem; animation: tg-pop 240ms var(--tg-ease); }
-.tg-msg.is-user p { justify-self: end; max-width: 88%; padding: 9px 14px; border-radius: 16px 16px 4px 16px; background: var(--tg-pine-soft); color: var(--tg-pine-d); font-weight: 500; }
-.tg-msg.is-bot p { color: var(--tg-ink); }
+.tg-msg.is-user p { justify-self: end; max-width: 88%; padding: 10px 15px; border-radius: 20px 20px 6px 20px; background: var(--tg-ink); color: #fff; font-weight: 500; }
+.tg-msg.is-bot p { color: var(--tg-ink); line-height: 1.55; }
+.tg-typing { display: inline-flex; align-items: center; gap: 4px; padding: 7px 0; }
+.tg-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--tg-ink-3); animation: tg-typing 1.1s ease-in-out infinite; }
+.tg-typing i:nth-child(2) { animation-delay: 150ms; } .tg-typing i:nth-child(3) { animation-delay: 300ms; }
+@keyframes tg-typing { 0%, 60%, 100% { opacity: 0.3; translate: 0 0; } 30% { opacity: 1; translate: 0 -3px; } }
+.tg-asst__chips { display: flex; gap: 6px; padding: 4px 16px 8px; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
+.tg-asst__chips .tg-chip { flex: none; white-space: nowrap; min-height: 32px; font-size: 0.8rem; }
+/* the composer: a white pill; while the assistant is working a slow colour glow turns around it */
+@property --tg-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.tg-asst__in { position: relative; isolation: isolate; display: flex; align-items: center; gap: 6px; margin: 4px 14px 14px; padding: 5px 5px 5px 18px; }
+.tg-asst__in::after { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px var(--tg-line), 0 12px 26px -16px rgba(0, 0, 0, 0.4); transition: box-shadow 200ms; }
+.tg-asst__in:focus-within::after { box-shadow: 0 0 0 1.5px var(--tg-ink), 0 14px 30px -16px rgba(0, 0, 0, 0.45); }
+.tg-asst__in.is-busy::before { content: ''; position: absolute; inset: -4px; z-index: -2; border-radius: 999px; background: conic-gradient(from var(--tg-a), #1a1a1a, #e9e9e9, #e4b69c, #e9e9e9, #1a1a1a); filter: blur(9px); opacity: 0.55; animation: tg-aurora 3.2s linear infinite; }
+@keyframes tg-aurora { to { --tg-a: 360deg; } }
+.tg-asst__in .tg-line-input { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none; font-size: 0.93rem; }
+.tg-send { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--tg-ink); color: #fff; transition: transform 200ms var(--tg-ease), opacity 160ms; }
+.tg-send:hover:not(:disabled) { transform: scale(1.06); }
+.tg-send:disabled { opacity: 0.3; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .tg-orb i, .tg-typing i, .tg-asst__in.is-busy::before, .tg-fab::before { animation: none; } .tg-asst__hello, .tg-qchip, .tg-send { transition: none; animation: none; } }
+.tg-asst__ops { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
 .tg-msg__chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .tg-pchip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 999px; border: 1px solid var(--tg-line-2); font-size: 0.82rem; font-weight: 600; background: var(--tg-surface); }
 .tg-pchip:hover { border-color: var(--tg-pine); }
 .tg-pchip__ph { width: 28px; height: 28px; border-radius: 50%; }
 .tg-msg__acts { display: flex; flex-wrap: wrap; gap: 6px; }
-.tg-asst__chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px; }
-.tg-asst__chips .tg-chip { white-space: nowrap; min-height: 32px; font-size: 0.8rem; }
-.tg-asst__in { display: flex; align-items: center; gap: 4px; padding: 6px 12px 12px 20px; }
-.tg-asst__in .tg-line-input { font-size: 0.93rem; }
-/* chat tab: a small icon pinned to the right edge, the chat opens on click */
+/* chat button: an orb on the right edge, the chat opens on click */
 .tg-asst-fab { position: fixed; z-index: 37; right: 0; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 10px; }
-.tg-fab { position: relative; display: grid; place-items: center; width: 48px; height: 56px; border-radius: 18px 0 0 18px; background: var(--tg-surface); color: var(--tg-pine); border: 1px solid var(--tg-line); border-right: 0; box-shadow: var(--tg-sh-2); transition: width 200ms var(--tg-ease), background 150ms; }
-.tg-fab:hover { width: 56px; background: var(--tg-pine-soft); }
-.tg-fab__label { position: absolute; right: calc(100% + 10px); top: 50%; translate: 8px -50%; padding: 7px 12px; border-radius: 10px; background: var(--tg-pine-d); color: #fff; font: 500 0.8rem var(--tg-sans); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 150ms, translate 150ms var(--tg-ease); }
+.tg-fab { position: relative; display: grid; place-items: center; width: 60px; height: 60px; margin-right: 16px; border-radius: 50%; background: rgba(255, 255, 255, 0.8); border: 1px solid rgba(255, 255, 255, 0.9); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 16px 34px -12px rgba(0, 0, 0, 0.4); transition: transform 240ms var(--tg-ease), box-shadow 240ms; }
+.tg-fab::before { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 1.5px solid rgba(180, 83, 42, 0.4); animation: tg-fab-halo 2.8s ease-out 2; pointer-events: none; }
+@keyframes tg-fab-halo { from { opacity: 1; scale: 0.92; } to { opacity: 0; scale: 1.35; } }
+.tg-fab > svg { position: absolute; color: var(--tg-ink); }
+.tg-fab:hover { transform: scale(1.07); }
+.tg-fab:active { transform: scale(0.97); }
+.tg-fab:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 3px; }
+.tg-fab__label { position: absolute; right: calc(100% + 12px); top: 50%; translate: 8px -50%; padding: 8px 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.94); color: var(--tg-ink); border: 1px solid var(--tg-line); box-shadow: var(--tg-sh-1); font: 500 0.82rem var(--tg-sans); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 160ms, translate 220ms var(--tg-ease); }
 .tg-fab:hover .tg-fab__label, .tg-fab:focus-visible .tg-fab__label { opacity: 1; translate: 0 -50%; }
-.tg-fab__dot { position: absolute; top: 10px; right: 10px; width: 11px; height: 11px; border-radius: 50%; background: var(--tg-sun); border: 2px solid var(--tg-surface); }
+.tg-fab__dot { position: absolute; top: 7px; right: 7px; width: 12px; height: 12px; border-radius: 50%; background: var(--tg-brand); border: 2px solid #fff; }
 /* the explanation beside the tab, until the user has opened the chat once or closed it */
 .tg-fab__tip { position: relative; display: grid; gap: 4px; width: 270px; padding: 14px 34px 14px 16px; border-radius: 18px 6px 6px 18px; background: var(--tg-surface); border: 1px solid var(--tg-pine-line); box-shadow: var(--tg-sh-2); font-size: 0.84rem; line-height: 1.45; color: var(--tg-ink-2); animation: tg-pop 320ms var(--tg-ease); }
 .tg-fab__tip::after { content: ''; position: absolute; right: -6px; top: 50%; width: 11px; height: 11px; translate: 0 -50%; rotate: 45deg; background: var(--tg-surface); border-right: 1px solid var(--tg-pine-line); border-top: 1px solid var(--tg-pine-line); }

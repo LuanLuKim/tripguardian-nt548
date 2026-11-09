@@ -32,7 +32,7 @@ import { StayOffer, WayIn } from './plan/WayIn'
 import { LodgingCost, lodgingBasis } from './plan/LodgingCost'
 import '../css/fixes.css'
 
-// docs/UI_SPEC_USER_WEB.md Trang 8, layout from ui_mock_for_design/designs/itinerary: choose a way → overview → one screen per day
+// docs/UI_SPEC_USER_WEB.md Trang 8, layout from docs/design/mock/designs/itinerary: choose a way → overview → one screen per day
 // (+ a screen to swap or add a place). Times and routes are estimates and say so; warnings sit on the stop they concern.
 // Lịch trình takes actions and, through the assistant panel (ui/Assistant.tsx), typed messages: docs/PLANNING.md. A turn that changes
 // the plan leaves one new version, which the provider accepts like an act's.
@@ -232,7 +232,7 @@ export function Plan() {
   const extras = (
     <>
       <Lodging onChange={toLodging} />
-      <TimeCard day={d?.day ?? 1} itinerary={d} timing={view.time_suitability ?? variant?.time_suitability ?? []} suggestions={view.recommendations ?? variant?.recommendations ?? []} ghosts={view.ghosts} status={view.suggestions?.status}
+      <TimeCard day={d?.day ?? 1} itinerary={d} timing={view.time_suitability ?? variant?.time_suitability ?? []} suggestions={view.recommendations ?? variant?.recommendations ?? []} status={view.suggestions?.status}
         busy={busy} onAdd={(place, day) => act({ type: 'add_from_backup', place, day: day - 1 })} />
       <BackupCard b={view.backups ?? variant?.backups} day={d?.day ?? 1} busy={busy} onSwap={async (place, w) => { await previewAct({ type: 'swap', place, with: w }) }} />
       <section className="tg-sidecard" aria-labelledby="tg-nt-h">
@@ -261,6 +261,7 @@ export function Plan() {
       {screen === 'day' && d && <DayView days={days} dayIdx={dayIdx} week={Math.floor(dayIdx / 7)} onDay={setDayIdx} busy={busy} locked={view.state.locked}
         durationRange={view.duration_range} durationOverrides={view.state.visit_duration_override ?? {}} cond={view.day_conditions?.find((c) => c.day === d.day)} tips={view.crowd_tips ?? []}
         vehicle={vehicle} extras={extras} footer={dayFooter} summary={variant?.label ?? 'Lịch trình'} route={routes?.find((r) => r.day === d.day) ?? null}
+        ghosts={view.ghosts ?? []} onAddGhost={(place) => { void act({ type: 'add_from_backup', place, day: d.day - 1 }) }}
         onBack={() => setScreen('overview')} onOpen={openPlace} onSwap={startSwap} onDrop={setDropAsk}
         onMoveDay={(place, day) => { void act({ type: 'move_place', place, day }) }} onReorder={(day, order) => act({ type: 'reorder', day, order })}
         onDuration={(place, minutes) => { void previewAct({ type: 'set_visit_duration', place, minutes }) }} />}

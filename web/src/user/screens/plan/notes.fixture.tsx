@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import { TimeCard, BackupCard } from './parts'
+import { GhostSlot } from './GhostSlot'
 import { candidatesOf } from './candidates'
 import { Swap } from './Swap'
 import { TripProvider } from '../../trip'
@@ -29,7 +30,8 @@ const onAdd = (id: string, day: number) => { Object.assign(window, { __action: {
 const view = { state: { dropped: [] }, backups, recommendations: suggestions } as unknown as View
 createRoot(document.getElementById('root')!).render(<TripProvider><div className="tg" style={{ padding: 32, maxWidth: state === 'swap' ? 1000 : 440 }}>
   {state === 'swap' ? <Swap day={day} replacing={null} candidates={candidatesOf(view, null, [], null)} people={2} busy={false} onOverview={() => {}} onDay={() => {}} onOpen={() => {}} onMore={() => {}} onPick={c => onAdd(c.id, 2)} /> : <>
-    <TimeCard day={2} itinerary={day} timing={[]} suggestions={state === 'ghost-only' ? [] : suggestions} ghosts={ghosts} busy={state === 'busy'} onAdd={onAdd} />
+    <TimeCard day={2} itinerary={day} timing={[]} suggestions={state === 'ghost-only' ? [] : suggestions} busy={state === 'busy'} onAdd={onAdd} />
+    {ghosts.filter(g => g.day === 1).map(g => <GhostSlot key={g.kind} slot={g} day={2} busy={state === 'busy'} onAdd={id => onAdd(id, 2)} onOpen={() => {}} />)}
     <BackupCard b={backups} day={2} busy={state === 'busy'} onSwap={(place, id) => { Object.assign(window, { __action: { place, id } }) }} />
   </>}
 </div></TripProvider>)

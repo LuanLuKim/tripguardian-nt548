@@ -6,16 +6,21 @@
 
 /* ---- top of the column: crumb, day tabs ---- */
 .tg .tg-it-day .tg-it-crumb { height: 52px; padding: 0 16px; gap: 10px; font-size: 0.95rem; }
-.tg .tg-it-tabs { justify-content: flex-start; gap: 8px; min-height: 0; padding: 10px 16px; background: var(--tg-bg); }
-.tg .tg-it-tabs [role='tablist'] { flex: 1; min-width: 0; gap: 6px; padding: 2px; overflow-x: auto; scrollbar-width: none; }
+.tg .tg-it-tabs { justify-content: flex-start; gap: 6px; min-height: 0; padding: 10px 12px; background: var(--tg-bg); }
+/* the days: one soft track with a dark highlight that slides to the chosen day (DayView sets --x / --w) */
+.tg .tg-it-tabs [role='tablist'] { position: relative; flex: 1; min-width: 0; gap: 0; padding: 4px; overflow-x: auto; scrollbar-width: none; border-radius: 18px; background: rgba(0, 0, 0, 0.055); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05); }
 .tg .tg-it-tabs [role='tablist']::-webkit-scrollbar { display: none; }
-.tg .tg-it-tab { display: grid; flex: none; gap: 0; min-height: 0; padding: 6px 14px; border: 1px solid var(--tg-line); border-radius: 12px; background: var(--tg-surface); color: var(--tg-ink-2); text-align: center; transition: background 150ms, color 150ms, border-color 150ms; }
+.tg .tg-it-tabs [role='tablist']::before { content: ''; position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 0; width: var(--w, 0); border-radius: 14px; background: var(--tg-ink); box-shadow: 0 8px 16px -8px rgba(0, 0, 0, 0.55); transform: translateX(var(--x, 4px)); transition: transform 380ms var(--tg-ease), width 380ms var(--tg-ease); }
+.tg .tg-it-tab { position: relative; z-index: 1; display: grid; flex: 1 0 auto; gap: 0; min-height: 0; padding: 6px 16px; border: 0; border-radius: 14px; background: transparent; color: var(--tg-ink-2); text-align: center; transition: color 240ms; }
 .tg .tg-it-tab b { font: 700 0.9rem var(--tg-sans); }
-.tg .tg-it-tab small { font-size: 0.74rem; color: var(--tg-ink-3); white-space: nowrap; }
-.tg .tg-it-tab:hover { border-color: var(--tg-ink-3); color: var(--tg-ink); }
-.tg .tg-it-tab[aria-selected='true'] { border-color: var(--tg-ink); background: var(--tg-ink); color: var(--tg-surface); }
-.tg .tg-it-tab[aria-selected='true'] small { color: var(--tg-line-2); }
-.tg .tg-it-tabs .tg-it-round { width: 34px; height: 34px; }
+.tg .tg-it-tab small { font-size: 0.72rem; color: var(--tg-ink-3); white-space: nowrap; transition: color 240ms; }
+.tg .tg-it-tab:hover:not([aria-selected='true']) { color: var(--tg-ink); background: rgba(255, 255, 255, 0.7); }
+.tg .tg-it-tab:focus-visible { outline: 2px solid var(--tg-pine); outline-offset: -2px; }
+.tg .tg-it-tab[aria-selected='true'] { color: #fff; }
+.tg .tg-it-tab[aria-selected='true'] small { color: rgba(255, 255, 255, 0.78); }
+.tg .tg-it-tabs .tg-it-round { width: 32px; height: 32px; border: 0; background: transparent; color: var(--tg-ink-2); }
+.tg .tg-it-tabs .tg-it-round:hover:not(:disabled) { background: rgba(0, 0, 0, 0.07); color: var(--tg-ink); }
+@media (prefers-reduced-motion: reduce) { .tg .tg-it-tabs [role='tablist']::before { transition: none; } }
 
 /* ---- the scrolling column ---- */
 .tg .tg-it-day .tg-it-scroll { padding: 18px 16px 20px; }
@@ -92,7 +97,6 @@
 .tg .tg-it-day .tg-it-card > .tg-it-warn { margin: 0; }
 .tg .tg-it-ghost .tg-it-dot { display: none; }
 
-.tg .tg-it-add { margin: 18px 0 14px; }
 .tg .tg-it-day .tg-it-empty { padding: 22px; border-radius: 16px; font-size: 0.92rem; }
 .tg .tg-it-day .tg-it-small { margin-top: 12px; font-size: 0.78rem; }
 
@@ -121,3 +125,49 @@
 .tg .tg-it-day__pane .tg-it-status { flex-wrap: wrap; gap: 8px 10px; padding: 10px 16px 12px; }
 .tg .tg-it-day__pane .tg-it-status > span { flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem; }
 .tg .tg-it-day__pane .tg-it-status > div { flex: 1 1 100%; justify-content: flex-end; }
+
+/* ---- an empty slot's suggestions (screens/plan/GhostSlot.tsx): white cards fanned left to right, a small photo on top; the one pointed at comes forward ---- */
+.tg .tg-ghost { position: relative; margin: 0 0 12px; padding: 10px 12px 12px; border: 1.5px dashed var(--tg-line-2); border-radius: 18px; background: rgba(255, 255, 255, 0.5); }
+.tg .tg-ghost > header { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 0 0 12px; font-size: 0.8rem; color: var(--tg-ink-2); }
+.tg .tg-ghost > header b { font-weight: 600; color: var(--tg-ink); }
+.tg .tg-ghost > header small { margin-left: auto; font-size: 0.74rem; color: var(--tg-ink-3); }
+.tg .tg-ghost__fan { position: relative; height: 164px; margin: 0; padding: 0; list-style: none; }
+.tg .tg-ghost__fan > li { position: absolute; top: 6px; bottom: 0; left: calc((100% - var(--cw)) * var(--i) / (var(--n) - 1)); width: var(--cw); display: flex; flex-direction: column; gap: 8px; padding: 8px; overflow: hidden; isolation: isolate; border-radius: 18px; background: var(--tg-surface); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 10px 24px -14px rgba(0, 0, 0, 0.35);
+  z-index: calc(10 - var(--d)); transform-origin: 50% 100%; transform: translateY(8px) rotate(calc(var(--side) * 2.4deg)) scale(0.97); filter: blur(0.6px) saturate(0.8); opacity: 0.93;
+  transition: transform 400ms var(--tg-ease), filter 300ms var(--tg-ease), opacity 300ms var(--tg-ease), box-shadow 300ms var(--tg-ease); animation: tg-ghost-in 380ms var(--tg-ease) both; animation-delay: calc(var(--i) * 70ms); }
+.tg .tg-ghost__fan > li.is-front { z-index: 20; transform: translateY(-3px) scale(1.03); filter: none; opacity: 1; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 20px 36px -16px rgba(0, 0, 0, 0.45); }
+.tg .tg-ghost__bg { position: absolute; inset: -24px; z-index: -2; filter: blur(22px) saturate(0.45); opacity: 0.5; }
+.tg .tg-ghost__bg img { width: 100%; height: 100%; object-fit: cover; }
+.tg .tg-ghost__fan > li::before { content: ''; position: absolute; inset: 0; z-index: -1; background: rgba(255, 255, 255, 0.82); }
+.tg .tg-ghost__thumb { position: relative; flex: none; height: 74px; overflow: hidden; border-radius: 12px; }
+.tg .tg-ghost__thumb > img, .tg .tg-ghost__thumb .tg-photo, .tg .tg-ghost__thumb .tg-photo img { width: 100%; height: 100%; object-fit: cover; }
+.tg .tg-ghost__open { position: absolute; inset: 0; z-index: 1; border-radius: inherit; cursor: pointer; }
+.tg .tg-ghost__open:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: -3px; }
+.tg .tg-ghost__txt { position: relative; z-index: 2; flex: 1; min-height: 0; display: grid; align-content: start; gap: 2px; overflow: hidden; padding: 0 2px; pointer-events: none; }
+.tg .tg-ghost__txt strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.9rem; line-height: 1.28; font-weight: 600; color: var(--tg-ink); }
+.tg .tg-ghost__txt small { display: block; overflow: hidden; font-size: 0.74rem; line-height: 1.35; color: var(--tg-ink-2); white-space: nowrap; text-overflow: ellipsis; }
+.tg .tg-ghost__add { position: absolute; z-index: 3; top: 6px; right: 6px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #fff; color: var(--tg-ink); box-shadow: 0 6px 14px -6px rgba(0, 0, 0, 0.5); transition: background 160ms, color 160ms, transform 240ms var(--tg-ease); }
+.tg .tg-ghost__add:hover:not(:disabled) { background: var(--tg-ink); color: #fff; transform: rotate(90deg) scale(1.08); }
+.tg .tg-ghost__add:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg .tg-ghost__add:disabled { opacity: 1; cursor: default; }
+.tg .tg-ghost__fan > li:not(.is-front) .tg-ghost__add { visibility: hidden; }
+.tg .tg-ghost__fan.is-one { height: 112px; }
+.tg .tg-ghost__fan.is-one > li { flex-direction: row; align-items: center; transform: none; filter: none; opacity: 1; }
+.tg .tg-ghost__fan.is-one .tg-ghost__thumb { width: 96px; height: 100%; }
+.tg .tg-ghost__note { display: block; margin-top: 10px; font-size: 0.76rem; line-height: 1.4; color: var(--tg-warn); }
+@keyframes tg-ghost-in { from { opacity: 0; translate: 0 8px; } }
+@media (prefers-reduced-motion: reduce) { .tg .tg-ghost__fan > li { animation: none; transition: none; } .tg .tg-ghost__add { transition: none; } }
+
+/* ---- "Thêm trải nghiệm": one wide row, the same dashed card language as the suggestions ---- */
+.tg .tg-it-add { display: flex; align-items: center; gap: 14px; width: 100%; margin: 18px 0 14px; padding: 12px 16px 12px 12px; border: 1.5px dashed var(--tg-line-2); border-radius: 18px; background: rgba(255, 255, 255, 0.5); text-align: left; transition: background 200ms, border-color 200ms, transform 240ms var(--tg-ease); }
+.tg .tg-it-add__ic { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 14px; background: var(--tg-ink); color: #fff; transition: transform 320ms var(--tg-ease); }
+.tg .tg-it-add b { display: block; font-size: 0.92rem; font-weight: 600; color: var(--tg-ink); }
+.tg .tg-it-add small { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--tg-ink-2); }
+.tg .tg-it-add > span:nth-child(2) { flex: 1; min-width: 0; }
+.tg .tg-it-add > svg { flex: none; color: var(--tg-ink-3); transition: transform 240ms var(--tg-ease), color 160ms; }
+.tg .tg-it-add:hover:not(:disabled) { background: var(--tg-surface); border-style: solid; border-color: var(--tg-ink); transform: translateY(-1px); }
+.tg .tg-it-add:hover:not(:disabled) .tg-it-add__ic { transform: rotate(90deg); }
+.tg .tg-it-add:hover:not(:disabled) > svg { transform: translateX(3px); color: var(--tg-ink); }
+.tg .tg-it-add:focus-visible { outline: 2px solid var(--tg-pine); outline-offset: 2px; }
+.tg .tg-it-add:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .tg .tg-it-add, .tg .tg-it-add__ic, .tg .tg-it-add > svg { transition: none; } }

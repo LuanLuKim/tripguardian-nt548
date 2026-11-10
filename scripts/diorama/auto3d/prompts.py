@@ -20,7 +20,9 @@ Forced extra kits (must all be included): {extra_kits}.{coord_note}
 The primary kit carries the main buildings. Add 0-2 distinct extra kits only when a must
 signature feature or the site's large landscape (water, hills, forest, rock, landmark garden
 objects) is supported by their types and not by the primary kit. A gap covered by an extra
-kit is not a kit gap.
+kit is not a kit gap. When the photos show a lake or large pond, a forested valley or hillside,
+or a waterfall as part of the site, add nature (nature_lake, nature_hills, nature_grove,
+nature_cascade): garden_water and garden_terrain are only for small formal ponds and beds.
 Return ONLY JSON:
 {{"skip": false, "skip_reason": "", "kit": "kit name", "extra_kits": [], "kit_why": "",
 "kit_gap": [{{"what": "needed feature no object type can show", "signature_ids": ["s1"], "blocks_recognition": false}}],
@@ -148,7 +150,37 @@ def kits_summary() -> str:
                         if name == file.stem or name.startswith(file.stem + "_")
                         or (file.stem == "church" and "_" in name)
                         or name in ("buddhist_altar", "quan_am_gallery")})
-        lines.append(f"- {file.stem}: {', '.join(names)}")
+        glosses = {}
+        for i, line in enumerate(text):
+            if not line.startswith("#"):
+                continue
+            for name in re.findall(r"`([a-z][a-z0-9_]+)`", line):
+                paragraph = []
+                fence = None
+                for following in text[i + 1:]:
+                    following = following.strip()
+                    if following.startswith(("```", "~~~")):
+                        marker = following[:3]
+                        fence = None if fence == marker else marker
+                        continue
+                    if fence:
+                        continue
+                    if following.startswith("#"):
+                        break
+                    if not following or following.startswith("|"):
+                        if paragraph:
+                            break
+                        continue
+                    paragraph.append(following)
+                fallback = re.search(rf"`{re.escape(name)}`\s*[—–-]\s*(.+)", line)
+                gloss = " ".join(paragraph) or (fallback.group(1) if fallback else "")
+                gloss = " ".join(re.sub(r"[`*]", "", gloss).split())
+                if len(gloss) > 110:
+                    gloss = gloss[:110].rsplit(" ", 1)[0] + "…"
+                if gloss:
+                    glosses.setdefault(name, gloss)
+        entries = [f"{name} ({glosses[name]})" if name in glosses else name for name in names]
+        lines.append(f"- {file.stem}: {', '.join(entries)}")
     return "\n".join(lines)
 
 

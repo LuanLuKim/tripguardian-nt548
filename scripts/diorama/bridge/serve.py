@@ -17,6 +17,9 @@ EXE = str(next(p for p in (REPO.parent / "tripguardian-store/cache", REPO / ".ca
                if (p / "ms-playwright").exists()) / "ms-playwright/chromium-1169/chrome-linux/chrome")
 URL = "http://127.0.0.1:8471/{}/index.html"
 DEFAULT_ORBITS = [[35, 55, None], [125, 50, None], [215, 60, None], [305, 45, None], [0, 30, None], [90, 70, None]]
+# swiftshader renders on the CPU; with the machine at ~50 load one view of a 300-600k triangle scene can take > 30 s
+# (Playwright's default), which failed whole places at `shoot`. Callers wait up to 15 min per request.
+SHOT_TIMEOUT_MS = 90000
 
 
 def local_name(src):
@@ -75,7 +78,7 @@ def shoot(req, out):
                 else:
                     pg.evaluate("window.__close && window.__close()"); name = f"{i:02d}_initial"
                 time.sleep(v.get("wait", 3))
-                pg.screenshot(path=str(out / f"{name}.png"))
+                pg.screenshot(path=str(out / f"{name}.png"), timeout=SHOT_TIMEOUT_MS)
             except Exception as e:
                 logs.append(f"view {v} failed: {e}")
         (out / "console.txt").write_text("\n".join(logs))
@@ -83,7 +86,12 @@ def shoot(req, out):
 
 
 (D / "bridge" / "req").mkdir(parents=True, exist_ok=True)
+SOURCE_MTIME = Path(__file__).stat().st_mtime
 while True:
+    # Pick up an edited serve.py between requests (same pid, so stack.sh still owns the worker).
+    if Path(__file__).stat().st_mtime != SOURCE_MTIME:
+        print("serve.py changed, re-exec", flush=True)
+        os.execv(sys.executable, [sys.executable, *sys.argv])
     for f in sorted((D / "bridge" / "req").glob("*.json")):
         # Several bridge processes may run: the one whose rename succeeds owns the request.
         claimed = f.with_name(f"{f.stem}.taken{os.getpid()}")

@@ -24,7 +24,9 @@ add any extra framing points to `currentEnvelope`. Add paved geometry to
 A cutaway-capable building must register each roof tier in `roofRecords` with
 `{group, parameters, tiers, thickness, ridgeOrnament}` (`vietnameseRoof` does this).
 The object loop stamps each new record with its owning `objectId` and base height.
-`hotspot.cutaway` selects that object; `building.cutaway.lift` defaults to 7.4 m.
+`hotspot.cutaway` selects that object; `building.cutaway.lift` defaults to 7.4 m. A stop that also has
+`insideView` keeps the roof on: the tour walks in through the door instead (owner 2026-11-10), so the lift
+only plays at a cutaway stop without an inside view.
 Keep kit declarations scoped (for example an IIFE), and do not include script tags.
 `example.js` is a box fixture used only by `test_generic.mjs`.
 

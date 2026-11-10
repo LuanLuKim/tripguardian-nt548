@@ -41,7 +41,7 @@ for(const slug of ['chomoi','namthien']){
   }
   if(slug==='chomoi'){
     const hall=data.objects.find(o=>o.id==='hall'),record=r.roofRecords.find(v=>v.objectId==='hall'),base=record.group.position.y;
-    r.window.__open('stairs');assert.equal(record.group.position.y,base+hall.cutaway.lift,'outside opens upper floors');
+    r.window.__open('stairs');assert.equal(record.group.position.y,base,'a stop with an inside view keeps its roof: the tour walks in through the door (owner 2026-11-10)');
     r.window.__open('inside');assert.equal(record.group.position.y,base,'inside restores sealed ceiling');
     const ceiling=r.scene.getObjectByName('market-sealed-ceiling');assert.ok(ceiling);
     for(const yaw of [-4,0,4]){const eye=new THREE.Vector3(...data.hotspots.find(s=>s.id==='inside').camera),direction=new THREE.Vector3(Math.sin(yaw*Math.PI/180),.5,-Math.cos(yaw*Math.PI/180)).normalize();assert.ok(new THREE.Raycaster(eye,direction).intersectObject(ceiling,true).length,'no sky in inside yaw '+yaw);}

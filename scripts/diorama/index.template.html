@@ -159,7 +159,11 @@ $("place-name").textContent = place.name;
 document.title = place.name + " · Khám phá 3D";
 $("place-location").textContent = place.location || "";
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(Math.max(place.site.overviewFov??36,innerWidth<innerHeight?36:0), innerWidth / innerHeight, place.site.overviewNear??.1, 800);
+let overviewFovEffective=place.site.overviewFov??36;
+function overviewFov(aspect=innerWidth/innerHeight) {
+  return Math.max(overviewFovEffective,aspect<1?36:0);
+}
+const camera = new THREE.PerspectiveCamera(overviewFov(), innerWidth / innerHeight, place.site.overviewNear??.1, 800);
 const overview = {
   position: new THREE.Vector3(112, 106, 132),
   target: new THREE.Vector3(0, 6, place.site.centerZ || 0)
@@ -177,7 +181,7 @@ function frameView(focused = false) {
 }
 // Fit the actual projected site envelope, not a sphere or a fixed orbit distance.
 function fitOverview(azimuth, polar) {
-  camera.fov=Math.max(place.site.overviewFov??36,camera.aspect<1?36:0);
+  camera.fov=overviewFov(camera.aspect);
   camera.updateProjectionMatrix();
   frameView(false);
   const direction = new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, THREE.MathUtils.degToRad(polar), THREE.MathUtils.degToRad(azimuth)));
@@ -193,24 +197,40 @@ function fitOverview(azimuth, polar) {
   // The plinth is the measured envelope. Object y values have mixed centre/base
   // semantics and must not be inflated into imaginary y+h+5 bounding boxes.
   const heightFill=Math.min(place.site.overviewHeightFill??.88,(innerHeight-88)/freeArea.height);
-  let low = 10, high = 600;
-  for (let i = 0; i < 25; i++) {
-    const distance = (low + high) / 2;
-    camera.position.copy(overview.target).addScaledVector(direction, distance);
-    camera.lookAt(overview.target);
+  function searchDistance() {
+    let low = 10, high = 600;
+    for (let i = 0; i < 25; i++) {
+      const distance = (low + high) / 2;
+      camera.position.copy(overview.target).addScaledVector(direction, distance);
+      camera.lookAt(overview.target);
+      camera.updateMatrixWorld();
+      const bounds=projectedBounds(points);
+      const width = (bounds.maxX-bounds.minX) * innerWidth / 2;
+      const height = (bounds.maxY-bounds.minY) * innerHeight / 2;
+      if (Math.max(width / (freeArea.width * config.frameFill), height / (freeArea.height * heightFill)) > 1) low = distance;
+      else high = distance;
+    }
+    return high;
+  }
+  let high=searchDistance();
+  if(high===600&&camera.fov<36) {
+    camera.position.copy(overview.target).addScaledVector(direction, high);
     camera.updateMatrixWorld();
     const bounds=projectedBounds(points);
-    const width = (bounds.maxX-bounds.minX) * innerWidth / 2;
-    const height = (bounds.maxY-bounds.minY) * innerHeight / 2;
-    if (Math.max(width / (freeArea.width * config.frameFill), height / (freeArea.height * heightFill)) > 1) low = distance;
-    else high = distance;
+    const ratio=Math.max(bounds.widthFraction/config.frameFill,bounds.heightFraction/heightFill);
+    if(ratio>1) {
+      overviewFovEffective=Math.min(36,THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)*ratio*1.02)));
+      camera.fov=overviewFov(camera.aspect);
+      camera.updateProjectionMatrix();
+      high=searchDistance();
+    }
   }
   overview.position.copy(overview.target).addScaledVector(direction, high);
   camera.position.copy(overview.position);
   camera.updateMatrixWorld();
   const bounds=projectedBounds(points),centerX=bounds.centerX,centerY=bounds.centerY;
   camera.setViewOffset(innerWidth, innerHeight, camera.view.offsetX + centerX - (freeArea.left + freeArea.width / 2), camera.view.offsetY + centerY - (freeArea.top + freeArea.height / 2), innerWidth, innerHeight);
-  console.info("overview-bbox", JSON.stringify({azimuth, polar, distance:high,
+  console.info("overview-bbox", JSON.stringify({azimuth, polar, distance:high, fov:camera.fov,
     widthFraction:bounds.widthFraction,
     heightFraction:bounds.heightFraction,
     binding:`plinth: width ${config.frameFill} / height ${heightFill}`}));
@@ -236,7 +256,7 @@ function fitSpot(spot) {
   const bounds=spot.bounds;
   const points=spot.subjects && typeof modelEnvelopes!=="undefined"
     ? spot.subjects.flatMap(id=>modelEnvelopes.get(id)||[]) : [];
-  if(spot.cutaway && typeof roofRecords!=='undefined') {
+  if(spot.cutaway && !spot.insideView && typeof roofRecords!=='undefined') {
     const object=place.objects.find(o=>o.id===spot.cutaway);
     for(const record of roofRecords.filter(r=>r.objectId===spot.cutaway)) {
       const lifted=new THREE.Box3().setFromObject(record.group);
@@ -2081,7 +2101,7 @@ function createHallCutaway(roof,front,center,motion,invalidateShadow=()=>{},lift
       if(t===1)transition=null;
     },
     wantsReveal(position,target,spot) {
-      return Boolean(spot?.cutaway)&&!spot.interior&&(!objectId||spot.cutaway===objectId);
+      return Boolean(spot?.cutaway)&&!spot.interior&&!spot.insideView&&(!objectId||spot.cutaway===objectId);
     },
     get amount(){return value;}
   };
@@ -2089,7 +2109,7 @@ function createHallCutaway(roof,front,center,motion,invalidateShadow=()=>{},lift
 function configureInteriorView(spot) {
   const inside=Boolean(spot?.interior);
   camera.near=spot||typeof place==='undefined' ? .1 : (place.site.overviewNear??.1);
-  camera.fov=inside?62:spot?36:(typeof place==='undefined'?36:Math.max(place.site.overviewFov??36,camera.aspect<1?36:0));camera.updateProjectionMatrix();
+  camera.fov=inside?62:spot?36:(typeof place==='undefined'?36:overviewFov(camera.aspect));camera.updateProjectionMatrix();
   controls.enableZoom=!inside;controls.enablePan=!inside;controls.zoomToCursor=!inside;
   const offset=inside?new THREE.Vector3(...spot.camera).sub(new THREE.Vector3(...spot.target)):null;
   const azimuth=inside?new THREE.Spherical().setFromVector3(offset).theta:0;
@@ -2178,7 +2198,7 @@ const hallCutaway={manual:null,selected:cutaways[0]?.id,
   select(id){this.selected=id??cutaways[0]?.id;},
   set(on,instant=false){for(const entry of cutaways)entry.controller.set(on&&entry.id===this.selected,instant);},
   update(now){for(const entry of cutaways)entry.controller.update(now);},
-  wantsReveal(position,target,spot){return cutaways.some(e=>e.id===spot?.cutaway)&&!spot.interior;},
+  wantsReveal(position,target,spot){return cutaways.some(e=>e.id===spot?.cutaway)&&!spot.interior&&!spot.insideView;},
   get amount(){return Math.max(0,...cutaways.map(e=>e.controller.amount));}
 };
 const altarLight=new THREE.PointLight('#ffe2ad',0,14,2);altarLight.name='altar-warm-light';
@@ -2359,6 +2379,193 @@ function animateRoute(now) {
   for(const segment of routeSegments)segment.flowUniform.value=now*.00022;
 }
 animateRoute(0);
+// === Walking tour (owner 2026-11-10) ===
+// Between two stops joined by a route leg the camera walks the leg at eye height, like a visitor on foot: down from the
+// stop's view, along the path looking ahead (through the gate of the first stop), and up into the next stop's view.
+// A stop with an inside view is entered on foot through the door, roof and walls in place (no cutaway); leaving walks
+// out the same door. Stops not joined by a leg (and the overview) keep the flight through the air.
+const WALK_EYE=1.7,WALK_LOOK=7,WALK_SPEED=10,WALK_FOV=58,WALK_STEP=.8;
+const outdoorStops=place.hotspots.filter(s=>s.walk);
+function walkGround(x,z,fallback) {try{return routeHeight(x,z)-.045;}catch{return fallback;}}
+function walkEye(xz,fallback) {return new THREE.Vector3(xz[0],walkGround(xz[0],xz[1],fallback-WALK_EYE)+WALK_EYE,xz[1]);}
+function walkLeg(from,to) {
+  const a=outdoorStops.indexOf(from),b=outdoorStops.indexOf(to),segment=Math.abs(a-b)===1&&routeSegments[Math.min(a,b)];
+  if(a<0||b<0||!segment)return null;
+  const points=segment.samples.filter(s=>!s.riser).map(s=>s.point.clone().setY(s.point.y-.045+WALK_EYE));
+  return a<b?points:points.reverse();
+}
+// The door of the hall a stop's inside view is in: outside (on the ground in front) and inside (at the view's eye height).
+function walkDoor(stop) {
+  const hall=resolveInteriorBuilding(place,stop);
+  if(!hall)return null;
+  let inside,outside,porch=null;
+  if(hall.interior?.entry) {
+    inside=new THREE.Vector3(...hall.interior.entry);outside=new THREE.Vector3(...(hall.interior.approach||hall.interior.entry));
+  } else {
+    // The built-in main hall: open porch, door 2.2 m wide in the wall 2.4 m behind the front, a potted bonsai in front of
+    // its centre. Come in from beside the pot, line up with the door under the porch, stop just past the door.
+    const front=hall.position[2]+(hall.size[2]??hall.size[1])/2;
+    outside=new THREE.Vector3(hall.position[0]+2.4,0,front+2.8);porch=new THREE.Vector3(hall.position[0],stop.camera[1],front-1.4);
+    inside=new THREE.Vector3(hall.position[0],0,front-2.9);
+  }
+  inside.y=stop.camera[1];
+  outside=walkEye([outside.x,outside.z],inside.y);
+  return {inside,outside,porch};
+}
+const hostStop=stop=>stop?.interior?place.hotspots.find(s=>s.insideView===stop.id):stop;
+// Eye points from one stop to the next, or null when the two are not joined on foot.
+function walkPlan(from,to) {
+  if(!from||!to||from===to)return null;
+  const a=hostStop(from),b=hostStop(to);
+  if(!a||!b||!from.interior&&!to.interior&&(!a.walk||!b.walk))return null;
+  const points=[],doorPoints=new Set();
+  // Lined up on the door's axis a few metres out first, so the last steps go straight through the doorway.
+  const doorway=door=>{
+    const out=door.outside.clone().sub(door.inside).setY(0).normalize();
+    const front=walkEye([door.outside.x+out.x*3,door.outside.z+out.z*3],door.outside.y);
+    const way=[front,door.outside,...(door.porch?[door.porch]:[]),door.inside];
+    for(const p of way)doorPoints.add(p);
+    return way;
+  };
+  if(from.interior) {const door=walkDoor(from);if(!door)return null;points.push(...doorway(door).reverse());}
+  if(a!==b) {
+    let leg=walkLeg(a,b)||[];
+    // No leg between the two: walk only through the door (in or out) and fly the rest.
+    if(!leg.length&&!from.interior&&!to.interior)return null;
+    // A hall's stop point may stand beside the hall: join or leave the leg where it passes closest to the door, so the
+    // way between door and leg does not cut through a wall.
+    const nearest=(list,p)=>list.reduce((best,q,i)=>Math.hypot(q.x-p.x,q.z-p.z)<Math.hypot(list[best].x-p.x,list[best].z-p.z)?i:best,0);
+    if(leg.length&&from.interior)leg=leg.slice(nearest(leg,points.at(-1)));
+    const inDoor=to.interior&&walkDoor(to);
+    if(leg.length&&inDoor)leg=leg.slice(0,nearest(leg,doorway(inDoor)[0])+1);
+    if(leg.length&&!from.interior) {
+      const ahead=leg[Math.min(3,leg.length-1)].clone().sub(leg[0]).setY(0).normalize();
+      if(camera.position.clone().sub(leg[0]).setY(0).dot(ahead)>2) {
+        // The stop's view already looks from further along the way (going back, mostly): join the leg where the
+        // camera is instead of flying back to its start.
+        const flat=p=>Math.hypot(p.x-camera.position.x,p.z-camera.position.z);
+        leg=leg.slice(leg.reduce((best,p,i)=>flat(p)<flat(leg[best])?i:best,0));
+      } else {
+        // Leaving a stop outdoors: start a few steps behind it, so its gate or arch is walked through.
+        const back=leg[0].clone().addScaledVector(ahead,-5);
+        try{back.y=routeHeight(back.x,back.z)-.045+WALK_EYE;points.push(back);}catch{}
+      }
+    }
+    // Arriving at a stop outdoors: the walk ends a few steps short (the stop's statue, urn or bell stands right on
+    // its route point) and the camera rises into the stop's view from there.
+    if(leg.length&&!to.interior) {
+      let left=0,k=leg.length-1;
+      while(k>0&&left<4){left+=Math.hypot(leg[k].x-leg[k-1].x,leg[k].z-leg[k-1].z);k--;}
+      leg.length=k+1;
+      if(!from.interior&&leg.length<2)return null; // nothing left to walk: fly
+    }
+    points.push(...leg);
+  }
+  else if(!from.interior&&!to.interior)return null;
+  if(to.interior) {const door=walkDoor(to);if(!door)return null;points.push(...doorway(door));}
+  if(points.length<2)return null;
+  points.door=doorPoints;
+  return points;
+}
+// The hall with an inside view as an obstacle: its footprint (with margin) up to above its ridge.
+const hallTop=mainHall?mainHall.position[1]+(mainHall.interior?.ridgeHeight??mainHall.roof?.ridgeHeight??(mainHall.size.length>2?mainHall.size[1]:12))+2.5:0;
+function hallBlocks(a,b) {
+  if(!mainHall)return false;
+  const c=Math.cos(interiorAngle),s=Math.sin(interiorAngle);
+  for(let k=1;k<24;k++) {
+    const p=a.clone().lerp(b,k/24),dx=p.x-interiorRegion.x,dz=p.z-interiorRegion.z;
+    if(p.y<hallTop&&Math.abs(c*dx+s*dz)<interiorRegion.w&&Math.abs(-s*dx+c*dz)<interiorRegion.d)return true;
+  }
+  return false;
+}
+// Where a joint of the walk (the way down from the stop's view, the way up into the next one, door to leg) would cut
+// through that hall, go over its roof instead: up above one end, across, down to the other.
+function hopOver(points,start,end) {
+  const over=p=>new THREE.Vector3(p.x,Math.max(p.y,hallTop),p.z),out=[];
+  if(hallBlocks(start,points[0]))out.push(over(start).lerp(over(points[0]),.5),over(points[0]));
+  points.forEach((p,i)=>{
+    const q=points[i+1];
+    out.push(p);
+    if(q&&!(points.door?.has(p)&&points.door?.has(q))&&p.distanceTo(q)>2&&hallBlocks(p,q))out.push(over(p),over(q));
+  });
+  if(hallBlocks(points.at(-1),end))out.push(over(points.at(-1)),over(points.at(-1)).lerp(over(end),.5));
+  return out;
+}
+// Even steps along the ground; heights smoothed over a few metres so stairs read as a climb, not a judder.
+function walkResample(points) {
+  const out=[points[0].clone()];let need=WALK_STEP;
+  for(let i=1;i<points.length;i++) {
+    const a=points[i-1],b=points[i],run=Math.hypot(b.x-a.x,b.z-a.z);
+    if(run<1e-6){if(Math.abs(b.y-a.y)>.3)out.push(b.clone());continue;} // straight up or down (a hop over a roof)
+    let at=0;
+    while(run-at>=need){at+=need;out.push(a.clone().lerp(b,at/run));need=WALK_STEP;}
+    need-=run-at;
+  }
+  if(Math.hypot(out.at(-1).x-points.at(-1).x,out.at(-1).z-points.at(-1).z)>.05)out.push(points.at(-1).clone());
+  const ys=out.map(p=>p.y);
+  out.forEach((p,i)=>{let sum=0,n=0;for(let k=Math.max(0,i-2);k<=Math.min(out.length-1,i+2);k++){sum+=ys[k];n++;}p.y=sum/n;});
+  return out;
+}
+function buildWalk(fromPosition,fromTarget,toPosition,toTarget,points) {
+  const eye=walkResample(points),run=[0];
+  for(let i=1;i<eye.length;i++)run.push(run[i-1]+eye[i].distanceTo(eye[i-1]));
+  const ahead=d=>{
+    if(d>=run.at(-1)) {
+      const last=eye.at(-1),dir=last.clone().sub(eye.at(-2)||fromPosition).setY(0).normalize();
+      return last.clone().addScaledVector(dir,d-run.at(-1));
+    }
+    const i=Math.max(1,run.findIndex(r=>r>=d));
+    return eye[i-1].clone().lerp(eye[i],(d-run[i-1])/Math.max(run[i]-run[i-1],1e-6));
+  };
+  // Look along the way, at most ~15 degrees down or up (stairs ahead must not tip the view to the ground).
+  const looks=eye.map((p,i)=>{const q=ahead(run[i]+WALK_LOOK);q.y=THREE.MathUtils.clamp(q.y-.3,p.y-2,p.y+2);return q;});
+  const position=new THREE.CatmullRomCurve3([fromPosition.clone(),...eye,toPosition.clone()],false,'centripetal');
+  const target=new THREE.CatmullRomCurve3([fromTarget.clone(),...looks,toTarget.clone()],false,'centripetal');
+  position.arcLengthDivisions=Math.max(200,eye.length*10);
+  const lengths=position.getLengths(),length=lengths.at(-1),at=k=>lengths[Math.round(k/(eye.length+1)*(lengths.length-1))]/length;
+  const enter=at(1),leave=at(eye.length);
+  // Time: the walk itself at an even pace; the descent into it and the rise out of it go 2.5x faster per metre.
+  const walked=(leave-enter)*length,flown=(1-leave+enter)*length/2.5,total=walked+flown;
+  const time=[enter*length/2.5/total,(enter*length/2.5+walked)/total];
+  return {position,target,eye,length,enter,leave,time,ms:THREE.MathUtils.clamp(total/WALK_SPEED*1000,2600,8000)};
+}
+// Constant pace with short ramps at both ends (smoothstep would rush the middle of a long walk).
+function walkEase(p) {
+  const r=.16;
+  if(p<r)return p*p/(2*r*(1-r));
+  if(p>1-r)return 1-(1-p)*(1-p)/(2*r*(1-r));
+  return (p-r/2)/(1-r);
+}
+// How far inside the hall a point is: 0 outside, 1 once past the door (lights and the dimmed exterior follow it).
+function hallDepth(point) {
+  if(!mainHall)return 0;
+  const dx=point.x-interiorRegion.x,dz=point.z-interiorRegion.z,c=Math.cos(interiorAngle),s=Math.sin(interiorAngle);
+  const lx=c*dx+s*dz,lz=-s*dx+c*dz;
+  return THREE.MathUtils.smoothstep(Math.min(interiorRegion.w-1.2-Math.abs(lx),interiorRegion.d-1.2-Math.abs(lz)),-1.2,1.6);
+}
+function setInteriorLight(amount) {
+  exteriorDim.value=THREE.MathUtils.lerp(1,.25,amount);altarLight.intensity=7*amount;interiorFill.intensity=10*amount;
+}
+function sampleWalk(flight,ease) {
+  const walk=flight.walk,[t0,t1]=walk.time;
+  // clock -> distance along the path, piecewise linear through the two time marks
+  ease=ease<t0?ease/Math.max(t0,1e-6)*walk.enter:ease>t1?walk.leave+(ease-t1)/Math.max(1-t1,1e-6)*(1-walk.leave)
+    :walk.enter+(ease-t0)/Math.max(t1-t0,1e-6)*(walk.leave-walk.enter);
+  const t=walk.position.getUtoTmapping(ease);
+  controls.target.copy(walk.target.getPoint(t));
+  const position=walk.position.getPoint(t);
+  const fov=ease<walk.enter?THREE.MathUtils.lerp(flight.fovFrom,WALK_FOV,THREE.MathUtils.smoothstep(ease,0,walk.enter))
+    :ease>walk.leave?THREE.MathUtils.lerp(WALK_FOV,flight.fovTo,THREE.MathUtils.smoothstep(ease,walk.leave,1)):WALK_FOV;
+  if(Math.abs(camera.fov-fov)>1e-3){camera.fov=fov;camera.updateProjectionMatrix();}
+  if(walk.indoor)setInteriorLight(hallDepth(position));
+  return position;
+}
+function landWalk(flight) {
+  if(!flight?.walk)return;
+  camera.fov=flight.fovTo;camera.updateProjectionMatrix();
+  setInteriorLight(current?.interior?1:0);
+  setForegroundVisibility(flight.to,flight.targetTo);
+}
 // === Hotspots / UI ===
 let sceneTriangles=0;
 scene.traverse(part=>{
@@ -2397,7 +2604,7 @@ place.hotspots.forEach((spot, index) => {
 function stopRotation() {
   controls.autoRotate = false;
 }
-function setForegroundVisibility(position=null,target=null) {
+function setForegroundVisibility(position=null,target=null,corridor=null) {
   const focusCamera=camera.clone();
   if(position) {focusCamera.position.copy(position);focusCamera.lookAt(target);focusCamera.updateMatrixWorld();}
   const direction=position ? target.clone().sub(position).normalize() : null;
@@ -2414,6 +2621,9 @@ function setForegroundVisibility(position=null,target=null) {
         const sx=(p.x+1)*innerWidth/2,sy=(1-p.y)*innerHeight/2;
         hidden=along>0&&along<distance+3&&sx>freeArea.left-80&&sx<freeArea.left+freeArea.width+80&&sy>freeArea.top-80&&sy<freeArea.top+freeArea.height+180;
       }
+      // a walk: trees standing on the walked line would be walked through
+      if(corridor&&owner?.type==="tree"&&owner.kind!=="bonsai")
+        hidden||=corridor.some(p=>Math.hypot(p.x-owner.position[0],p.z-owner.position[2])<1.4);
       batch.setMatrixAt(i,hidden?hiddenMatrix:matrix);
       if(hidden) hiddenTrees.add(owner);
     });
@@ -2425,13 +2635,14 @@ function setForegroundVisibility(position=null,target=null) {
 }
 controls.addEventListener("start", () => {
   stopRotation();
-  if(flight && (current?.interior||flight.path)) {
-    const {to,targetTo,viewTo}=flight;
+  if(flight && (current?.interior||flight.path||flight.walk)) {
+    const landing=flight,{to,targetTo,viewTo}=flight;
     moveTo(to,targetTo,true,viewTo);
+    landWalk(landing);
   }
   flight = null;
 });
-function moveTo(position, target, instant = false, viewTo = null, fromInterior = false) {
+function moveTo(position, target, instant = false, viewTo = null, fromInterior = false, stops = null) {
   const viewFrom={x:camera.view?.offsetX||0,y:camera.view?.offsetY||0};
   viewTo=viewTo||viewFrom;
   if (instant || reducedMotion.matches) {
@@ -2442,8 +2653,19 @@ function moveTo(position, target, instant = false, viewTo = null, fromInterior =
     controls.update();
     return;
   }
+  const plan=stops&&walkPlan(stops.from,stops.to);
+  if(plan) {
+    const walk=buildWalk(camera.position,controls.target,position,target,hopOver(plan,camera.position,position));
+    walk.indoor=Boolean(stops.from.interior||stops.to.interior);
+    flight={start:performance.now(),ms:walk.ms,walk,viewFrom,viewTo,fovFrom:stops.fovFrom,fovTo:camera.fov,
+      from:camera.position.clone(),targetFrom:controls.target.clone(),to:position.clone(),targetTo:target.clone()};
+    camera.fov=stops.fovFrom;camera.updateProjectionMatrix();
+    setForegroundVisibility(null,null,walk.eye);
+    return;
+  }
   flight = {
     start: performance.now(),
+    ms: 1400,
     arc: current?.interior||fromInterior ? 0 : Math.min(12,camera.position.distanceTo(position)*.14),
     path: current?.interior||fromInterior ? buildInteriorFlightPath(camera.position,position,Boolean(current?.interior),place) : null,
     viewFrom,viewTo,
@@ -2455,7 +2677,9 @@ function moveTo(position, target, instant = false, viewTo = null, fromInterior =
 }
 function openSpot(spot, instant = false) {
   stopRotation();
+  if(flight?.walk){const landing=flight;moveTo(flight.to,flight.targetTo,true,flight.viewTo);landWalk(landing);}
   const fromInterior=Boolean(current?.interior||flight?.path);
+  const previous=current,fovFrom=camera.fov;
   const viewFrom={x:camera.view.offsetX,y:camera.view.offsetY};
   current = spot;
   configureInteriorView(spot);
@@ -2464,18 +2688,19 @@ function openSpot(spot, instant = false) {
   interiorFill.intensity=spot.interior?10:0;
   hallCutaway.manual=null;
   hallCutaway.select?.(spot.cutaway);
-  hallCutaway.set(Boolean(spot.cutaway)&&!spot.interior,instant);
+  hallCutaway.set(Boolean(spot.cutaway)&&!spot.interior&&!spot.insideView,instant);
   frameView(true);
   if(spot.interior)camera.setViewOffset(innerWidth,innerHeight,0,0,innerWidth,innerHeight);
   const {position,target} = fitSpot(spot);
   const viewTo={x:camera.view.offsetX,y:camera.view.offsetY};
   camera.setViewOffset(innerWidth,innerHeight,viewFrom.x,viewFrom.y,innerWidth,innerHeight);
   setForegroundVisibility(position,target);
-  moveTo(position,target,instant,viewTo,fromInterior);
+  moveTo(position,target,instant,viewTo,fromInterior,{from:previous,to:spot,fovFrom});
   updateTour();
 }
 function closeSpot(instant = false) {
   stopRotation();
+  if(flight?.walk){const landing=flight;moveTo(flight.to,flight.targetTo,true,flight.viewTo);landWalk(landing);}
   const fromInterior=Boolean(current?.interior||flight?.path);
   const viewFrom={x:camera.view.offsetX,y:camera.view.offsetY};
   current = null;
@@ -2646,18 +2871,18 @@ function animate(now) {
   if (previousFrame !== null && frameIntervals.length < 12) frameIntervals.push(now-previousFrame);
   previousFrame = now;
   if (flight) {
-    const progress = Math.min((now - flight.start) / 1400, 1), ease = progress * progress * (3 - 2 * progress);
-    camera.position.copy(sampleCameraFlight(flight,ease));
+    const progress = Math.min((now - flight.start) / flight.ms, 1), ease = flight.walk ? walkEase(progress) : progress * progress * (3 - 2 * progress);
+    camera.position.copy(flight.walk ? sampleWalk(flight,ease) : sampleCameraFlight(flight,ease));
     camera.setViewOffset(innerWidth,innerHeight,THREE.MathUtils.lerp(flight.viewFrom.x,flight.viewTo.x,ease),THREE.MathUtils.lerp(flight.viewFrom.y,flight.viewTo.y,ease),innerWidth,innerHeight);
-    controls.target.lerpVectors(flight.targetFrom, flight.targetTo, ease);
-    if (progress === 1) flight = null;
+    if(!flight.walk)controls.target.lerpVectors(flight.targetFrom, flight.targetTo, ease);
+    if (progress === 1) {landWalk(flight);flight = null;}
   }
   controls.target.x = THREE.MathUtils.clamp(controls.target.x, -sw / 2, sw / 2);
   controls.target.z = THREE.MathUtils.clamp(controls.target.z, (place.site.centerZ||0)-sd / 2, (place.site.centerZ||0)+sd / 2);
   if(flight) {camera.lookAt(controls.target);camera.updateMatrixWorld();} else controls.update();
   if(!flight)hallCutaway.set(hallCutaway.manual??hallCutaway.wantsReveal(camera.position,controls.target,current));
   hallCutaway.update(now);
-  const doorOpen=Boolean(current?.interior||flight?.path);
+  const doorOpen=Boolean(current?.interior||flight?.path||flight?.walk?.indoor);
   if(hallDoor&&hallDoor.visible===doorOpen){hallDoor.visible=!doorOpen;renderer.shadowMap.needsUpdate=true;}
   animateRoute(now);
   const start = performance.now();
@@ -2726,6 +2951,13 @@ window.__open = (request) => {
   if(typeof request==='object' && typeof request.explode==='boolean')window.__explode(request.explode);
 };
 window.__close = () => closeSpot(true);
+// A frame of the move from stop `from` to stop `to`, a fraction q of the way (checks of the walking tour).
+window.__walk = (from, to, q) => {
+  goTour(from,true);goTour(to);
+  if(!flight)return null;
+  const ms=flight.ms;flight.ms=1e12;flight.start=performance.now()-q*1e12; // frozen at q
+  return {walk:Boolean(flight.walk),ms,length:flight.walk?.length??null};
+};
 window.__orbit = (azimuth, polar, distance) => {
   if(current?.interior){window.__orbitSubject(azimuth,polar,distance);return;}
   stopRotation();

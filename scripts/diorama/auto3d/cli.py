@@ -297,6 +297,8 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--extra-kit", action="append")
     run.add_argument("--builder", choices=("agent", "function"))
     run.add_argument("--redo", action="store_true")
+    run.add_argument("--note", help="coordinator review from the photo comparison; steers NOTES and every build "
+                     "round (persists across --redo; empty string clears it)")
     run.add_argument("--parallel", type=int, default=cfg["parallel"])
     sub.add_parser("status")
     sub.add_parser("gallery").add_argument("out", nargs="?")
@@ -382,6 +384,8 @@ def main(argv: list[str] | None = None) -> None:
             if place.s["stage"] not in ("new", "prep", "gate", "notes") and not args.redo:
                 parser.error("Changing a kit after NOTES requires --redo")
             place.s["kit_forced"] = args.kit
+        if getattr(args, "note", None) is not None:
+            place.s["coord_note"] = args.note.strip() or None
         place.s["builder"] = getattr(args, "builder", None) or place.s["builder"] or cfg["builder"]
         place.save()
         active.append(place)

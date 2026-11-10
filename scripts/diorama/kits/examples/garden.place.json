@@ -4,6 +4,9 @@
   "kits":["garden"],
   "site":{"width":112,"depth":100,"frameFill":0.8,"hill":{"profile":[[100,0],[-100,0]],"undulation":0}},
   "objects":[
+    {"id":"langbiang-letters","type":"garden_letters","position":[0,0.03,132],"text":"LANGBIANG","height":3.6,"letterHeights":[1,1.45,1,1,1,1.05,1.45,1,1],"depth":0.65,"spacing":0.2,"colors":["#f7f1df","#4caac2","#f0cb4f","#e44252","#f6f1df","#569b9b","#e8b94b","#df657a","#e9eee3"],"font":"rounded","arc":45,"tilt":4,"plinth":"stones","plinthColor":"#b4a58c","outline":"#4b6856"},
+    {"id":"vietnamese-letters","type":"garden_letters","position":[0,0.03,152],"text":"Thung Lũng Tình Yêu","height":2.3,"depth":0.36,"spacing":0.16,"colors":["#cc5675","#e5bb59","#4b9a78"],"font":"rounded","arc":0,"tilt":0,"plinth":"bar","plinthColor":"#a99a82"},
+    {"id":"letters-display-lawn","type":"garden_surface","position":[0,0,143],"size":[36,34],"color":"#829569"},
     {"id":"lawn","type":"garden_surface","position":[0,0,0],"rotation":0,"shape":"rectangle","size":[108,96],"color":"#b8bea5","level":0.025,"walkable":false,"jointSpacing":0},
     {"id":"plaza","type":"garden_surface","position":[0,0,35],"shape":"polygon","outline":[[-20,-5],[20,-5],[18,5],[-18,5]],"color":"#d7d2c5","walkable":true,"jointSpacing":2,"level":0.06},
     {"id":"walk","type":"garden_path","position":[0,0,0],"rotation":0,"width":3.5,"level":0.075,"color":"#d7d2c5","jointColor":"#bdb9ab","jointSpacing":1.5,"followRoute":false,"closed":false,"points":[[-45,28],[45,28]]},

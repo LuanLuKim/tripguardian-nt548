@@ -109,6 +109,7 @@ def notes(place: Place) -> bool:
     selected = [p["name"] for p in usable if p["scene"] in ("exterior", "view")][:12]
     prompt = prompts.NOTES.format(name=place.s["name"], kits=prompts.kits_summary(), photos=", ".join(selected),
                                  extra_kits=json.dumps(place.s.get("extra_kits_forced", [])),
+                                 coord_note=prompts.coord_note(place),
                                  hint=place.s.get("kit_forced") or place.s.get("kit_hint") or "none")
 
     def validate(output):

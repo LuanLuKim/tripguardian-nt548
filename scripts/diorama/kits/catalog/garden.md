@@ -12,7 +12,7 @@ từ DATA, với CODE là đường dẫn thư mục script. Chạy
 | Option | Type / default | Meaning / photo correspondence |
 | --- | --- | --- |
 | `id` | string, required | Unique object and framing subject identifier |
-| `type` | string, required | Một trong 23 type garden bên dưới |
+| `type` | string, required | Một trong các type garden bên dưới |
 | `position` | `[x,y,z]`, `[0,0,0]` | Metres; base datum, not centre height; match OSM/overview |
 | `rotation` | number, `0` | Y-axis rotation in degrees; local +z faces south |
 | `shape` | string, `ellipse` | Boundary: `ellipse`, `rectangle`, `sector`, `polygon`; surface defaults to rectangle |
@@ -535,6 +535,30 @@ Màu `color/reliefColor/floorColor` như hành lang; mỗi cửa có ngưỡng w
 cao `.06`. Nhánh wall không dùng `roofed`, `bays`, `floorLevel` hay `sign`.
 Các kích thước, bước lặp và số phần tử mới được kiểm tra trước khi tạo mesh;
 không dùng số âm hoặc khoảng cách 0 để tắt chi tiết.
+
+### `garden_letters` — chữ khối đứng rời
+
+Chữ đùn 3D có lỗ rỗng thật, mép bevel nhỏ, mặt trước local +z. Bảng glyph
+nhúng trong kit, không tải font hoặc dùng ảnh chữ; phù hợp LANGBIANG g00/g19/
+g20/g24/g31 và biển tên giữa vườn hoa. Ví dụ có LANGBIANG nhiều màu và
+«Thung Lũng Tình Yêu»; kiểm thử `checks/test_garden_letters.mjs` build/boot.
+
+| Option | Kiểu / mặc định | Ý nghĩa, mẫu ảnh và bẫy |
+| --- | --- | --- |
+| `text` | string / `"GARDEN"` | A–Z, 0–9, khoảng trắng, ♥, Đ và dấu tiếng Việt; chữ thường dùng glyph hoa thu nhỏ 78%. Ký tự lạ là khoảng trống, không gây lỗi. Không tự ngắt dòng |
+| `height` | positive number / `3` | Chiều cao chữ hoa, mét; dấu trên có thể cao hơn. Chọn đủ lớn để đọc từ overview như LANGBIANG g20/g31 |
+| `letterHeights` | positive number[] / `[1]` | Chu kỳ hệ số cao từng chữ có glyph, giữ nguyên chiều ngang; hai chữ A cao nổi bật ở LANGBIANG g19/g20. Không dùng mảng rỗng hoặc giá trị ≤0 |
+| `depth` | positive number / `.45` | Độ dày khối; giữ tỷ lệ thật, không biến chữ thành tấm mỏng |
+| `spacing` | nonnegative number / `.16` | Khoảng cách giữa advance chữ, mét; dấu nghiêng/bevel có thể vượt advance nên cần chừa khe |
+| `colors` | color[] / `["#fff4dc"]` | Chu kỳ theo chữ có glyph, không tính khoảng trắng; g19/g20 có trắng, xanh, vàng, đỏ, hồng. Không dùng mảng rỗng |
+| `font` | enum / `rounded` | `rounded` bevel mềm nhỏ, `block` bevel nhỏ hơn; không đổi bộ glyph hoặc tải font |
+| `arc` | finite number / `0` | Bán kính cong, mét; 0 thẳng, bán kính dương đưa hai đầu về +z và quay mặt chữ theo cung. Dùng bán kính lớn so với chiều dài biển; âm đảo hướng cong |
+| `tilt` | finite number / `0` | Biên jitter nghiêng từng chữ quanh z, độ; seed cố định, chân khối vẫn chạm đất. Gợi nhịp chữ LANGBIANG; tránh nghiêng quá mức làm chữ chồng nhau |
+| `plinth` | enum / `none` | `none` chữ chạm đất, `bar` bệ liên tục theo cung, `stones` đế nhỏ rời từng chữ; không tự tạo đường đi |
+| `plinthHeight/plinthColor` | number/color / `.16/#a79c83` | Cao và màu bệ; bệ thấp chỉ dùng khi ảnh có bằng chứng |
+| `outline` | boolean hoặc color / `false` | Lớp khối viền lưng mỏng tối, true dùng `#445344`; không phải polygon biên. Tránh viền đậm dày lấn màu chữ |
+| `terrain` | object / `{}` | Cùng profile `[z,y][]`, `width`, `bend`, `crossSlope` của garden_field; lấy mẫu chân từng chữ trong tọa độ local, cộng `position.y`; không tự raycast sang terrain của object khác |
+| `position/rotation/id` | option chung | Đặt datum, hướng mặt biển và subject tour; dấu và chữ đều được đưa vào envelope world-space, mesh cùng màu được gộp |
 
 ### Pitfalls and limits
 

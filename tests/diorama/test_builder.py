@@ -205,3 +205,14 @@ def test_function_retries_rejected_answers(isolated, monkeypatch, failures):
     if not result.ok:
         assert "response" in result.log or "network" in result.log
         assert not (p.dir / "place.json").exists()
+
+
+def test_brief_carries_coordinator_note(isolated, monkeypatch):
+    monkeypatch.setattr(prompts, "catalogue", lambda kit: "CAT")
+    monkeypatch.setattr(prompts, "example", lambda kit: {"objects": []})
+    p = Place("p")
+    p.s["notes"] = {"kit": "villa", "evidence": [], "signature": [], "interior": False}
+    assert "Coordinator review" not in builder.build_brief(p)
+    p.s["coord_note"] = "One gorge, one main cascade into a pool"
+    brief = builder.build_brief(p)
+    assert "## Coordinator review" in brief and "One gorge, one main cascade" in brief

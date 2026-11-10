@@ -16,7 +16,7 @@ Pick the kit by its supported object types, never invent an object or place feat
 Available kits (names and object types, not their full catalogues):
 {kits}
 Kit constraint/hint: {hint}. A forced kit must be used and its gaps reported honestly.
-Forced extra kits (must all be included): {extra_kits}.
+Forced extra kits (must all be included): {extra_kits}.{coord_note}
 The primary kit carries the main buildings. Add 0-2 distinct extra kits only when a must
 signature feature or the site's large landscape (water, hills, forest, rock, landmark garden
 objects) is supported by their types and not by the primary kit. A gap covered by an extra
@@ -110,6 +110,13 @@ def catalogue(kit: str) -> str:
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", kit):
         raise ValueError("Invalid kit name")
     return (CODE / "kits/catalog" / f"{kit}.md").read_text()
+
+
+def coord_note(place) -> str:
+    """Coordinator review of the last render against the photos; empty when none was given."""
+    note = place.s.get("coord_note")
+    return ("\nCoordinator review of the previous render (highest priority; it overrides the checklist score):\n"
+            + note + "\n") if note else ""
 
 
 def kits_for(notes: dict) -> list[str]:

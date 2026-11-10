@@ -118,6 +118,7 @@ def build_brief(place: Place, feedback: str | None = None) -> str:
         photo_notes=json.dumps(place.s["notes"], ensure_ascii=False), tour_title=f"Một vòng {place.s['name']}",
     )
     text += '\nSet "kits" to exactly ' + json.dumps(prompts.kits_for(place.s["notes"])) + " (primary first).\n"
+    text += ("\n## " + prompts.coord_note(place).strip() + "\n") if place.s.get("coord_note") else ""
     return text + "\nFor non-recognition-blocking kit gaps, approximate with the closest object types.\n" + (
         "\n## Failing review items / boot feedback\n" + _feedback(place, feedback) if feedback else "") + (
         "\n## Earlier round changes\n" + prompts.history_summary(place)

@@ -199,6 +199,99 @@
     const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
     const m=new THREE.Mesh(new THREE.PlaneGeometry(...size),new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false}));m.name='garden-lettering';m.position.set(...p);g.add(m);
   }
+  // Unit-cap outlines, with real counters after |. No font loader or canvas text.
+  const letterGlyphs={
+    A:[.76,'M0 0 L.27 1 L.49 1 L.76 0 L.55 0 L.49 .24 L.26 .24 L.20 0 Z|M.31 .43 L.44 .43 L.375 .73 Z'],
+    B:[.72,'M0 0 L0 1 L.39 1 Q.69 1 .69 .74 Q.69 .59 .55 .52 Q.73 .46 .73 .26 Q.73 0 .41 0 Z|M.21 .60 L.37 .60 Q.48 .60 .48 .73 Q.48 .81 .37 .81 L.21 .81 Z|M.21 .19 L.39 .19 Q.52 .19 .52 .31 Q.52 .42 .39 .42 L.21 .42 Z'],
+    C:[.76,'M.76 .84 Q.64 1 .40 1 Q0 1 0 .50 Q0 0 .40 0 Q.64 0 .76 .16 L.62 .32 Q.53 .20 .40 .20 Q.22 .20 .22 .50 Q.22 .80 .40 .80 Q.53 .80 .62 .68 Z'],
+    D:[.76,'M0 0 L0 1 L.33 1 Q.76 1 .76 .5 Q.76 0 .33 0 Z|M.22 .20 L.33 .20 Q.54 .20 .54 .50 Q.54 .80 .33 .80 L.22 .80 Z'],
+    E:[.64,'M0 0 L0 1 L.64 1 L.64 .80 L.22 .80 L.22 .61 L.57 .61 L.57 .41 L.22 .41 L.22 .20 L.64 .20 L.64 0 Z'],
+    F:[.64,'M0 0 L0 1 L.64 1 L.64 .80 L.22 .80 L.22 .59 L.57 .59 L.57 .39 L.22 .39 L.22 0 Z'],
+    G:[.80,'M.78 .84 Q.65 1 .41 1 Q0 1 0 .50 Q0 0 .41 0 Q.65 0 .79 .14 L.79 .55 L.41 .55 L.41 .36 L.58 .36 L.58 .25 Q.51 .20 .41 .20 Q.22 .20 .22 .50 Q.22 .80 .41 .80 Q.55 .80 .64 .68 Z'],
+    H:[.76,'M0 0 L0 1 L.22 1 L.22 .62 L.54 .62 L.54 1 L.76 1 L.76 0 L.54 0 L.54 .40 L.22 .40 L.22 0 Z'],
+    I:[.26,'M0 0 L0 1 L.26 1 L.26 0 Z'],
+    J:[.62,'M0 .30 L.21 .33 Q.21 .20 .31 .20 Q.40 .20 .40 .35 L.40 1 L.62 1 L.62 .33 Q.62 0 .31 0 Q0 0 0 .30 Z'],
+    K:[.76,'M0 0 L0 1 L.22 1 L.22 .60 L.50 1 L.76 1 L.40 .52 L.78 0 L.51 0 L.25 .37 L.22 .32 L.22 0 Z'],
+    L:[.62,'M0 0 L0 1 L.22 1 L.22 .20 L.62 .20 L.62 0 Z'],
+    M:[.94,'M0 0 L0 1 L.24 1 L.47 .46 L.70 1 L.94 1 L.94 0 L.72 0 L.72 .60 L.54 .18 L.40 .18 L.22 .60 L.22 0 Z'],
+    N:[.78,'M0 0 L0 1 L.22 1 L.56 .38 L.56 1 L.78 1 L.78 0 L.56 0 L.22 .62 L.22 0 Z'],
+    O:[.80,'M.40 0 Q0 0 0 .50 Q0 1 .40 1 Q.80 1 .80 .50 Q.80 0 .40 0 Z|M.40 .20 Q.58 .20 .58 .50 Q.58 .80 .40 .80 Q.22 .80 .22 .50 Q.22 .20 .40 .20 Z'],
+    P:[.72,'M0 0 L0 1 L.38 1 Q.72 1 .72 .67 Q.72 .34 .38 .34 L.22 .34 L.22 0 Z|M.22 .54 L.36 .54 Q.50 .54 .50 .67 Q.50 .80 .36 .80 L.22 .80 Z'],
+    Q:[.82,'M.40 0 Q0 0 0 .50 Q0 1 .40 1 Q.80 1 .80 .50 Q.80 .23 .67 .10 L.82 0 L.57 0 L.52 .02 Q.46 0 .40 0 Z|M.40 .20 Q.58 .20 .58 .50 Q.58 .80 .40 .80 Q.22 .80 .22 .50 Q.22 .20 .40 .20 Z'],
+    R:[.76,'M0 0 L0 1 L.38 1 Q.72 1 .72 .68 Q.72 .46 .53 .38 L.77 0 L.51 0 L.30 .35 L.22 .35 L.22 0 Z|M.22 .55 L.36 .55 Q.50 .55 .50 .68 Q.50 .80 .36 .80 L.22 .80 Z'],
+    S:[.72,'M.70 .84 Q.58 1 .36 1 Q.02 1 .02 .70 Q.02 .48 .34 .40 Q.51 .36 .51 .28 Q.51 .19 .36 .19 Q.20 .19 .11 .31 L0 .14 Q.14 0 .36 0 Q.72 0 .72 .29 Q.72 .53 .40 .61 Q.23 .65 .23 .73 Q.23 .81 .36 .81 Q.49 .81 .59 .70 Z'],
+    T:[.74,'M.26 0 L.26 .80 L0 .80 L0 1 L.74 1 L.74 .80 L.48 .80 L.48 0 Z'],
+    U:[.78,'M0 1 L.22 1 L.22 .36 Q.22 .20 .39 .20 Q.56 .20 .56 .36 L.56 1 L.78 1 L.78 .35 Q.78 0 .39 0 Q0 0 0 .35 Z'],
+    V:[.78,'M0 1 L.23 1 L.39 .27 L.55 1 L.78 1 L.51 0 L.27 0 Z'],
+    W:[1.04,'M0 1 L.22 1 L.34 .31 L.43 1 L.62 1 L.72 .31 L.83 1 L1.05 1 L.85 0 L.62 0 L.52 .58 L.42 0 L.20 0 Z'],
+    X:[.76,'M0 0 L.25 .51 L.01 1 L.25 1 L.38 .70 L.51 1 L.75 1 L.51 .51 L.77 0 L.52 0 L.38 .32 L.24 0 Z'],
+    Y:[.78,'M.28 0 L.28 .39 L0 1 L.24 1 L.39 .63 L.54 1 L.78 1 L.50 .39 L.50 0 Z'],
+    Z:[.72,'M0 0 L0 .18 L.44 .80 L.02 .80 L.02 1 L.72 1 L.72 .82 L.28 .20 L.72 .20 L.72 0 Z'],
+    '1':[.47,'M.03 .72 L0 .91 L.23 1 L.42 1 L.42 0 L.20 0 L.20 .75 Z'],
+    '2':[.72,'M0 0 L0 .18 Q.05 .33 .31 .53 Q.51 .68 .51 .75 Q.51 .82 .37 .82 Q.22 .82 .14 .67 L0 .80 Q.12 1 .38 1 Q.72 1 .72 .75 Q.72 .54 .46 .35 L.27 .20 L.72 .20 L.72 0 Z'],
+    '3':[.72,'M0 .15 L.12 .32 Q.23 .19 .37 .19 Q.51 .19 .51 .31 Q.51 .43 .29 .43 L.29 .61 Q.49 .61 .49 .72 Q.49 .81 .36 .81 Q.23 .81 .13 .70 L.02 .86 Q.15 1 .37 1 Q.71 1 .71 .74 Q.71 .59 .56 .52 Q.73 .45 .73 .28 Q.73 0 .37 0 Q.13 0 0 .15 Z'],
+    '4':[.76,'M.43 0 L.43 .23 L0 .23 L0 .42 L.39 1 L.65 1 L.65 .42 L.76 .42 L.76 .23 L.65 .23 L.65 0 Z|M.43 .42 L.43 .74 L.21 .42 Z'],
+    '5':[.72,'M0 .15 L.12 .32 Q.22 .19 .37 .19 Q.51 .19 .51 .34 Q.51 .49 .35 .49 Q.23 .49 .14 .43 L.03 .50 L.08 1 L.68 1 L.68 .80 L.26 .80 L.24 .66 Q.32 .69 .40 .69 Q.73 .69 .73 .34 Q.73 0 .37 0 Q.14 0 0 .15 Z'],
+    '6':[.74,'M.67 .88 L.55 .72 Q.48 .81 .38 .81 Q.23 .81 .22 .59 Q.30 .65 .43 .65 Q.74 .65 .74 .33 Q.74 0 .38 0 Q0 0 0 .48 Q0 1 .38 1 Q.57 1 .67 .88 Z|M.38 .19 Q.53 .19 .53 .33 Q.53 .47 .38 .47 Q.23 .47 .23 .33 Q.23 .19 .38 .19 Z'],
+    '7':[.72,'M.12 0 L.44 .80 L0 .80 L0 1 L.72 1 L.72 .84 L.36 0 Z'],
+    '8':[.74,'M.37 0 Q0 0 0 .28 Q0 .45 .16 .53 Q.03 .60 .03 .75 Q.03 1 .37 1 Q.71 1 .71 .75 Q.71 .60 .58 .53 Q.74 .45 .74 .28 Q.74 0 .37 0 Z|M.37 .18 Q.52 .18 .52 .30 Q.52 .42 .37 .42 Q.22 .42 .22 .30 Q.22 .18 .37 .18 Z|M.37 .61 Q.49 .61 .49 .72 Q.49 .82 .37 .82 Q.25 .82 .25 .72 Q.25 .61 .37 .61 Z'],
+    '9':[.74,'M.07 .12 L.19 .28 Q.26 .19 .36 .19 Q.51 .19 .52 .41 Q.44 .35 .31 .35 Q0 .35 0 .67 Q0 1 .36 1 Q.74 1 .74 .52 Q.74 0 .36 0 Q.17 0 .07 .12 Z|M.36 .53 Q.51 .53 .51 .67 Q.51 .81 .36 .81 Q.21 .81 .21 .67 Q.21 .53 .36 .53 Z'],
+    '♥':[.96,'M.48 0 C.34 .17 0 .43 0 .71 C0 1 .32 1.12 .48 .87 C.64 1.12 .96 1 .96 .71 C.96 .43 .62 .17 .48 0 Z']
+  };
+  letterGlyphs['0']=letterGlyphs.O;
+  const letterMarks={
+    '\u0302':'M-.18 1.06 L-.055 1.24 L.055 1.24 L.18 1.06 L.07 1.06 L0 1.14 L-.07 1.06 Z',
+    '\u0306':'M-.18 1.23 L-.09 1.23 Q0 1.08 .09 1.23 L.18 1.23 Q0 .94 -.18 1.23 Z',
+    '\u031b':'M.25 .85 Q.46 .91 .42 1.13 L.32 1.13 Q.36 .98 .24 .97 Z',
+    '\u0301':'M-.08 1.08 L.04 1.27 L.18 1.27 L.03 1.08 Z',
+    '\u0300':'M.08 1.08 L-.04 1.27 L-.18 1.27 L-.03 1.08 Z',
+    '\u0309':'M-.09 1.24 Q.14 1.36 .14 1.17 Q.14 1.10 .03 1.07 L-.04 1.13 Q.07 1.16 .04 1.20 Q0 1.24 -.07 1.18 Z',
+    '\u0303':'M-.19 1.11 Q-.13 1.31 0 1.19 Q.08 1.10 .13 1.23 L.20 1.18 Q.13 .98 0 1.10 Q-.08 1.19 -.12 1.06 Z',
+    '\u0323':'M-.055 -.09 L.055 -.09 L.055 -.20 L-.055 -.20 Z'
+  };
+  function letterShape(outline){
+    const paths=outline.split('|').map((part,i)=>{
+      const p=i?new THREE.Path():new THREE.Shape(),tokens=part.match(/[MLQCZ]|-?(?:\d*\.)?\d+/g);let j=0;
+      const n=()=>Number(tokens[j++]);
+      while(j<tokens.length){const op=tokens[j++];if(op==='M')p.moveTo(n(),n());else if(op==='L')p.lineTo(n(),n());else if(op==='Q')p.quadraticCurveTo(n(),n(),n(),n());else if(op==='C')p.bezierCurveTo(n(),n(),n(),n(),n(),n());else if(op==='Z')p.closePath();}
+      return p;
+    });paths[0].holes.push(...paths.slice(1));return paths[0];
+  }
+  register('garden_letters',(o,g)=>{
+    const h=o.height??3,d=o.depth??.45,spacing=o.spacing??.16,colors=o.colors??['#fff4dc'],font=o.font??'rounded',plinth=o.plinth??'none',arc=o.arc??0;
+    if(!Number.isFinite(h)||h<=0||!Number.isFinite(d)||d<=0||!Number.isFinite(spacing)||spacing<0||!Number.isFinite(arc)||!Number.isFinite(o.tilt??0)||!Number.isFinite(o.plinthHeight??.16)||(o.plinthHeight??.16)<=0||!Array.isArray(colors)||!colors.length)throw new RangeError('garden_letters: positive finite height/depth/plinthHeight, nonnegative spacing and nonempty colors required');
+    if(!['block','rounded'].includes(font)||!['none','bar','stones'].includes(plinth))throw new RangeError('garden_letters: unknown font or plinth');
+    const heights=o.letterHeights??[1];if(!Array.isArray(heights)||!heights.length||heights.some(v=>!Number.isFinite(v)||v<=0))throw new RangeError('garden_letters: letterHeights must contain positive finite multipliers');
+    const text=String(o.text??'GARDEN').normalize('NFD'),chars=[];
+    for(const c of text){if(/\p{M}/u.test(c)){if(chars.length&&letterMarks[c])chars.at(-1).marks.push(c);continue;}const base=c==='đ'||c==='Đ'?'D':c.toUpperCase(),glyph=letterGlyphs[base];chars.push({c,base,glyph,marks:[],scale:c!==c.toUpperCase()?.78:1,width:glyph?glyph[0]:.40});}
+    const total=chars.reduce((s,c)=>s+c.width*c.scale*h,0)+Math.max(0,chars.length-1)*spacing;
+    const palette=colors.map(c=>material(c)),back=o.outline?(typeof o.outline==='string'?o.outline:'#445344'):null,foot=plinth==='none'?0:(o.plinthHeight??.16),bevel=Math.min(font==='rounded'?.018:.003,d/(h*6)),cache=new Map();
+    let cursor=-total/2,index=0;
+    for(const ch of chars){const w=ch.width*ch.scale*h,offset=cursor+w/2;cursor+=w+spacing;if(!ch.glyph)continue;
+      const a=arc?offset/arc:0,x=arc?Math.sin(a)*arc:offset,z=arc?(1-Math.cos(a))*arc:0,y=elevation(x,z,o.terrain||{}),lean=rad((o.tilt??0)*(hash(index+17)*2-1)),scale=ch.scale*h;
+      const transform=new THREE.Object3D();transform.position.set(x,y+foot,z);transform.rotation.set(0,-a,lean);transform.updateMatrix();
+      const shapes=[{path:ch.glyph[1],x:-ch.width/2,y:0}];
+      if(ch.c==='Đ'||ch.c==='đ')shapes.push({path:'M-.06 .44 L.34 .44 L.34 .57 L-.06 .57 Z',x:-ch.width/2,y:0});
+      const stacked=ch.marks.includes('\u0302')||ch.marks.includes('\u0306');
+      for(const mark of ch.marks)shapes.push({path:letterMarks[mark],x:0,y:stacked&&['\u0301','\u0300','\u0309','\u0303'].includes(mark)?.23:0});
+      const vertical=heights[index%heights.length];
+      const parts=shapes.map(s=>{const key=s.path+'|'+scale+'|'+vertical;let geo=cache.get(key);if(!geo){geo=new THREE.ExtrudeGeometry(letterShape(s.path),{depth:d,steps:1,curveSegments:10,bevelEnabled:true,bevelSize:bevel,bevelThickness:Math.min(d*.16,scale*bevel),bevelSegments:font==='rounded'?3:1});geo.scale(scale,scale*vertical/(1+2*bevel),1);cache.set(key,geo);}return geo.clone().translate(s.x*scale,s.y*scale*vertical,-d/2);});
+      const geo=mergeGeometries(parts);parts.forEach(p=>p.dispose());
+      geo.applyMatrix4(new THREE.Matrix4().makeRotationZ(lean));geo.computeBoundingBox();const lift=-geo.boundingBox.min.y;geo.translate(0,lift,0);geo.applyMatrix4(new THREE.Matrix4().makeRotationZ(-lean));
+      const letter=add(g,geo,colors[index%colors.length],'garden-letter-'+index);letter.material=palette[index%palette.length];letter.applyMatrix4(transform.matrix);
+      letter.userData.character=ch.c;g.updateWorldMatrix(true,true);
+      // Each letter contributes framing even after same-colour meshes are merged.
+      geo.computeBoundingBox();const bounds=geo.boundingBox;for(const X of [bounds.min.x,bounds.max.x])for(const Y of [bounds.min.y,bounds.max.y])for(const Z of [bounds.min.z,bounds.max.z])if(currentEnvelope)currentEnvelope.push(new THREE.Vector3(X,Y,Z).applyMatrix4(letter.matrixWorld));
+      if(back){const outline=geo.clone();outline.scale(1.045,1.025,Math.min(1,h*.035/d));outline.translate(0,0,-d/2-h*.025);const m=add(g,outline,back,'garden-letter-outline');m.applyMatrix4(transform.matrix);}
+      if(plinth==='stones'){const pad=block(g,x,y+foot/2,z,w*.92,foot,d+h*.12,o.plinthColor||'#a79c83','garden-letter-foot');pad.rotation.y=-a;}
+      index++;
+    }
+    if(plinth==='bar'&&index){const n=Math.max(1,Math.ceil(total/Math.min(h,2))),step=total/n;
+      for(let i=0;i<n;i++){const offset=-total/2+(i+.5)*step,a=arc?offset/arc:0,x=arc?Math.sin(a)*arc:offset,z=arc?(1-Math.cos(a))*arc:0,y=elevation(x,z,o.terrain||{}),pad=block(g,x,y+foot/2,z,step+.025,foot,d+h*.12,o.plinthColor||'#a79c83','garden-letter-bar');pad.rotation.y=-a;}
+    }
+    cache.forEach(geo=>geo.dispose());g.userData.letterCount=index;
+    if(index&&currentEnvelope){g.updateWorldMatrix(true,true);const bounds=new THREE.Box3().setFromObject(g);for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z])currentEnvelope.push(new THREE.Vector3(x,y,z));}
+  });
   register('garden_terrain',(o,g)=>{
     const [w,d]=o.size||[40,30],t={...o,width:w},profile=o.profile||[[-d/2,3],[-d*.25,3],[-d*.1,0],[d/2,0]],segments=o.segments??40;
     if(w<=0||segments<1||profile.length<2||profile.some((p,i)=>!p.every(Number.isFinite)||i&&p[0]<=profile[i-1][0]))throw new RangeError('garden_terrain: positive width/segments and increasing finite profile z required');

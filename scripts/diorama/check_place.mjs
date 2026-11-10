@@ -34,4 +34,20 @@ const slug=process.argv[2];
 try{
   const r=await boot(join(DATA,`places/${slug}/place.json`),join(DATA,`out_${slug}/check-build`));
   console.log(`boot ok: ${r.window.__hotspots.length} stops`);
+  if(process.argv.includes('--tris'))triangleReport(r.scene,r.place);
 }catch(error){console.log('BOOT FAILED:',error.stack.split('\n').slice(0,6).join('\n'));process.exit(1);}
+// --tris: rendered triangles per place object (instances counted), to keep heavy scenes inside the bridge's
+// 30 s per-view screenshot limit. Meshes are attributed to the nearest ancestor named after an object id.
+function triangleReport(scene,place){
+  const ids=place.objects.map(o=>o.id).sort((a,b)=>b.length-a.length),totals=new Map();
+  const owner=node=>{for(let n=node;n;n=n.parent){const id=n.name&&ids.find(i=>n.name===i||n.name.startsWith(i+'-'));if(id)return id;}return '(shared/batched)';};
+  let all=0;
+  scene.traverse(m=>{
+    if(!m.isMesh||!m.geometry)return;
+    const g=m.geometry,base=(g.index?g.index.count:g.attributes.position?.count||0)/3;
+    const tris=base*(m.isInstancedMesh?m.count:1);if(!tris)return;
+    const id=owner(m);totals.set(id,(totals.get(id)||0)+tris);all+=tris;
+  });
+  console.log(`triangles ${Math.round(all)}`);
+  [...totals].sort((a,b)=>b[1]-a[1]).slice(0,15).forEach(([id,n])=>console.log(`${String(Math.round(n)).padStart(9)}  ${id}`));
+}

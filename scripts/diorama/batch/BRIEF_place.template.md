@@ -35,6 +35,7 @@ must signature requires a kit change, not an invented approximation. `evidence` 
 (prints the path of one contact sheet `out_{slug}/sheet_<tag>.jpg` + console errors; `--stops id1,id2` re-shoots only those stops).
 
 ## Session limits (hard rules)
+- Render budget: the bridge renders in software and a view that takes over 30 s is lost, so the whole place fails. Keep the scene under ~650k triangles: `node {code}/check_place.mjs {slug} --tris` prints the total and the heaviest objects. Large flower fields keep `spacing` >= 0.8 and groves a moderate `density`; fill space with fewer, larger plants rather than thousands of tiny ones.
 - At most 3 boot/build/shot/look cycles in this session. The bridge renders slowly: never put a timeout on bridge/shot.py, it can take up to 10 minutes. Stop as soon as the sheet passes the list above. View only that sheet, once per round. A sheet tile that is blank or a console error means the model did not load: fix the JSON first.
 - Never read or edit `{code}/kits/*.js`, kit catalogues/examples, `{code}/index.template.html`, `{code}/build.py`, `NOTES.md`, other places, tests. Catalogue and proven example are supplied above; do not open their files. Write no test file. If the kit lacks something, report it in `kit_gaps`; never invent a substitute feature.
 - Plan the layout once before writing JSON; do not print files you just wrote; keep command output short.

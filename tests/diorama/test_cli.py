@@ -175,3 +175,17 @@ def test_gallery_uses_v1_overview_tile(isolated):
     with Image.open(isolated / "gallery.jpg") as image:
         r, g, b = image.getpixel((480, 300))
     assert r > 200 and g < 30 and b < 30
+
+
+def test_run_note_persists_through_redo_and_clears(isolated, monkeypatch):
+    p = Place("p")
+    p.stage("ready")
+    seen = []
+    monkeypatch.setattr(cli, "pipeline", lambda place, **kw: seen.append(place.s.copy()))
+    cli.main(["run", "p", "--redo", "--note", "  steep valley down to the lake "])
+    assert seen[0]["coord_note"] == "steep valley down to the lake"
+    assert Place("p").s["coord_note"] == "steep valley down to the lake"
+    cli.main(["run", "p", "--redo"])
+    assert Place("p").s["coord_note"] == "steep valley down to the lake"
+    cli.main(["run", "p", "--redo", "--note", ""])
+    assert Place("p").s["coord_note"] is None

@@ -1,7 +1,7 @@
-"""Generate the acorn mascot's guided-tour poses (walking, pointing, waving, ...) through the 9router image endpoint.
+"""Generate the bunny mascot's guided-tour poses (walking, pointing, waving, ...) through the 9router image endpoint.
 
 Same recipe as gen_mascot_moods.py (it is imported for the reference image, the key and the request): the reference mascot in a
-new pose on a transparent background, 720 px webp. Writes web/public/img/tour/<pose>.webp and manifest.json. Skips files that
+new pose on a transparent background, 720 px webp. Writes web/public/img/bunny/<pose>.webp and manifest.json. Skips files that
 exist unless --force or the pose is named. `--model terra|sol` picks the image model (default sol).
 Run: .venv/bin/python web/scripts/gen_tour_mascot.py [--force] [--model terra] [pose ...]
 """
@@ -18,14 +18,12 @@ from PIL import Image
 
 import gen_mascot_moods as base
 
-OUT = base.WEB / 'public/img/tour'
+OUT = base.OUT
 POSES = {
     'walk_a': 'walking to the right in a side three-quarter view, facing right, left foot stepping forward, small arms swinging, cheerful.',
     'walk_b': 'walking to the right in a side three-quarter view, facing right, right foot stepping forward, small arms swinging the other way, cheerful.',
     'point': 'standing and facing slightly right, one paw stretched out to the right pointing at something, friendly smile, eyes looking where it points.',
     'point_up': 'one paw raised and pointing diagonally up to the upper right, head tilted up, eyes looking up, friendly smile.',
-    'wave': 'waving hello with one raised paw, big warm smile, bright open eyes.',
-    'wow': 'amazed and delighted, mouth open in a small round O, eyes wide and sparkling, both paws raised near the cheeks.',
     'wink': 'winking one eye with a cheeky little smile, one paw raised in a small thumbs up.',
     'love': 'holding a small pink heart in both paws, eyes closed in a warm smile, two tiny hearts floating near it.',
     'cheer': 'celebrating, jumping with both paws up, holding a small party popper, a few colorful confetti pieces around it, big open smile.',

@@ -283,10 +283,10 @@ export function ResetFlow({ email: first, onEmail, onDone, onPet, onBack }: { em
       {heading}
       {step === 'ask' ? (
         <form onSubmit={ask} noValidate aria-busy={phase === 'busy'}>
-          {box('email', 'Email', <input ref={emailRef} id="tg-auth-email" className="tg-input" type="email" spellCheck={false} autoComplete="email" placeholder="ban@email.com" autoFocus
+          {box('email', 'Email', <span className="tg-auth__pw tg-auth__pw--lead"><Icon name="mail" size={20} /><input ref={emailRef} id="tg-auth-email" className="tg-input" type="email" spellCheck={false} autoComplete="email" placeholder="ban@email.com" autoFocus
             value={email} disabled={phase !== 'idle'} aria-invalid={shown('email') ? true : undefined} aria-describedby={shown('email') ? 'tg-auth-email-msg' : undefined}
             onChange={(e) => { setEmail(e.target.value); setRemoteEmail(null); setProblem(null); setNudge(false) }}
-            onBlur={() => { if (email) setTouched((p) => ({ ...p, email: true })) }} />)}
+            onBlur={() => { if (email) setTouched((p) => ({ ...p, email: true })) }} /></span>)}
           {problemBanner()}
           <button type="submit" className="tg-btn tg-btn--primary tg-auth__try" disabled={phase !== 'idle'} data-phase={phase}>
             {phase === 'busy' ? <><span className="tg-auth__spin" aria-hidden="true" /> Đang gửi mã…</> : 'Gửi mã'}
@@ -296,7 +296,7 @@ export function ResetFlow({ email: first, onEmail, onDone, onPet, onBack }: { em
         <form onSubmit={submit} noValidate aria-busy={phase === 'busy'}>
           <p className="tg-auth__sent" role="status">Nếu email này có tài khoản, mình đã gửi mã tới <strong>{sentFor || mail}</strong>. Mã có hiệu lực 10 phút. Không thấy thư thì bạn xem cả mục Spam nhé. <button type="button" className="tg-link" onClick={changeEmail} disabled={phase !== 'idle'}>Đổi email</button></p>
           {box('code', 'Mã 6 số', <Otp digits={digits} set={(d) => { setDigits(d); setWrong(null); setNudge(false); if (d.every(Boolean)) window.setTimeout(() => pwRef.current?.focus(), 30) }} disabled={phase !== 'idle'} refs={refs} describedBy={shown('code') ? 'tg-auth-code-msg' : undefined} />)}
-          {box('password', 'Mật khẩu mới', <span className="tg-auth__pw"><input {...pwAttrs('password', pw, setPw)} autoComplete="new-password" placeholder={`Ít nhất ${PASSWORD_MIN} ký tự`} />{eye}</span>,
+          {box('password', 'Mật khẩu mới', <span className="tg-auth__pw tg-auth__pw--lead"><Icon name="lock" size={20} /><input {...pwAttrs('password', pw, setPw)} autoComplete="new-password" placeholder={`Ít nhất ${PASSWORD_MIN} ký tự`} />{eye}</span>,
             n > 0 ? (n < PASSWORD_MIN ? `Thêm ${PASSWORD_MIN - n} ký tự nữa là đủ.` : <><Icon name="check" size={14} /> Đủ dài rồi.</>) : null)}
           {box('again', 'Nhập lại mật khẩu mới', <input {...pwAttrs('again', again, setAgain)} autoComplete="new-password" placeholder="Gõ lại mật khẩu vừa rồi" />,
             again && again === pw ? <><Icon name="check" size={14} /> Khớp rồi.</> : null)}

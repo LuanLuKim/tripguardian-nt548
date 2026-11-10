@@ -191,28 +191,26 @@
 .tg-prof__trip > div { display: grid; }
 .tg-prof__fine { display: flex; gap: 8px; align-items: center; margin-top: 22px; font-size: 0.82rem; }
 
-/* ---- auth: split card, mascot scene left, form right (look of web/public/prototype) ---- */
-.tg-auth { --sky-top: #bfe3f7; --sky-mid: #d5ecf9; --sky-low: #edf6fc; --scene-top: #8ed1fc; --scene-low: #d8f0ff; --meadow-d: #3e6b47; --meadow-l: #71a97e;
-  position: relative; min-height: 100vh; display: grid; place-items: center; padding: 32px 24px; background: linear-gradient(180deg, var(--sky-top), var(--sky-mid) 55%, var(--sky-low)); overflow: hidden; }
+/* ---- auth: split card, the bunny's scene left, form right (the green mock of the owner) ---- */
+.tg-auth { --tg-pine: #14513f; --tg-pine-d: #0d3b2d; --tg-pine-soft: #e3eee7; --tg-pine-line: #9fc2b0; --tg-ink: #153a2f; --tg-ink-2: #3d5a4f; --tg-ink-3: #5f776b;
+  --tg-line: #dde6df; --tg-line-2: #b4c8bc; --tg-surface: #fcfbf6; --tg-brand: #14513f;
+  position: relative; min-height: 100vh; display: grid; place-items: center; padding: 32px 24px; overflow: hidden;
+  background: radial-gradient(60% 50% at 8% 0%, #d4e6d8, transparent 70%), radial-gradient(55% 55% at 100% 100%, #cfe3d6, transparent 70%), linear-gradient(160deg, #eaf3ea, #f4f7ef 55%, #e6f0e8); }
+.tg-auth__leaves { position: absolute; z-index: 0; top: -30px; left: -40px; width: min(380px, 34vw); pointer-events: none; user-select: none; }
 .tg-auth__back { position: absolute; top: 24px; left: 24px; z-index: 2; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: rgba(255, 255, 255, 0.92); color: var(--tg-ink); box-shadow: var(--tg-sh-1); transition: transform 0.2s var(--tg-ease); }
 .tg-auth__back:hover { transform: translateX(-3px); }
-.tg-auth__card { position: relative; z-index: 1; width: min(940px, 100%); display: grid; grid-template-columns: 1fr 1fr; background: var(--tg-surface); border-radius: 32px; box-shadow: 0 25px 70px rgba(20, 50, 75, 0.18); overflow: hidden; }
-.tg-auth__art { padding: 14px; display: flex; }
-.tg-auth__scene { --lx: 0px; --ly: 0px; position: relative; flex: 1; min-height: 520px; border-radius: 24px; overflow: hidden; isolation: isolate; background: linear-gradient(180deg, var(--scene-top), var(--scene-low)); }
-.tg-auth__hill { position: absolute; z-index: -3; left: -24px; right: -24px; bottom: -48px; height: 150px; border-radius: 50%; background: linear-gradient(0deg, var(--meadow-d), var(--meadow-l)); }
-/* the mascot (animated webp) also breathes and sways, leans to the pointer; the ground shadow pulses with it */
-.tg-auth__shadow { position: absolute; left: 50%; bottom: 52px; width: 58%; height: 30px; margin-left: -29%; border-radius: 50%; background: rgba(6, 40, 24, 0.35); filter: blur(9px); animation: tg-auth-shadow 3.6s ease-in-out infinite; }
-.tg-auth__cloud { position: absolute; border-radius: 50%; background: rgba(255, 255, 255, 0.7); filter: blur(14px); animation: tg-auth-cloud 18s ease-in-out infinite; }
-.tg-auth__cloud--a { top: 36px; left: -40px; width: 190px; height: 80px; }
-.tg-auth__cloud--b { top: 110px; right: -50px; width: 220px; height: 90px; background: rgba(255, 255, 255, 0.6); animation-delay: -8s; }
+.tg-auth__card { position: relative; z-index: 1; width: min(1040px, 100%); display: grid; grid-template-columns: 1fr 1fr; background: var(--tg-surface); border: 6px solid rgba(255, 255, 255, 0.75); border-radius: 40px; box-shadow: 0 30px 80px rgba(24, 70, 52, 0.16); overflow: hidden; }
+.tg-auth__art { padding: 8px; display: flex; }
+.tg-auth__scene { --lx: 0px; --ly: 0px; position: relative; flex: 1; min-height: 560px; border-radius: 30px; overflow: hidden; isolation: isolate; background: #f3dcc6 url(/img/auth/scene.webp) center top / cover no-repeat; }
+/* the mascot (webp) also breathes and sways, leans to the pointer; the ground shadow pulses with it */
+.tg-auth__shadow { position: absolute; left: 50%; bottom: 52px; width: 50%; height: 26px; margin-left: -25%; border-radius: 50%; background: rgba(20, 60, 36, 0.3); filter: blur(9px); animation: tg-auth-shadow 3.6s ease-in-out infinite; }
 @keyframes tg-auth-bob { 0%, 100% { margin-bottom: 0; rotate: -1deg; scale: 1 1; } 50% { margin-bottom: 10px; rotate: 1.2deg; scale: 1.015 0.99; } }
 @keyframes tg-auth-shadow { 0%, 100% { opacity: 0.9; scale: 1 1; } 50% { opacity: 0.55; scale: 0.88 1; } }
-@keyframes tg-auth-cloud { 0%, 100% { translate: 0 0; } 50% { translate: 28px -10px; } }
-@media (prefers-reduced-motion: reduce) { .tg-auth__shadow, .tg-auth__cloud { animation: none; transition: none; } }
-.tg-auth__main { padding: 40px 44px; display: grid; align-content: center; gap: 12px; }
-.tg-auth__mark { justify-self: center; width: 48px; height: 48px; object-fit: contain; }
-.tg-auth__main h1 { font-size: 1.8rem; text-align: center; }
-.tg-auth__main > .tg-muted { text-align: center; font-size: 0.9rem; margin-bottom: 4px; }
+@media (prefers-reduced-motion: reduce) { .tg-auth__shadow { animation: none; transition: none; } }
+.tg-auth__main { padding: 44px 56px; display: grid; align-content: center; gap: 14px; }
+.tg-auth__mark { display: none; justify-self: center; }
+.tg-auth__main h1 { font-size: 2.3rem; font-weight: 700; line-height: 1.1; text-align: center; color: var(--tg-pine-d); }
+.tg-auth__main > .tg-muted { text-align: center; font-size: 0.95rem; margin-bottom: 6px; }
 .tg-auth__switch { text-align: center; font-size: 0.9rem; color: var(--tg-ink-3); }
 .tg-auth__switch .tg-link { font-weight: 700; color: var(--tg-ink); }
 .tg-auth__pw { position: relative; display: block; }
@@ -241,7 +239,7 @@
   .tg-detail__cols { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
-  .tg-auth__card { grid-template-columns: 1fr; } .tg-auth__art { display: none; } .tg-auth__main { padding: 32px 24px; }
+  .tg-auth__card { grid-template-columns: 1fr; border-width: 4px; border-radius: 30px; } .tg-auth__art { display: none; } .tg-auth__main { padding: 28px 22px; } .tg-auth__mark { display: block; } .tg-auth__leaves { width: 200px; }
   .tg-prof, .tg-themes, .tg-trips { grid-template-columns: 1fr; } .tg-saved { grid-template-columns: repeat(2, 1fr); }
   .tg-hero__veil { background: linear-gradient(180deg, rgba(246, 246, 246, 0.85), rgba(246, 246, 246, 0.5) 60%, var(--tg-bg)); }
 }

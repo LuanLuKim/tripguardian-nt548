@@ -46,23 +46,9 @@
 .tg-detail__out { display: inline-flex; align-items: center; gap: 8px; max-width: 34ch; font-size: 0.86rem; }
 .tg-facts__hours { display: grid; gap: 2px; font-size: 0.84rem; }
 .tg-minimap iframe { display: block; width: 100%; height: 190px; border: 0; }
-/* "Xem 360°" tab (the 3D model) */
+/* "Khám phá 3D" tab: the note stays here, the tab and the full-page dive are in space3d.css */
 .tg-pano__note { display: flex; gap: 8px; align-items: flex-start; max-width: 68ch; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--tg-line); background: var(--tg-surface); color: var(--tg-ink-2); font-size: 0.86rem; line-height: 1.5; }
 .tg-pano__note svg { flex: none; margin-top: 2px; color: var(--tg-brand); }
-.tg-s3 { display: grid; gap: 12px; }
-.tg-s3__stage { position: relative; height: min(64vh, 620px); border-radius: 14px; overflow: hidden; border: 1px solid var(--tg-line); background: var(--tg-bg); }
-.tg-s3__stage:fullscreen { height: 100%; border: 0; border-radius: 0; }
-.tg-s3__stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-.tg-s3__poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; transition: opacity 420ms var(--tg-ease); }
-.tg-s3__stage[data-state='ready'] .tg-s3__poster { opacity: 0; }
-.tg-s3__stage[data-state='error'] .tg-s3__poster { filter: grayscale(1); opacity: 0.45; }
-.tg-s3__wait { position: absolute; left: 50%; bottom: 20px; translate: -50% 0; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--tg-surface); box-shadow: var(--tg-sh-1); color: var(--tg-ink-2); font-size: 0.9rem; white-space: nowrap; pointer-events: none; }
-.tg-s3__wait svg { animation: tg-pano-spin 1.6s linear infinite; }
-.tg-s3__wait.is-error { max-width: calc(100% - 32px); white-space: normal; border-radius: 12px; text-align: center; }
-.tg-s3__full { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--tg-surface); box-shadow: var(--tg-sh-1); color: var(--tg-ink); transition: background 150ms; animation: tg-fade 320ms var(--tg-ease) 200ms backwards; }
-.tg-s3__full:hover { background: var(--tg-pine-soft); }
-@keyframes tg-pano-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .tg-s3__wait svg { animation: none; } .tg-s3__poster { transition: none; } }
 .tg-why-list { display: grid; gap: 8px; font-size: 0.92rem; }
 .tg-why-list li { display: flex; gap: 8px; align-items: flex-start; }
 .tg-why-list li svg { flex: none; margin-top: 3px; color: var(--tg-pine); }
@@ -76,7 +62,6 @@
 
 /* auth, account */
 .tg-auth__err { display: block; margin-top: 4px; color: var(--tg-danger); font-size: 0.82rem; }
-.tg-auth__fine { display: flex; gap: 8px; align-items: flex-start; margin-top: 18px; font-size: 0.82rem; }
 .tg-sv__note { display: block; font-size: 0.82rem; }
 .tg-ask__free .tg-line-input { padding-right: 64px; resize: none; field-sizing: content; max-height: 9lh; } /* grows with the text and the example, never clips it */
 

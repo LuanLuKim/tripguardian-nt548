@@ -9,6 +9,7 @@ export interface Msg {
   role: 'user' | 'bot'
   text: string
   places?: string[]
+  stage?: 'decision' | 'planning'
 }
 
 // What the Planning Agent's one proposal did to a journey's schedule (journey id -> outcome); see PLANNING.md.
@@ -172,4 +173,4 @@ export function pushMsg(m: Omit<Msg, 'id'>) {
 export function editMsg(id: number, patch: Partial<Msg>) {
   setUi((u) => ({ assistant: { ...u.assistant, msgs: u.assistant.msgs.map((m) => (m.id === id ? { ...m, ...patch } : m)) } }))
 }
-export const clearMsgs = () => setUi((u) => ({ assistant: { ...u.assistant, msgs: [] } }))
+export const clearMsgs = (stage?: 'decision' | 'planning') => setUi((u) => ({ assistant: { ...u.assistant, msgs: stage ? u.assistant.msgs.filter(m => (m.stage ?? 'decision') !== stage) : [] } }))

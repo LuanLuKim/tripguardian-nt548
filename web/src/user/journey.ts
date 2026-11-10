@@ -2,7 +2,7 @@ import type { Readback } from './tu/types'
 
 export type Stage = 'trip' | 'decision' | 'planning'
 export interface JourneyView { id: string; stage: Stage; revision: number; sessions: Partial<Record<Stage, string>>; outputs: Record<string, unknown>; result: unknown }
-type Operation = 'turn' | 'act' | 'advance' | 'back' | 'confirm' | 'recommend' | 'trip'
+type Operation = 'turn' | 'act' | 'advance' | 'back' | 'confirm' | 'recommend' | 'trip' | 'new_chat'
 interface Request { request_id: string; stage: Stage; operation: Operation; expected_revision: number; payload: unknown }
 export class JourneyError extends Error {
   constructor(public status: number, public detail = '', public missing?: string[], public readback?: Readback) { super(`Journey API ${status}: ${detail}`) }

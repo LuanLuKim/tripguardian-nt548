@@ -24,8 +24,8 @@ function Row({ icon, title, sub, children }: { icon: IconName; title: string; su
   )
 }
 
-export function Overview({ days, variant, robustness, travelMin, visitMin, droppedCount, lodgingName, hasHotel, arriveHow, leaveHow, wayIn, wayOut, stayOffer, notices, after, delta, sameAs, busy, footer, onDay, onChangeVariant, onHotel, onDropped, onStory, onReoptimize, onOpen }: {
-  days: ItineraryDay[]; variant: Variant | null; robustness?: Robustness; travelMin: number; visitMin: number; droppedCount: number
+export function Overview({ fill, days, variant, robustness, travelMin, visitMin, droppedCount, lodgingName, hasHotel, arriveHow, leaveHow, wayIn, wayOut, stayOffer, notices, after, delta, sameAs, busy, footer, onDay, onChangeVariant, onHotel, onDropped, onStory, onReoptimize, onOpen }: {
+  fill?: ReactNode; days: ItineraryDay[]; variant: Variant | null; robustness?: Robustness; travelMin: number; visitMin: number; droppedCount: number
   lodgingName: string | null; hasHotel: boolean; arriveHow?: string | null; leaveHow?: string | null; wayIn?: ReactNode; wayOut?: ReactNode; stayOffer?: ReactNode; notices: ReactNode; after: ReactNode; delta: string | null; sameAs: string | null; busy: boolean; footer: ReactNode
   onDay: (i: number) => void; onChangeVariant: () => void; onHotel: () => void; onDropped: () => void; onStory: () => void; onReoptimize: () => void; onOpen: (id: string) => void
 }) {
@@ -72,6 +72,7 @@ export function Overview({ days, variant, robustness, travelMin, visitMin, dropp
           <div className="tg-it-transit"><span><Icon name="bed" size={16} /><b>{hasHotel && lodgingName ? lodgingName : 'Chưa chọn chỗ nghỉ'}</b></span><button type="button" className="tg-it-textbtn" onClick={onHotel}>{hasHotel ? 'Đổi chỗ nghỉ' : 'Chọn chỗ nghỉ'} <Icon name="chevronRight" size={14} /></button></div>
           {stayOffer}
         </Row>
+        {fill && <Row icon="sliders" title="Thông tin chuyến" sub="Thêm để lịch hợp hơn">{fill}</Row>}
         <Row icon="calendar" title="Lịch trình" sub={`Ngày 1–${days.length}`}>
           <div className="tg-it-days">
             {days.map((d, i) => {

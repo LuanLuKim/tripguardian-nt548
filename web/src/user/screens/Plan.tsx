@@ -22,6 +22,7 @@ import { candidatesOf, type Candidate } from './plan/candidates'
 import { Choose } from './plan/Choose'
 import { DayView } from './plan/DayView'
 import { Overview } from './plan/Overview'
+import { FillRows, FillSheet, useFill } from './plan/fill'
 import { useRoutes } from './plan/useRoutes'
 import { BackupCard, KeepAll, Lodging, NoHotel, Optimize, TimeCard } from './plan/parts'
 import { costText, MEAL_LABEL, openPlace, placeName, visits } from './plan/shared'
@@ -53,6 +54,7 @@ export function Plan() {
   const { trip, dispatch } = useTrip()
   const { view, diff, error, busy, act, previewAct, editPreview, dismissPreview, confirm, optimize } = usePlanning()
   const optimized = useUi((u) => (trip.planningId ? u.optimized[trip.planningId] : undefined))
+  const fill = useFill(trip.decisionId ?? trip.planningId, trip.planningId)
   const [screen, setScreen] = useState<Screen>('overview')
   const [changing, setChanging] = useState(false) // "Đổi phương án": the choice screen again, over a plan that already exists
   const [picked, setDayIdx] = useState<number | null>(null) // null: the first day that has a stop
@@ -252,8 +254,9 @@ export function Plan() {
   return (
     <>
       {note && screen !== 'swap' && <div className="tg-it-toast">{note}</div>}
+      {fill.deck && fill.open && (trip.decisionId ?? trip.planningId) && <FillSheet id={(trip.decisionId ?? trip.planningId)!} deck={fill.deck} qid={fill.open} onClose={() => fill.setOpen(null)} />}
       <AssistantFloat stage="planning" onOpenDay={(n) => openDay(Math.min(Math.max(0, n - 1), Math.max(0, days.length - 1)))} />
-      {screen === 'overview' && <Overview days={days} variant={variant} robustness={robustness} travelMin={travel} visitMin={metrics?.visit_min ?? 0} droppedCount={droppedCount}
+      {screen === 'overview' && <Overview fill={fill.deck?.tabs.length ? <FillRows deck={fill.deck} onOpen={fill.setOpen} /> : null} days={days} variant={variant} robustness={robustness} travelMin={travel} visitMin={metrics?.visit_min ?? 0} droppedCount={droppedCount}
         lodgingName={lodgingName} hasHotel={hasHotel} wayIn={<WayIn lat={origin?.lat} lng={origin?.lng} originText={origin?.text} date={days[0]?.date} way="inbound" />} wayOut={<WayIn lat={origin?.lat} lng={origin?.lng} originText={origin?.text} date={days[days.length - 1]?.date} way="outbound" />}
         stayOffer={hasHotel ? <StayOffer fid={view.state.lodging_id} checkIn={days[0]?.date ?? null} nights={Math.max(1, days.length - 1)} /> : null} arriveHow={trip.searchInput?.context.frame?.arrive?.how ?? trip.searchInput?.context.arrival_mode} leaveHow={trip.searchInput?.context.frame?.leave?.how ?? trip.searchInput?.context.arrival_mode} notices={notices} footer={overviewFooter} busy={busy} delta={delta} sameAs={sameAs}
         after={<>{view.keep_all ? <KeepAll variant={view.keep_all} busy={busy} onPick={(id) => act({ type: 'pick_variant', id })} /> : null}<TrustCard view={view} /></>} onReoptimize={() => { void previewAct({ type: 'reoptimize' }) }} onDay={openDay} onChangeVariant={() => setChanging(true)} onHotel={toLodging}

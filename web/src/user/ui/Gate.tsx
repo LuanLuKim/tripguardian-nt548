@@ -1,12 +1,11 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { DeckIssues, ExtraInputs, TAB_ICON, clockOf, useDeckForm, type DeckForm } from '../screens/understand/Deck'
-import type { Deck, DeckAnswers, DeckIssue, Option, ReadbackLine } from '../tu/types'
-import { Icon, type IconName } from './icons'
+import type { Deck, DeckAnswers, DeckIssue, Option } from '../tu/types'
+import { Icon } from './icons'
 
 // The questions before planning (docs/UI_SPEC_USER_WEB.md, "Trước khi lập lịch"): the questions are a fan of pastel cards, the
-// one being answered in front and the rest peeking out on both sides (click one to bring it forward); what is already noted
-// runs as one horizontal bar under the cards. The paper colours live in gate.css.
+// one being answered in front and the rest peeking out on both sides (click one to bring it forward). The paper colours live in gate.css.
 
 // The card colours: the Petal Ritual palette (petal flush #F2D4D6, blue veil #C9D8E5, tangerine mist #F4CB82, olive cream #D8D1BE,
 // milk tint #FDFBF9) plus a lilac and a peach mixed from two of them, in an order where neighbours never look alike.
@@ -14,40 +13,11 @@ const TINTS = ['#f2d4d6', '#c9d8e5', '#f4cb82', '#d8d1be', '#fdfbf9', '#dfd6e0',
 const VISIBLE = 3 // cards fanned out on each side of the front one; the rest wait behind the last
 const SPRING = { k: 190, c: 24 } // slightly under-damped: the card that arrives overshoots a hair, then settles
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
-const ICONS: Record<ReadbackLine['tab'], IconName> = { trip: 'calendar', companions: 'users', mobility: 'car', care: 'heart', pace: 'gauge', budget: 'wallet', lodging: 'bed', more: 'star' }
-export const MARKERS: Record<ReadbackLine['kind'], string> = { said: 'Bạn nói', guess: 'Mình đoán', default: 'Mặc định', check: 'Cần xem lại' }
-
-export const KINDS = ['said', 'guess', 'default', 'check'] as const
-
-// a line without the kind the mark already shows ("Mặc định: …"), first letter up
-const tidy = (text: string) => { const t = text.replace(/^(Mặc định|Tự kiểm|Mình đoán|Bạn nói)\s*:\s*/i, ''); return t.charAt(0).toUpperCase() + t.slice(1) }
-
 // "Bạn ở đâu? Mấy giờ?" -> the first question upright, the rest in italics.
 const split = (question: string): [string, string] => {
   const i = question.indexOf('?')
   if (i < 0 || i >= question.length - 1) return [question, '']
   return [question.slice(0, i + 1), question.slice(i + 1).trim()]
-}
-
-export function LedgerList({ lines, busy, onEdit, onDrop }: { lines: ReadbackLine[]; busy: boolean; onEdit: () => void; onDrop: (target: string) => void }) {
-  return <ul className="tg-gt__ledger">{lines.map((line, i) => <li className={`is-${line.kind}`} key={`${line.tab}-${i}`}>
-    <span className="tg-gt__mark" aria-hidden="true"><Icon name={ICONS[line.tab] ?? 'star'} size={18} /></span>
-    <button type="button" className="tg-gt__line" disabled={busy} onClick={onEdit} aria-label={`Sửa: ${line.text}`} title={tidy(line.text)}><small>{MARKERS[line.kind]}</small><span>{tidy(line.text)}</span></button>
-    {line.kind === 'guess' && line.undo && <button type="button" className="tg-gt__undo" disabled={busy} aria-label={`Bỏ suy luận: ${line.text}`} title="Bỏ điều mình đoán" onClick={() => onDrop(line.undo!)}><Icon name="x" size={14} /></button>}
-  </li>)}</ul>
-}
-
-// What TripGuardian has already written down: a bar of icons under the cards, one per line, joined by a thin route; the words
-// come in a tip on hover or focus, a tap edits it in Tìm hiểu.
-function Checklist({ lines, busy, changed, onEdit, onDrop }: { lines: ReadbackLine[]; busy: boolean; changed: boolean; onEdit: () => void; onDrop: (target: string) => void }) {
-  return <section className="tg-gt__check" aria-label="Những điều mình đã ghi nhận">
-    {changed && <p className="tg-gt__sr" role="status">Vừa có thay đổi, bạn xem lại nhé</p>}
-    {lines.length ? <ul>{lines.map((line, i) => <li className={`is-${line.kind}`} key={`${line.tab}-${i}`}>
-      <button type="button" className="tg-gt__dot" disabled={busy} onClick={onEdit} aria-label={`${MARKERS[line.kind]}: ${tidy(line.text)}. Bấm để sửa`}><Icon name={ICONS[line.tab] ?? 'star'} size={20} /></button>
-      <span className="tg-gt__tip" aria-hidden="true"><small>{MARKERS[line.kind]}</small>{tidy(line.text)}</span>
-      {line.kind === 'guess' && line.undo && <button type="button" className="tg-gt__undo" disabled={busy} aria-label={`Bỏ suy luận: ${line.text}`} title="Bỏ điều mình đoán" onClick={() => onDrop(line.undo!)}><Icon name="x" size={12} /></button>}
-    </li>)}</ul> : <p className="tg-gt__check-none">Trả lời đến đâu, mình ghi lại ở đây đến đó.</p>}
-  </section>
 }
 
 // The hand of cards as one continuous position: `pos` (a card index, fractional while moving) chases the card being answered
@@ -167,9 +137,11 @@ function useFan(count: number, at: number, goTo: (i: number) => void) {
 }
 
 
-export function GateAsk({ deck, busy, issues, lines, changed, error, onAnswer, onOther, onDrop }: {
-  deck: Deck; busy: boolean; issues: DeckIssue[]; lines: ReadbackLine[]; changed: boolean; error: string | null
-  onAnswer: (answers: DeckAnswers) => void; onOther: () => void; onDrop: (target: string) => void
+const GATE_COPY = { kicker: 'Trước khi lên lịch', heading: 'Một chút thông tin để xếp lịch', sub: 'Chỉ cần ngày đi và lưu ý sức khỏe, ăn uống. Trả lời xong, mình xếp lịch ngay.' }
+
+export function GateAsk({ deck, busy, issues, error, onAnswer, onOther, copy = GATE_COPY }: {
+  deck: Deck; busy: boolean; issues: DeckIssue[]; error: string | null; copy?: { kicker: string; heading: string; sub: string }
+  onAnswer: (answers: DeckAnswers) => void; onOther: () => void
 }) {
   const [at, setAt] = useState(0)
   const [ghost, setGhost] = useState<{ i: number; html: string } | null>(null) // the card just left, still showing its words while it slides away
@@ -191,7 +163,6 @@ export function GateAsk({ deck, busy, issues, lines, changed, error, onAnswer, o
   const notes = issues.filter(i => i.key === tab.qid || i.key.startsWith(`${tab.qid}.`))
   const rest = issues.filter(i => !deck.tabs.some(t => i.key === t.qid || i.key.startsWith(`${t.qid}.`)))
   const { answered } = form
-  const leftHere = deck.tabs.filter(t => !answered(t.qid)).length // the same set the cards show, falling as the user answers
   const [lead, tail] = split(tab.question)
   const bringForward = goTo
   const chips = (options: Option[]): ReactNode => <div className="tg-gt__opts">{options.map(o => <button type="button" key={o.id} className={`tg-gt__opt ${selected.includes(o.id) ? 'is-on' : ''}`} disabled={busy} aria-pressed={selected.includes(o.id)} onClick={() => choose(o)}>
@@ -201,11 +172,10 @@ export function GateAsk({ deck, busy, issues, lines, changed, error, onAnswer, o
   return <div className="tg-gt__page tg-gt__fan" aria-busy={busy}>
     <header className="tg-gt__top">
       <div>
-        <p className="tg-gt__kicker">Trước khi lên lịch</p>
-        <Dialog.Title className="tg-gt__heading">{leftHere > 0 ? `Còn ${leftHere} câu hỏi nữa thôi!` : 'Đủ rồi, mình xếp lịch nhé!'}</Dialog.Title>
-        <Dialog.Description className="tg-gt__sub">{leftHere > 0 ? 'Cho mình biết thêm một chút để lên lịch trình thật hợp ý bạn nhé.' : 'Bạn đã trả lời hết. Bấm Xong để mình bắt đầu xếp lịch.'}</Dialog.Description>
+        <p className="tg-gt__kicker">{copy.kicker}</p>
+        <Dialog.Title className="tg-gt__heading">{copy.heading}</Dialog.Title>
+        <Dialog.Description className="tg-gt__sub">{copy.sub}</Dialog.Description>
       </div>
-      <span className="tg-gt__meter" role="img" aria-label={leftHere > 0 ? `Còn ${leftHere} trên ${deck.tabs.length} câu` : 'Đã trả lời hết các câu'}>{leftHere > 0 ? `Còn ${leftHere}/${deck.tabs.length}` : 'Đã xong'}<i><b style={{ width: `${(deck.tabs.length - leftHere) / deck.tabs.length * 100}%` }} /></i></span>
     </header>
     <div className={`tg-gt__stage ${deck.tabs[at]?.qid === 'lodging' ? 'is-lodging' : ''}`} role="group" aria-label="Các câu hỏi" ref={fan.stage} {...fan.handlers}>
       {deck.tabs.map((t, i) => {
@@ -216,14 +186,14 @@ export function GateAsk({ deck, busy, issues, lines, changed, error, onAnswer, o
             <span>{t.header}</span>
             <small>{i + 1}</small>
           </button>
-          {!on && ghost?.i !== i && <div className="tg-gt__front is-peek" aria-hidden="true"><p className="tg-gt__cat"><span className="tg-gt__ico"><Icon name={TAB_ICON[t.qid] ?? 'sparkle'} size={20} /></span><b>{t.header}</b><small>{i + 1}/{deck.tabs.length}</small></p></div>}
+          {!on && ghost?.i !== i && <div className="tg-gt__front is-peek" aria-hidden="true"><p className="tg-gt__cat"><span className="tg-gt__ico"><Icon name={TAB_ICON[t.qid] ?? 'sparkle'} size={20} /></span><b>{t.header}</b>{deck.tabs.length > 1 && <small>{i + 1}/{deck.tabs.length}</small>}</p></div>}
           {ghost?.i === i && !on && <div className="tg-gt__front is-ghost" aria-hidden="true" ref={el => { if (el) el.inert = true }} dangerouslySetInnerHTML={{ __html: ghost.html }} />}
           {on && <div className="tg-gt__front" key={tab.qid} ref={front} tabIndex={-1} aria-current="step" aria-label={`Câu ${i + 1}: ${t.header}`}
             onKeyDown={e => { if (e.target !== e.currentTarget) return; if (e.key === 'ArrowRight') { e.preventDefault(); goTo(Math.min(at + 1, deck.tabs.length - 1)) } else if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(Math.max(at - 1, 0)) } }}>
-            <p className="tg-gt__cat"><span className="tg-gt__ico"><Icon name={TAB_ICON[t.qid] ?? 'sparkle'} size={20} /></span><b>{t.header}</b><small>{i + 1}/{deck.tabs.length}</small>{tab.multi && <em>Chọn được nhiều ý</em>}</p>
+            <p className="tg-gt__cat"><span className="tg-gt__ico"><Icon name={TAB_ICON[t.qid] ?? 'sparkle'} size={20} /></span><b>{t.header}</b>{deck.tabs.length > 1 && <small>{i + 1}/{deck.tabs.length}</small>}{tab.multi && <em>Chọn được nhiều ý</em>}</p>
             <h2 className="tg-gt__q"><span>{lead}</span>{tail && <> <em>{tail}</em></>}</h2>
             {tab.why && <p className="tg-gt__why">{tab.why}</p>}
-            <div className={`tg-gt__answer ${tab.qid === 'trip' ? 'is-trip' : ''}`}>
+            <div className={`tg-gt__answer ${tab.qid === 'trip' ? `is-trip ${tab.inputs.some(k => k === 'start' || k === 'end') ? '' : 'is-dates-only'}` : ''}`}>
               {tab.qid === 'trip' && tab.kind === 'required' ? <GateTrip form={form} busy={busy} />
                 : tab.visual ? <div className="tg-gt__pics">{normal.map(o => <button type="button" key={o.id} className={`tg-gt__pic ${selected.includes(o.id) ? 'is-on' : ''}`} disabled={busy} aria-pressed={selected.includes(o.id)} onClick={() => choose(o)}>
                   <span className="tg-gt__pic-img">{o.photo ? <img src={o.photo.url} alt={o.photo.name} loading="lazy" /> : <em>Chưa có ảnh</em>}<Icon name="check" size={18} /></span>
@@ -242,7 +212,6 @@ export function GateAsk({ deck, busy, issues, lines, changed, error, onAnswer, o
         </div>
       })}
     </div>
-    <Checklist lines={lines} busy={busy} changed={changed} onEdit={onOther} onDrop={onDrop} />
     <footer className="tg-gt__foot">
       <div className="tg-gt__foot-l"><button type="button" className="tg-gt__link" disabled={busy} onClick={onOther}><Icon name="edit" size={16} />Sửa trong Tìm hiểu</button></div>
       <div className="tg-gt__foot-r">
@@ -321,9 +290,9 @@ function GateTrip({ form, busy }: { form: DeckForm; busy: boolean }) {
       <RangeCalendar from={from} to={to} busy={busy} onPick={pick} />
       {!!dateOptions.length && <div className="tg-gt__hour-p">{dateOptions.map(o => <button type="button" key={o.id} disabled={busy} className={selected.includes(o.id) ? 'is-on' : ''} aria-pressed={selected.includes(o.id)} onClick={() => choose(o)}>{o.prefilled && <Icon name="edit" size={13} aria-label="Mình đoán" />}{o.label}</button>)}</div>}
     </div>}
-    <div className="tg-gt__hours">
+    {tab.inputs.some(slot => slot === 'start' || slot === 'end') && <div className="tg-gt__hours">
       {(['start', 'end'] as const).filter(slot => tab.inputs.includes(slot)).map(slot => <HourStepper key={slot} label={slot === 'start' ? 'Ngày đầu bắt đầu lúc' : 'Ngày cuối kết thúc lúc'} value={hour(slot)}
         options={normal.filter(o => o.id.startsWith(`${slot}.`))} selected={selected} busy={busy} onStep={d => nudge(slot, d)} onPreset={choose} />)}
-    </div>
+    </div>}
   </>
 }

@@ -96,8 +96,8 @@ export function HomeDialogs() {
     if (prompt) begin({ startText: prompt, startWith: null })
     else begin({ startWith: 'nothing', startText: null })
   }, [prompt]) // eslint-disable-line react-hooks/exhaustive-deps
-  // The theme's idea plus the kinds the user picked on its page: what is sent is what Tìm hiểu reads first.
-  const start = (t: { prompt: string }, kinds: string[]) => openCreate(kinds.length ? `${t.prompt} Mình thích kiểu: ${kinds.join(', ')}.` : t.prompt)
+  // The theme's idea is what Tìm hiểu reads first.
+  const start = (t: { prompt: string }) => openCreate(t.prompt)
   return (
     <>
       <ThemeBlog id={theme?.id ?? null} from={blogFrom} onPick={(id) => openTheme(id)} onStart={start} onClose={close} />

@@ -341,7 +341,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
 
   return (
     <div className="tg-home tg-workspace">
-      <Sidebar path="" />
+      <Sidebar path="/understand" />
       <History active={sid} busy={busy || handing || (!sid && !offline)} onNew={newTrip} onOpen={selectTrip} />
       <div className="tg-cx-root tg-workspace__content">
         <LongTripWarning days={Number(u?.trip.find((row) => row.target === 'days')?.value ?? 0)} />

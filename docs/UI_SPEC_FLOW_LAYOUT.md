@@ -17,7 +17,7 @@ Không chép lại ở đây:
  Landing / ── Bắt đầu ──► Hiểu chuyến đi (câu mẫu là lượt đầu)
  /app  ── chưa có tài khoản ──► Vào ứng dụng ── Dùng thử / đăng nhập ──► Khám phá
                                                                          │ gõ một câu · chủ đề
- ══════ TRONG LUỒNG (3 bước; rail có hai nút Lựa chọn / Lịch trình) ════════════════════════════════════╪═══════════
+ ══════ TRONG LUỒNG (3 bước; rail có ba nút Trò chuyện / Lựa chọn / Lịch trình) ════════════════════════════════════╪═══════════
  Bước 1  Hiểu chuyến đi ── agent đủ hiểu / Tiếp tục đến chọn nơi ───────────────────┤ trip → decision
  Bước 2  Chọn nơi ⇄ Chi tiết ⇄ So sánh  + trợ lý  + thanh "Đã chọn"       │ (khả thi + lịch ngầm)
           └──────── Xem lịch trình ───────────────────────────────────────┤ decision → planning
@@ -93,7 +93,7 @@ FLOW (Chọn nơi, Lịch trình, Phản hồi; Hiểu chuyến đi dùng CHAT)
 NAV (Khám phá, Chuyến của tôi, Đã lưu, Hồ sơ): rail trái 76px — logo · 4 icon có tooltip · avatar
 ```
 
-- Hai nút "Lựa chọn" và "Lịch trình" nằm kề nhau trong rail, chỉ hiện khi có chuyến đang lập; màn đang mở có nền đậm.
+- Ba nút "Trò chuyện", "Lựa chọn", "Lịch trình" nằm kề nhau trong rail, chỉ ở các màn của luồng (Hiểu chuyến đi, Chọn nơi, Lịch trình, Hoàn tất), không ở Khám phá và các trang ngoài luồng; màn đang mở có nền đậm; bước chuyến chưa tới thì mờ, không bấm được.
 - Hiểu chuyến đi dùng khung CHAT riêng, mở vé từ `Sửa` hoặc `Xem đầy đủ`; `(●)` trên FLOW là avatar / icon hồ sơ.
 - Trợ lý ở Chọn nơi là tab nhỏ mép phải, mở thành ngăn 380px bên phải; ghim thì lưới còn 2 cột.
 

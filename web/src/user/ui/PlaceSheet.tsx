@@ -16,7 +16,7 @@ import { openAssistant, toggleCmp, toggleSaved, useUi } from '../store'
 import { useTrip } from '../trip'
 import { go, Photo, Trust, Unconfirmed, warmPhoto } from './common'
 import { HeartFill, Icon } from './icons'
-import { Space3d, useSpace3d } from './Space3d'
+import { diveFrom, Space3d, useSpace3d } from './Space3d'
 import { askAssistant } from './askAssistant'
 import { DetailsOverview, KnownFor } from './PlaceDetails'
 import { PhoneLink, SiteLink, phoneText, siteOf } from './contact'
@@ -25,8 +25,8 @@ import { PhoneLink, SiteLink, phoneText, siteOf } from './contact'
 // link page (/explore/place/:id). As a modal it lives in the URL (?place=<id>), so the browser's Back closes it.
 
 const SLOTS: [string, string][] = [['early_morning', 'Sớm'], ['morning', 'Sáng'], ['noon', 'Trưa'], ['afternoon', 'Chiều'], ['evening', 'Tối']]
-// 'video' only for a place with clips, 'space3d' ("Xem 360°") only for a place that has a 3D model.
-const TABS = [['overview', 'Tổng quan'], ['photos', 'Hình ảnh'], ['video', 'Video'], ['space3d', 'Xem 360°'], ['plan', 'Gợi ý lịch trình'], ['reviews', 'Đánh giá']] as const
+// 'video' only for a place with clips, 'space3d' ("Khám phá 3D") only for a place that has a 3D model.
+const TABS = [['overview', 'Tổng quan'], ['photos', 'Hình ảnh'], ['video', 'Video'], ['space3d', 'Khám phá 3D'], ['plan', 'Gợi ý lịch trình'], ['reviews', 'Đánh giá']] as const
 type Tab = (typeof TABS)[number][0]
 const HERO = 'tg-hero' // view-transition-name shared by the photo that opened the sheet and the sheet's big photo
 const EASE = 'cubic-bezier(.2,.8,.2,1)'
@@ -196,7 +196,8 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
     const s = c.sid ? signal(snap, c.sid) : undefined
     return s ? `${Math.round(s.agreement * 100)}% trong ${s.n} người nhắc${s.freshnessDays !== null ? ` · mới nhất ${s.freshnessDays} ngày trước` : ''}` : null
   }
-  const pick = (t: Tab) => {
+  const pick = (t: Tab, button?: HTMLElement) => {
+    if (t === 'space3d' && tab !== 'space3d' && button) diveFrom(button.getBoundingClientRect()) // the tab opens the 3D page at once, from the tab
     setTab(t)
     // The tab row sticks to the top; a tab chosen further down starts its content right under it.
     const el = tabsRef.current
@@ -276,7 +277,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
       </header>
 
       <div className="tg-ps__tabs" role="tablist" aria-label="Thông tin về nơi này" ref={tabsRef}>
-        {TABS.filter(([k]) => (k !== 'space3d' || model) && (k !== 'video' || p.videos.length > 0)).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}</button>)}
+        {TABS.filter(([k]) => (k !== 'space3d' || model) && (k !== 'video' || p.videos.length > 0)).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={(e) => pick(k, e.currentTarget)}>{l}</button>)}
       </div>
 
       <section className="tg-ps__pane" role="tabpanel">

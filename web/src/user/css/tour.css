@@ -1,4 +1,4 @@
-/* Guided tour: the dimmed page with one lit element, the acorn walking to it, its bubble and the control bar (src/user/tour).
+/* Guided tour: the dimmed page with one lit element, the bunny walking to it, its bubble and the control bar (src/user/tour).
    The bubble and the "…" are the sign-in screen's (.tg-auth__say / .tg-auth__dots in auth.css); the pet's size is measured by Tour.tsx. */
 .tg-tour { position: fixed; inset: 0; z-index: 2000; pointer-events: none; }
 .tg-tour__block { position: absolute; inset: 0; pointer-events: auto; cursor: default; }

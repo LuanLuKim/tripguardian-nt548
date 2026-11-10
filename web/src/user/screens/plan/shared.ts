@@ -35,4 +35,4 @@ export const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').re
 
 export const BLOCK: Record<string, string> = { meal_free: 'Ăn (tự chọn)', rest: 'Nghỉ', wait: 'Chờ', free: 'Tự do quanh đây', buffer: 'Đệm' }
 export const BLOCK_NOTE: Record<string, string> = { meal_free: 'Ăn ngoài hoặc hỏi chỗ ở có phục vụ bữa này; dịch vụ và giá chưa xác nhận.', rest: 'Nghỉ chân, về chỗ ở hoặc ngồi lại.', wait: 'Chờ tới khung giờ ghé hoặc giờ mở cửa.', free: 'Thời gian tự do trước khi di chuyển tới điểm kế tiếp.', buffer: 'Thời gian dự phòng, trễ một chút vẫn ổn.' }
-export const MEAL_LABEL: Record<string, string> = { breakfast: 'Ăn sáng (tự chọn)', lunch: 'Ăn trưa (tự chọn)', dinner: 'Ăn tối (tự chọn)' }
+export const MEAL_LABEL: Record<string, string> = { breakfast: 'Ăn sáng (tự chọn)', lunch: 'Ăn trưa (tự chọn)', dinner: 'Ăn tối (tự chọn)', late: 'Ăn đêm (tự chọn)' }

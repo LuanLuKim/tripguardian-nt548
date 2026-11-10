@@ -9,6 +9,23 @@ const storage = new Map()
 globalThis.localStorage = { getItem: k => storage.get(k) ?? null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) }
 const view = (revision = 0, stage = 'decision') => ({ id: 'journey', stage, revision, sessions: {}, outputs: {}, result: {} })
 const response = v => Response.json(v)
+test('new chat uses the stage revision queue and posts the archive through the existing request endpoint', async () => {
+  const api = await client()
+  const messages = [{ role: 'user', text: 'current question' }, { role: 'bot', text: 'current reply' }]
+  let sent
+  globalThis.fetch = async (url, options) => {
+    if (!options) return response(view(4, 'planning'))
+    sent = JSON.parse(options.body)
+    assert.ok(url.endsWith('/request'))
+    return response(view(5, 'planning'))
+  }
+  const next = await api.mutateJourney('chat-reset', 'planning', 'new_chat', { messages })
+  assert.equal(sent.operation, 'new_chat')
+  assert.equal(sent.stage, 'planning')
+  assert.equal(sent.expected_revision, 4)
+  assert.deepEqual(sent.payload, { messages })
+  assert.equal(next.revision, 5)
+})
 test('JSON trip gate preserves missing answers and the exact readback', async () => {
   const api = await client()
   const readback = { lines: [{ kind: 'guess', text: 'Thong thả', tab: 'pace', undo: 'pace' }], digest: 'shown', ok: false, deck: { kind: 'deck', tabs: [], left: 2, total: 7 } }

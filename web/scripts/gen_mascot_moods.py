@@ -1,9 +1,10 @@
-"""Generate the acorn mascot's moods for the sign-in screen through the 9router image endpoint.
+"""Generate the bunny mascot's extra moods for the sign-in screen through the 9router image endpoint.
 
-Each mood is the reference mascot (web/public/img/auth/acorn_mascot.png, sent in the `image` field so the character stays
-the same) in a new pose, on a transparent background. Writes web/public/img/auth/mood/<mood>.webp (alpha kept, 720 px)
-and manifest.json (model, prompt, time). The key comes from .env and is never printed. The idle mood is the existing
-acorn_greet.webp. Skips files that exist unless --force.
+The bunny's own poses (idle, happy, wait, wow, sad, sleepy) were drawn by the project owner and cut out of their backdrop;
+they live in web/public/img/bunny/ next to the 9router-made ones. Each mood here is the reference (web/public/img/bunny/reference.png,
+sent in the `image` field so the character stays the same) in a new pose on a transparent background. Writes
+web/public/img/bunny/<mood>.webp (alpha kept, 720 px) and manifest.json (model, prompt, time). The key comes from .env and is
+never printed. Skips files that exist unless --force.
 Run: .venv/bin/python web/scripts/gen_mascot_moods.py [--force] [mood ...]
 """
 import base64
@@ -21,19 +22,18 @@ from PIL import Image
 
 WEB = Path(__file__).resolve().parent.parent
 ROOT = WEB.parent
-OUT = WEB / 'public/img/auth/mood'
-REF = WEB / 'public/img/auth/acorn_mascot.png'
+OUT = WEB / 'public/img/bunny'
+REF = OUT / 'reference.png'
 MODEL = 'cx/gpt-6.1-sol'
-SAME = ('Same exact acorn mascot as the reference image (same plush character, outfit, colors, same size and framing, '
-        'full body centered), transparent background, no text, no letters, no scenery, new pose: ')
+SAME = ('Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, '
+        'the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), '
+        'transparent background, no text, no letters, no scenery, no ground shadow, new pose: ')
+# idle, happy, wait (thinking), wow, sad and sleepy are the owner's own drawings (see the docstring), not generated.
 MOODS = {
     'shy': 'covering both eyes shyly with its two paws, head turned slightly away, blushing.',
     'peek': 'covering its face with both paws but peeking through a small gap between the fingers with one eye, blushing.',
-    'curious': 'tilting its head to one side with one eyebrow raised, curious and puzzled, one paw raised to its chin.',
-    'sad': 'sad and apologetic, worried eyebrows, a tiny tear in one eye, one small sweat drop on the forehead, shoulders drooping, slightly slumped.',
-    'happy': 'jumping up with joy, both arms raised, eyes closed in a big smile, extra pink cheeks, a few small golden sparkles around it.',
-    'mail': 'holding a small cream envelope with a little pink heart seal in both paws, smiling gently, as if it just sent or received a letter.',
-    'wait': 'thinking, looking up and to the side, one paw on its chin, calm and patient.',
+    'curious': 'tilting its head to one side with one eyebrow raised, curious and puzzled, one ear flopped over, both paws down in front.',
+    'mail': 'holding a small cream envelope with a little mint heart seal in both paws, smiling gently, as if it just sent or received a letter.',
 }
 
 

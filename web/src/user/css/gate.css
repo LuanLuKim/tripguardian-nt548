@@ -1,7 +1,4 @@
-/* "Trước khi lập lịch" (ui/ReadbackSheet.tsx, ui/Gate.tsx): over the blurred page, a split card. While questions are open the left
-   half is a photo of Đà Lạt with the question in large type, the right half the answers as big tiles, the questions as numbered
-   stops on a route along the top. Once none are open it is a cream postcard (blog.css manner) that reads the trip back.
-   The paper colours are this page's own. */
+/* Planning gate: dates and care on pastel cards over cream paper. */
 .tg-gt, .tg-gt__veil {
   --gt-paper: #f4f0e6;
   --gt-paper-hi: #faf7ef;
@@ -167,9 +164,6 @@
 .tg-gt__foot .tg-warn-t, .tg-gt__err { font-size: 0.95rem; color: var(--tg-danger); }
 .tg-gt__link { display: inline-flex; align-items: center; gap: 7px; height: 46px; padding: 0 18px; border-radius: 999px; border: 1.5px dashed rgba(43, 39, 32, 0.32); font-size: 1rem; font-weight: 500; color: var(--gt-ink); transition: background 160ms, border-color 160ms; }
 .tg-gt__link:hover:not(:disabled) { background: rgba(43, 39, 32, 0.07); border-style: solid; }
-.tg-gt__meter { display: inline-flex; align-items: center; gap: 12px; margin-top: 22px; font-size: 1rem; color: rgba(255, 255, 255, 0.85); }
-.tg-gt__meter i { width: 120px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.28); overflow: hidden; }
-.tg-gt__meter b { display: block; height: 100%; border-radius: 2px; background: var(--tg-brand); transition: width 480ms var(--gt-ease); }
 .tg-gt__go, .tg-gt__next { display: inline-flex; align-items: center; gap: 9px; height: 56px; padding: 0 30px; border-radius: 999px; font-size: 1.1rem; font-weight: 500; transition: transform 220ms var(--gt-ease), background 180ms, box-shadow 220ms; }
 .tg-gt__go { background: var(--gt-ink); color: var(--gt-paper); }
 .tg-gt__go:hover:not(:disabled) { background: #000; transform: translateY(-2px); box-shadow: 0 12px 22px -10px rgba(0, 0, 0, 0.55); }
@@ -177,41 +171,6 @@
 .tg-gt__go:disabled { opacity: 0.4; cursor: not-allowed; }
 .tg-gt__next { padding: 0 24px; border: 1.5px solid rgba(43, 39, 32, 0.28); color: var(--gt-ink); }
 .tg-gt__next:hover:not(:disabled) { background: rgba(43, 39, 32, 0.07); }
-
-/* the read-back page: the trip as a ticket, what was said, guessed or left to a default told apart at a glance */
-.tg-gt__read { display: grid; gap: 14px; align-content: start; }
-.tg-gt__changed { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 14px; border-radius: 12px; background: #f1e4a2; font-size: 0.95rem; color: #5c4a10; }
-.tg-gt__ledger { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0; padding: 0; list-style: none; }
-.tg-gt__ledger li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: start; }
-.tg-gt__mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--gt-ink); color: var(--gt-paper); }
-.tg-gt__ledger li.is-guess .tg-gt__mark { background: transparent; color: var(--gt-ink); border: 1.5px dashed rgba(43, 39, 32, 0.4); }
-.tg-gt__ledger li.is-default .tg-gt__mark { background: rgba(43, 39, 32, 0.1); color: var(--gt-ink); }
-.tg-gt__ledger li.is-check .tg-gt__mark { background: var(--gt-stamp); color: var(--gt-ink); }
-.tg-gt__line { display: grid; gap: 1px; min-width: 0; padding: 1px 0 0; text-align: left; border-radius: 8px; }
-.tg-gt__line small { font-size: 0.86rem; font-weight: 600; letter-spacing: 0.04em; color: var(--gt-soft); }
-.tg-gt__ledger li.is-check .tg-gt__line small { color: var(--gt-warn); }
-.tg-gt__line span { font-size: 1.1rem; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
-.tg-gt__line:hover:not(:disabled) span { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(43, 39, 32, 0.35); }
-.tg-gt__undo { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--gt-soft); }
-.tg-gt__undo:hover:not(:disabled) { background: rgba(43, 39, 32, 0.08); color: var(--gt-ink); }
-
-/* the legend across the top: how many lines are said, guessed, defaulted, to check */
-.tg-gt__tally { flex-wrap: wrap; }
-.tg-gt__tally span { display: inline-flex; align-items: center; gap: 9px; height: 42px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--gt-line); font-size: 0.98rem; font-weight: 500; }
-.tg-gt__tally i { width: 12px; height: 12px; border-radius: 50%; background: var(--gt-ink); }
-.tg-gt__tally .is-guess i { background: transparent; border: 1.5px dashed rgba(43, 39, 32, 0.55); }
-.tg-gt__tally .is-default i { background: rgba(43, 39, 32, 0.22); }
-.tg-gt__tally .is-check { background: #f6ecb8; border-color: #e2cf7a; color: #5c4a10; }
-.tg-gt__tally .is-check i { background: var(--tg-brand); }
-.tg-gt.is-ask .tg-gt__read { grid-column: 2; grid-row: 2; padding: 4px 48px 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.tg-gt__read .tg-gt__ledger { grid-template-columns: 1fr; gap: 8px; }
-.tg-gt__read .tg-gt__ledger li { align-items: center; gap: 14px; padding: 10px 14px 10px 10px; border-radius: 18px; background: var(--gt-paper-hi); box-shadow: 0 0 0 1px var(--gt-line); }
-.tg-gt__read .tg-gt__ledger li.is-guess { box-shadow: none; background: transparent; outline: 1.5px dashed rgba(43, 39, 32, 0.3); outline-offset: -1.5px; }
-.tg-gt__read .tg-gt__line { padding: 0; }
-.tg-gt__flag { display: grid; gap: 10px; padding: 14px 16px 16px; border-radius: 20px; background: #f6ecb8; box-shadow: 0 0 0 1.5px #e2cf7a; }
-.tg-gt__flag > b { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; color: #5c4a10; }
-.tg-gt__flag .tg-gt__ledger li { padding: 0; background: none; box-shadow: none; }
-.tg-gt__flag .tg-gt__line small { display: none; }
 
 .tg-gt__wait { position: absolute; z-index: 5; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; border-radius: 28px; font-size: 1.1rem; background: rgba(244, 240, 230, 0.78); backdrop-filter: blur(2px); font-size: 0.9rem; color: var(--gt-soft); }
 .tg-gt__wait p { margin: 0; }
@@ -239,18 +198,14 @@
 .tg-gt.is-fan .tg-gt__x:hover:not(:disabled) { background: #fff; }
 .tg-gt.is-fan .tg-gt__x:focus-visible { outline-color: var(--gt-ink); }
 .tg-gt.is-ask .tg-gt__fan { display: flex; flex-direction: column; gap: 18px; height: auto; max-height: calc(100dvh - 40px); padding: 28px 40px 22px; }
-.tg-gt__fan > :is(.tg-gt__top, .tg-gt__stage, .tg-gt__check) { animation: tg-gt-up 520ms var(--gt-ease) var(--d, 100ms) both; }
+.tg-gt__fan > :is(.tg-gt__top, .tg-gt__stage) { animation: tg-gt-up 520ms var(--gt-ease) var(--d, 100ms) both; }
 .tg-gt__fan .tg-gt__stage { --d: 160ms; }
-.tg-gt__fan .tg-gt__check { --d: 230ms; }
 
 .tg-gt__top { display: flex; align-items: center; gap: 18px; padding-right: 56px; }
 .tg-gt__top > div { min-width: 0; flex: 1; }
 .tg-gt__top .tg-gt__kicker { color: var(--tg-brand); }
 .tg-gt__heading { margin: 8px 0 0; font: 700 2.1rem/1.15 var(--tg-sans); letter-spacing: -0.01em; color: var(--gt-ink); text-wrap: balance; }
 .tg-gt__sub { margin: 6px 0 0; font-size: 1.05rem; color: var(--gt-soft); }
-.tg-gt__top .tg-gt__meter { flex: none; margin: 0; padding: 9px 16px; border-radius: 999px; background: var(--gt-paper-hi); box-shadow: 0 0 0 1px var(--gt-line); font-size: 0.95rem; font-weight: 600; color: var(--gt-ink); }
-.tg-gt__top .tg-gt__meter i { width: 64px; background: rgba(43, 39, 32, 0.12); }
-.tg-gt__top .tg-gt__meter b { background: var(--gt-ink); }
 
 /* the fan: every card is as wide as the front one; useFan (ui/Gate.tsx) places them each frame (transform, z-index, opacity) from
    how far each is from the card being answered, so the others slide out sideways by a step each, lean away and shrink */
@@ -297,6 +252,7 @@
 .tg-gt__front .tg-gt__opt.is-on { background: var(--gt-ink); border-color: var(--gt-ink); }
 .tg-gt__front .tg-gt__opt:hover:not(:disabled):not(.is-on) { background: #fff; }
 .tg-gt__front .tg-gt__answer.is-trip { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 0 20px; }
+.tg-gt__front .tg-gt__answer.is-dates-only { grid-template-columns: minmax(0, 1fr); }
 .tg-gt__front .tg-gt__range { font: 400 1.6rem/1.1 var(--tg-display); min-height: 40px; }
 .tg-gt__front .tg-gt__cal { padding: 10px 12px 14px; background: rgba(255, 255, 255, 0.85); }
 .tg-gt__front .tg-gt__cal-grid button { height: 38px; font-size: 1rem; }
@@ -304,24 +260,6 @@
 .tg-gt__front .tg-gt__hour { padding: 14px 16px 16px; gap: 10px; background: rgba(255, 255, 255, 0.85); }
 .tg-gt__front .tg-gt__hour-v output { font: 400 2.3rem/1 var(--tg-display); }
 .tg-gt__front .tg-gt__pic-img { height: 96px; }
-
-/* the bar under the cards: one icon per noted line on a thin route, the words in a tip */
-.tg-gt__check { display: flex; align-items: center; justify-content: center; min-height: 64px; padding: 10px 18px; border-radius: 22px; background: var(--gt-paper-hi); box-shadow: 0 0 0 1px var(--gt-line); }
-.tg-gt__check-none { margin: 0; font-size: 0.95rem; color: var(--gt-soft); }
-.tg-gt__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.tg-gt__check ul { display: flex; align-items: center; margin: 0; padding: 0; list-style: none; }
-.tg-gt__check li { position: relative; display: flex; align-items: center; }
-.tg-gt__check li + li::before { content: ''; width: 34px; height: 2px; margin: 0 4px; border-radius: 1px; background: var(--gt-line); }
-.tg-gt__dot { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--gt-ink); background: var(--gt-ink); color: var(--gt-paper); transition: transform 240ms var(--gt-ease), box-shadow 200ms; }
-.tg-gt__check li.is-guess .tg-gt__dot { background: #fff; border: 1.5px dashed rgba(43, 39, 32, 0.5); color: var(--gt-ink); }
-.tg-gt__check li.is-default .tg-gt__dot { background: rgba(43, 39, 32, 0.08); border-color: transparent; color: var(--gt-ink); }
-.tg-gt__check li.is-check .tg-gt__dot { background: var(--gt-stamp); border-color: #e2cf7a; color: var(--gt-ink); }
-.tg-gt__dot:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 10px 16px -10px rgba(43, 39, 32, 0.6); }
-.tg-gt__tip { position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 10px); display: grid; gap: 1px; width: max-content; max-width: 280px; padding: 8px 14px 9px; border-radius: 14px; background: var(--gt-ink); color: var(--gt-paper); font-size: 0.95rem; line-height: 1.35; opacity: 0; translate: -50% 6px; pointer-events: none; transition: opacity 160ms, translate 220ms var(--gt-ease); }
-.tg-gt__tip small { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; color: rgba(244, 240, 230, 0.7); }
-.tg-gt__check li:hover .tg-gt__tip, .tg-gt__check li:focus-within .tg-gt__tip { opacity: 1; translate: -50% 0; }
-.tg-gt__check .tg-gt__undo { position: absolute; right: -4px; top: -4px; width: 20px; height: 20px; background: #fff; box-shadow: 0 0 0 1px var(--gt-line); opacity: 0; transition: opacity 160ms; }
-.tg-gt__check li:hover .tg-gt__undo, .tg-gt__check li:focus-within .tg-gt__undo { opacity: 1; }
 
 .tg-gt.is-ask .tg-gt__fan .tg-gt__foot { --d: 290ms; margin: 0; padding: 14px 0 0; }
 .tg-gt__hint { font-size: 0.95rem; color: var(--gt-soft); }
@@ -333,4 +271,17 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .tg-gt__card, .tg-gt__strip i { transition-duration: 1ms !important; }
+}
+
+@media (max-width: 600px) {
+  .tg-gt.is-fan { width: calc(100vw - 24px); }
+  .tg-gt.is-ask .tg-gt__fan { padding: 22px 16px 16px; gap: 14px; overflow-y: auto; }
+  .tg-gt__heading { font-size: 1.45rem; }
+  .tg-gt__sub { font-size: 0.95rem; }
+  .tg-gt__front { padding: 20px 18px 16px; }
+  .tg-gt__q { font-size: 1.4rem; }
+  .tg-gt__stage { flex-shrink: 0; min-height: 450px; }
+  .tg-gt__foot { flex-wrap: wrap; }
+  .tg-gt__foot-r { width: 100%; }
+  .tg-gt__hint { display: none; }
 }

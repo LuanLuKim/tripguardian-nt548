@@ -5,7 +5,8 @@ import { whyNot } from '../pd/api'
 import { useDecision } from '../pd/decision'
 import { usePlanning } from '../planning/planning'
 import type { ChangedDay } from '../planning/types'
-import { editMsg, dismissNudge, openAssistant, pinAssistant, pushMsg, toggleSaved, useUi } from '../store'
+import { clearMsgs, editMsg, dismissNudge, openAssistant, pinAssistant, pushMsg, toggleSaved, toast, useUi } from '../store'
+import { mutateJourney } from '../journey'
 import { useTrip } from '../trip'
 import { searchPlaces } from '../tu/api'
 import type { ChatPlaces } from '../tu/types'
@@ -20,8 +21,7 @@ import '../css/plan-chat.css'
 // The assistant of each stage keeps its own conversation: the chat log is one list, a message belongs to the stage that sent it
 // (a message nobody tagged, such as the place sheet's "why not", is Lựa chọn's).
 export type AssistantStage = 'decision' | 'planning'
-const stageOf = new Map<number, AssistantStage>()
-const tag = (id: number, stage: AssistantStage) => { stageOf.set(id, stage); return id }
+const tag = (id: number, stage: AssistantStage) => { editMsg(id, { stage }); return id }
 
 // The assistant's face: a soft, slowly turning orb (CSS only).
 function Orb({ size = 36 }: { size?: number }) {
@@ -131,9 +131,34 @@ interface BodyProps {
   onAsk?: (id: string, name: string) => void
 }
 
-function Body({ stage, pinned, inDialog = false, busy, send, chips, intro, placeholder, onLike, canPin, onOpenDay, onAsk }: BodyProps) {
+export function Body({ stage, pinned, inDialog = false, busy: stageBusy, send, chips, intro, placeholder, onLike, canPin, onOpenDay, onAsk }: BodyProps) {
+  const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
+  const busy = stageBusy || sending
+  const run = async (task: () => void | Promise<void>) => {
+    if (sendingRef.current || resettingRef.current || stageBusy) return
+    sendingRef.current = true
+    setSending(true)
+    try { await task() } finally { sendingRef.current = false; setSending(false) }
+  }
   const all = useUi((u) => u.assistant.msgs)
-  const msgs = useMemo(() => all.filter((m) => (stageOf.get(m.id) ?? 'decision') === stage), [all, stage])
+  const msgs = useMemo(() => all.filter((m) => (m.stage ?? 'decision') === stage), [all, stage])
+  const { trip } = useTrip()
+  const [resetting, setResetting] = useState(false)
+  const resettingRef = useRef(false)
+  const newChat = async () => {
+    const id = stage === 'decision' ? trip.decisionId : trip.planningId
+    if (!id || busy || sendingRef.current || resettingRef.current || !msgs.length) return
+    resettingRef.current = true
+    setResetting(true)
+    try {
+      await mutateJourney(id, stage, 'new_chat', { messages: msgs.map(({ role, text }) => ({ role, text })) })
+      clearMsgs(stage)
+      for (const m of msgs) { cardsOf.delete(m.id); daysOf.delete(m.id) }
+      setText('')
+    } catch { toast('Chưa mở được cuộc trò chuyện mới, bạn thử lại nhé.') }
+    finally { resettingRef.current = false; setResetting(false) }
+  }
   const cards = useCards()
   const shown = useCardsVersion() // the place cards and changed days of a reply land after its text
   const [text, setText] = useState('')
@@ -141,7 +166,7 @@ function Body({ stage, pinned, inDialog = false, busy, send, chips, intro, place
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [msgs, shown])
   // A place sheet asked "why not" about a place: answer it as soon as this chat is open.
   const ask = useRef(onAsk)
-  ask.current = onAsk
+  ask.current = onAsk ? (id, name) => run(() => onAsk(id, name)) : undefined
   useEffect(() => {
     if (!ask.current) return
     const take = () => { const r = takeAsk(); if (r) ask.current?.(r.id, r.name) }
@@ -149,8 +174,8 @@ function Body({ stage, pinned, inDialog = false, busy, send, chips, intro, place
     return onAsk_(take)
   }, [])
   const submit = (t: string) => {
-    if (!t.trim() || busy) return
-    void send(t.trim())
+    if (!t.trim() || busy || resettingRef.current) return
+    void run(() => send(t.trim()))
     setText('')
   }
   return (
@@ -159,6 +184,7 @@ function Body({ stage, pinned, inDialog = false, busy, send, chips, intro, place
         <Orb size={36} />
         <div className="tg-asst__who">{inDialog ? <Dialog.Title>Hỏi TripGuardian</Dialog.Title> : <h2>Hỏi TripGuardian</h2>}<small>{SUB[stage]}</small></div>
         <div className="tg-asst__ops">
+          <button type="button" className="tg-link" disabled={busy || resetting || !msgs.length} onClick={() => { void newChat() }}>Cuộc trò chuyện mới</button>
           {canPin && <button type="button" className="tg-link" onClick={() => pinAssistant(!pinned)} aria-pressed={pinned}>{pinned ? 'Bỏ ghim' : 'Ghim'}</button>}
           <button type="button" className="tg-icon-btn" onClick={() => openAssistant(false)} aria-label="Thu lại"><Icon name="x" size={18} /></button>
         </div>

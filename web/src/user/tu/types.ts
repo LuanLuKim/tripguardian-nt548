@@ -57,7 +57,7 @@ export interface ReadbackLine {
   tab: 'trip' | 'companions' | 'mobility' | 'care' | 'pace' | 'budget' | 'lodging' | 'more'
   undo?: string | null
 }
-export interface Readback { lines: ReadbackLine[]; digest: string | null; ok: boolean; missing?: string[]; deck?: Deck | null }
+export interface Readback { lines: ReadbackLine[]; digest: string | null; ok: boolean; missing?: string[]; deck?: Deck | null; fill?: Deck | null }
 export type DeckAnswers = Record<string, string | string[]>
 
 // One look-alike kind of a look (corpus.index): real places, real photos (src/trip/domain/vibes.py).
@@ -189,6 +189,7 @@ export interface Understanding {
   anchors: AnchorRow[]
   hard: HardRow[]
   soft: SoftRow[]
+  wishes?: SearchInput['wishes']
   pace: Row | null
   max_leg_min: Row | null
   crowd_tolerance: Row | null
@@ -323,10 +324,10 @@ export interface SearchInput {
 }
 
 export type TurnInput =
-  | { kind: 'deck'; answers: DeckAnswers }
+  | { kind: 'deck'; answers: DeckAnswers; at?: 'gate' | 'plan' }
   | { kind: 'drop'; target: string }
   | { kind: 'readback_ok'; value: string }
-  | { kind: 'text'; text: string }
+  | { kind: 'text'; text: string; soft_only?: boolean }
   | { kind: 'answer'; qid: string; chips: string[]; value?: string | null }
   | { kind: 'edit'; target: string; value: string | null }
   | { kind: 'show' }

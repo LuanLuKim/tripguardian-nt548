@@ -176,13 +176,13 @@ export function EmailForm({ up, onDone, onPet, onSwitch, onForgot, email = '' }:
   const p = PROBLEMS[problem ?? 'other']
   return (
     <form onSubmit={submit} noValidate aria-busy={phase === 'busy'}>
-      {up && field('name', 'Tên của bạn', <input {...attrs('name')} maxLength={60} autoComplete="name" placeholder="Không bắt buộc" />)}
-      {field('email', 'Email', <input {...attrs('email')} type="email" spellCheck={false} autoComplete="email" placeholder="ban@email.com" autoFocus />)}
+      {up && field('name', 'Tên của bạn', <span className="tg-auth__pw tg-auth__pw--lead"><Icon name="user" size={20} /><input {...attrs('name')} maxLength={60} autoComplete="name" placeholder="Không bắt buộc" /></span>)}
+      {field('email', 'Email', <span className="tg-auth__pw tg-auth__pw--lead"><Icon name="mail" size={20} /><input {...attrs('email')} type="email" spellCheck={false} autoComplete="email" placeholder="ban@email.com" autoFocus /></span>)}
       {field('password', 'Mật khẩu',
-        <span className="tg-auth__pw"><input {...attrs('password')} type={type} autoComplete={up ? 'new-password' : 'current-password'} placeholder={up ? `Ít nhất ${PASSWORD_MIN} ký tự` : 'Nhập mật khẩu'} />{eye}</span>,
+        <span className="tg-auth__pw tg-auth__pw--lead"><Icon name="lock" size={20} /><input {...attrs('password')} type={type} autoComplete={up ? 'new-password' : 'current-password'} placeholder={up ? `Ít nhất ${PASSWORD_MIN} ký tự` : 'Nhập mật khẩu'} />{eye}</span>,
         up && n > 0 ? (n < PASSWORD_MIN ? `Thêm ${PASSWORD_MIN - n} ký tự nữa là đủ.` : <><Icon name="check" size={14} /> Đủ dài rồi.</>) : null,
         !up && onForgot ? <button type="button" className="tg-link tg-auth__forgot" disabled={phase !== 'idle'} onMouseDown={(e) => e.preventDefault() /* no blur: an email message appearing under the click must not move the link */} onClick={() => onForgot(v.email.trim())}>Quên mật khẩu?</button> : null)}
-      {up && field('again', 'Nhập lại mật khẩu', <input {...attrs('again')} type={type} autoComplete="new-password" placeholder="Gõ lại mật khẩu vừa rồi" />,
+      {up && field('again', 'Nhập lại mật khẩu', <span className="tg-auth__pw tg-auth__pw--lead"><Icon name="lock" size={20} /><input {...attrs('again')} type={type} autoComplete="new-password" placeholder="Gõ lại mật khẩu vừa rồi" /></span>,
         v.again && v.again === v.password ? <><Icon name="check" size={14} /> Khớp rồi.</> : null)}
       {problem && (
         <Banner title={p.title} action={p.retry ? <button type="button" className="tg-link" onClick={() => void submit()}>Thử lại</button> : undefined}>{p.text}</Banner>

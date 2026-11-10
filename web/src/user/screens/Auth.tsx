@@ -4,7 +4,7 @@ import { navigate } from '../../router'
 import { go } from '../ui/common'
 import { Icon } from '../ui/icons'
 import { useTitle } from '../ui/Shell'
-import { AuthMascot, CALM, type Pet } from './AuthMascot'
+import { AuthMascot, Brand, CALM, type Pet } from './AuthMascot'
 import { Banner, EmailForm } from './AuthEmailForm'
 import { ResetFlow } from './AuthReset'
 
@@ -16,7 +16,7 @@ const ERRORS: Record<string, string> = {
 
 // /app needs a session (docs/Role_Web_Functional_Design.md §1): Google sign-in with a one-time consent to the terms and
 // the data policy, or a guest session that keeps nothing. `next` is where Google sends the browser back.
-// Look: the split card of web/public/prototype (mascot scene left, form right); sign in and sign up share one card.
+// Look: a split card (the bunny on a Da Lat meadow left, form right); sign in and sign up share one card.
 export function Auth({ next }: { next: string }) {
   const account = useAccount()
   useTitle(account?.needs_consent ? 'Điều khoản' : 'Đăng nhập')
@@ -43,11 +43,12 @@ export function Auth({ next }: { next: string }) {
   const consent = !!account?.needs_consent
   return (
     <div className="tg-auth">
+      <img className="tg-auth__leaves" src="/img/auth/leaves.webp" alt="" aria-hidden="true" decoding="async" />
       <a className="tg-auth__back" href="/" aria-label="Về trang giới thiệu" onClick={(e) => { e.preventDefault(); navigate('/') }}><Icon name="arrowLeft" size={20} /></a>
       <div className="tg-auth__card tg-stage" key={account ? 'consent' : 'pick'}>
         <AuthMascot pet={consent ? CALM : pet} />
         <main className="tg-auth__main">
-          <img className="tg-auth__mark" src="/img/auth/acorn_mascot.png" alt="TripGuardian" width={48} height={48} />
+          <div className="tg-auth__mark"><Brand /></div>
           {consent ? <Consent version={account!.terms_version} /> : reset ? (
             <ResetFlow email={typed} onEmail={setTyped} onDone={done} onPet={setPet} onBack={() => { setPet(CALM); setMode('in') }} />
           ) : (
@@ -64,7 +65,7 @@ export function Auth({ next }: { next: string }) {
                 ? <button type="button" className="tg-link tg-link--quiet" onClick={() => go('/')}>Tiếp tục với tư cách khách</button>
                 : <button type="button" className="tg-link tg-link--quiet" disabled={guestBusy} onClick={() => void asGuest()}>{guestBusy ? 'Đang mở phiên khách…' : 'Dùng thử, không cần tài khoản'}</button>}
               {guestErr && <Banner title={guestErr === 'many' ? 'Mở nhiều phiên khách quá rồi' : 'Chưa mở được phiên khách'}>{guestErr === 'many' ? 'Địa chỉ này đã mở quá nhiều phiên khách trong một giờ. Bạn đăng nhập hoặc tạo tài khoản nhé.' : 'Bạn thử lại, hoặc đăng nhập bằng tài khoản nhé.'}</Banner>}
-              <p className="tg-faint tg-auth__fine"><Icon name="shield" size={14} /> Có tài khoản: chuyến đi, hồ sơ và lịch sử được lưu, xóa tài khoản lúc nào cũng được. Khách: không lưu lịch sử, chuyến bị xóa sau 24 giờ không hoạt động.</p>
+              <p className="tg-auth__fine"><Icon name="info" size={22} /><span><b>Tài khoản dùng thử:</b> trải nghiệm nhanh các tính năng cơ bản, không lưu lịch sử, chuyến bị xóa sau 24 giờ không hoạt động. Có tài khoản thì chuyến đi, hồ sơ và lịch sử được lưu, xóa tài khoản lúc nào cũng được.</span></p>
             </>
           )}
         </main>

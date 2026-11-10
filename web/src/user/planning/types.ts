@@ -196,6 +196,7 @@ export interface DayConditions {
   day: number
   date: string | null
   weather: 'none' | 'heavy' | 'severe'
+  weather_cause?: string // what crossed the threshold ("gió mạnh", "mưa lớn và dông"); absent on plans built before the server sent it
   storm: boolean
   rain_mm: number | null
   gust_kmh: number | null

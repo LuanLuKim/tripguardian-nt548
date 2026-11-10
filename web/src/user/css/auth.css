@@ -1,4 +1,4 @@
-/* Sign-in screen (screens/Auth.tsx): the acorn's moods and the form states. The scene and card are in screens.css. */
+/* Sign-in screen (screens/Auth.tsx): the bunny's moods and the form states. The scene and card are in screens.css. */
 
 
 /* ---- mascot: a picture per mood (screens/AuthMascot.tsx) ---- */
@@ -7,7 +7,7 @@
 .tg-auth__body img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .tg-auth__body svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 
-/* what the acorn says */
+/* what the bunny says */
 .tg-auth__say { position: absolute; z-index: 2; bottom: calc(100% + 22px); left: 50%; translate: -50% 0; width: max-content; max-width: 290px; margin: 0; padding: 10px 16px; border-radius: 18px; background: var(--tg-surface); color: var(--tg-ink); box-shadow: var(--tg-sh-1); font-size: 0.9rem; font-weight: 600; line-height: 1.35; text-align: center; text-wrap: balance; transform-origin: 50% 100%; animation: tg-pet-pop 0.4s var(--tg-ease) both; }
 .tg-auth__say::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 14px; height: 14px; margin-left: -7px; background: inherit; border-radius: 3px; rotate: 45deg; }
 .tg-auth__dots { display: inline-flex; gap: 5px; align-items: center; height: 1.2em; }
@@ -94,3 +94,33 @@
 .tg-auth__tick { font-variant-numeric: tabular-nums; color: var(--tg-ink-2); font-weight: 600; }
 .tg-auth__back-link { justify-self: center; display: inline-flex; gap: 6px; align-items: center; }
 .tg-auth__ok { display: flex; gap: 8px; align-items: center; margin: 0; color: var(--tg-ink-2); font-size: 0.85rem; }
+
+/* ---- the wordmark and the scene's decoration (screens/AuthMascot.tsx) ---- */
+.tg-brand { display: grid; justify-items: center; gap: 0; color: var(--tg-pine-d); }
+.tg-brand svg { margin-bottom: -6px; overflow: visible; }
+.tg-brand svg > path:first-child { fill: none; stroke: currentColor; stroke-width: 3.2; stroke-linecap: round; }
+.tg-brand__pin { fill: currentColor; } .tg-brand__dot { fill: #fff; }
+.tg-brand__name { font: italic 700 2.6rem/1.05 var(--tg-display); letter-spacing: -0.01em; }
+.tg-brand__tag { margin-top: 6px; font: italic 500 1.02rem var(--tg-display); color: var(--tg-ink-2); }
+.tg-auth__scene > .tg-brand { position: absolute; z-index: 1; top: 34px; left: 0; right: 0; }
+.tg-auth__tile { position: absolute; z-index: 1; width: 62px; height: 62px; display: grid; place-items: center; border-radius: 20px; background: rgba(255, 255, 255, 0.9); color: var(--tg-pine); box-shadow: 0 10px 24px rgba(30, 70, 50, 0.16); animation: tg-auth-float 5s ease-in-out infinite; }
+.tg-auth__tile--map { left: 9%; top: 31%; rotate: -8deg; }
+.tg-auth__tile--plan { right: 10%; top: 33%; rotate: 8deg; animation-delay: -2.4s; }
+.tg-auth__tile--plan .tg-auth__tick-on { position: absolute; right: 7px; bottom: 7px; width: 20px; height: 20px; padding: 3px; border-radius: 50%; background: var(--tg-pine); color: #fff; }
+@keyframes tg-auth-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -9px; } }
+@media (prefers-reduced-motion: reduce) { .tg-auth__tile { animation: none; } }
+
+/* ---- the form, rounded and green ---- */
+.tg-auth__main .tg-input { min-height: 54px; border-radius: 14px; border-color: var(--tg-line-2); background: rgba(255, 255, 255, 0.55); }
+.tg-auth__main .tg-input::placeholder { color: var(--tg-ink-3); }
+.tg-auth__pw--lead > svg:first-child { position: absolute; left: 16px; top: 50%; translate: 0 -50%; color: var(--tg-ink-2); pointer-events: none; }
+.tg-auth__pw--lead .tg-input { padding-left: 48px; }
+.tg-auth__f label, .tg-auth__otp-label { font-weight: 700; font-size: 0.95rem; }
+.tg-auth__try { min-height: 56px; font-size: 1.05rem; box-shadow: 0 8px 20px rgba(20, 81, 63, 0.25); }
+.tg-auth__google { border-color: var(--tg-pine); border-width: 1.5px; background: transparent; font-weight: 700; }
+.tg-auth__google:hover:not([aria-disabled='true']) { background: var(--tg-pine-soft); }
+.tg-auth__switch .tg-link, .tg-auth__main > .tg-link--quiet { color: var(--tg-pine); font-weight: 700; text-decoration-color: currentColor; }
+.tg-auth__main > .tg-link--quiet { font-size: 1.02rem; }
+.tg-auth__fine { display: flex; gap: 12px; align-items: flex-start; margin: 6px 0 0; padding: 16px 18px; border-radius: 18px; background: rgba(214, 232, 220, 0.6); color: var(--tg-ink-2); font-size: 0.88rem; line-height: 1.5; }
+.tg-auth__fine > svg { flex: none; margin-top: 1px; color: var(--tg-pine); }
+.tg-auth__fine b { color: var(--tg-ink); }

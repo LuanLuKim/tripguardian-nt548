@@ -6,14 +6,12 @@ import { placeMascot, type Rect, type Spot } from './place'
 import { playCheer } from './sound'
 import { chapters, flatten, type Kind, type Pose } from './steps'
 
-// How the acorn looks in each pose: the sign-in screen's moods (public/img/auth, web/scripts/gen_mascot_moods.py) and the tour's own
-// (public/img/tour, web/scripts/gen_tour_mascot.py). All of them are drawn stacked and cross-fade, like AuthMascot.
-const SRC: Record<Pose, string> = {
-  idle: '/img/auth/acorn_greet.webp', curious: '/img/auth/mood/curious.webp', wait: '/img/auth/mood/wait.webp', happy: '/img/auth/mood/happy.webp',
-  shy: '/img/auth/mood/shy.webp', mail: '/img/auth/mood/mail.webp', sad: '/img/auth/mood/sad.webp',
-  wave: '/img/tour/wave.webp', wow: '/img/tour/wow.webp', wink: '/img/tour/wink.webp', love: '/img/tour/love.webp', cheer: '/img/tour/cheer.webp',
-  bow: '/img/tour/bow.webp', point: '/img/tour/point.webp', point_up: '/img/tour/point_up.webp', walk_a: '/img/tour/walk_a.webp', walk_b: '/img/tour/walk_b.webp',
-}
+// How the bunny looks in each pose: every picture is in public/img/bunny (idle, happy, wait, wow, sad, sleepy are the owner's own
+// drawings; the rest come from web/scripts/gen_mascot_moods.py and gen_tour_mascot.py). All are drawn stacked and cross-fade, like AuthMascot.
+const SRC: Record<Pose, string> = Object.fromEntries(
+  (['idle', 'curious', 'wait', 'happy', 'shy', 'mail', 'sad', 'wow', 'wink', 'love', 'cheer', 'bow', 'point', 'point_up', 'walk_a', 'walk_b'] as const)
+    .map((k) => [k, `/img/bunny/${k}.webp`])) as Record<Pose, string>
+SRC.wave = SRC.idle // the idle bunny already waves hello
 const WALK_MS = 520 // the walk to the next element
 const THINK_MS = 420 // the "…" over its head before the words
 const CELEBRATE_MS = 2200
@@ -45,7 +43,7 @@ export function Tour({ kind, i, onStep, onStop }: { kind: Kind; i: number; onSte
   const barRef = useRef<HTMLDivElement>(null)
   const goRef = useRef<HTMLButtonElement>(null)
   const blockRef = useRef<HTMLDivElement>(null)
-  const held = useRef<Spot | null>(null) // where the acorn stands while the next stop is still being looked for
+  const held = useRef<Spot | null>(null) // where the bunny stands while the next stop is still being looked for
   const timers = useRef<number[]>([])
   const later = (fn: () => void, ms: number) => { timers.current.push(window.setTimeout(fn, ms)) }
   const clear = () => { timers.current.forEach(clearTimeout); timers.current = [] }

@@ -1,4 +1,4 @@
-"""Decision reads the day frame Trip compiled (docs/plans/2026-10-15-trip-understanding-architecture.md A1,
+"""Decision reads the day frame Trip compiled (git 7c4da01:docs/plans/2026-10-15-trip-understanding-architecture.md A1,
 hand-off H1): same windows as Planning, never re-derived from config."""
 
 from trip import TripState, compile_search_input

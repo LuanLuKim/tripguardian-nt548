@@ -36,11 +36,8 @@ tests/fixtures/tiktok/
 /system_one_model/
 /training/
 
-# prod harness runs from a frozen copy of src (restart_harness.sh)
-/src_live/
-/src_live.new/
-/src_live.old/
-/src_live.bak_*/
+# prod runs from a frozen copy of src (run.sh freeze_src)
+/.prod_src*/
 
 # Machine-local state and caches. Symlinks are not matched by a trailing slash, so no slash here.
 /.cache

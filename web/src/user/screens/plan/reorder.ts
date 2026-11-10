@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
 import { reducedMotion } from '../../lib'
 
-// Reordering the stops of a day (mẫu ui_mock_for_design/designs/itinerary): press and hold the card or its photo (or just drag),
+// Reordering the stops of a day (mẫu docs/design/mock/designs/itinerary): press and hold the card or its photo (or just drag),
 // the card floats under the pointer, the others slide aside while it moves, the dropped card slides into its place.
 // Esc cancels. The cards are keyed rows `[data-stop=<place id>]` in a list; the screen owns the order and renders it.
 

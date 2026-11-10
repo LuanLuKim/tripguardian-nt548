@@ -1,7 +1,7 @@
 from dataclasses import replace
 """Trip redesign part 2b: seven required answers, the read-back digest and the gate into Lịch trình.
 
-Test ids Q1-Q13 of docs/plans/2026-10-15-trip-understanding-architecture.md §5.3 (Q14 lives in
+Test ids Q1-Q13 of git 7c4da01:docs/plans/2026-10-15-trip-understanding-architecture.md §5.3 (Q14 lives in
 tests/planning/test_planning_trip_gate.py).
 """
 

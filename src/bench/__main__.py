@@ -1,4 +1,4 @@
-"""python -m bench generate | run (docs/plans/BENCH.md) | latency | retrieval | assistant."""
+"""python -m bench generate | run (docs/TRIP_UNDERSTANDING.md §16) | latency | retrieval | assistant."""
 
 import argparse
 import os
@@ -31,7 +31,7 @@ def main() -> int:
     r.add_argument("--live", action="store_true")
     r.add_argument("--out", default="", help="write into this directory (default data/bench/<timestamp>)")
     r.add_argument("--resume", action="store_true", help="keep the rows already in --out, run only the missing ones")
-    lt = sub.add_parser("latency", help="corpus-backed latency (docs/plans/2026-10-13-corpus-snapshot-design.md §7)")
+    lt = sub.add_parser("latency", help="corpus-backed latency (docs/CORPUS.md §Kiểm soát chi phí và hiệu năng)")
     lt.add_argument("--scale", default="1", help="comma list of region copies, e.g. 1,5,20")
     lt.add_argument("--out", default="", help="directory (default data/bench/latency)")
     rt = sub.add_parser("retrieval", help="corpus.retrieval card / find speed and correctness on a release")

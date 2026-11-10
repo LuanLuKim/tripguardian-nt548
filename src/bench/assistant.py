@@ -27,7 +27,7 @@ other file config/bench_assistant_<name>.yaml (not `_guard`) adds cases in the v
         reply_has: ["regex"]           # optional regexes the last reply must / must not match
         reply_lacks: ["regex"]
         blocked: R3                    # optional: the rule guard must stop the turn with this label (default: must not)
-      - {id: shot, family: photo, turns: [{text: "quán này là gì", photo: frontend_images/plan-gate.png}], photo_sure: false}
+      - {id: shot, family: photo, turns: [{text: "quán này là gì", photo: tests/fixtures/perceive/app/plan-gate.png}], photo_sure: false}
 
 A case whose photo file is missing is skipped and listed in the report. The guard set (config/bench_assistant_guard.yaml,
 `--guard`) is checked against real Clef alone: wrong blocks, R1-R6 recall, exact labels. Model compare: `--model <id>`

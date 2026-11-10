@@ -16,7 +16,7 @@ Bump ontology làm mọi observation bị trích lại: chạy với `OBSERVE_KE
 
 ## 2. Mask tất định cho Place Decision
 
-Đã thay bằng `docs/plans/2026-10-13-corpus-snapshot-design.md`.
+Đã thay bằng `corpus.snapshot` (`docs/CORPUS.md` §Place Decision dùng corpus thế nào).
 
 ## 3. Đo chất lượng của tìm kiếm ngữ nghĩa
 

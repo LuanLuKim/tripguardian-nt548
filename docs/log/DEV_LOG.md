@@ -52,7 +52,7 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 
 ## tag-subtag-2026-10-30 — Tag, subtag hay danh sách: chọn đúng lúc (Tìm hiểu và Lựa chọn)
 
-- file: `src/corpus/tags/` (`kinds`, `split`), `config/tags.yaml` (`policy`), `src/trip/domain/tag_policy.py`, `src/trip/infrastructure/browse.py`, `src/trip/agent/{knowledge_tools,prompt,tools}.py`, `src/trip/api/{blocks,engine}.py` (`_tag`, `tags_block_wins`), `src/decision/{kinds,assistant,tool_schemas}.py` (`group_list`), `src/bench/assistant.py` (`level:`), `config/bench_assistant_tags.yaml`, `web/src/user/tags/{Subtags,TagStage,tree,env}.ts(x)`, `web/src/user/css/tags.css`, `src/trip/domain/covers.py`, `src/harness/{dispatch,session,pgstore}.py`, `web/src/user/screens/Understand.tsx`, `understand/{Turn,Blocks,Ask}.tsx`, `tu/types.ts`; docs `docs/plans/2026-10-30-tag-subtag.md`
+- file: `src/corpus/tags/` (`kinds`, `split`), `config/tags.yaml` (`policy`), `src/trip/domain/tag_policy.py`, `src/trip/infrastructure/browse.py`, `src/trip/agent/{knowledge_tools,prompt,tools}.py`, `src/trip/api/{blocks,engine}.py` (`_tag`, `tags_block_wins`), `src/decision/{kinds,assistant,tool_schemas}.py` (`group_list`), `src/bench/assistant.py` (`level:`), `config/bench_assistant_tags.yaml`, `web/src/user/tags/{Subtags,TagStage,tree,env}.ts(x)`, `web/src/user/css/tags.css`, `src/trip/domain/covers.py`, `src/harness/{dispatch,session,pgstore}.py`, `web/src/user/screens/Understand.tsx`, `understand/{Turn,Blocks,Ask}.tsx`, `tu/types.ts`; docs `git 7c4da01:docs/plans/2026-10-30-tag-subtag.md`
 - cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv -q tests/tags tests/trip tests/decision tests/bench tests/harness`; `cd web && node_modules/.bin/tsc -b`; ảnh `frontend_images/2026-10-30/subtag-v3/`; thêm `tests/trip/test_covers.py`, `tests/trip/test_tag_stage.py`, `tests/harness/test_corpus_binding.py`
 
 ### Hiện tại (2026-10-30, chiều: sân khấu tag -> subtag -> nơi)
@@ -88,7 +88,7 @@ Trước đó: chưa có.
 - cách kiểm chứng: `.venv/bin/python -m pytest --collect-in-virtualenv tests/trip tests/agents tests/bench tests/harness -q`; `python -m bench assistant --family evidence` (…compare, status, dishes, route, journey, climate, stays, tips, saveact; cần Agent thật); ledger `.superpowers/sdd/2026-10-29-asst-knowledge/progress.md`
 
 ### Hiện tại (2026-10-29)
-- hành vi: `docs/TRIP_UNDERSTANDING.md` §19 (Tool đọc mở rộng). Journey tìm tọa độ nơi xuất phát bằng `live.geosearch` (không phải `live.geocode`, vì hàm đó thêm ", Đà Lạt" vào tên). Khoảng trống dữ liệu: spec `docs/plans/2026-10-29-assistant-tools-design.md` §5B.
+- hành vi: `docs/TRIP_UNDERSTANDING.md` §19 (Tool đọc mở rộng). Journey tìm tọa độ nơi xuất phát bằng `live.geosearch` (không phải `live.geocode`, vì hàm đó thêm ", Đà Lạt" vào tên). Khoảng trống dữ liệu: spec `git 7c4da01:docs/plans/2026-10-29-assistant-tools-design.md` §5B.
 
 ### Trước đó
 - _chưa có_
@@ -345,7 +345,7 @@ Trước đó: chưa có.
 ## corpus-online-contracts — Binding, budget, lodging và evidence xuyên module
 
 - file: `src/corpus/releases/binding.py`, `src/trip/{api/tools,domain/resolve,infrastructure/catalog}.py`, `src/decision/{engine,tools,contracts}.py`, `src/planning/{engine,lodging,tools}.py`, `src/harness/{dispatch,contracts,server}.py`
-- cách kiểm chứng: các regression binding/budget/evidence/lodging trong `tests/{normalization,trip,decision,planning,harness}`; kết quả tích hợp và release ở `docs/plans/CORPUS_NORMALIZATION_HANDOFF.md`
+- cách kiểm chứng: các regression binding/budget/evidence/lodging trong `tests/{normalization,trip,decision,planning,harness}`; kết quả tích hợp và release ở `git 7c4da01:docs/plans/CORPUS_NORMALIZATION_HANDOFF.md`
 
 ### Hiện tại (2026-10-15)
 - hành vi: journey mới giữ binding xuyên Trip → Decision → Planning; restore/copy giữ release và version, missing/corrupt fail-closed. Factory capture hoặc nhận binding explicit; delayed index không theo pointer mới. Budget giữ amount/scope/nguồn/evidence, chỉ quy đổi khi đủ chiều; scalar tương thích vẫn VND/người/ngày.
@@ -440,7 +440,7 @@ _không có_
 - hành vi: nhãn khóa theo nội dung (`key` = review / video id + feature + value + quote chuẩn hóa), không theo id observation: chạy lại observe không làm mất nhãn, nhãn của khẳng định mà lần chạy mới không còn tạo thì không vào thống kê; `migrate()` ghi key cho bản ghi cũ. Observation của mọi version ontology được tính khi giá trị còn trong ontology. Màn `Gán nhãn` hiện thêm bằng chứng: nghĩa của nhãn (claim + hint), sao / ngày / tác giả / mục chấm điểm Maps của review, các observation khác cùng nơi về feature đó (đồng ý / ngược lại), category / giá / thuộc tính / link Maps. Nguồn TikTok (`tiktok_segment` / `tiktok_caption` / `tiktok_frame`): transcript quanh quote, caption, link video, khung hình (`GET /api/labels/frame`). `stats` có `by_source`. Index cache theo từng file (lúc observe chạy lại không quét lại 1.437 file mỗi request). Kiểm chứng: 14 test review, `npm run build`, API thật.
 
 ### Trước đó (2026-10-02)
-- hành vi: như bản trước, thêm: (1) `labels.py` + `GET /api/labels/next`, `POST /api/labels`, `GET /api/labels/stats`: lấy mẫu observation từ review chưa gán nhãn (giá trị ít nhãn nhất trước, bỏ observation do rule và file ontology cũ), nhãn `correct | wrong | unsure` ghi nối vào `data/review/labels.jsonl`, thống kê độ chính xác theo (feature, value) với cận dưới Wilson và ngưỡng (`GATE_MIN_N = 30`, `GATE_LOWER = 0.8`); (2) loại quyết định `feature_review` (accept / disable / report / refresh / undo, id `<fid>#<feature>`) và `GET /api/decisions?kind=`; (3) Admin Web (`web/`): màn `Gán nhãn` (`/admin/labels`, phím c / w / u / s), `decisions.ts` ghi quyết định về backend và đọc lại khi mở trang, Vite proxy `/api` tới `127.0.0.1:8765`. `aggregate` chưa đọc nhãn và quyết định. Kế hoạch tiếp: `docs/plans/CORPUS_QUALITY.md`. Kiểm chứng: 12 test review, chạy thật với Chrome không lỗi console, mẫu lấy từ 249.605 bằng chứng (lần đọc đầu ~4 giây).
+- hành vi: như bản trước, thêm: (1) `labels.py` + `GET /api/labels/next`, `POST /api/labels`, `GET /api/labels/stats`: lấy mẫu observation từ review chưa gán nhãn (giá trị ít nhãn nhất trước, bỏ observation do rule và file ontology cũ), nhãn `correct | wrong | unsure` ghi nối vào `data/review/labels.jsonl`, thống kê độ chính xác theo (feature, value) với cận dưới Wilson và ngưỡng (`GATE_MIN_N = 30`, `GATE_LOWER = 0.8`); (2) loại quyết định `feature_review` (accept / disable / report / refresh / undo, id `<fid>#<feature>`) và `GET /api/decisions?kind=`; (3) Admin Web (`web/`): màn `Gán nhãn` (`/admin/labels`, phím c / w / u / s), `decisions.ts` ghi quyết định về backend và đọc lại khi mở trang, Vite proxy `/api` tới `127.0.0.1:8765`. `aggregate` chưa đọc nhãn và quyết định. Kế hoạch tiếp: `git 7c4da01:docs/plans/CORPUS_QUALITY.md`. Kiểm chứng: 12 test review, chạy thật với Chrome không lỗi console, mẫu lấy từ 249.605 bằng chứng (lần đọc đầu ~4 giây).
 
 ## corpus-crawl — Crawl dữ liệu thô TikTok + Google Maps
 
@@ -768,7 +768,7 @@ _không có_
 - cách kiểm chứng: `pytest tests/social tests/accounts tests/harness/test_harness_server.py tests/harness/test_dispatch.py -k "copy or social or nickname or friends"` (cần `TEST_DATABASE_URL`); duyệt hai tài khoản test: kết bạn, chat, gửi lịch trình, Lấy về
 
 ### Hiện tại (2026-10-13)
-- hành vi: mọi trang ngoài luồng chuyến nằm trong khung toàn màn hình theo mẫu `ui_mock_for_design/designs/homepage` (thanh bên, cột Bạn bè ẩn được, còn một icon cạnh lời chào, thanh chuyến đang lập; nút trên ảnh lớn vào thẳng chat Tìm hiểu với chuyển cảnh ảnh nở thành khung chat). Bỏ Hôm nay khỏi điều hướng. Đã lưu (nơi + chủ đề) và Đã xem gần đây lưu theo tài khoản; nơi đã lưu cũ ở trình duyệt được chuyển lên một lần. Bạn bè: mời theo nickname, chỉ thấy online / offline, nhắn tin, gửi lịch trình; người nhận "Lấy về" thành bản sao độc lập (id phiên module mới, không mang transcript Trip).
+- hành vi: mọi trang ngoài luồng chuyến nằm trong khung toàn màn hình theo mẫu `docs/design/mock/designs/homepage` (thanh bên, cột Bạn bè ẩn được, còn một icon cạnh lời chào, thanh chuyến đang lập; nút trên ảnh lớn vào thẳng chat Tìm hiểu với chuyển cảnh ảnh nở thành khung chat). Bỏ Hôm nay khỏi điều hướng. Đã lưu (nơi + chủ đề) và Đã xem gần đây lưu theo tài khoản; nơi đã lưu cũ ở trình duyệt được chuyển lên một lần. Bạn bè: mời theo nickname, chỉ thấy online / offline, nhắn tin, gửi lịch trình; người nhận "Lấy về" thành bản sao độc lập (id phiên module mới, không mang transcript Trip).
 
 ### Trước đó
 - _không có_
@@ -841,7 +841,7 @@ _không có_
 
 ### Hiện tại (2026-10-28)
 - hành vi: chỉ một tài khoản Maps còn đăng nhập (`gmaps_b2`; `gmaps_a` của crawl Google search); chạy một runner, 4 tab, headless kèm DevTools 9540. Trước khi chạy: menu 1.015/1.031, photos 1.771/1.779, keywords còn 3 (46 ở danh sách chỗ ở), official pages 221/288 (chỗ ở 0/284), mọi phase đạt ≥ 95% trừ `visit` (0 file).
-- hành vi: `visit` không chạy hàng loạt. Khối giờ đông khách `div.C7xf8b` cao 0 nên chờ "visible" không bao giờ xong (đã sửa, chờ `attached`); với biểu đồ đã hiện, Maps vẫn không in dòng "Mọi người thường dành … ở đây" cho 6 nơi nhiều review nhất (khớp `docs/plans/CORPUS_HANDOFF.md`: 30 nơi, 0 dòng) nên chỉ ghi được `text: null`.
+- hành vi: `visit` không chạy hàng loạt. Khối giờ đông khách `div.C7xf8b` cao 0 nên chờ "visible" không bao giờ xong (đã sửa, chờ `attached`); với biểu đồ đã hiện, Maps vẫn không in dòng "Mọi người thường dành … ở đây" cho 6 nơi nhiều review nhất (khớp `git 7c4da01:docs/plans/CORPUS_HANDOFF.md`: 30 nơi, 0 dòng) nên chỉ ghi được `text: null`.
 - hành vi: official pages: chỗ ở 234/284, Đà Lạt 243/288 (còn lại là site chết: DNS / SSL).
 - hành vi: crawl 80 nơi quá sâu (đều > 1.900 review, đang giữ 200 hoặc ít hơn cap 5.000): Maps ngừng tải danh sách quanh 900-1.160 review nên `too_few` (dưới nửa số hiển thị) loại cả ba lần thử, nơi đó giữ bản cũ; xem ledger để biết kết quả cuối.
 
@@ -877,7 +877,7 @@ _không có_
 ## corpus-resolve-p7 — `gmaps resolve`: nominee của sol → Maps → kho (`docs/CORPUS.md` §Resolve nominee)
 
 - file: `src/corpus/crawl/gmaps/resolve.py` (phase, trình duyệt qua `search.search`), `src/corpus/navigate/resolve.py` (`pending`, `decide`, `record`; public `pending_nominees` / `decide_resolution` / `record_resolution`), `src/corpus/__main__.py` (`gmaps resolve`, `--limit`), `config/navigate.yaml` (khối `resolve:`)
-- cách kiểm chứng: `pytest --collect-in-virtualenv tests/navigate tests/crawl/gmaps/test_resolve.py tests/views/test_cli.py -q` (searcher giả, không mở trình duyệt); chưa có lần chạy thật; plan `docs/plans/2026-10-28-resolve-p7.md`, ledger `.superpowers/sdd/2026-10-28-resolve-p7/progress.md`
+- cách kiểm chứng: `pytest --collect-in-virtualenv tests/navigate tests/crawl/gmaps/test_resolve.py tests/views/test_cli.py -q` (searcher giả, không mở trình duyệt); chưa có lần chạy thật; plan `git 7c4da01:docs/plans/2026-10-28-resolve-p7.md`, ledger `.superpowers/sdd/2026-10-28-resolve-p7/progress.md`
 
 ### Hiện tại (2026-10-28)
 - hành vi: nominee `missing` (`resolve_queue.jsonl`) và `maybe` (báo cáo compare mới nhất) được tra trên Maps; chỉ một nơi rõ ràng, trong `area`, đủ review mới được ghi (khuôn `search`) vào `data/gmaps/search/<city>/resolve.jsonl` để `filter` → `counts` → `list` kiểm tiếp; mơ hồ / không khớp / ngoài khu / ít review chỉ ghi sổ `data/<city>/navigate/resolved.jsonl`. Không có trạng thái "không tồn tại".

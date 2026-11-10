@@ -181,7 +181,7 @@ Hộp thoại sáng màu kem trên nền mờ (`css/gate.css`, `ui/Gate.tsx`). �
 
 ### Lịch trình (`/app/plan`)
 
-Bố cục theo mẫu `ui_mock_for_design/designs/itinerary/`, tràn hết bề ngang màn hình (tối đa 1840 px), chữ và ảnh lớn. Bốn màn trong một route, đổi bằng trạng thái (không đổi URL):
+Bố cục theo mẫu `docs/design/mock/designs/itinerary/`, tràn hết bề ngang màn hình (tối đa 1840 px), chữ và ảnh lớn. Bốn màn trong một route, đổi bằng trạng thái (không đổi URL):
 
 ```mermaid
 flowchart LR
@@ -192,7 +192,7 @@ flowchart LR
   O -->|Đổi phương án| C
 ```
 
-- **Chọn phương án**: lần đầu vào, các thẻ nằm **mờ** phía sau một tấm bưu thiếp giải thích *vì sao có N phương án* (quá tải thì nêu số nơi / số ngày; mỗi phương án một dòng: tên, ý, bao nhiêu nơi giữ hay bỏ); bấm *Xem N phương án* thì nền rõ lên và ba thẻ hiện ra (đổi phương án đã chọn thì vào thẳng các thẻ). Thẻ trắng theo mẫu `ui_mock_for_design`: ảnh đại diện có nhãn *Tạm bỏ N nơi* / *Giữ đủ các nơi*, tên + ý, ba số (nơi ghé, đi lại, chi phí), các nơi tạm bỏ kèm lý do (xem thêm khi quá 3), nút nâu *Chọn phương án này*; chọn một thẻ rồi mới bấm *Xem lịch trình* (khóa tới lúc chọn). *So sánh chi tiết* mở bảng đánh đổi.
+- **Chọn phương án**: lần đầu vào, các thẻ nằm **mờ** phía sau một tấm bưu thiếp giải thích *vì sao có N phương án* (quá tải thì nêu số nơi / số ngày; mỗi phương án một dòng: tên, ý, bao nhiêu nơi giữ hay bỏ); bấm *Xem N phương án* thì nền rõ lên và ba thẻ hiện ra (đổi phương án đã chọn thì vào thẳng các thẻ). Thẻ trắng theo mẫu `docs/design/mock`: ảnh đại diện có nhãn *Tạm bỏ N nơi* / *Giữ đủ các nơi*, tên + ý, ba số (nơi ghé, đi lại, chi phí), các nơi tạm bỏ kèm lý do (xem thêm khi quá 3), nút nâu *Chọn phương án này*; chọn một thẻ rồi mới bấm *Xem lịch trình* (khóa tới lúc chọn). *So sánh chi tiết* mở bảng đánh đổi.
 - **Tổng quan**: bản đồ cả chuyến, rồi đến / chỗ nghỉ / thẻ từng ngày / về; thanh dưới có chi phí đã biết, *Chốt kế hoạch*, *Xem lịch từng ngày*.
 - **Từng ngày**: danh sách trái (thanh ngày cố định, cuộn riêng), bản đồ phải. Kéo thẻ hoặc ảnh (giữ ~150 ms), tay nắm, hoặc nút lên / xuống để đổi thứ tự (`reorder`); Esc hủy kéo; giảm chuyển động thì bỏ animation. Nơi bắt buộc không có Đổi / Bỏ nhưng vẫn đổi được thứ tự.
 - **Tìm nơi**: ô tìm, bộ lọc trái, kết quả phải; chỉ gồm nơi trong lựa chọn hoặc nơi dự phòng đã kiểm tra; chọn → xem trước thay đổi → áp dụng.

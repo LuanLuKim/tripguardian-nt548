@@ -80,14 +80,14 @@ def test_v2_cases_load_and_follow_the_documented_format():
     link = next(c for c in items if c.id == "link-maps")
     assert link.turns[-1][0].endswith("17z") and "https://www.google.com/maps" in link.turns[-1][0]
     ok, skipped = runnable(items)
-    assert not skipped and all(c.photos for c in items if c.family == "photo")  # the fixtures are in frontend_images/
+    assert not skipped and all(c.photos for c in items if c.family == "photo")  # the fixtures are in tests/fixtures/perceive/app/
     assert next(c for c in items if c.id == "photo-what").photo_sure is False
     assert next(c for c in items if c.id == "rule-r3").blocked == "R3"
 
 
 def test_v2_case_without_its_photo_is_skipped_not_failed(tmp_path):
     from bench.assistant import Case, runnable
-    gone = Case("x", "photo", (("hi", "frontend_images/does-not-exist.png"),))
+    gone = Case("x", "photo", (("hi", "tests/fixtures/perceive/app/does-not-exist.png"),))
     ok, skipped = runnable([gone, Case("y", "followup", (("hi", None),))])
     assert skipped == ["x"] and [c.id for c in ok] == ["y"]
 
@@ -130,7 +130,7 @@ def test_guard_set_runner_counts_wrong_blocks_and_recall(tmp_path):
 def test_bench_photo_is_a_data_uri_trip_accepts():
     from bench.assistant import photo_b64
     from trip.infrastructure.images import sanitize_photo
-    assert sanitize_photo(photo_b64("frontend_images/plan-gate.png"))
+    assert sanitize_photo(photo_b64("tests/fixtures/perceive/app/plan-gate.png"))
 
 
 def test_assistant_overrides_are_typed_and_checked():

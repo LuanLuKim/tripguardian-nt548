@@ -1406,7 +1406,7 @@ tour, a booking site's package or another place is not this place's entry ticket
     "Page: {url}", "Source: {url}"))
 
 
-# Benchmark users (python -m bench, docs/plans/BENCH.md): a model plays one traveller whose trip it knows in full.
+# Benchmark users (python -m bench, docs/TRIP_UNDERSTANDING.md §16): a model plays one traveller whose trip it knows in full.
 USER_SIM_CODES = (
     "What the codes in the JSON mean: mobility motorbike = you ride your own motorbike, car = your own car; companions solo = alone, partner = your partner, friends, kids = young children, "
     "parents = your parents / older people; pace slow = few places a day, normal, packed = as many as possible; "

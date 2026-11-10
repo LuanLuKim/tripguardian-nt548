@@ -249,7 +249,7 @@ Repo có các ca kiểm thử cho hành vi trọng yếu:
 
 ### 9.2. Số đo kỹ thuật đã được ghi nhận
 
-[Báo cáo hiệu năng Planning](../PLANNING_PERFORMANCE.md) ghi nhận benchmark trước và sau tối ưu trên cùng fixture giả lập, lấy median ba lượt chạy:
+[Báo cáo hiệu năng Planning](../docs/reports/planning-performance.md) ghi nhận benchmark trước và sau tối ưu trên cùng fixture giả lập, lấy median ba lượt chạy:
 
 | Trường hợp | Trước tối ưu | Sau tối ưu | Tốc độ tương đối |
 |---|---:|---:|---:|

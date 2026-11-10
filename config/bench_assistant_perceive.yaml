@@ -1,5 +1,5 @@
 # asst-perceive's v2 bench cases (format: src/bench/assistant.py docstring; spec 2026-10-29-assistant-tools-design §5.2).
-# Photos: real screenshots of the app (frontend_images/, web/shots/app/: carousel, place sheet, Đi một vòng, grids), synthetic
+# Photos: real screenshots of the app (tests/fixtures/perceive/app/, web/shots/app/: carousel, place sheet, Đi một vòng, grids), synthetic
 # TikTok / Instagram posts built from person-free corpus photos (tests/fixtures/perceive/), corpus camera photos
 # (data/gmaps/...), one non-place picture (tests/fixtures/perceive/mascot_small.jpg, a cartoon mascot resized under the photo size limit). A case whose file is missing is skipped by the runner.
 # photo_sure true  = the picture writes / shows one place: the reply names it.
@@ -7,18 +7,18 @@
 # it only has to ask which one ("\?").
 cases:
   # ---- photo-name: one place is written in (or clearly shown by) the picture
-  - {id: app-carousel-ixora, family: photo-name, turns: [{text: "Quán này ở đâu vậy?", photo: frontend_images/trip-chat-place-cards.png}], photo_sure: true, place: IXORA, tool_groups: [perceive]}
-  - {id: app-sheet-mau-dich, family: photo-name, turns: [{text: "Quán này mở tới mấy giờ?", photo: frontend_images/lua-chon-anh-theo-canh-sheet.png}], photo_sure: true, place: Mậu Dịch, tool_groups: [perceive]}
-  - {id: app-walk-tram-ky-uc, family: photo-name, turns: [{text: "Chỗ này là chỗ nào vậy?", photo: frontend_images/tuyen-anh-theo-canh-walk-3.png}], photo_sure: true, place: Trạm Ký Ức, tool_groups: [perceive]}
+  - {id: app-carousel-ixora, family: photo-name, turns: [{text: "Quán này ở đâu vậy?", photo: tests/fixtures/perceive/app/trip-chat-place-cards.png}], photo_sure: true, place: IXORA, tool_groups: [perceive]}
+  - {id: app-sheet-mau-dich, family: photo-name, turns: [{text: "Quán này mở tới mấy giờ?", photo: tests/fixtures/perceive/app/lua-chon-anh-theo-canh-sheet.png}], photo_sure: true, place: Mậu Dịch, tool_groups: [perceive]}
+  - {id: app-walk-tram-ky-uc, family: photo-name, turns: [{text: "Chỗ này là chỗ nào vậy?", photo: tests/fixtures/perceive/app/tuyen-anh-theo-canh-walk-3.png}], photo_sure: true, place: Trạm Ký Ức, tool_groups: [perceive]}
   - {id: app-sheet-viet-hung, family: photo-name, turns: [{text: "Quán này có gì hay?", photo: web/shots/app/22-place-sheet.png}], photo_sure: true, place: Việt Hưng, tool_groups: [perceive]}
   - {id: tiktok-ixora, family: photo-name, turns: [{text: "Quán trong clip này ở đâu vậy?", photo: tests/fixtures/perceive/tiktok_ixora_name.png}], photo_sure: true, place: IXORA, tool_groups: [perceive]}
   - {id: instagram-dome, family: photo-name, turns: [{text: "Mình thấy bài này, quán này đi được không?", photo: tests/fixtures/perceive/instagram_dome_name.png}], photo_sure: true, place: Dome, tool_groups: [perceive]}
   - {id: camera-ixora, family: photo-name, turns: [{text: "Ảnh mình chụp ở đây, là quán nào nhỉ?", photo: data/gmaps/places/0x31711389de9199a7_0xd170d6bf617e5e57/photos/CIABIhCK1ufIlEp1jWCx3YaMr-s-.jpg}], photo_sure: true, place: IXORA, tool_groups: [perceive]}
 
   # ---- photo-ask: several places, or no name: ask which one, never pick
-  - {id: app-grid-three, family: photo-ask, turns: [{text: "Quán nào trong này ngon nhất vậy?", photo: frontend_images/explore-grid-cardlines.png}], reply_has: ["\\?"]}
-  - {id: app-list-banh-can, family: photo-ask, turns: [{text: "Cho mình biết quán nào trong đây là quán mở sớm", photo: frontend_images/lua-chon-ket-qua-tim.png}], reply_has: ["\\?"]}
-  - {id: app-carousel-several, family: photo-ask, turns: [{text: "Quán này là quán nào?", photo: frontend_images/trip-chat-place-cards-liked.png}], reply_has: ["\\?"]}
+  - {id: app-grid-three, family: photo-ask, turns: [{text: "Quán nào trong này ngon nhất vậy?", photo: tests/fixtures/perceive/app/explore-grid-cardlines.png}], reply_has: ["\\?"]}
+  - {id: app-list-banh-can, family: photo-ask, turns: [{text: "Cho mình biết quán nào trong đây là quán mở sớm", photo: tests/fixtures/perceive/app/lua-chon-ket-qua-tim.png}], reply_has: ["\\?"]}
+  - {id: app-carousel-several, family: photo-ask, turns: [{text: "Quán này là quán nào?", photo: tests/fixtures/perceive/app/trip-chat-place-cards-liked.png}], reply_has: ["\\?"]}
   - {id: tiktok-no-name, family: photo-ask, turns: [{text: "Đây là quán nào vậy bạn?", photo: tests/fixtures/perceive/tiktok_no_name.png}], reply_has: ["\\?"]}
   - {id: tiktok-two-names, family: photo-ask, turns: [{text: "Quán nào trong clip này đẹp hơn?", photo: tests/fixtures/perceive/tiktok_two_names.png}], tool_groups: [perceive], reply_has: ["\\?"]}
   - {id: not-a-place-mascot, family: photo-ask, turns: [{text: "Quán này là quán nào?", photo: tests/fixtures/perceive/mascot_small.jpg}], photo_sure: false, cards: false}
@@ -28,8 +28,8 @@ cases:
   - {id: sheet-similar, family: photo-similar, turns: [{text: "Cho mình xem vài chỗ giống quán này", photo: web/shots/app/22-place-sheet.png}], tool_groups: [perceive], cards: true}
   - {id: camera-similar, family: photo-similar, turns: [{text: "Tìm giúp mình mấy chỗ giống chỗ này", photo: data/gmaps/places/0x31711351c7e8bd57_0x1b3f3d7a7d760d39/photos/CIABIhB6lVQ6o429-b7-dfW4P79F.jpg}], tool_groups: [perceive], cards: true}
   - {id: tiktok-similar, family: photo-similar, turns: [{text: "Quán kiểu này ở Đà Lạt còn chỗ nào nữa không?", photo: tests/fixtures/perceive/tiktok_ixora_name.png}], tool_groups: [perceive], cards: true}
-  - {id: app-carousel-similar, family: photo-similar, turns: [{text: "Có chỗ nào giống quán này không?", photo: frontend_images/trip-chat-place-cards.png}], tool_groups: [perceive], cards: true}
-  - {id: app-walk-similar, family: photo-similar, turns: [{text: "Tìm giúp mình chỗ nào có không khí giống chỗ này", photo: frontend_images/tuyen-anh-theo-canh-walk-3.png}], tool_groups: [perceive], cards: true}
+  - {id: app-carousel-similar, family: photo-similar, turns: [{text: "Có chỗ nào giống quán này không?", photo: tests/fixtures/perceive/app/trip-chat-place-cards.png}], tool_groups: [perceive], cards: true}
+  - {id: app-walk-similar, family: photo-similar, turns: [{text: "Tìm giúp mình chỗ nào có không khí giống chỗ này", photo: tests/fixtures/perceive/app/tuyen-anh-theo-canh-walk-3.png}], tool_groups: [perceive], cards: true}
 
   # ---- link: Maps / TikTok / web / social
   - {id: link-maps-id, family: link, turns: ["Quán này có gì hay vậy?"], links: ["https://www.google.com/maps/place/Ti%E1%BB%87m+c%C3%A0+ph%C3%AA+sen+%C4%91%C3%A1+IXORA/data=!4m2!3m1!1s0x31711389de9199a7:0xd170d6bf617e5e57"], tool_groups: [perceive], reply_has: [IXORA]}

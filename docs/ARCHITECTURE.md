@@ -1,116 +1,89 @@
 # Kiến trúc — TripGuardian
 
-Bản đồ hệ thống: có những phần nào, chúng nối với nhau ra sao, quy tắc nào áp cho mọi phần. Chi tiết từng phần nằm ở tài liệu của chính phần đó; trang này không chép lại.
+Bản đồ hệ thống: có những phần nào, nối nhau ra sao, quy tắc nào áp cho mọi phần. Chi tiết nằm ở tài liệu của từng phần; trang này chỉ trỏ tới. Phạm vi kiểm chứng: **Đà Lạt**. Vì sao và cho ai: `docs/Project_Context.md`.
 
-Phạm vi kiểm chứng ban đầu: **Đà Lạt**. Nguyên tắc sản phẩm (vì sao, cho ai): `docs/Project_Context.md` §14.
+## 1. Nguyên tắc hệ thống
 
----
-
-## 1. Nguyên tắc ở mức hệ thống
-
-* Thiếu bằng chứng thì giữ `unknown`; hệ thống không bao giờ bịa fact.
-* Input của người dùng mô tả **chuyến đi**, không mô tả bản thân địa điểm.
-* Live context chỉ dành cho từng request và không trở thành tri thức lâu dài về địa điểm.
-* Điều bất khả thi về vật lý không thể bị ghi đè.
-* Offline **ghi** Place Intelligence. Online chỉ **đọc** nó; online chỉ ghi lịch trình và user / session profile.
-
----
+- Thiếu bằng chứng thì `unknown`; không bao giờ bịa fact hay địa điểm. `unknown` ≠ `false`.
+- Input của người dùng mô tả **chuyến đi**, không mô tả địa điểm.
+- Offline **ghi** Place Intelligence; online chỉ **đọc** nó và chỉ ghi lịch trình, tài khoản, User / Session Profile. Live context chỉ sống trong request, không thành tri thức về địa điểm. Check-in và thông báo không phải bằng chứng về địa điểm.
+- Physical constraint không có đường code nào nới. Hệ thống cảnh báo; quyết định cuối thuộc người dùng: lịch có vi phạm vẫn hiện và chốt được.
+- User Profile là prior, xếp sau constraint và bối cảnh chuyến hiện tại.
+- Code gọi model theo **vai trò** (§4); model không ghi fact, không tạo địa điểm, không tự xác nhận khả thi.
 
 ## 2. Mô hình constraint
 
-Ba loại quy tắc quyết định, dùng xuyên suốt cả bốn giai đoạn:
-
-| Loại | Ý nghĩa | Nới được không? | Xử lý khi vi phạm |
+| Loại | Ý nghĩa | Nới được? | Khi vi phạm |
 |---|---|---|---|
-| Physical constraint | Điều bất khả thi trong thực tế | **Không** | Loại, hoặc giữ ở wishlist kèm lý do; không có đường code nào nới |
-| User hard constraint | Yêu cầu rõ ràng của người dùng | Chỉ khi người dùng xác nhận | Hỏi có nới không, **luôn kèm cái giá đã tính** |
-| Soft preference | Sở thích dùng để xếp hạng | Có | Chỉ đổi thứ tự, không loại |
+| Physical | Bất khả thi thực tế (đóng cửa 17:00, đến sớm nhất 18:10) | **Không** | Loại khỏi lịch hoặc giữ ở wishlist kèm lý do; cảnh báo |
+| User hard | Yêu cầu rõ của người dùng (trần 30 phút mỗi chặng) | Chỉ khi người dùng xác nhận | Hỏi có nới không, **luôn kèm cái giá đã tính** |
+| Soft preference | Sở thích để xếp hạng | Có | Chỉ đổi thứ tự |
+
+Package `requirements` là contract dùng chung cho Trip, Decision, Planning: kiểm phạm vi trước (`not_applicable`), rồi `pass | fail | unknown`. Bằng chứng trượt thì loại; yêu cầu an toàn chưa rõ vẫn hiện sau mọi nơi đạt; `unknown` khác theo `unknown_policy` của yêu cầu (`exclude` mặc định, `flag`). Ý định và ví dụ: `docs/TRIP_UNDERSTANDING.md` §9; semantics bằng chứng: `docs/PLACE_DECISION.md` §6.2.
+
+## 3. Bốn giai đoạn và các package
 
 ```text
-Địa điểm đóng cửa 17:00, sớm nhất đến được 18:10   → physical  → không tạo lịch hợp lệ
-Người dùng đặt trần 30 phút mỗi chặng, cần 42 phút → user hard → "nới lên 42 phút?" kèm hệ quả
-```
-
-Public API `requirements` dùng chung cho Trip Understanding, Decision và Planning. Kiểm tra phạm vi hoạt động trước bằng chứng: `not_applicable` cho yêu cầu không liên quan, rồi `pass | fail | unknown` cho yêu cầu có áp dụng. Thiếu bằng chứng không chứng minh an toàn hay không liên quan; hard constraint fail-closed theo `unknown_policy`. Contract ý định và ví dụ ở `docs/TRIP_UNDERSTANDING.md` §9; semantics bằng chứng ở `docs/PLACE_DECISION.md` §6.2.
-
----
-
-## 3. Bốn giai đoạn
-
-```text
-        ┌──────────────────────┐
-        │  PLACE INTELLIGENCE  │  offline, không biết chuyến đi nào
-        │  docs/CORPUS.md      │  địa điểm → fact / signal / estimate có bằng chứng
-        └──────────┬───────────┘
-                   │  serving index (chỉ đọc)
-                   ▼
-        ┌──────────────────────┐
-        │  TRIP UNDERSTANDING  │  người dùng cần gì cho CHUYẾN NÀY
-        │  docs/TRIP_...md     │  → Trip State → Search Input
-        └──────────┬───────────┘
-                   │  Search Input
-                   ▼
-        ┌──────────────────────┐
-        │    PLACE DECISION    │  chọn đúng địa điểm TRƯỚC khi xếp lịch
-        │  docs/PLACE_...md    │  → shortlist → người dùng tuyển chọn → Decision Output
-        └──────────┬───────────┘
-                   │  Decision Output  +  Live Context
-                   ▼
-        ┌──────────────────────┐
-        │ PLANNING & VALIDATION│  tổ hợp đã chọn có đi được cùng nhau không
-        │  docs/PLANNING.md    │  → phương án, chỗ ở, độ vững → Plan Output
-        └──────────────────────┘
+PLACE INTELLIGENCE  (offline)   địa điểm → fact / signal / estimate có bằng chứng   ── serving record, snapshot
+        ▼
+TRIP UNDERSTANDING              người dùng cần gì cho CHUYẾN NÀY → Trip State        ── Search Input
+        ▼
+PLACE DECISION                  shortlist → người dùng tuyển chọn                    ── Decision Output
+        ▼  + Live Context
+PLANNING & VALIDATION           tổ hợp đã chọn có đi được cùng nhau không            ── Plan Output
 ```
 
 | Giai đoạn | Code | Tài liệu | Contract ra |
 |---|---|---|---|
-| Place Intelligence | `src/corpus/` | `docs/CORPUS.md` | serving record (`CORPUS.md` §Bản ghi địa điểm) |
-| Trip Understanding | `src/trip/` | `docs/TRIP_UNDERSTANDING.md` | Search Input (§9 của nó) |
-| Place Decision | `src/decision/` | `docs/PLACE_DECISION.md` | Decision Output (§15 của nó) |
-| Planning & Validation | `src/planning/`, `src/live/` | `docs/PLANNING.md` | Plan Output (§Plan Output của nó) |
+| Place Intelligence | `src/corpus/` | `docs/CORPUS.md` | serving record (§Bản ghi địa điểm) |
+| Trip Understanding | `src/trip/` | `docs/TRIP_UNDERSTANDING.md` | Search Input (§9) |
+| Place Decision | `src/decision/` | `docs/PLACE_DECISION.md` | Decision Output (§15) |
+| Planning & Validation | `src/planning/`, `src/live/` | `docs/PLANNING.md` | Plan Output (§Plan Output) |
 
-Mỗi giai đoạn là một package độc lập, giao tiếp **chỉ** qua public API (`__init__.py`) của package khác (`RULE.md` §2). Phụ thuộc một hướng:
+| Package dùng chung | Việc | Tài liệu |
+|---|---|---|
+| `requirements` | contract yêu cầu và kiểm tra theo hoạt động | §2 |
+| `agents` | runtime Agent, tool, skill; `agents.assistant` là lõi trợ lý chat của ba màn | `docs/AGENT_HARNESS.md` |
+| `harness` | HTTP/SSE, hành trình chung, router theo stage | `docs/AGENT_HARNESS.md` |
+| `accounts`, `db`, `mailer`, `social` | tài khoản, Postgres, thư SMTP, bạn bè / tin nhắn | `docs/ACCOUNTS.md` |
+| `booking`, `journey` | `Offer` deeplink; cách đi từ nhà tới chỗ ở | `docs/BOOKING.md` |
+| `companion`, `notify` | chế độ Đang đi, Google Calendar; worker thông báo | `docs/COMPANION.md` |
+| `analytics` | event, số liệu Admin | `docs/ANALYTICS.md` |
+| `bench` | đo Trip Understanding, độ trễ, trợ lý | `docs/TRIP_UNDERSTANDING.md` §16 |
+
+**Ranh giới.** Package chỉ gọi nhau qua public API (`__init__.py`, `RULE.md` §2). `corpus` công khai từng subpackage (`corpus.serving`, `corpus.snapshot`, …); `agents` công khai thêm `agents.assistant`. Phụ thuộc một hướng (import trong `src/`):
 
 ```text
-corpus   ──►  (không phụ thuộc gì)
-trip     ──►  corpus.serving, corpus.ontology, corpus.snapshot, corpus.index, corpus.releases, corpus.retrieval, corpus.tags
-decision ──►  corpus.serving, corpus.ontology, corpus.snapshot, corpus.releases, corpus.retrieval
-live     ──►  corpus.crawl            (chỉ 3 tên: open_sessions, maps_search, LoginRequired)
-planning ──►  live, decision, trip, corpus.serving, corpus.ontology, corpus.snapshot, corpus.releases, corpus.retrieval
-agents   ──►  corpus.llm
-db       ──►  (không phụ thuộc gì)
-accounts ──►  db
-companion──►  db, accounts, decision, corpus.serving, corpus.ontology, live
-notify   ──►  db, companion, corpus.serving, corpus.ontology, live
-analytics──►  db                       (job `cluster` thêm corpus.llm)
-booking  ──►  live, corpus.serving
-journey  ──►  live, booking
-harness  ──►  trip, decision, planning, agents, accounts, companion, notify, db, booking, journey
+corpus, db, mailer, social, accounts  ──►  (không gì)
+requirements ──►  corpus.serving, corpus (category_group, load_ontology)
+agents       ──►  corpus.llm, corpus.crawl
+live         ──►  corpus.crawl            (chỉ open_sessions, maps_search, LoginRequired)
+trip         ──►  agents, requirements, corpus.{serving,ontology,snapshot,index,releases,retrieval,llm,crawl,tags,pulse,views}
+decision     ──►  agents, requirements, trip, corpus.{serving,ontology,snapshot,releases,retrieval,review,llm,tags,pulse}
+planning     ──►  agents, requirements, trip, decision, live, corpus.{serving,ontology,snapshot,releases,retrieval,llm,local,views}
+booking      ──►  live, corpus.serving
+journey      ──►  live, booking
+companion    ──►  decision, live, corpus.serving
+notify       ──►  db, live, planning, corpus.{serving,ontology}
+analytics    ──►  db, corpus.llm          (corpus.llm chỉ cho job `cluster`)
+harness      ──►  trip, decision, planning, agents, accounts, social, mailer, companion, notify, db, booking, journey, live, corpus.{serving,releases,retrieval,pulse}
+bench        ──►  trip, decision, planning, harness, agents, live, corpus.*   (không ai import bench)
 ```
 
-Agent của module dùng runtime public `agents`; `harness` gọi `Tools` public của module, router chọn module theo stage. Hành trình, capability và persistence: `docs/AGENT_HARNESS.md`.
+`corpus` không biết giai đoạn sau nó; `live` không biết `planning`. Test chặn: `tests/{planning,live,booking,retrieval,harness}/…bound…`. Nợ ranh giới còn lại (import sâu hơn public API, chưa có test chặn): `harness/dispatch.py` → `planning.settings`; `bench/latency.py` → `decision.settings`, `trip.domain.resolve`, `trip.infrastructure.settings`; `trip/agent/*` → `agents.assistant.{loop,lc}`; `bench/assistant.py` → `agents.assistant.guard`; `agents/input_guard.py`, `trip/{domain,infrastructure}/perceive.py`, `trip/infrastructure/web.py` → `corpus.crawl.web`.
 
-Journey pin public corpus binding qua ba module; restore/copy giữ release và reader version,
-không theo pointer mới. Phiên bản dữ liệu đã pin mà bị dọn khỏi đĩa → fail-closed (không phục vụ dữ liệu khác thay thế), API trả 409 `{"error": "stale_data_version", ...}`; code chưa có thao tác revalidate / pin lại, người dùng tạo lại chuyến. Budget giữ amount/scope/provenance trước quy đổi; unknown và activity
-giữ qua handoff. Retrieval chỉ rank trong scope; bằng chứng đọc riêng từ feature đang phục vụ.
-Release bất biến được xác minh toàn bộ hash ở lần đầu mở mỗi binding trong tiến trình; cache kiểm tra nhanh metadata của manifest và reader version, không lưu kết quả lỗi. Harness giữ tối đa 3 bộ engine theo binding (giữ bộ active), dùng chung một retrieval trong mỗi bộ và restore lại snapshot khi bộ cũ đã bị loại khỏi cache.
-Khi khởi động, Harness làm nóng active và tối đa hai pin khác của journey còn chủ sở hữu được lưu trong 7 ngày gần nhất, ưu tiên mới nhất, trên luồng nền không chặn mở cổng; request cùng binding dùng chung kết quả dựng đang chạy. Warmup lỗi chỉ ghi log, không thay pin hay bỏ xác minh; request mở release hỏng/mất vẫn trả 409.
-HTTP Harness lấy snapshot dưới journey lock, dựng view chỉ đọc ngoài lock, rồi kiểm lại revision, chủ sở hữu, snapshot và dấu runtime trước khi trả; có ghi/rollback/restore đồng thời thì đọc lại. Trip/Decision dùng reader riêng theo journey. Planning (load + read `variants`/`routes`/`lodging`/`suggestions`) render trên chính module writer ngoài journey lock (engine Planning tự giữ khoá phiên; base cold dựng dưới khoá đó), rồi chỉ trả khi revision, chủ sở hữu và dấu runtime không đổi (mọi rollback/restore/eviction đổi dấu) — không fork, vì deep-copy phiên nhiều MB tốn 2–8 s mỗi lần mở. Metadata (`stage`, `revision`, `user_id`, danh sách chuyến, feedback) đọc bằng `Store.peek`: bản sao nông, không request history, không deepcopy; writer vẫn dùng `_working` (bản sao sâu) và `before` của request là bản mượn, rollback restore từ bản sao. `back` chỉ snapshot bước đích, giữ snapshot đã commit của các bước không đổi; mutation cùng module Planning vẫn có thể chờ module lock khi capture cold. Paging Decision và `preview-act` Planning vẫn dùng writer vì cấp trạng thái/token cho thao tác sau. `GET /sessions/{id}?view=0` chỉ lấy metadata đã commit, không restore module hay dựng view. Response có `X-Request-ID`; `Server-Timing` và log cùng ID tách xử lý, serialize, DB, chờ khóa, restore/capture và dựng view theo request, không dùng chung span giữa các request.
-Contract chi tiết ở tài liệu module và `docs/CORPUS.md` §Chuẩn hóa và release offline.
-
-Quanh bốn giai đoạn có ba phần online chỉ ghi dữ liệu người dùng, không bao giờ ghi Place Intelligence: tài khoản (`docs/ACCOUNTS.md`), chế độ Đang đi + Google Calendar + thông báo (`docs/COMPANION.md`), sự kiện và số liệu Admin (`docs/ANALYTICS.md`). Check-in và thông báo không phải bằng chứng về địa điểm.
-
-`live` không biết `planning`. `corpus` không biết giai đoạn nào ở sau nó. Test khẳng định các ranh giới này (`tests/planning/test_planning_boundaries.py`, `tests/live/test_boundaries.py`).
-
----
+**Hành trình chung.** User Web đi Trip → Decision → Planning qua một journey của `harness`; router chọn module theo stage và gọi `Tools` public của module. Journey pin một corpus binding (release, region, manifest hash, snapshot / index version) cho cả ba module: đổi release pointer không đổi journey đã pin; release đã pin mà mất khỏi đĩa thì trả 409 `stale_data_version`, không phục vụ dữ liệu khác. Budget giữ amount / scope / nguồn trước khi quy đổi; `unknown` và hoạt động giữ nguyên qua handoff. Revision, receipt, retry, khóa, đọc song song: `docs/AGENT_HARNESS.md` §3. Release offline: `docs/CORPUS.md` §Chuẩn hóa và release offline.
 
 ## 4. Vai trò model
 
-Code gọi model theo **vai trò**, không gọi thẳng một model cố định: **ASR** (âm thanh → transcript), **Extractor** (mọi việc khối lượng lớn), **Judge** (chốt chặn trước người), **Agent** (hiểu câu tự do trong Trip/Decision và đề xuất bố trí nội bộ trong Planning). Định nghĩa và yêu cầu từng vai trò: `docs/CORPUS.md` §Vai trò model. Model nào đang đảm nhận vai trò nào: `docs/LLM_PROVIDER.md`.
+| Vai trò | Việc |
+|---|---|
+| ASR | âm thanh → transcript |
+| Extractor | việc khối lượng lớn (đọc, lọc, khớp) |
+| Judge | chốt chặn trước người (guard nội dung, phân xử) |
+| Agent | hiểu câu tự do ở Trip / Decision, đề xuất bố trí nội bộ ở Planning |
 
-Agent online dùng runtime chung: output validate theo schema và guard nghiệp vụ kiểm quyền/grounding trước khi chạy act. Heuristic xử lý input đơn giản hiểu trọn vẹn; Trip/Decision dùng `policy.py` khi call lỗi hoặc chậm, Planning nội bộ giữ baseline đã kiểm. Solver/validator quyết định khả thi. Chi tiết: `docs/AGENT_HARNESS.md` §1, §5 và `docs/PLANNING.md` §Agent đề xuất nội bộ. Model không ghi fact hoặc tạo địa điểm.
-
----
+Định nghĩa: `docs/CORPUS.md` §Vai trò model. Model nào đang giữ vai nào, endpoint, key: `docs/LLM_PROVIDER.md`. Output của Agent được validate theo schema và guard nghiệp vụ (quyền, grounding) trước khi act chạy; call lỗi hoặc chậm thì Trip / Decision dùng `policy.py`, Planning giữ baseline đã kiểm. Solver / validator, không phải model, quyết định khả thi (`docs/AGENT_HARNESS.md` §1, §5; `docs/PLANNING.md` §Agent đề xuất nội bộ).
 
 ## 5. Cấu hình và dữ liệu
 
@@ -118,93 +91,74 @@ Mọi ngưỡng nằm trong `config/`, không trong code:
 
 | File | Của ai | Nội dung |
 |---|---|---|
-| `cities.yaml`, `queries.yaml` | corpus | thành phố, vùng quét, category, trần crawl |
-| `ontology.yaml` | corpus + profile | feature ontology có version (dùng chung id) |
-| `category_defaults.yaml` | corpus | mặc định theo nhóm category cho estimate |
-| `tags.yaml` | corpus (+ trip, harness đọc qua `corpus.tags`) | từ điển tag / subtag, ngưỡng chia nhóm và xếp hạng xu hướng; `docs/PLACE_DECISION.md` §20 |
-| `serving.yaml` | corpus | ngưỡng của serving record |
-| `trip.yaml` | trip | ngân hàng câu hỏi, ngưỡng dừng hỏi |
-| `agents.yaml` | agents | giới hạn call và queue của runtime trong tiến trình |
-| `security.yaml` | agents + harness + trip | heuristic/Judge chat, giới hạn request và giải mã ảnh; `docs/AGENT_HARNESS.md` §5 |
+| `cities.yaml`, `queries.yaml`, `gsearch.yaml`, `navigate.yaml` | corpus | thành phố, vùng quét, category, trần crawl; tìm Google theo nơi; sol dẫn đường |
+| `ontology.yaml` | corpus + profile | feature ontology có version |
+| `category_defaults.yaml`, `companions.yaml`, `dishes.yaml`, `seasons.yaml` | corpus | mặc định theo nhóm category; từ vựng đi cùng ai, món, mùa (nhập tay, có nguồn) |
+| `index.yaml`, `styles.yaml`, `scenes.yaml` | corpus | chỉ mục ngữ nghĩa, tag phong cách, nhãn cảnh ảnh |
+| `local.yaml`, `pulse.yaml`, `views.yaml` | corpus | tri thức bản địa, Nhịp Đà Lạt, view toàn cầu |
+| `tags.yaml` | corpus (trip, harness đọc qua `corpus.tags`) | tag / subtag, ngưỡng chia nhóm, xếp hạng xu hướng (`docs/PLACE_DECISION.md` §20) |
+| `serving.yaml` | corpus | ngưỡng serving record |
+| `trip.yaml` | trip | ngân hàng câu hỏi, ngưỡng dừng hỏi, trợ lý |
+| `agents.yaml`, `security.yaml` | agents, harness, trip | giới hạn call / queue; guard chat, giới hạn request, giải mã ảnh (`docs/AGENT_HARNESS.md` §5) |
 | `decision.yaml` | decision | trọng số xếp hạng, cỡ shortlist, ngưỡng sàng |
-| `booking.yaml` | booking | tham số affiliate theo nhà cung cấp, tuổi tối đa của giá phòng; `docs/BOOKING.md` |
-| `journey.yaml` | journey | ngưỡng chọn phương án đi từ nhà tới chỗ ở; `docs/BOOKING.md` |
-| `planning.yaml` | planning | nhịp độ, cụm, ngày, mục tiêu, độ vững, dự phòng, chỗ ở |
-| `live.yaml` | live | endpoint và TTL từng nguồn live |
-| `climate.yaml`, `holidays.yaml` | live | khí hậu Đà Lạt theo tháng, lễ Việt Nam (nhập tay) |
-| `eval_trips.yaml` | decision + planning | 30 Trip State ẩn, dùng chung để đo cả hai bước |
-| `companion.yaml` | companion | gợi ý tại chỗ và gần đây, ngưỡng "phần còn lại hơi chật" |
-| `notifications.yaml` | notify | loại thông báo, mẫu câu đã duyệt, giờ yên lặng, giới hạn mỗi ngày |
+| `planning.yaml` | planning | nhịp độ, ngày, mục tiêu, độ vững, dự phòng, chỗ ở |
+| `live.yaml`, `climate.yaml`, `holidays.yaml`, `events.yaml`, `advisories.yaml`, `airports.yaml` | live | endpoint và TTL nguồn live; khí hậu, lễ, sự kiện, cảnh báo thiên tai, sân bay (nhập tay; không có dòng ≠ an toàn) |
+| `booking.yaml`, `journey.yaml` | booking, journey | tham số nhà cung cấp, tuổi giá phòng; ngưỡng chọn cách đi (`docs/BOOKING.md`) |
+| `companion.yaml`, `notifications.yaml`, `mail.yaml` | companion, notify, mailer | gợi ý tại chỗ; loại thông báo, mẫu câu, giờ yên lặng; thư đi (bí mật ở `.env`) |
+| `eval_trips.yaml`, `bench_*.yaml`, `prod_journey_cases.yaml` | decision, planning, bench | chuyến ẩn, ca đo trợ lý, ma trận kịch bản prod |
 
-Dữ liệu: `data/<nguồn>/` thô và observation, `data/intel/` + `data/serving/` Place Intelligence (`docs/CORPUS.md` §Data model); `data/live/` cache live có TTL (`docs/PLANNING.md` §Ranh giới module). Không nguồn nào gộp với nguồn khác, cả trong code lẫn trong thư mục dữ liệu (`RULE.md` §2).
+| Dữ liệu | Ở đâu |
+|---|---|
+| Thô và observation, mỗi nguồn một thư mục | `data/<nguồn>/` (`RULE.md` §2) |
+| Place Intelligence | `data/intel/`, `data/serving/`, `data/snapshot/`, `data/releases/` (`docs/CORPUS.md` §Data model) |
+| Cache live có TTL | `data/live/` (`docs/PLANNING.md` §Ranh giới module) |
+| Người dùng: tài khoản, hành trình (bảng `journeys`), event, chuyến đang đi, Calendar, thông báo | Postgres `tripguardian-pg` `127.0.0.1:5433`, schema `migrations/`, `./run.sh db`; role `tg_app` ghi, `tg_analytics` chỉ đọc và không thấy bảng bí mật |
+| Avatar | `data/accounts/avatars/` |
+| Phiên CLI/API module độc lập | `data/{trip,decision,planning}/sessions/` |
 
-Dữ liệu người dùng nằm trong **Postgres** của dự án (container `tripguardian-pg`, `127.0.0.1:5433`; bảng ở `migrations/`, chạy bằng `./run.sh db`): tài khoản, hành trình, event, chuyến đang đi, Calendar, thông báo. Role `tg_app` ghi; `tg_analytics` chỉ đọc và không đọc được bảng chứa bí mật. Avatar nằm ở `data/accounts/avatars/`.
-
-User Web dùng journey chung; harness lưu snapshot các module, revision và receipt trong bảng `journeys` (`docs/AGENT_HARNESS.md` §3). Mở, đọc, xem lý do và chuyển bước không xóa output hay session, không làm mất trạng thái chốt; quay lại Lịch trình dùng session hiện có nếu đầu vào không đổi. Chỉ thay dữ liệu ảnh hưởng lịch mới bỏ output chốt để tính lại. Plan khôi phục bối cảnh (kể cả điểm xuất phát) từ `outputs.trip`, không lấy cache browser làm nguồn sự thật. Lưu Đánh giá chỉ kiểm quyền và ghi phản hồi, không khôi phục module/corpus. CLI/API module độc lập mirror state vào `data/{trip,decision,planning}/sessions/`. Một act sinh `State` mới; `scope.py` quyết định phần nào phải tính lại.
-
-Web resume đọc thẳng stage cần hiển thị sau khi replay receipt còn thiếu; luôn đọc lại trạng thái hiện tại vì receipt có thể cũ hơn mutation của thiết bị khác. Các consumer đồng thời của cùng stage dùng chung promise đang chạy, không cache view đã hoàn tất qua mutation. Response chuyển bước được chuyển tới màn đích, chỉ tái dùng khi revision chưa cũ. Điều hướng/ghi dùng metadata để tìm stage/revision, không dựng view không hiển thị. DecisionProvider không tải trên Plan/Đánh giá; Planning bắt đầu đọc sau xác thực, song song snapshot địa điểm. Warm ảnh chạy nền, không chặn hiển thị thẻ.
-
----
+Phiên module là `State` có phiên bản; một act sinh `State` mới và `scope.py` quyết định phần nào phải tính lại.
 
 ## 6. Các vòng phản hồi
 
-Hệ thống không phải pipeline một chiều. Bốn vòng, mỗi vòng thuộc về một tài liệu:
-
 ```text
-Vòng lựa chọn       Shortlist → tuyển chọn → khả thi → xung đột → tuyển chọn
-                    (PLACE_DECISION.md §13, §14)
-
-Vòng xếp lịch       Planning không xếp được một nơi → quay về tuyển chọn → thay / bỏ / nới → Planning
-                    (PLACE_DECISION.md §14 dòng cuối, PLANNING.md ⓔ)
-
-Vòng kiểm tra       Lịch → validate + độ vững → vấn đề → sửa / phương án thay → kiểm lại
-                    (PLANNING.md ⓔ ⓕ, §Vòng người dùng sửa và góp ý)
-
-Vòng cá nhân hóa    Profile → gợi ý → quyết định của người dùng → Session Profile → gợi ý thích nghi
-                    → kết quả chuyến đi → bằng chứng lặp lại / mạnh? → chỉ session | Long-term Profile
-                    (Project_Context.md §8, §10)
+Vòng lựa chọn     Shortlist → tuyển chọn → khả thi → xung đột → tuyển chọn          PLACE_DECISION.md §13–14
+Vòng xếp lịch     Planning không xếp được một nơi → tuyển chọn → thay / bỏ / nới    PLACE_DECISION.md §14, PLANNING.md ⓔ
+Vòng kiểm tra     Lịch → validate + độ vững → sửa / phương án thay → kiểm lại       PLANNING.md ⓔ ⓕ
+Vòng cá nhân hóa  Profile → gợi ý → quyết định → Session Profile → kết quả chuyến
+                  → bằng chứng lặp lại / mạnh? → Long-term Profile                  Project_Context.md §8, §10
 ```
 
-Hai vòng đầu là lý do Place Decision và Planning tách nhau mà vẫn nối được: Decision ước lượng **thô** để chọn nhanh, Planning tính **thật** rồi trả ngược nơi gây lỗi.
-
----
+Decision ước lượng **thô** để chọn nhanh, Planning tính **thật** rồi trả ngược nơi gây lỗi: vì vậy hai giai đoạn tách nhau mà vẫn nối vòng.
 
 ## 7. Giao diện và cổng
 
 ```text
-web (Vite, :5173)  /          landing, public
-                   /app       User Web (Google hoặc khách) → /api/auth/*, /api/harness/* → harness :8769
-                   /admin     Admin Web → review :8765, analytics :8770 (private, chỉ đọc)
-notify worker      python -m notify run (không cổng) → Postgres, web push
-Postgres           127.0.0.1:5433 (container tripguardian-pg)
+web (Vite :5173)  /        landing
+                  /app     User Web (Google hoặc khách) → /api/auth/*, /api/harness/* → harness :8769
+                  /admin   Admin Web → review :8765, analytics :8770 (private, chỉ đọc)
+notify worker     python -m notify run (không cổng) → Postgres, web push
+Postgres          127.0.0.1:5433
 ```
 
-Bản public (`web/server.mjs`, `./run.sh prod`) chỉ mở `/api/harness/*` và `/api/auth/*`; `/admin`, analytics và mọi `/api/*` khác trả 404.
+Bản public (`web/server.mjs` :28899 sau Cloudflare tunnel) chỉ mở `/api/harness/*`, `/api/auth/*`; `/admin`, analytics, mọi `/api` khác trả 404. Prod chạy bản đông cứng `.prod_src/` (`docs/OPERATIONS.md`). Màn theo vai trò: `docs/Role_Web_Functional_Design.md`; hệ thị giác: `docs/UX_Design_Brief.md`; bảo mật: `docs/SECURITY.md`.
 
-Chức năng từng màn theo vai trò: `docs/Role_Web_Functional_Design.md`. Nguyên tắc hiển thị và hệ thị giác: `docs/UX_Design_Brief.md`. Đặc tả trang cho designer: `docs/UI_SPEC_USER_WEB.md`. Cách chạy cả stack: `README.md`.
-
----
-
-## 8. Các quyết định thiết kế chính
+## 8. Quyết định thiết kế chính
 
 | Quyết định | Lý do |
-| --- | --- |
-| Place Intelligence tách khỏi bối cảnh chuyến đi | Tri thức địa điểm và nhu cầu từng chuyến có vòng đời khác nhau |
-| Khám phá và bằng chứng tách riêng | Nguồn giúp tìm ra địa điểm chưa chắc đáng tin cho mọi nhận định |
-| Trạng thái bắt đầu và mức dẫn dắt độc lập | Trạng thái bắt đầu có sẵn trong input nên không cần hỏi; mức dẫn dắt phải suy từ hành vi nên không thể hỏi trước |
-| Địa điểm của người dùng được resolve trước khi đánh giá | Tên đã lưu có thể là alias, bị trùng, hoặc là nơi chưa biết |
-| Physical, user-hard, và soft constraint tách riêng | Chúng cần cách xử lý xung đột khác nhau |
-| Chọn dùng độ hợp không gian thô; xếp lịch dùng thời gian di chuyển thực tế | Tránh tính kế hoạch chi tiết tốn kém trước khi biết shortlist |
-| Người dùng tuyển chọn trước khi xếp lịch cuối | TripGuardian hỗ trợ quyết định thay vì quyết định thay |
-| Khả thi đánh giá theo tổ hợp | Các nơi hợp lệ riêng lẻ vẫn có thể tạo thành chuyến đi bất khả thi |
-| Nhịp độ và mục tiêu tối ưu tách riêng | "Thư thả" mô tả cường độ chuyến đi; "tiết kiệm" hay "ít di chuyển" mô tả mục tiêu lập kế hoạch |
-| Kiểm tra là tất định | Một kế hoạch trông hợp lý là chưa đủ |
-| Độ vững đi sau khả thi | Kế hoạch đúng về toán vẫn có thể dễ đổ vỡ trong thực tế |
-| Phương án dự phòng dùng lại các ứng viên bị loại | Phương án thay thế giải thích được và hợp bối cảnh |
-| Chỗ ở có trong Place Intelligence; giá/availability ngày đi tra live theo request | Đặc tính nơi và giá tham khảo là corpus; khả năng đặt phòng đúng chuyến là dữ liệu live |
-| User Profile là prior, xếp hạng sau constraint | Hành vi trong quá khứ không được lấn át chuyến đi hiện tại hay constraint của nó |
-| Session profile và long-term profile tách riêng | Sở thích có thể thay đổi trong một chuyến mà không viết lại gu dài hạn |
-| Lịch sử trải nghiệm tách khỏi sở thích | Đã đến không có nghĩa là thích; chưa trải nghiệm không có nghĩa là không thích |
-| Dữ liệu địa điểm do agent xây, được kiểm tra bằng gate và định tuyến rủi ro | Mở rộng theo số địa điểm; công sức của người tăng theo rủi ro, không theo kích thước corpus |
-| Cố định vai trò model, không cố định model | Đổi model bằng config khi nhãn review cho thấy model tốt hơn hoặc rẻ hơn |
-| Phiên là `State` có phiên bản + một hàm thuần sinh `State` mới | Undo / redo thật, và mỗi act chỉ chạy lại đúng phần bị ảnh hưởng (`scope.py`) |
+|---|---|
+| Place Intelligence tách khỏi bối cảnh chuyến | Tri thức địa điểm và nhu cầu từng chuyến có vòng đời khác nhau |
+| Khám phá và bằng chứng tách riêng | Nguồn giúp tìm ra nơi chưa chắc đáng tin cho mọi nhận định |
+| Trạng thái bắt đầu và mức dẫn dắt độc lập | Trạng thái có sẵn trong input; mức dẫn dắt phải suy từ hành vi |
+| Resolve địa điểm của người dùng trước khi đánh giá | Tên đã lưu có thể là alias, trùng, hoặc nơi chưa biết |
+| Physical, user-hard, soft tách riêng | Mỗi loại cần cách xử lý xung đột khác nhau |
+| Chọn dùng độ hợp không gian thô; xếp lịch dùng thời gian đi thật | Không tính lịch chi tiết trước khi có shortlist |
+| Người dùng tuyển chọn trước khi xếp lịch | Hỗ trợ quyết định, không quyết định thay |
+| Khả thi đánh giá theo tổ hợp | Các nơi hợp lệ riêng lẻ vẫn có thể thành chuyến bất khả thi |
+| Nhịp độ và mục tiêu tối ưu tách riêng | "Thư thả" là cường độ; "tiết kiệm", "ít di chuyển" là mục tiêu |
+| Kiểm tra tất định; độ vững đi sau khả thi | Lịch trông hợp lý chưa đủ; lịch đúng vẫn có thể dễ vỡ |
+| Dự phòng dùng lại ứng viên bị loại | Phương án thay giải thích được và hợp bối cảnh |
+| Chỗ ở có trong corpus; giá / còn phòng tra live | Đặc tính và giá tham khảo là tri thức; đặt được đúng ngày là dữ liệu live |
+| Session và long-term profile tách riêng; đã đến ≠ đã thích | Sở thích đổi trong chuyến không viết lại gu dài hạn |
+| Corpus do agent xây, kiểm bằng gate và định tuyến rủi ro | Công sức người tăng theo rủi ro, không theo cỡ corpus |
+| Cố định vai trò model, không cố định model | Đổi model bằng config khi nhãn review cho thấy tốt hơn / rẻ hơn |
+| Phiên là `State` có phiên bản + hàm thuần sinh `State` mới | Undo / redo thật; mỗi act chỉ tính lại phần bị ảnh hưởng |

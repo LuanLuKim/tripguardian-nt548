@@ -1,5 +1,5 @@
 """Spec §11: every realistic case passes the realism checks. PENDING lists the checks a later task of
-docs/plans/2026-10-15-planning-realistic-core.md turns green; each task deletes its entries."""
+git 7c4da01:docs/plans/2026-10-15-planning-realistic-core.md turns green; each task deletes its entries."""
 
 import pytest
 

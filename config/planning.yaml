@@ -167,7 +167,7 @@ total_s: 20.0                 # the whole answer must arrive by this long
 rethink_drops: 4              # dropping this many places in one planning session: a turn's next drop is refused,
                               # the user is told to go back to Place Decision instead (not a chip-level limit)
 
-# Realistic itinerary (docs/plans/2026-10-15-planning-realistic-redesign-design.md). Minutes unless noted.
+# Realistic itinerary (docs/PLANNING.md). Minutes unless noted.
 realistic:
   wait_max: 20               # a wait longer than this becomes free time or a rest at the lodging
   rest_home_min: 90          # free time at least this long, with the lodging near, is spent resting there

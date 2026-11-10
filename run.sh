@@ -283,17 +283,19 @@ clef_start() {
   echo "[clef] not healthy after 5 min, see logs/clef"
 }
 
-# Prod runs from a frozen copy of src (src_live/, same depth as src/ so Path(__file__).parents[N] still finds the repo
+# Prod runs from a frozen copy of src (.prod_src/, same depth as src/ so Path(__file__).parents[N] still finds the repo
 # root): agents editing the shared tree, and overload spawn workers re-importing planning, never reach live users.
+PROD_SRC=.prod_src
 freeze_src() {
-  rm -rf src_live.new && rsync -a --exclude __pycache__ src/ src_live.new/ || return 1
-  PYTHONPATH="$PWD/src_live.new" $PYTHON -c "import harness, planning.overload, trip, decision, notify" \
+  rm -rf "$PROD_SRC.new" && rsync -a --exclude __pycache__ src/ "$PROD_SRC.new/" || return 1
+  PYTHONPATH="$PWD/$PROD_SRC.new" $PYTHON -c "import harness, planning.overload, trip, decision, notify" \
     || { echo "[src] frozen copy does not import: not deploying"; return 1; }
 }
+# called once the old services are stopped, so nothing still imports from the copy being replaced
 swap_frozen_src() {
-  rm -rf src_live.old; [ -d src_live ] && mv src_live src_live.old
-  mv src_live.new src_live && rm -rf src_live.old
-  export PYTHONPATH="$PWD/src_live"
+  rm -rf "$PROD_SRC.old"; [ -d "$PROD_SRC" ] && mv "$PROD_SRC" "$PROD_SRC.old"
+  mv "$PROD_SRC.new" "$PROD_SRC" && rm -rf "$PROD_SRC.old"
+  export PYTHONPATH="$PWD/$PROD_SRC"
 }
 
 prod() {

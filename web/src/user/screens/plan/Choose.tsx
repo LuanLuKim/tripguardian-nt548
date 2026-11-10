@@ -10,7 +10,7 @@ import { LongTripWarning } from '../../ui/LongTripWarning'
 import { KeepAll, NoHotel, Tradeoff } from './parts'
 import { costText, placeName, visits } from './shared'
 
-// docs/UI_SPEC_USER_WEB.md Trang 8, mẫu ui_mock_for_design/designs/itinerary: three ways to go, one photo each, the places
+// docs/UI_SPEC_USER_WEB.md Trang 8, mẫu docs/design/mock/designs/itinerary: three ways to go, one photo each, the places
 // each one sets aside and why. Nothing is planned until the person picks one and presses "Xem lịch trình".
 // First visit: the ways sit blurred behind a postcard that says why there are several and what each one is for (gate.css
 // paper); "Xem N phương án" lifts the blur. Changing a way already chosen goes straight to the cards.

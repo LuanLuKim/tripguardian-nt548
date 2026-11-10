@@ -1,13 +1,12 @@
 # Đề xuất Trip Understanding, Decision và Planning dùng corpus chuẩn hóa / RAG
 
 Ngày cập nhật: 2026-10-15. Đây là đề xuất xuyên module kèm trạng thái triển khai; không phải mọi
-chức năng bên dưới đều đã có. **Bàn giao phiên tiếp theo:**
-`CORPUS_NORMALIZATION_HANDOFF.md` §Điểm tiếp tục ghi code đã làm, test, pointer và việc còn lại. Phạm vi người dùng chọn: hoàn tất contract normalization trước, rồi dùng dữ liệu
+chức năng bên dưới đều đã có. Phạm vi người dùng chọn: hoàn tất contract normalization trước, rồi dùng dữ liệu
 nhất quán để cải thiện ba module; chưa ưu tiên thêm reasoning sâu hoặc redesign toàn sản phẩm.
 
 Thiết kế nền: `docs/CORPUS.md` §Chuẩn hóa và release offline.
 Ý tưởng Trip: `docs/TRIP_UNDERSTANDING.md`.
-Hiện trạng build và regression: `CORPUS_NORMALIZATION_HANDOFF.md`.
+Tái kiểm dữ liệu ngày 2026-10-15: `docs/reports/2026-10-15-normalized-corpus-recheck.md`.
 
 ## 1. Kết luận đề xuất
 
@@ -207,10 +206,9 @@ nguồn vẫn có thể thiếu; kết quả đúng phải thể hiện thiếu 
 
 Theo yêu cầu người dùng, Codex đã tiếp nhận sửa contract RAG của Claude và nối public API
 vào ba factory, harness và context Agent. Reader dùng binding thực; Trip name/cues, Decision
-evidence read và Planning proposal cùng release/scope. Chi tiết kiểm chứng, build/smoke và
-điểm dừng mới nhất chỉ ghi tại `CORPUS_NORMALIZATION_HANDOFF.md` §Trạng thái tiếp tục mới nhất.
+evidence read và Planning proposal cùng release/scope.
 
 Phạm vi cuối: hoàn tất hai tài liệu `ONLINE_MODULES_RAG_UPDATE_IDEAS.md` và
-`../NORMALIZED_CORPUS_RECHECK.md`, kiểm RAG rồi dừng; chưa publish/restart/export Web.
+`../reports/2026-10-15-normalized-corpus-recheck.md`, kiểm RAG rồi dừng; chưa publish/restart/export Web.
 Các ý tưởng directions/counterfactual, room occupancy/address safety và benchmark live chưa
 được triển khai trong đợt này. Không sửa `../TRIP_UNDERSTANDING_QA.md` do người dùng đang viết.

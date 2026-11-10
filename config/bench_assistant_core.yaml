@@ -1,6 +1,6 @@
 # asst-core's v2 bench cases (format: src/bench/assistant.py docstring). Other tracks add their own file
 # config/bench_assistant_<track>.yaml; the loader reads every one. tool_groups = Tool.group of the tools the last turn ran
-# (prepared or called). Photos are corpus-free UI screenshots from frontend_images/: a photo that shows no place must be
+# (prepared or called). Photos are corpus-free UI screenshots in tests/fixtures/perceive/app/: a photo that shows no place must be
 # asked back, never named (photo_sure: false).
 cases:
   # ---- followup: "xem thêm", "quán đó", "cái thứ hai", "không phải quán đó"
@@ -11,12 +11,12 @@ cases:
   - {id: follow-other-place, family: followup, turns: ["Thác Datanla vé bao nhiêu?", "Còn Langbiang thì sao?"], tool_groups: [detail]}
   - {id: follow-again, family: followup, turns: ["Gợi ý quán lẩu cho nhóm 6 người", "Thêm nữa đi"], tool_groups: [places], cards: true}
   # ---- photo: nothing in the picture is a place -> asked back, no name, no card
-  - {id: photo-what, family: photo, turns: [{text: "Quán này là gì vậy?", photo: frontend_images/plan-gate.png}], photo_sure: false, cards: false}
-  - {id: photo-like, family: photo, turns: [{text: "Giống kiểu này nè", photo: frontend_images/pulse-home-hot.png}], photo_sure: false, cards: false}
-  - {id: photo-near, family: photo, turns: [{text: "Có quán cơm nào gần quán này không?", photo: frontend_images/understand-welcome.png}], photo_sure: false, cards: false}
-  - {id: photo-hours, family: photo, turns: [{text: "Quán này mở tới mấy giờ?", photo: frontend_images/profile-memory-list.png}], photo_sure: false, cards: false}
-  - {id: photo-where, family: photo, turns: [{text: "Đây là chỗ nào vậy?", photo: frontend_images/plan-readback.png}], photo_sure: false, cards: false}
-  - {id: photo-no-text, family: photo, turns: [{text: "", photo: frontend_images/understand-board.png}], photo_sure: false, cards: false}
+  - {id: photo-what, family: photo, turns: [{text: "Quán này là gì vậy?", photo: tests/fixtures/perceive/app/plan-gate.png}], photo_sure: false, cards: false}
+  - {id: photo-like, family: photo, turns: [{text: "Giống kiểu này nè", photo: tests/fixtures/perceive/app/pulse-home-hot.png}], photo_sure: false, cards: false}
+  - {id: photo-near, family: photo, turns: [{text: "Có quán cơm nào gần quán này không?", photo: tests/fixtures/perceive/app/understand-welcome.png}], photo_sure: false, cards: false}
+  - {id: photo-hours, family: photo, turns: [{text: "Quán này mở tới mấy giờ?", photo: tests/fixtures/perceive/app/profile-memory-list.png}], photo_sure: false, cards: false}
+  - {id: photo-where, family: photo, turns: [{text: "Đây là chỗ nào vậy?", photo: tests/fixtures/perceive/app/plan-readback.png}], photo_sure: false, cards: false}
+  - {id: photo-no-text, family: photo, turns: [{text: "", photo: tests/fixtures/perceive/app/understand-board.png}], photo_sure: false, cards: false}
   # ---- link: a link the corpus cannot match is said honestly, never guessed
   - {id: link-maps, family: link, turns: ["Quán này có view không?"], links: ["https://www.google.com/maps/place/Quan+Khong+Co+Trong+Du+Lieu/@11.94,108.44,17z"], reply_has: ["chưa|không"], cards: false}
   - {id: link-tiktok-new, family: link, turns: ["Quán trong video này ở đâu vậy?"], links: ["https://www.tiktok.com/@khongco/video/7000000000000000001"], reply_has: ["chưa|không"], cards: false}

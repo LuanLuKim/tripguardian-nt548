@@ -538,6 +538,15 @@ Mô phỏng offline: user giả lập bằng LLM, mỗi user có một Trip Stat
 
 Chỉ số thật từ pilot đi vào `Project_Context.md` §18–19.
 
+**Bench (`src/bench/`).** User giả lập có Trip State ẩn chạy qua harness thật (Trip → Decision → Planning) trên dữ liệu serving thật.
+
+- `python -m bench generate --seed 1` → `config/bench_trips.yaml` (40 chuyến cố định). Quota: mỗi signal ≥ 3, mỗi companions ≥ 5, mỗi mobility ≥ 8; loại chuyến mà hard filter còn < `top_k` nơi pass `corpus.serving.check`. `--briefs --live` viết brief bằng `USER_SIM_*`.
+- `python -m bench run [--styles tapper,baseline,brief] [--only ids] [--live]` → `data/bench/<timestamp>/{runs,fields,summary}.csv`. Quota và ngưỡng gate đọc từ `config/bench.yaml`. Hai file `config/bench.yaml`, `config/bench_trips.yaml` không có trong git: `generate` / `run` chỉ chạy trên máy còn giữ chúng.
+- Kiểu user (`users.py`): `tapper` chỉ bấm chip (field không có chip → `skip`); `baseline` form cố định 14 ô dựng `SearchInput` trực tiếp (turns = 14); `brief` gửi brief rồi bấm như tapper; `chatter` (chỉ live) trả lời mọi thẻ bằng lời.
+- Downstream chung: chọn `2 × days` experience + `1 × days` meal theo thứ tự thẻ `main` (bỏ anchor) → variant đầu nếu view `ok` → `confirm`.
+- Verdict mỗi field (`score.py`): `correct`, `wrong`, `missing`, `invented`, `ok_unknown`, `inferred`, `unreachable`, `n/a`; accuracy = correct / (correct + wrong + missing). Gate = 0 cho `invented`, `safety_missed` (hard filter mong đợi, reachable, không có trong Search Input) và `hard_violations` (nơi confirmed fail hard filter của sự thật, trừ nơi user nới).
+- Lệnh khác của cùng CLI: `latency` (độ trễ phần dùng corpus, `docs/CORPUS.md` §Kiểm soát chi phí và hiệu năng), `retrieval`, `assistant` (§19).
+
 ## 17. Hồ sơ cá nhân hóa (học mẫu dài hạn)
 
 Như bộ nhớ của ChatGPT: điều người dùng chọn lặp lại qua nhiều chuyến thành **prior** cho chuyến sau, người dùng xem, sửa, tạm dừng, xoá từng mục. Mặc định **tắt** (`patterns.enabled: false` trong `config/trip.yaml`) cho tới khi ngưỡng được kiểm bằng khảo sát người dùng.
@@ -697,7 +706,7 @@ flowchart TD
 
 ### Lõi trợ lý chung, thẻ trước, chặn theo rule (29/10/2026)
 
-Vòng tool, đăng ký tool, cache lượt, thẻ trước, cửa sổ lịch sử và guard Clef nằm ở module chung `src/agents/assistant/` (public API trong `__init__.py`); Trip và Lựa chọn (`docs/PLACE_DECISION.md` §19) chỉ cắm tool hành động và khối `CURRENT CONTEXT` của mình. Spec: `docs/plans/2026-10-29-assistant-tools-design.md`.
+Vòng tool, đăng ký tool, cache lượt, thẻ trước, cửa sổ lịch sử và guard Clef nằm ở module chung `src/agents/assistant/` (public API trong `__init__.py`); Trip và Lựa chọn (`docs/PLACE_DECISION.md` §19) chỉ cắm tool hành động và khối `CURRENT CONTEXT` của mình.
 
 ```mermaid
 sequenceDiagram

@@ -90,6 +90,14 @@ PlanningProvider lọc read/SSE theo journey revision và generation của phiê
 
 Khóa hành trình nằm trong một tiến trình; nhiều tiến trình cùng ghi được chặn bằng kiểm revision ở Postgres. Chưa pruning receipt hoặc có transaction với dịch vụ ngoài. CLI/API module độc lập giữ store phiên riêng và không dùng chung ID với harness.
 
+**Đọc không chặn ghi.** HTTP lấy snapshot dưới journey lock, dựng view chỉ đọc ngoài lock, rồi kiểm lại revision, chủ sở hữu, snapshot và dấu runtime trước khi trả; có ghi / rollback / restore đồng thời thì đọc lại. Trip / Decision dùng reader riêng theo journey. Planning (load + read `variants` / `routes` / `lodging` / `suggestions`) render trên chính module writer ngoài journey lock (engine Planning tự giữ khóa phiên; base cold dựng dưới khóa đó) và chỉ trả khi revision, chủ sở hữu, dấu runtime không đổi (mọi rollback / restore / eviction đổi dấu); không fork vì deep-copy phiên nhiều MB tốn 2–8 s. Metadata (`stage`, `revision`, `user_id`, danh sách chuyến, feedback) đọc bằng `Store.peek`: bản sao nông, không request history, không deepcopy; writer dùng `_working` (bản sao sâu), `before` của request là bản mượn, rollback restore từ bản sao. `back` chỉ snapshot bước đích. Paging Decision và `preview-act` Planning vẫn dùng writer vì cấp trạng thái / token cho thao tác sau. `GET /sessions/{id}?view=0` chỉ lấy metadata đã commit, không restore module hay dựng view. Release đã pin mà bị dọn khỏi đĩa → 409 `{"error": "stale_data_version", ...}` (không phục vụ dữ liệu khác thay thế, chưa có thao tác pin lại: người dùng tạo lại chuyến).
+
+**Đo theo request.** Response có `X-Request-ID`; `Server-Timing` và log cùng ID tách xử lý, serialize, DB, chờ khóa, restore / capture và dựng view, không dùng chung span giữa các request.
+
+**Web resume.** Web đọc thẳng stage cần hiển thị sau khi replay receipt còn thiếu, luôn đọc lại trạng thái hiện tại (receipt có thể cũ hơn mutation của thiết bị khác). Consumer đồng thời của cùng stage dùng chung promise đang chạy, không cache view đã xong qua mutation. Response chuyển bước được chuyển tới màn đích, chỉ tái dùng khi revision chưa cũ. Điều hướng / ghi dùng metadata để tìm stage / revision, không dựng view không hiển thị. DecisionProvider không tải trên Lịch trình / Đánh giá; Planning bắt đầu đọc sau xác thực, song song snapshot địa điểm. Warm ảnh chạy nền.
+
+**Giữ trạng thái khi đi lại.** Mở, đọc, xem lý do, chuyển bước không xóa output hay session, không mất trạng thái chốt; quay lại Lịch trình dùng session hiện có nếu đầu vào không đổi. Chỉ thay dữ liệu ảnh hưởng lịch mới bỏ output chốt để tính lại. Plan khôi phục bối cảnh (kể cả điểm xuất phát) từ `outputs.trip`, không lấy cache browser làm nguồn sự thật. Lưu Đánh giá chỉ kiểm quyền và ghi phản hồi, không khôi phục module / corpus.
+
 ## 4. API và SSE
 
 ```sh

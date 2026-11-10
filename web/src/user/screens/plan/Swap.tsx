@@ -6,7 +6,7 @@ import { Icon } from '../../ui/icons'
 import type { Candidate } from './candidates'
 import { norm, shortDate } from './shared'
 
-// Mẫu ui_mock_for_design/designs/itinerary (màn tìm nơi): search on top, filters on the left, places on the right.
+// Mẫu docs/design/mock/designs/itinerary (màn tìm nơi): search on top, filters on the left, places on the right.
 // "Chọn" only asks for a preview of the change; the day is not touched until the preview is applied.
 
 export function Swap({ day, replacing, candidates, people, busy, onOverview, onDay, onPick, onOpen, onMore }: {

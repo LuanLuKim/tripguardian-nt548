@@ -1,6 +1,6 @@
 """Trip redesign part 2a: the day frame is compiled once, in Trip, and physical times always win.
 
-Test ids F1-F17 of docs/plans/2026-10-15-trip-understanding-architecture.md §5.2. Times: buffer 45 min
+Test ids F1-F17 of git 7c4da01:docs/plans/2026-10-15-trip-understanding-architecture.md §5.2. Times: buffer 45 min
 around a coach / flight, 30 min between the hub and the lodging.
 """
 

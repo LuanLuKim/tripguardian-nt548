@@ -1,6 +1,6 @@
 """Trip redesign part 3: one deck card, built by code; ask_user is post-checked; confirm questions by plan consequence.
 
-Test ids DK1-DK20 of docs/plans/2026-10-15-trip-understanding-architecture.md §5.4. A good deck asks
+Test ids DK1-DK20 of git 7c4da01:docs/plans/2026-10-15-trip-understanding-architecture.md §5.4. A good deck asks
 the fewest questions that change the plan, never repeats what the user said, and never blocks the user.
 """
 

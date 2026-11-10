@@ -1,4 +1,4 @@
-"""Planning reads Trip's gate and day frame (docs/plans/2026-10-15-trip-understanding-architecture.md
+"""Planning reads Trip's gate and day frame (git 7c4da01:docs/plans/2026-10-15-trip-understanding-architecture.md
 A1, A5; test Q14 and hand-off H1)."""
 
 import pytest

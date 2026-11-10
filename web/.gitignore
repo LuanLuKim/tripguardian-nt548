@@ -1,6 +1,6 @@
 node_modules/
 dist/
-.deploy-build/
+.deploy-build*/
 shots/
 public/data/
 *.tsbuildinfo

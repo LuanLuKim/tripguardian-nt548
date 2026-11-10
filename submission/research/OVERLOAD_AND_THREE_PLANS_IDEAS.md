@@ -35,7 +35,7 @@ So: **the system warns, but it can only warn and suggest ≤ 2 drops; it never o
 | G5 | "Routing" (`least_travel`) only re-splits days. It cannot use the saved minutes for more places, because membership is fixed | `schedule_trip` |
 | G6 | Overload fixes are 2 single-place drops ranked by score only. No "smallest set of drops that makes it fit", no alternatives | `feasibility.evaluate` |
 | G7 | Decision's `needed` uses `typical` visit time and `2 × distance-to-area`; Planning can shrink visits to `short` (`DayCtx.allow_shrink`) and uses the real matrix. The two can disagree (`infeasible_ratio 1.35` is a hand-set starting value) | `feasibility._visit`, `days.can_start` / `route.py` |
-| G8 | Your 98-places-in-14-days probe shows the outcome: all 98 kept, `ok=false` (`day_window`). Correct and fail-closed, but the user gets "no", not "here are 3 ways to make it work" | `PLANNING_PERFORMANCE.md` |
+| G8 | Your 98-places-in-14-days probe shows the outcome: all 98 kept, `ok=false` (`day_window`). Correct and fail-closed, but the user gets "no", not "here are 3 ways to make it work" | `docs/reports/planning-performance.md` |
 
 G1 is worth fixing even if you do nothing else: the "Chi phí thấp" label currently over-promises.
 
@@ -297,8 +297,8 @@ Decision's `select` is already the slowest step in the 14-day / 56-place probe (
 
 ## 7. Latency and long trips
 
-- Fixture timings in `PLANNING_PERFORMANCE.md` (fake matrix, no Agent): 0.06 s for 28 places / 7 days, 0.93 s for 49 / 7, 1.19 s for 56 / 14. A naive composer is *k* schedule runs × 3 presets, so dense trips could take several seconds. Mitigations: (1) estimate-based batch drop before the first verify, (2) shared `trip.routes` across presets, (3) run the three presets in the background and stream them, with the revision check the preview already uses, (4) cap trim rounds (≈ 5) and report `profile_unavailable` instead of looping.
-- Long trips: `PLANNING_PERFORMANCE.md` describes 7-day chunks (`chunk_days`, `chunk_assignments`) and a per-`order_day` route cache. **None of that is in the GitHub commit I read** (`173d81e` has `max_days: 7` and no `chunk_days`), so it must live in your local/shared checkout. Assuming it lands as described, run the composer **per chunk**, using the chunk assignment from Decision, so one overloaded week does not force drops in a light week; the budget check is already per day. The timings above also come from that unpushed work, so treat them as indicative.
+- Fixture timings in `docs/reports/planning-performance.md` (fake matrix, no Agent): 0.06 s for 28 places / 7 days, 0.93 s for 49 / 7, 1.19 s for 56 / 14. A naive composer is *k* schedule runs × 3 presets, so dense trips could take several seconds. Mitigations: (1) estimate-based batch drop before the first verify, (2) shared `trip.routes` across presets, (3) run the three presets in the background and stream them, with the revision check the preview already uses, (4) cap trim rounds (≈ 5) and report `profile_unavailable` instead of looping.
+- Long trips: `docs/reports/planning-performance.md` describes 7-day chunks (`chunk_days`, `chunk_assignments`) and a per-`order_day` route cache. **None of that is in the GitHub commit I read** (`173d81e` has `max_days: 7` and no `chunk_days`), so it must live in your local/shared checkout. Assuming it lands as described, run the composer **per chunk**, using the chunk assignment from Decision, so one overloaded week does not force drops in a light week; the budget check is already per day. The timings above also come from that unpushed work, so treat them as indicative.
 - Everything stays deterministic and LLM-free: Agent never picks presets or drops places (consistent with the `proposal.py` guard: only `move_place` / `reorder`).
 
 ---

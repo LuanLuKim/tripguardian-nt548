@@ -1,4 +1,4 @@
-"""Simulated users: the chip-only tapper's mapping table and the fixed-form baseline (docs/plans/BENCH.md)."""
+"""Simulated users: the chip-only tapper's mapping table and the fixed-form baseline (docs/TRIP_UNDERSTANDING.md §16)."""
 
 from functools import cache
 

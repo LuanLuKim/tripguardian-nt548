@@ -1,5 +1,5 @@
 #!/bin/sh
-# Re-run gmaps observe on the current prompts / ontology, unattended (docs/plans/CORPUS_QUALITY.md V1).
+# Re-run gmaps observe on the current prompts / ontology, unattended (git 7c4da01:docs/plans/CORPUS_QUALITY.md V1).
 # 1. wait until the UIT Gemma endpoint answers (campus network), checking every 5 min
 # 2. gate: scripts/observe_prompt_eval.py must pass (no known error back, >= 80% positive cases), else stop
 # 3. key the gold labels by content (review.labels.migrate) and keep a copy of the old observations

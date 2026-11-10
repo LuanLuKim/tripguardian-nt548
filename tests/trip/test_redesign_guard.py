@@ -1,7 +1,7 @@
 """Trip redesign part 1: nothing the user says is lost, nothing unsaid is written.
 
-Adversarial cases from docs/plans/2026-10-15-trip-understanding-cases.md §3 (77 personas run on the real
-model); test ids G1-G14 of docs/plans/2026-10-15-trip-understanding-architecture.md §5.1.
+Adversarial cases from git 7c4da01:docs/plans/2026-10-15-trip-understanding-cases.md §3 (77 personas run on the real
+model); test ids G1-G14 of git 7c4da01:docs/plans/2026-10-15-trip-understanding-architecture.md §5.1.
 """
 
 from datetime import date

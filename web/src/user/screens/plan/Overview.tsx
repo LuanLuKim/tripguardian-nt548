@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../../ui/icons'
 import { TripMap } from './TripMap'
 import { dayAreas, placeName, shortDate, visits } from './shared'
 
-// Mẫu ui_mock_for_design/designs/itinerary (màn tổng quan): the whole trip on one map, then the journey top to bottom —
+// Mẫu docs/design/mock/designs/itinerary (màn tổng quan): the whole trip on one map, then the journey top to bottom —
 // arrival, where to sleep, one card per day, departure. A day opens on its own screen.
 
 // How the traveller comes and goes; an unknown way gets a neutral pin, never a plane.

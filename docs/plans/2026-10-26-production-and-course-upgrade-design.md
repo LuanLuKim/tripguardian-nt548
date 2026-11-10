@@ -600,7 +600,7 @@ Nền hiện có: `docs/PLANNING.md`, `docs/COMPANION.md`.
 
 ### D.1 Còn dở từ đợt trước
 
-Plan `docs/plans/2026-10-15-planning-realistic-core.md`: Task 1–8 **đã có code và test** (`overload.py` 3 hướng, `ghosts.py`, `roles.py`, `layout.py`, `frame.py`, thứ tự tốt hơn); kiểm độ thật `tests/planning/test_planning_realism.py` không còn mục chờ (`PENDING = {}`). Mục tiêu trong `tests/planning/bench_realistic.py` tính theo **p95**. Số đo mới nhất `logs/planning_realistic/bench_t8_after.txt` (16/10, OSRM tắt):
+Plan `git 7c4da01:docs/plans/2026-10-15-planning-realistic-core.md`: Task 1–8 **đã có code và test** (`overload.py` 3 hướng, `ghosts.py`, `roles.py`, `layout.py`, `frame.py`, thứ tự tốt hơn); kiểm độ thật `tests/planning/test_planning_realism.py` không còn mục chờ (`PENDING = {}`). Mục tiêu trong `tests/planning/bench_realistic.py` tính theo **p95**. Số đo mới nhất `logs/planning_realistic/bench_t8_after.txt` (16/10, OSRM tắt):
 
 | Thao tác | p50 | p95 | max | Mục tiêu p95 | |
 |---|---|---|---|---|---|

@@ -15,6 +15,9 @@ Hệ thống place intelligence + lập lịch trình cá nhân hóa.
 | Biết code đã làm gì, đã sửa gì | `docs/log/DEV_LOG.md` (chỉ khi cần) |
 | Đổi prompt, model, key | `docs/LLM_PROVIDER.md` |
 | Sửa Web | `docs/Role_Web_Functional_Design.md` (§6 = màn nào ở file nào) |
+| Deploy, cron, sao lưu, sự cố prod | `docs/OPERATIONS.md` (prod chạy `.prod_src/`, chỉ deploy khi chủ dự án yêu cầu) |
+| Đặt file mới ở đâu | `README.md` §Cấu trúc thư mục, `RULE.md` §0.3; script: `scripts/README.md` |
+| Tiếp tục việc dở | `docs/plans/` (spec / bàn giao còn mở) |
 
 ## Bất biến không được phá
 

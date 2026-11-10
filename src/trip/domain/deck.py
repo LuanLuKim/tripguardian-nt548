@@ -15,7 +15,7 @@ class Deck(Frozen):
     left: int = 0
     total: int = 7
     agent: tuple[Tab, ...] = ()  # checked questions waiting behind the required tabs
-    at: Literal["understand", "gate"] = "understand"
+    at: Literal["understand", "gate", "plan"] = "understand"
     agent_only: bool = False
     ask: str | None = None  # the required topic the agent chose to ask now (ask_required)
     ask_question: str | None = None  # the agent's own words for that question; the topic's default text is the gate's
@@ -139,14 +139,18 @@ def build(state: TripState, catalog: Catalog, cfg: Settings, agent=(), at="under
     """The questions the trip still needs. On the Understand screen the deck shows ONE question: the required topic the
     agent chose (`ask`, in the agent's words `question`), else the agent's own follow-up or a pending drill, else a
     confirmation. The app never opens a required topic by itself there: the agent asks it when the talk reaches it,
-    in words that fit the talk. The gate (read-back before planning) shows every missing topic at once, in the topic's
-    default words."""
+    in words that fit the talk. The gate only shows missing dates and care, without optional confirmations."""
     from .drill import refresh
     from .required import tabs
-    from .readiness import missing
+    from .readiness import GATE_REQUIRED, PLAN_FILL, missing
 
     state = refresh(state, catalog, cfg)
-    required = tabs(state, cfg)
+    required = tabs(state, cfg, gate=at == "gate")
+    if at == "gate":
+        return Deck(tabs=required, left=len(required), total=len(GATE_REQUIRED), at=at)
+    if at == "plan":  # the Lịch trình page: the optional groups still empty, each one answered when the user chooses
+        fill = tuple(t for t in required if t.qid in PLAN_FILL)
+        return Deck(tabs=fill, left=len(fill), total=len(PLAN_FILL), at=at)
     if at == "understand":
         required = tuple(t for t in required if t.qid not in state.meta.declined)
     from . import ask as asking  # not `ask`: that is the chosen topic
@@ -176,9 +180,6 @@ def build(state: TripState, catalog: Catalog, cfg: Settings, agent=(), at="under
     order = {"drill": 0, "confirm": 1, "agent": 2, "maybe": 3}
     optional = tuple(sorted(optional, key=lambda t: order[t.kind]))
     left = len(missing(state, cfg.required))
-    if at == "gate":
-        optional = tuple(t for t in optional if t.kind == "confirm")
-        return Deck(tabs=required + optional[:max(0, cfg.max_tabs - len(required))], left=left, agent=tuple(agent), at=at)  # every missing required topic: one round trip
     question = (question or "").strip() or None
     chosen = [t.model_copy(update={"question": question}) if question else t for t in required if t.qid == ask]
     follow = [t for t in optional if t.kind in ("drill", "agent")]

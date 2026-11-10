@@ -219,7 +219,7 @@ assistant:
   max_tokens: 900
   # An assistant edit that leaves one of these (or any physical violation) is taken back; every other new violation stays on the
   # plan as a flag (the buttons' behaviour, docs/PLANNING.md): the plan is then not confirmable until the user fixes it.
-  blocking_violations: [hard, departure, duplicate, anchor, overlap, travel, hazard]
+  serious_violations: [hard, departure, duplicate, anchor, overlap, travel, hazard]   # said first, never refused (owner 2026-11-09)
 
 # D.2 Local Expert: one LLM pass (Extractor role, LAN Gemma; UIT Gemma when that errors) after the validator, on a
 # confirmed plan. Runs in the background notify worker after the confirm (never in front of the user); findings reach

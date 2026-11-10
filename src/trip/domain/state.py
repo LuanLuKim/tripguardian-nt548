@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import functools
 import re
-from datetime import date
+from datetime import date, datetime, timedelta
 from datetime import date as CalendarDate
 from typing import Any, Generic, Literal, TypeVar
 
@@ -475,6 +475,35 @@ def _kind(field: str):
     return TripState.model_fields[field].annotation
 
 
+def _move_travel(state: "TripState", f: str, value) -> "TripState":
+    """The arrival and departure the trip holds on its OLD dates move with a new start date (same offset from the first
+    day) or, for the departure, a new length (it stays on the last day): "tới lúc 9 giờ" was dated from "cuối tuần sau"
+    = 21/11, and the dates then set to 14/11 would leave every day with no time. A moment outside the old dates was
+    said with its own date and stays (a physical bound is never moved to make room)."""
+    if not (state.start_date.known and state.days.known):
+        return state
+    old_start, old_days = state.start_date.value, state.days.value
+    new_start = value if f == "start_date" else old_start
+    new_days = int(value) if f == "days" else old_days
+    if (new_start, new_days) == (old_start, old_days):
+        return state
+    old_last = old_start + timedelta(days=old_days - 1)
+    new_last = new_start + timedelta(days=new_days - 1)
+    frame = state.frame
+    updates = {}
+    for key, old_anchor, new_anchor in (("arrive", old_start, new_start), ("leave", old_last, new_last)):
+        cur = getattr(frame, key)
+        if not cur.known:
+            continue
+        at = datetime.fromisoformat(cur.value.at)
+        if not old_start <= at.date() <= old_last:
+            continue
+        moved = at + (new_anchor - old_anchor) if key == "arrive" else datetime.combine(
+            new_last - (old_last - at.date()), at.time())
+        updates[key] = cur.model_copy(update={"value": cur.value.model_copy(update={"at": moved.isoformat(timespec="minutes")})})
+    return state.model_copy(update={"frame": frame.model_copy(update=updates)}) if updates else state
+
+
 def apply(state: TripState, u: Update) -> TripState:
     """One validated change. Raises ValueError (pydantic ValidationError included) when the value does not fit."""
     status = "confirmed" if u.source == "user" and u.confidence == "high" else "unknown"
@@ -498,7 +527,11 @@ def apply(state: TripState, u: Update) -> TripState:
         if isinstance(cur, Field):
             if cur.locked and u.source != "user":
                 return state
-            raw = {} if u.op == "remove" else dict(value=u.value, source=u.source, confidence=u.confidence,
+            value = u.value
+            if key == "meals" and u.op != "remove" and isinstance(value, dict) and cur.value is not None:
+                old = cur.value.model_dump()
+                value = {**old, **value, "by": {**old.get("by", {}), **value.get("by", {})}}
+            raw = {} if u.op == "remove" else dict(value=value, source=u.source, confidence=u.confidence,
                                                    status=status, evidence=(u.evidence,))
         else:
             raw = u.value
@@ -548,6 +581,8 @@ def apply(state: TripState, u: Update) -> TripState:
             state = state.model_copy(update={"month_part": _kind("month_part")()})  # "cuối" was said of the old month
         if f == "days" and state.nights.known and state.nights.value > u.value:
             state = state.model_copy(update={"nights": _kind("nights")()})  # said of the longer trip
+        if f in ("start_date", "days"):  # an arrival / departure the app dated from the old dates moves with them
+            state = _move_travel(state, f, u.value)
         if f in {"budget_vnd", "budget_scope", "budget_unlimited"} and u.source == "user":
             if "budget" in state.meta.declined:
                 state = state.model_copy(update={key: _kind(key)() for key in
@@ -848,7 +883,7 @@ class NoveltySpec(Frozen):
 
 class Readiness(Frozen):
     missing: tuple[str, ...] = ()
-    readback_ok: bool = False
+    readback_ok: bool = False  # legacy confirmation metadata; never a planning requirement
 
 
 class SearchInput(Frozen):

@@ -1,7 +1,7 @@
 """The seven required tabs, built from missing user answers rather than model text."""
 
 from .deck import Option, Tab, exits
-from .readiness import TITLE, boundary_answered, missing
+from .readiness import TITLE, boundary_answered, gate_missing, missing
 from .state import Draft, TripState
 
 
@@ -11,7 +11,7 @@ def planning(state: TripState) -> bool:
     return state.meta.intent == "plan" or state.start_date.known or state.days.known
 
 
-def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
+def tabs(state: TripState, cfg, *, gate: bool = False) -> tuple[Tab, ...]:
     def answered(f):
         return f.known and f.source == "user"
 
@@ -24,7 +24,7 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
                       prefilled=selected, because=f"vì bạn nói '{quote}'" if quote else "theo thông tin dự kiến" if selected else "")
 
     out = []
-    for key, _ in missing(state, cfg.required):
+    for key, _ in (gate_missing(state) if gate else missing(state, cfg.required)):
         inputs, options, multi = (), (), False
         if key == "trip":
             header, question, why = TITLE["trip"], "Bạn đi ngày nào, bắt đầu và kết thúc lúc mấy giờ?", "Để biết thời gian có thể đi chơi."
@@ -32,6 +32,8 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
                 ("dates", answered(state.start_date) and answered(state.days)),
                 ("start", boundary_answered(state, "start")),
                 ("end", boundary_answered(state, "end"))) if not ok)
+            if gate:
+                inputs = ("dates",)
             from datetime import timedelta
             from .frame import FrameDefaults, compile_frame
             from .logistics import travel_bound, travel_moments, with_travel_points
@@ -61,7 +63,8 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
                 end = start + timedelta(days=state.days.value - 1)
                 def day(d):
                     return f"{'CN' if d.weekday() == 6 else 'T' + str(d.weekday() + 2)} {d:%d/%m}"
-                why = f"Bạn đi {day(start)} – {day(end)}. Mình dùng giờ để chia lịch."
+                why = (f"Bạn đi {day(start)} – {day(end)}." if gate else
+                       f"Bạn đi {day(start)} – {day(end)}. Mình dùng giờ để chia lịch.")
             opts = []
             for slot, label, field, moment, transit, default in (
                     ("start", "Bắt đầu", "checkin_at", state.frame.arrive, state.inbound, cfg.frame["first_start"]),
@@ -181,7 +184,7 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
             header, question, why = TITLE["care"], "Có điều gì về sức khỏe, đi lại hay ăn uống cần lưu ý?", "Để tránh nơi không phù hợp với người trong nhóm."
             from .diet import question as diet_question
             if pending := diet_question(state):
-                if state.meta.diet_stalled or "care" in state.meta.declined:
+                if not gate and (state.meta.diet_stalled or "care" in state.meta.declined):
                     continue
                 out.append(Tab(qid="care", kind="required", header=header, question=pending, why=why,
                                options=(Option(id="other", label="Trả lời, tự gõ"),)))
@@ -239,5 +242,5 @@ def tabs(state: TripState, cfg) -> tuple[Tab, ...]:
         if key in state.meta.conflicts:
             why = "Bạn nói cả hai; chọn điều bạn muốn cho chuyến này."
         out.append(Tab(qid=key, kind="required", header=header, question=question, why=why, multi=multi,
-                       inputs=inputs, options=options + exits()))
+                       inputs=inputs, options=options + (exits()[:1] if gate else exits())))
     return tuple(out)

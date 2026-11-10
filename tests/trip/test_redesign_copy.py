@@ -25,8 +25,9 @@ def said(value, source="user", quote="q"):
 DATES = {"start_date": said("2026-11-20"), "days": said(3)}  # Friday 20/11 -> Sunday 22/11
 
 
-def tabs(state, catalog, cfg, at="gate"):
-    return {t.qid: t for t in deck.build(state, catalog, cfg, at=at).tabs}
+def tabs(state, catalog, cfg):
+    from trip.domain.required import tabs as required_tabs
+    return {t.qid: t for t in required_tabs(state, cfg)}  # Optional topic copy remains available in Understand.
 
 
 def real(options):

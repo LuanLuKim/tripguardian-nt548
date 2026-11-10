@@ -8,7 +8,10 @@ observation/source/time. Context chỉ đọc; membership và validator vẫn ki
 
 ## Mục tiêu
 
-Từ **tập địa điểm đã xác nhận** của Place Decision, dựng 2–3 **phương án lịch trình** đã kiểm tra, mỗi phương án tối ưu một mục tiêu khác nhau, sau khi người dùng chọn **chỗ ở bắt buộc**, rồi để người dùng chọn phương án, sửa và chốt. Luồng Web: chọn địa điểm → chọn chỗ ở → phương án bình thường hoặc quá tải. Đổi chỗ ở phải quay lại màn chọn chỗ ở.
+Từ **tập địa điểm đã xác nhận** của Place Decision, dựng **lịch trình** đã kiểm tra hoặc các phương án khi quá tải, rồi để người dùng sửa và chốt. Chỗ ở là tùy chọn; khi chưa rõ vẫn dựng lịch với điểm nền mặc định, không ghi mặc định thành nơi lưu trú của người dùng.
+
+Cổng lập lịch chỉ cần ngày bắt đầu + số ngày và nhóm lưu ý sức khỏe / ăn uống; tín hiệu sức khỏe hoặc câu hỏi ăn kiêng còn mở vẫn chặn. `SearchInput.readiness.missing` chỉ chứa `trip` / `care`; `Engine.create` không yêu cầu `readback_ok`, không chặn vì người đi cùng, phương tiện, nhịp độ, ngân sách hay chỗ ở chưa biết (quyết định chủ dự án 10/11/2026). Giờ thiếu dùng `FrameDefaults`, nhịp thiếu dùng `normal`, phương tiện thiếu dùng ước lượng di chuyển sẵn có, ngân sách thiếu không đặt trần; các giá trị đầu vào vẫn `unknown`. Kết quả là lịch bình thường, không gắn nhãn nháp vì thiếu các thông tin này. Trường read-back/digest giữ tương thích, không phải bước duyệt trước lập lịch.
+Trang Lịch trình có thể điền thêm đi cùng, phương tiện, nhịp độ, ngân sách (`PLAN_FILL`): `Deck.at="plan"`, `TurnInput.at="plan"`, đọc qua `read/trip/readback` (`fill`). Mỗi câu trả lời dựng lại lịch từ `decision` (chủ dự án 10/11/2026).
 
 Đích: tối ưu có thật (đo được so với baseline), kiểm tra tất định (lịch trông hợp lý là chưa đủ), và giải thích được từng lựa chọn — kể cả cái đã phải hy sinh.
 
@@ -133,7 +136,7 @@ Một ngày có thể đổi chính kế hoạch: thời tiết xấu hơn mức
 
 Validate là chỗ duy nhất quyết định: nơi bị hazard mà vẫn có trong lịch là vi phạm `hazard`; không ngày nào xếp được → bản nháp mở được kèm vi phạm `hazard`, người dùng tự quyết định. Dữ liệu vắng thì không kết luận: ngày không có số đo không thành `severe`, và "không có thông báo" không bao giờ được viết thành "an toàn".
 
-Plan Output (qua `shared_output` và view của Engine) thêm `day_conditions` (từng ngày, chỉ khi có điều kiện) và `crowd_tips`. Web hiện chúng trên ngày đang chọn (`web/src/user/screens/Plan.tsx`).
+Plan Output (qua `shared_output` và view của Engine) thêm `day_conditions` (từng ngày, chỉ khi có điều kiện; ngày xấu mang `weather_cause`, cùng chữ với cảnh báo: "gió mạnh", "dông và mưa lớn") và `crowd_tips`. Web hiện chúng trên ngày đang chọn (`web/src/user/screens/plan/parts.tsx` `Conditions`), gọi ngày xấu bằng `weather_cause`.
 
 ### Trạng thái vận hành theo thời điểm
 
@@ -179,7 +182,7 @@ Plan Output (qua `shared_output` và view của Engine) thêm `day_conditions` (
 
 - Khung ngày: ngày đầu từ `checkin_at`; ngày cuối đến `checkout_at`; ngày giữa `day_start..day_end`.
 - `layout.assign`: mỗi ngày cắt thành các đoạn trống giữa những khối giờ cố định của người dùng; một đoạn chứa số phút còn lại sau bữa và nghỉ. Nơi khó xếp (có giờ trong ngày, ít ngày mở, xa chỗ ở) vào trước, mỗi nơi lấy đoạn và vị trí **thêm ít phút đường nhất** (cộng độ đầy của ngày, ngày lệch khu vực, mưa / đông của ngày theo mục tiêu), rồi đổi chỗ từng nơi giữa các ngày để cải thiện. Nơi thừa vẫn có thể vào khi một ngày nhường hết cho ngày khác hoặc hai ngày đổi nhau. Tất định. Không còn gom cụm và DP trên tập con (`cluster.py`, `assign_days` đã gỡ 2026-10-29).
-- Số nơi theo nhịp người dùng nói hoặc suy ra trong chuyến (`sources.pace`: `user` / `inferred`, mức `per_day`): ưu tiên ngày còn dưới mức trước khi gom thêm để tiết kiệm đường; không loại nơi chỉ vì vượt mức nếu ngày khác không chứa được. Với tập đã xếp đủ, ngày trống không có lịch bận được nhận một nơi từ ngày có ít nhất hai nơi khi mô phỏng cả hai ngày vẫn hợp lệ, giữ đủ bữa và tổng đường không tăng; không đổi tập nơi của bài tìm hướng quá tải.
+- Số nơi theo nhịp người dùng nói hoặc suy ra trong chuyến (`sources.pace`: `user` / `inferred`, mức `per_day`): ưu tiên ngày còn dưới mức trước khi gom thêm để tiết kiệm đường; không loại nơi chỉ vì vượt mức nếu ngày khác không chứa được. Với tập đã xếp đủ, ngày trống không có lịch bận được nhận một nơi từ ngày có ít nhất hai nơi khi mô phỏng cả hai ngày vẫn hợp lệ, giữ đủ bữa và tổng đường tăng không quá `spread_extra_min` (mặc định 45 phút mỗi nơi dời, `planning/settings.py`: một ngày riêng luôn tốn một lượt đi-về từ chỗ ở, nên đòi "không tăng" để lại ngày trống ở mọi chuyến có chỗ ở); chọn nơi dời tốn ít đường nhất, cụm xa vượt ngưỡng thì ở cùng nhau; không đổi tập nơi của bài tìm hướng quá tải.
 - Chỉ kéo ngày sớm và thêm nghỉ trưa bù khi có ý muốn săn mây / bình minh (`soft_weights`, `time_preferences` hoặc `frame.periods` phù hợp nơi) và giờ ghé thật sự trước khung ngày. Chỉ chọn một nơi nổi tiếng bình minh không phải tín hiệu muốn dậy sớm.
 - `days.py` chỉ còn các số hạng rủi ro mà `objectives.metrics` đọc: `day_risk`, `exposed_risk`, `repeats`, `pref_risk`.
 - Ghim: anchor giờ cố định ghim ngày + giờ; nơi chỉ mở vài ngày trong chuyến ghim ngày; `locked` cùng ngày người dùng đã chỉ định không đổi. Nơi không vào được ngày nào trả về `leftover`, không bị bỏ ngầm; nơi người dùng bắt buộc đi vẫn được đặt dù không vừa (kiểm tra cuối nói rõ).
@@ -542,7 +545,7 @@ Một chỗ duy nhất cho mọi ngưỡng của Planning:
 | Nhịp độ | `visit_key`, `per_day`, `buffer_min` (+ phụ phí `long_leg_min`, `buffer_extra_long`, `buffer_extra_uncertain`, `buffer_extra_rain`), `rest_min`, `max_consecutive_min` |
 | Bữa ăn, buổi | `meals_per_day`, `meal_min`, `meal_durations`, `meal_windows`, `pins` |
 | Độ phù hợp giờ | `time_suitability`: `enabled`, `periods`, `sun_offsets`, `heuristic_weight`, `penalty_min`, `duration_loss_min`, `overload_weight`, `recommendation_gap_min`, `recommendations_per_gap`, `timing_bonus`, `timing_penalty`, `night_road_penalty`, `tod` |
-| Ngày, thứ tự | `exact_n`, `improve_passes`, `weights` (`travel`, `overflow`, `count`, `closed`, `crowd`) |
+| Ngày, thứ tự | `exact_n`, `improve_passes`, `weights` (`travel`, `overflow`, `count`, `closed`, `crowd`); `spread_extra_min` có default trong `planning/settings.py`, ghi vào YAML khi cần đổi |
 | Mục tiêu, phương án | `objective_weights` (trộn lên `weights` khi chia ngày: `travel`, `exposed`, `repeat`, `pref_risk`) |
 | Điều kiện ngày | `crowd_busy_pct`, `conditions` (`heavy_rain_mm`, `heavy_gust_kmh`, `severe_rain_mm`, `severe_gust_kmh`, `crowd_visit_pct`, `crowd_buffer_min`, `crowd_avoid_factor`, `closure_buffer_min`) |
 | Độ vững | `rain_high`, `robustness` (kịch bản nhiễu có `tier` small / large, `solid_max_lost`, `feasible_max_lost`) |
@@ -626,6 +629,8 @@ Planning tối ưu cả giờ mở cửa, chờ và cửa sổ thời gian, khô
 chuyển có thể dài hơn baseline; `avg_saved_vs_baseline_pct` có thể âm và được báo đúng dấu.
 
 ## Trợ lý Lịch trình — `assistant.py`
+
+Mỗi stage chỉ có một cuộc trò chuyện hiện tại, không có danh sách lịch sử. Nút `Cuộc trò chuyện mới` ở đầu trợ lý lưu mốc `new_chat` trong `Session.chat`, rồi xóa riêng tin Lịch trình trên client; chỉ hoạt động khi có tin và không đang trả lời. Ngữ cảnh hội thoại lượt sau bắt đầu sau mốc; các lượt cũ và tin client vẫn lưu trong snapshot server để phân tích, không cắt bỏ khi thêm lượt. Không đặt lại lịch, undo hay dữ kiện chuyến. Quyết định chủ dự án 10/11/2026; giao thức ở `docs/AGENT_HARNESS.md` §4.
 
 Dựng prompt không quét evidence của corpus: context chỉ mang binding và trạng thái `not_requested`; facts về nơi được đọc bằng shared read tools khi cần. `recovery_actions` trả nút sửa có `action`, `label`, `reason`, `confirmable`: với điểm không khóa gây lỗi, thử bỏ điểm và chỉ đề xuất nếu toàn lịch còn lại chốt được. Vi phạm vẫn hiển thị; Chốt không từ chối vì vi phạm, chỗ ở thiếu, nơi bắt buộc chưa xếp được hay nơi đã chọn không vừa số ngày: màn hình hỏi "Vẫn chốt?", lịch đã chốt mang các điều đó thành cảnh báo (`no_lodging`, `lodging_unfit`, `required_unplaced`, `picks_left_out`); chưa chọn phương án thì dùng phương án đầu.
 

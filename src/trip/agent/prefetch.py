@@ -71,8 +71,8 @@ def _aliases(catalog: Catalog) -> list[tuple[str, frozenset[str], int, object]]:
 
 
 def candidates(text: str, catalog: Catalog, k: int = 6) -> list[tuple[str, str]]:
-    """(id, name) of the places the message may name: a whole name inside the message first, then names whose
-    distinctive words are all in it; longer, then more reviewed first. A lodging only by its whole name."""
+    """(id, name) of the places the message may name: a whole name inside the message first, then a short message
+    that is a phrase of a longer name, then names whose distinctive words are all in it; longer, then more reviewed first. A lodging only by its whole name."""
     m = vnorm(text)
     padded, words = f" {m} ", set(m.split())
     hits = []
@@ -81,6 +81,10 @@ def candidates(text: str, catalog: Catalog, k: int = 6) -> list[tuple[str, str]]
             continue  # a city/category-only name is context, not a named POI
         if f" {name} " in padded:
             hits.append((2, len(name), voices, p))
+        elif len(words) >= 2 and len(m) <= 40 and f" {m} " in f" {name} " and distinct & words:
+            # a generic phrase names no one place; a stay counts here too, so "đồi chè" stays ambiguous with its hotel
+            # the whole short reference inside a longer name: "Tao Ngộ" is "Lẩu Gà Lá É Tao Ngộ 5", not "Ngộ coffee"
+            hits.append((1.5, len(m), voices, p))
         elif distinct and distinct <= words and p.category_group != "stay":
             hits.append((1, len(" ".join(distinct)), voices, p))
     hits.sort(key=lambda h: (-h[0], -h[1], -h[2]))
@@ -106,10 +110,11 @@ def place_id(ref: str, catalog: Catalog, prefer: set[str] = frozenset()) -> str 
     exact = [p.id for name, _, _, p in _aliases(catalog) if name == r]
     if len(exact) == 1:
         return exact[0]
-    hits = [pid for pid, _ in candidates(ref, catalog, 6)] if not exact else exact
-    preferred = [pid for pid in hits if pid in prefer]
+    wide = [pid for pid, _ in candidates(ref, catalog, 40)] if not exact else exact
+    preferred = [pid for pid in wide if pid in prefer]  # a place already shown wins even past the first six names
     if len(preferred) == 1:
         return preferred[0]
+    hits = wide[:6]
     return hits[0] if len(hits) == 1 else None
 
 
@@ -213,6 +218,28 @@ def start_weather(state: TripState, tools) -> dict:
     return {("weather", state.start_date.value.isoformat()): future}
 
 
+WEEK = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+HOUR = re.compile(r"\b(\d{1,2})\s*(?:h|giờ|g)\s*(\d{2})?\s*(sáng|trưa|chiều|tối|đêm|khuya)?(?!\w)", re.I)
+
+
+def asked_hour(text: str) -> str | None:
+    """The clock time a message asks places to be open at ("11h đêm" -> 23:00, "10 giờ tối" -> 22:00, "23h" -> 23:00,
+    "ăn khuya" -> 22:00), or None. Only an hour the user wrote, or "khuya"; never a guess from other words."""
+    t = unicodedata.normalize("NFC", text).lower()
+    if not re.search(r"\b(mở|mở cửa|còn|ăn|uống|đi|chỗ|quán|nơi)\b", t):
+        return None
+    if m := HOUR.search(t):
+        h, mm, part = int(m.group(1)), int(m.group(2) or 0), m.group(3)
+        if part in ("chiều", "tối", "đêm", "khuya") and h < 12:
+            h += 12
+        if part in ("đêm", "khuya") and h == 24:
+            h = 23
+        if 0 <= h <= 23 and 0 <= mm < 60:
+            return f"{h:02d}:{mm:02d}"
+        return None
+    return "22:00" if re.search(r"\bkhuya\b|\băn đêm\b", t) else None
+
+
 def prepare(route: Route, text: str, state: TripState, tools, today: date, wait_s: float, early: dict | None = None) -> dict:
     """Run the read tools the route needs at once through `tools` (TurnTools), wait at most `wait_s`, and return what
     is ready as the agent's data: {"tim_noi", "chi_tiet", "thoi_tiet", "khoang_cach", "xu_huong"} (only keys with data). A tool
@@ -221,7 +248,10 @@ def prepare(route: Route, text: str, state: TripState, tools, today: date, wait_
     named = [p for p in route.places if p != CENTER]
     jobs: list[tuple[str, str, dict]] = []
     if "places" in route.groups:
-        jobs.append(("tim_noi", "find_places", {"criteria": {"text": places_query(text)}}))
+        criteria: dict = {"text": places_query(text)}
+        if (hhmm := asked_hour(text)) is not None:  # "11h đêm còn chỗ nào ăn": only places open then, not any place
+            criteria["open_at"] = [WEEK[today.weekday()], hhmm]
+        jobs.append(("tim_noi", "find_places", {"criteria": criteria}))
     if "detail" in route.groups:
         jobs += [("chi_tiet", "get_place", {"id": pid}) for pid in named]
     days = []

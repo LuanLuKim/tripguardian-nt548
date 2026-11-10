@@ -61,6 +61,22 @@ def turn(e, sid, text):
     return events
 
 
+def test_new_chat_keeps_turns_in_snapshot_but_not_in_next_prompt():
+    from planning.tools import Tools
+    chat = Script(say('Mình vẫn ở đây.'), say('Mình nghe bạn.'))
+    e, sid = started(chat)
+    turn(e, sid, 'còn đó không')
+    e.store.get(sid).chat.extend({'text': f'archived {i}', 'say': 'old reply'} for i in range(45))
+    before = e.store.get(sid).state.model_dump()
+    tools = Tools(e)
+    tools.apply(sid, 'new_chat', {'messages': []}, lambda *_: None)
+    assert e.store.get(sid).state.model_dump() == before
+    turn(e, sid, 'mình muốn hỏi tiếp')
+    assert not any(m.get('content') == 'Mình vẫn ở đây.' for m in chat.seen[1][0])
+    assert tools.snapshot(sid)['chat'][0] == {'text': 'còn đó không', 'say': 'Mình vẫn ở đây.'}
+    assert len(tools.snapshot(sid)['chat']) == 48
+
+
 def said(events):
     return next(d for ev, d in events if ev == "say")["replace"]
 
@@ -172,10 +188,10 @@ def test_an_edit_that_leaves_a_soft_flag_is_applied_and_the_flag_is_reported():
     assert [ev for ev, _ in events] == ["say", "view", "done"]
 
 
-def test_an_edit_that_breaks_a_physical_rule_is_taken_back_and_reported(monkeypatch):
+def test_an_edit_that_breaks_a_physical_rule_is_kept_and_reported_as_serious(monkeypatch):
+    # owner 2026-11-09: never refuse the user; a physical break is said first and plainly, the user decides (undo offered)
     e, sid = started(None)
-    position, shown = e._get(sid).position, e.load(sid)["view"]["itinerary"]
-    day1 = day_of(e, sid, "s1")
+    position = e._get(sid).position
     real = e.act
 
     def act(sid_, action):   # the engine lays the day out as usual, then a physical violation shows up
@@ -186,13 +202,13 @@ def test_an_edit_that_breaks_a_physical_rule_is_taken_back_and_reported(monkeypa
                                                                               "detail": "misses the departure"}]
         return out
     monkeypatch.setattr(e, "act", act)
-    e.assistant = chat = Script(reply(call("move_place", place="s1", day=other_day(e, sid, "s1") + 1, quote="chuyển s1 sang ngày khác")),
-                                say("Mình chưa chuyển được vì lỡ giờ rời."))
+    target = other_day(e, sid, "s1")
+    e.assistant = chat = Script(reply(call("move_place", place="s1", day=target + 1, quote="chuyển s1 sang ngày khác")),
+                                say("Mình đã chuyển, nhưng ngày đó có thể lỡ giờ rời; bạn muốn hoàn tác không?"))
     turn(e, sid, "chuyển s1 sang ngày khác")
     result = tool_results(chat.seen[1][0])[0]
-    assert "error" in result and result["would_break"][0]["rule"] == "departure" and result["physical"] is True
-    assert e._get(sid).position == position and day_of(e, sid, "s1") == day1
-    assert e.load(sid)["view"]["itinerary"] == shown
+    assert "error" not in result and result["serious"][0]["rule"] == "departure" and result["physical"] is True
+    assert e._get(sid).position == position + 1 and day_of(e, sid, "s1") == target
 
 
 def test_a_reorder_is_applied_and_reports_what_it_leaves_flagged():
@@ -313,3 +329,30 @@ def test_assistant_off_keeps_the_older_agent_path():
     e, sid = started(None)
     events = turn(e, sid, "xin chào")
     assert [ev for ev, _ in events][-2:] == ["view", "done"]
+
+
+# ---------- the stay and what the layout favours ----------
+
+def test_lodging_options_lists_the_offered_stays_and_pick_lodging_takes_only_those():
+    e, sid = started(None)
+    stays = e.load(sid)["view"]["lodging"]["candidates"]
+    assert stays, "the fixture offers stays"
+    pick = stays[-1]["id"]
+    e.assistant = chat = Script(reply(call("lodging_options")), reply(call("pick_lodging", id=pick, quote="đổi sang chỗ đó")),
+                                say("Mình đổi chỗ ở rồi."))
+    turn(e, sid, "đổi sang chỗ đó nhé")
+    listed, picked = tool_results(chat.seen[2][0])
+    assert pick in {s["id"] for s in listed["stays"]} and "error" not in picked
+    assert e.load(sid)["view"]["state"]["lodging_id"] == pick
+    e.assistant = chat = Script(reply(call("pick_lodging", id="not-a-stay", quote="lấy chỗ kia")), say("Chưa đổi được."))
+    turn(e, sid, "lấy chỗ kia")
+    assert "error" in tool_results(chat.seen[1][0])[0]
+
+
+def test_set_lodging_budget_and_set_priority_go_through_the_buttons_acts():
+    e, sid = started(None)
+    e.assistant = Script(reply(call("set_lodging_budget", max_per_night=800000, quote="dưới 800k một đêm"),
+                               call("set_priority", priority="least_travel", quote="ít đi lại")), say("Đã chỉnh."))
+    turn(e, sid, "chỗ ở dưới 800k một đêm, xếp sao cho ít đi lại")
+    st = e.load(sid)["view"]["state"]
+    assert st["budget_override"] == 800000 and st["objective_override"] == "least_travel"

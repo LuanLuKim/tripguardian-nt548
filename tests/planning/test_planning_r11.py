@@ -19,14 +19,10 @@ def timeout_engine(monkeypatch):
 
 def test_timeout_draft_accepts_drop_before_a_variant_was_chosen(monkeypatch):
     e, sid = timeout_engine(monkeypatch)
-    with pytest.raises(NotConfirmable):
-        e.confirm(sid)
     view = e.act(sid, {"type": "drop_place", "place": "c0"})["view"]
     assert 'c0' not in {i.get('place_id') for d in view['itinerary'] for i in d['items']}
     assert view['state']['chosen_variant'] == 'main'
-    if not e._view_confirmable(view):
-        with pytest.raises(NotConfirmable):
-            e.confirm(sid)
+    e.confirm(sid)  # owner 2026-11-09: never refused; what is left out is a warning on the output
     e._base.clear()
     e._schedules.clear()
     assert e.load(sid)['view']['state'] == view['state']
@@ -58,7 +54,7 @@ def test_edit_reports_remaining_violation_even_when_its_key_already_existed():
     e.act(sid, {'type': 'set_day_window', 'day': 0, 'start': '20:50', 'end': '21:00'})
     turn = PlanTurn(e, sid, 'bắt đầu muộn hơn', date(2026, 11, 4))
     result = turn.commit({'type': 'set_day_window', 'day': 0, 'start': '20:55', 'end': '21:00'})
-    assert result.get('flagged') and 'fixed' in result['note']
+    assert result.get('flagged') and 'fix' in result['note']   # the note tells what fixes it
     assert e.confirm(sid)['violations']   # flagged, not gated: the user may still confirm
 
 

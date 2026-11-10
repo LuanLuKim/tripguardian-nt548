@@ -81,6 +81,7 @@ class Settings:
     direction_workers: int = 3        # overload directions searched in forked processes at once (1 = in this process)
     chunk_days: int = 7
     long_trip_exact_n: int = 5
+    spread_extra_min: int = 45        # road a fitting selection may add to give an otherwise empty day one stop (layout.assign)
     composer: dict = field(default_factory=lambda: {"rho": 0.9, "alpha": 0.7, "tight_ratio": 0.8,
                                                    "per_day_max": {"slow": 4, "normal": 5, "packed": 7},
                                                    "search_limit": 120, "transport_vnd_per_min": {}})

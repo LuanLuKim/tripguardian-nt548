@@ -17,8 +17,8 @@ def engine(recs):
 
 
 @pytest.mark.parametrize("readiness, missing", [
-    ({"missing": ["pace", "lodging"], "readback_ok": True}, ["pace", "lodging"]),
-    ({"missing": [], "readback_ok": False}, ["readback"]),
+    ({"missing": ["trip", "care"], "readback_ok": True}, ["trip", "care"]),
+    ({"missing": ["care"], "readback_ok": False}, ["care"]),
 ])
 def test_q14_planning_refuses_a_trip_that_is_not_ready(readiness, missing):
     d, recs = sample_trip()
@@ -28,10 +28,34 @@ def test_q14_planning_refuses_a_trip_that_is_not_ready(readiness, missing):
     assert err.value.missing == missing
 
 
-def test_q14_a_ready_trip_is_planned():
+@pytest.mark.parametrize("legacy_missing", [[], ["companions", "mobility", "pace", "budget", "lodging", "readback"]])
+def test_q14_a_ready_trip_is_planned_without_readback(legacy_missing):
     d, recs = sample_trip()
-    d["trip_context"]["readiness"] = {"missing": [], "readback_ok": True}
+    d["trip_context"]["readiness"] = {"missing": legacy_missing, "readback_ok": False}
     assert engine(recs).create(d)["id"]
+
+
+def test_dates_and_care_produce_a_schedule_with_all_optional_inputs_unknown():
+    from trip import TripState, compile_search_input
+    from datetime import date
+
+    def said(value):
+        return {"value": value, "source": "user", "status": "confirmed", "evidence": [{"turn": 1, "quote": "q"}]}
+
+    state = TripState.model_validate({"start_date": said(date(2026, 12, 12)), "days": said(2),
+                                      "care": said("none")})
+    search = compile_search_input(state)
+    assert search.readiness.missing == () and search.readiness.readback_ok is False
+    assert all(not getattr(state, key).known for key in ("companions", "people", "mobility", "pace", "budget_vnd", "lodging"))
+    d, recs = sample_trip()
+    d["trip_context"] = search.model_dump(mode="json")
+    e = engine(recs)
+    e.background = False
+    created = e.create(d)
+    view = created["view"]
+    assert len(view["itinerary"]) == 2
+    assert any(day["items"] for day in view["itinerary"])
+    assert e.store.get(created["id"]).decision["trip_context"] == d["trip_context"]
 
 
 FRAME = {"days": [

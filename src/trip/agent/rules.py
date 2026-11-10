@@ -7,14 +7,17 @@ import re
 from agents.assistant.loop import LoopHost
 
 from ..domain.guard import trim_say
-from ..domain.text import fold
+from ..domain.text import fold, language
 
 # Words in a reply that say something was written down. Such a reply with no record_fact in the turn is retried once.
 CLAIM = ("da ghi", "ghi nhan", "ghi lai", "da cap nhat", "cap nhat lai", "da luu", "hieu la", "da hieu", "minh hieu")
 REPLY_NOTE = ("Câu trả lời vừa rồi bị chặn vì: {why}. Viết lại một câu ngắn: không hứa kết quả, không nêu số hay "
               "địa điểm mà user chưa nói.")
 RETRY_NOTE = ("Bạn vừa nói đã ghi nhận nhưng chưa gọi record_fact lần nào trong lượt này. Nếu tin nhắn mới nhất có "
-              "một fact, hãy gọi record_fact cho fact đó ngay. Nếu không, đừng nói là đã ghi nhận.")
+              "một fact, hãy gọi record_fact cho fact đó ngay. Nếu không, trả lời thẳng điều user hỏi (điều có từ lượt "
+              "trước thì nói \"bạn đã nói ...\"), không nói về việc ghi hay không ghi, không nhắc \"fact\" hay \"trạng thái\".")
+LANGUAGE_NOTE = {"en": "The user writes English. Write the whole reply again in English (place names stay as they are).",
+                 "vi": "Người dùng viết tiếng Việt. Viết lại toàn bộ câu trả lời bằng tiếng Việt."}
 UNMAPPED_TEXT_NOTE = ("Bạn vừa ghi unmapped cho mong muốn này. Viết ngay một câu ngắn bằng lời user: nhắc lại mong muốn "
                       "và hỏi đúng MỘT câu tư vấn đưa nó về giá trị ghi được (hai cách hiểu cụ thể gắn với enum của field đó). "
                       "Không gọi thêm tool nào nữa.")
@@ -79,6 +82,9 @@ class TripRules(LoopHost):
             # the reply says it wrote something, but no record_fact ran: the streamed text is dropped and the
             # model gets one more try, told what it claimed
             return "claim_without_record", RETRY_NOTE
+        if not nudged and text.strip() and language(text) != (want := language(self.text)):
+            # an English message answered in Vietnamese (or the other way) is written again once, not replaced by an apology
+            return "wrong_language", LANGUAGE_NOTE[want]
         if not nudged and (why := self.reply_problem()):
             # Clef sent the reply back (a promise, or a fact nobody gave): the model is told why and writes again
             return f"clef_retry {why}", REPLY_NOTE.format(why=why)

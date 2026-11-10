@@ -101,7 +101,9 @@ class SwapPlace(Strict):
 
 
 class AddPlace(Strict):
-    """Add ONE place to a day ("thêm chỗ đó vào ngày 2"). The place must come from spare_places (backup or suggestion)."""
+    """Add ONE place to a day ("thêm chỗ đó vào ngày 2"). The place must come from spare_places (backup or suggestion).
+    A place the user names that is not there cannot be added on this screen: tell them to pick it in Lựa chọn (the
+    plan is rebuilt with it, through the same checks)."""
     tool_name: ClassVar[str] = "add_place"
     place: str = Field(description=PLACE)
     day: int = Field(description=DAY)
@@ -148,7 +150,8 @@ class SetDayWindow(Strict):
 
 class SetStopTime(Strict):
     """Set the exact start time of ONE stop ("đổi Horizon sang 15:00"). start is HH:MM; this does NOT change
-    the day's window or departure. Refused without saving if the time or any new violation cannot fit."""
+    the day's window or departure. The time is kept even when it breaks a rule: the result says what is now flagged
+    (and the stop's real start if the layout could not put it exactly there); say it plainly and offer undo."""
     tool_name: ClassVar[str] = "set_stop_time"
     place: str = Field(description=PLACE)
     start: str = Field(description="Exact start in HH:MM, 00:00 through 23:59.")
@@ -183,4 +186,39 @@ class Undo(Strict):
     """Take back the last change ("hoàn tác", "quay lại như trước"). Alone in a turn; it takes back everything the last
     typed message did."""
     tool_name: ClassVar[str] = "undo_turn"
+    quote: str = Field(description=QUOTE)
+
+
+# ---------- lodging and priority ----------
+
+class LodgingOptions(Strict):
+    """The stay of the plan and the stays on offer for it: each with its id, name, night price (dated for the trip's
+    nights or a Maps reference price, with its date), travel minutes to the trip's places and what reviewers confirmed.
+    Use it for "chỗ ở nào gần hơn / rẻ hơn", "đổi khách sạn". A stay the user booked themselves is kept unless they ask."""
+    tool_name: ClassVar[str] = "lodging_options"
+    max_per_night: int | None = Field(None, ge=0, description="Only stays at or under this price a night (VND).")
+
+
+class PickLodging(Strict):
+    """Make ONE stay from lodging_options the plan's lodging ("lấy khách sạn đó", "đổi sang homestay thứ hai"); the
+    days are laid out again from it. Only an id lodging_options returned."""
+    tool_name: ClassVar[str] = "pick_lodging"
+    id: str = Field(description="The stay's id from lodging_options.")
+    quote: str = Field(description=QUOTE)
+
+
+class SetLodgingBudget(Strict):
+    """Set the most the user pays a night for the stay ("chỗ ở dưới 800k một đêm"); the stays on offer are filtered
+    by it. Leave max_per_night out to remove the limit."""
+    tool_name: ClassVar[str] = "set_lodging_budget"
+    max_per_night: int | None = Field(None, ge=0, description="VND a night, as the user said it.")
+    quote: str = Field(description=QUOTE)
+
+
+class SetPriority(Strict):
+    """What the plan should favour when it lays the days out ("xếp sao cho ít đi lại", "ưu tiên rẻ", "trời mưa vẫn đi
+    được"): least_travel, low_cost, weather_robust, diverse, preference_fit. It changes the order and split of the days,
+    never which rules are checked."""
+    tool_name: ClassVar[str] = "set_priority"
+    priority: Literal["least_travel", "low_cost", "weather_robust", "diverse", "preference_fit"]
     quote: str = Field(description=QUOTE)

@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from .state import TripState
 
 Clock = Annotated[str, PydanticField(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+LATE_ARRIVAL_MIN = 90      # an evening arrival keeps this long for a late meal when the day's end was only the default
+LATE_DAY_END = 23 * 60 + 30
 Intensity = Literal["light", "normal", "full", "free"]
 BusyKind = Literal["rest", "nap", "sleep", "work", "event"]
 
@@ -70,6 +72,7 @@ class Meals(Frozen):
     breakfast_at_lodging: bool = False
     snacks: bool = False
     shift_min: int = 0
+    by: dict[Literal["breakfast", "lunch", "dinner"], Clock] = {}  # a meal starts no later than this ("ăn tối trước 6h")
 
 
 class Rest(Frozen):
@@ -217,6 +220,10 @@ def compile_frame(state: TripState, arrival_buffer_min: int = ARRIVAL_BUFFER_MIN
                 start = floor
             else:
                 start = max(start, floor)
+            # Arriving after the usual end of the day (a bus at 21:30) still leaves the evening: the default end is a
+            # habit, not a bound, so it stretches to a late meal; an end the user said is kept.
+            if index == 0 and not end_wish and ready.date() == day and end - start < LATE_ARRIVAL_MIN and start <= LATE_DAY_END - 30:
+                end = min(start + LATE_ARRIVAL_MIN, LATE_DAY_END)
         if done:
             ceiling = int((done - midnight).total_seconds() // 60)
             if end_wish and end > ceiling:

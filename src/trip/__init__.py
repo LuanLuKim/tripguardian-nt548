@@ -5,7 +5,7 @@ from .domain import values
 from .domain.compile import UnhandledSignal, compile_search_input
 from .domain.frame import CompiledFrame, compile_frame
 from .domain.readback import plan_digest
-from .domain.readiness import missing as readiness_missing
+from .domain.readiness import gate_missing as readiness_missing
 from .domain.budget import group_budget
 from .domain.legacy import drop_ride, upgrade
 from .domain.nights import nights

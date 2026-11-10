@@ -10,7 +10,7 @@ clef_feature_pool: 20  # Clef ranks only the 20 features closest by meaning (bge
 clef_verify_min: 0.75 # record_fact (an inferred soft / hard fact): Clef must be this sure the quote does not say the fact to refuse it
 clef_reply_min: 0.9   # Clef must be this sure a reply promises results or states an unsaid fact to replace it
 tool_steps: 6       # maximum model calls in one turn (each may call several tools)
-required: [trip, companions, mobility, care, pace, budget, lodging]
+required: [trip, companions, mobility, care, pace, budget, lodging]  # display / chat topics; planning gate: readiness.GATE_REQUIRED
 frame:
   day_start: "08:00"
   day_end: "21:00"

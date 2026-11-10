@@ -250,3 +250,18 @@ def test_a_fact_said_at_turn_one_is_still_in_the_state_at_turn_thirty():
     assert "đi 3 ngày" not in joined and "câu 2 " not in joined and "câu 12 " not in joined  # the first 12 turns went at once
     assert "câu 13 " in joined and "câu 30 " in joined
     assert '"days": {"value": 3' in msgs[-2]["content"]  # what turn 1 said lives in the state
+
+
+def test_covered_question_write_mode_keeps_the_tools_prefetch_never_prepares(make_assistant):
+    # a cost or stay ask Clef routed to "places" must still reach estimate_cost / find_stays
+    chat = ScriptedChat(say("Ok."))
+    run_turn(_with(make_assistant(chat), covered_tools="write"), "Gợi ý quán cà phê view đồi")
+    offered = set(chat.seen[0][1])
+    assert "find_places" not in offered and {"estimate_cost", "find_stays"} <= offered
+
+
+def test_an_english_question_answered_in_vietnamese_is_written_again_in_english(make_assistant):
+    chat = ScriptedChat(say("Bạn có thể thử ăn lẩu gà lá é nhé."), say("You could try a hot pot place at night."))
+    s = run_turn(make_assistant(chat), "What should I eat in Da Lat at night?")
+    assert chat.calls == 2 and "wrong_language" in system_log(s)
+    assert last_say(s) == "You could try a hot pot place at night."

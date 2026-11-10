@@ -257,6 +257,20 @@ def test_the_turn_log_keeps_the_say_and_the_next_turn_reads_it_as_history():
     assert "P1" in context["content"] and "Quán Cà Phê Số" in context["content"]
 
 
+def test_new_chat_keeps_turns_in_snapshot_but_not_in_next_prompt():
+    from decision.tools import Tools
+    chat = Script(say('Quán đầu là quán cà phê.'), say('Mình xem tiếp nhé.'))
+    e, sid = start(chat)
+    turn(e, sid, 'quán đầu là quán gì')
+    before = e.store.get(sid).state.model_dump()
+    tools = Tools(e)
+    tools.apply(sid, 'new_chat', {'messages': []}, lambda *_: None)
+    assert e.store.get(sid).state.model_dump() == before
+    turn(e, sid, 'kể thêm về nơi này')
+    assert not any(m.get('content') == 'Quán đầu là quán cà phê.' for m in chat.seen[1][0])
+    assert any(entry.get('action', {}).get('say') == 'Quán đầu là quán cà phê.' for entry in tools.snapshot(sid)['log'])
+
+
 # ---------- routing ----------
 
 def test_familiar_sentences_still_go_through_heuristics_without_a_model_call():

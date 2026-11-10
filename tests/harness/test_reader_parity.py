@@ -19,8 +19,10 @@ def test_detached_reader_preserves_real_views_across_three_trips(days, people):
         matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), background=False))
     h = Harness(trip, decision, planning, Store(None))
     v = h.create()
-    v = run(h, v, 'turn', 'days', {'kind':'edit', 'target':'days', 'value':str(days)})
-    v = run(h, v, 'turn', 'people', {'kind':'edit', 'target':'people', 'value':str(people)})
+    # The planning gate reads the real trip session: its dates and its health / diet answer.
+    end = f'2026-11-{19 + days}'
+    v = run(h, v, 'turn', 'dates', {'kind':'deck', 'at':'gate', 'answers':{'trip.dates': f'2026-11-20..{end}'}})
+    v = run(h, v, 'turn', 'care', {'kind':'deck', 'at':'gate', 'answers':{'care': ['none']}})
     # Use a valid compiled input without calling an assistant.
     from fixtures import si
     session = h.store.get(v['id'])

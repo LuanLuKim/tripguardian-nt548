@@ -151,8 +151,8 @@ def test_fitting_main_can_be_confirmed_and_replayed():
     assert visit_ids(e.load(sid)['view']) == visit_ids(selected)
 
 
-def test_keep_all_is_retired_and_an_overfull_edit_cannot_be_confirmed():
-    from planning.engine import NotConfirmable
+def test_keep_all_is_retired_and_an_overfull_edit_is_confirmed_with_a_warning():
+    # owner 2026-11-09: never refuse; the places the window leaves out become a warning on the confirmed plan
     e, sid = overloaded_started()
     with pytest.raises(ActionError, match='variant'):
         e.act(sid, {'type': 'pick_variant', 'id': 'keep_all'})
@@ -163,8 +163,8 @@ def test_keep_all_is_retired_and_an_overfull_edit_cannot_be_confirmed():
     assert all(p['reason'] == 'no_room' for p in view['unplaced'] if p['place_id'] in squeezed)
     assert squeezed <= {p['place_id'] for p in view['unplaced']}
     assert not view['active_variant']['confirmable']
-    with pytest.raises(NotConfirmable):
-        e.confirm(sid)
+    out = e.confirm(sid)
+    assert any(w.get('code') == 'picks_left_out' for w in out['warnings'])
 
 
 @pytest.mark.parametrize('preset', ['cost', 'fit', 'travel'])

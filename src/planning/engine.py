@@ -313,9 +313,8 @@ class Engine:
         decision = self._resolve(decision, decision_session_id)
         readiness = (decision.get("trip_context") or {}).get("readiness")
         if readiness is not None:
-            missing = list(readiness.get("missing") or ())
-            if readiness.get("readback_ok") is not True:
-                missing.append("readback")
+            # Older stored handoffs may still report optional display groups or read-back confirmation.
+            missing = [key for key in readiness.get("missing") or () if key in {"trip", "care"}]
             if missing:
                 raise TripIncomplete(missing)
         self._check_lodging(decision)
@@ -715,7 +714,7 @@ class Engine:
                "time_suitability": active["time_suitability"] if active else None,
                "recommendations": suggestions["items"], "suggestions": suggestions,
                "day_conditions": [{"day": cx.day.index + 1, "date": cx.day.date.isoformat() if cx.day.date else None,
-                                   **(describe(cx.cond) or {})} for cx in base.trip.ctxs if cx.cond],
+                                   **(describe(cx.cond, cx.cfg) or {})} for cx in base.trip.ctxs if cx.cond],
                "crowd_tips": crowd_tips(list(self._places_for(s, base).values()), [cx.cond for cx in base.trip.ctxs], self.cfg),
                "recovery_actions": self._recovery_actions(s, base, active, active_variant),
                "duration_range": [self.cfg.duration_profiles["manual_min"], self.cfg.duration_profiles["manual_max"]],
@@ -1104,7 +1103,7 @@ class Engine:
             original = s
             if s.state.chosen_variant is None and action.get("type") != "pick_variant":
                 draft = next((v for v in self._offered_variants(s, base) if v.get("editable")), None)
-                if draft is None or (s.require_lodging and not (s.state.lodging_touched and s.state.lodging_id)):
+                if draft is None:
                     raise ActionError("pick a variant before previewing an edit")
                 s = s.model_copy(deep=True)
                 s.states[s.position].chosen_variant = draft["id"]
@@ -1720,10 +1719,8 @@ class Engine:
                 card = self._variant_dict(base, s, active['results'], active['ctxs']) if active else None
                 if action not in [item['action'] for item in self._recovery_actions(s, base, active, card)]:
                     raise ActionError('meal recovery is stale or was not offered')
-            if s.require_lodging and t == 'pick_variant' and not (s.state.lodging_touched and s.state.lodging_id):
-                raise ActionError('choose a hotel before choosing a plan')
-            if s.require_lodging and t == 'clear_lodging':
-                raise ActionError('a hotel is required; choose another hotel instead')
+            # A hotel-first trip only asks for the hotel (view needs_hotel): picking a plan or clearing the hotel is the
+            # user's call and never refused (owner 2026-11-09).
             if t in {'make_room', 'set_visit_duration'} and preview_token is None:
                 raise ActionError(f'{t} requires a preview token; preview the action first')
             if t == "undo":
@@ -1757,7 +1754,7 @@ class Engine:
 
             if s.state.chosen_variant is None and t not in {"pick_variant", "pick_lodging", "set_lodging", "set_lodging_budget", "extend_days"}:
                 draft = next((v for v in self._offered_variants(s, base) if v.get("editable")), None)
-                if draft is None or (s.require_lodging and not (s.state.lodging_touched and s.state.lodging_id)):
+                if draft is None:
                     raise ActionError("pick a variant before editing the plan")
                 # Open only the checked timeout draft; keep its unplaced selections for final validation.
                 s = s.model_copy(deep=True)
@@ -1817,10 +1814,10 @@ class Engine:
                        (v["kind"], v.get("day"), v.get("place_id"), v.get("minutes")) not in old_keys]
                 stop = next((i for d in view["itinerary"] for i in d["items"]
                              if i["kind"] == "visit" and i.get("place_id") == action["place"]), None)
-                if new or stop is None or stop["start"] != action["start"]:
-                    rules = ", ".join(dict.fromkeys(v["kind"] for v in new)) or "start_time"
-                    raise ActionError(f"Không đổi giờ: {rules}. Giữ lịch cũ; chọn giờ hoặc ngày khác, "
-                                      "không thay giờ rời đi hay yêu cầu bắt buộc.")
+                # The user's time stands even when it breaks a rule (owner 2026-11-09): the new violations show as
+                # warnings on the plan. Only a stop the layout lost is not a change anyone asked for.
+                if stop is None:
+                    raise ActionError("Không đổi giờ: nơi này không còn trong lịch sau khi xếp lại.")
             # Persist the public action. The derived kept/drop set is a trial detail and
             # must be recomputed during replay, not accepted as client input.
             logged_action = requested_action if t == "reoptimize" else action
@@ -2033,19 +2030,24 @@ class Engine:
         s = self._get(sid)
         base = self._ensure_base(sid)
         with self.store.lock(sid):
+            # Nothing here refuses the user (owner 2026-11-09: warn, the user confirms): what is not right becomes a
+            # warning on the confirmed plan; the screen asked "Vẫn chốt?" before calling this.
+            notes: list[dict] = []
             try:
                 self._check_lodging(s.decision, s.state.lodging_point or {})
                 if s.state.lodging_id and s.state.lodging_id in self.by_id:
                     self._check_lodging(s.decision, {"place_id": s.state.lodging_id})
             except ActionError as error:
-                raise NotConfirmable(str(error)) from None
+                notes.append({"code": "lodging_unfit", "text": f"Chỗ ở đã chọn chưa đạt yêu cầu của chuyến ({error}); "
+                                                               "hãy kiểm tra lại trước khi đi."})
             if s.require_lodging and not (s.state.lodging_touched and s.state.lodging_id):
-                raise NotConfirmable('choose a hotel before confirming the plan')
-            if s.state.chosen_variant is None:
-                raise NotConfirmable("no variant chosen")
-            results = self._schedules.get(sid, [None] * len(s.states))[s.position]
+                notes.append({"code": "no_lodging", "text": "Chưa chọn chỗ ở: lịch tính đường đi từ nơi đầu tiên mỗi ngày."})
+            variant_id = s.state.chosen_variant or next((v["id"] for v in base.variants), None)
+            if variant_id is None:
+                raise NotConfirmable("no plan option was built")  # nothing to confirm at all, not a rule
+            results = self._schedules.get(sid, [None] * len(s.states))[s.position] if s.state.chosen_variant else None
             if results is None:
-                results = self._card_results(base, s.state.chosen_variant)
+                results = self._card_results(base, variant_id)
             by_place = self._places_for(s, base)
             home = self._home_for(s, base)
             trip, ctxs = self._ctxs_for(base.trip, by_place, home, s.state, results)
@@ -2055,10 +2057,12 @@ class Engine:
             anchors = {c["id"] for c in s.decision["confirmed"] if c.get("role") == "anchor"}
             violations = validate(ctxs, results, pets.filters(tc), anchors, NO_BUDGET_CAP,
                                   (tc.get("pace") or {}).get("max_leg_min"))
-            if base.trip.unplaced and any(p.id in anchors for p in base.trip.unplaced):
-                raise NotConfirmable("required places cannot be scheduled")
-            if set(by_place) - {pid for r in results for pid in r.order}:
-                raise NotConfirmable("selected places do not fit the days: choose which to leave out")
+            if missed := [p.name for p in base.trip.unplaced if p.id in anchors]:
+                notes.append({"code": "required_unplaced", "text": "Nơi bắt buộc chưa xếp được vào lịch: " + ", ".join(missed) + "."})
+            if left := set(by_place) - {pid for r in results for pid in r.order}:
+                names = sorted(by_place[p].name for p in left)
+                notes.append({"code": "picks_left_out", "text": f"{len(names)} nơi đã chọn không vừa số ngày nên chưa có trong lịch: "
+                                                                + ", ".join(names[:6]) + ("…" if len(names) > 6 else "") + "."})
             # Violations are warnings, not a gate: the plan is the user's to keep (owner decision 2026-11-08).
             variant = self._variant_dict(base, s, results, ctxs)
             coords = {**{p.id: (p.lat, p.lng) for p in by_place.values()},
@@ -2073,7 +2077,7 @@ class Engine:
             point = (s.state.lodging_point or {'place_id': s.state.lodging_id}) if s.state.lodging_touched else None
             out['warnings'] = [w for w in out['warnings'] if w.get('code') != 'lodging_requirement']
             out['violations'] = [asdict(v) for v in violations]   # kept on the confirmed plan, shown as warnings
-            out['warnings'] += lodging_warnings(s.decision, self.by_id, point)
+            out['warnings'] += lodging_warnings(s.decision, self.by_id, point) + notes
             s.output = out
             self.store.save(s)
             return out
@@ -2254,7 +2258,7 @@ class Engine:
         log.append(f"t_serialization seconds={time.perf_counter() - serialized:.3f}")
         trace = {"id": trace_id, "total_ms": (time.perf_counter() - started) * 1000, "log": list(log)}
         s.turn_traces = [*s.turn_traces, trace][-40:]
-        s.chat = [*s.chat, {"text": text, "say": say}][-40:]
+        s.chat = [*s.chat, {"text": text, "say": say}]
         self.store.save(s)
         self.turn_log[sid] = log
         emit("say", {"replace": say})

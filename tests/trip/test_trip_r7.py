@@ -35,7 +35,8 @@ def test_skip_tap_removes_old_budget_fields(catalog, cfg, tmp_path):
     sid = e.create("first", "nothing")["id"]
     s = e.store.get(sid)
     s.state = build(budget_vnd=said(2_000_000, source="inferred"), budget_scope=said("trip_total", source="inferred"))
-    s.card = None
+    from trip.domain import deck
+    s.card = deck.build(s.state, e.catalog, e.cfg, ask="budget")
     e.store.save(s)
     e.turn(sid, TurnInput(kind="deck", answers={"budget": ["skip"]}), lambda *_: None)
     st = e.store.get(sid).state

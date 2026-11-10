@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field, replace
 import live
 
 from . import places as pl
-from .conditions import build_cond, crowd_sensitive, crowd_tips, describe, restricted_in
+from .conditions import build_cond, crowd_sensitive, crowd_tips, describe, restricted_in, weather_cause
 from .frame import end_said, start_said, trip_days
 from .layout import DAWN_REST, allowed, assign, capacity, must_places, pull_early
 from .model import Day, Item
@@ -42,8 +42,8 @@ WARNING_TEXT = {
     "dawn_swapped": "Ngày {day}: bạn bắt đầu lúc {start} nên {name} xếp vào giờ hoàng hôn thay cho bình minh.",
     "pin_dropped": "Ngày {day}: {name} không kịp vào đúng giờ đẹp nhất, mình xếp lúc khác trong ngày.",
     "near_duplicate": "{a} và {b} cùng một kiểu nơi: giữ cả hai cũng được, chỉ là chuyến đi kém đa dạng hơn.",
-    "severe_weather": "Ngày {day}: dự báo thời tiết rất xấu ({what}); không xếp nơi ngoài trời vào ngày này.",
-    "heavy_weather": "Ngày {day}: dự báo mưa lớn hoặc dông ({what}); nơi ngoài trời dễ hỏng, mỗi nơi có phương án thay.",
+    "severe_weather": "Ngày {day}: thời tiết rất xấu, dự báo {cause} ({what}); không xếp nơi ngoài trời vào ngày này.",
+    "heavy_weather": "Ngày {day}: dự báo {cause} ({what}); nơi ngoài trời dễ hỏng, mỗi nơi có phương án thay.",
     "advisory": "Ngày {day}: có thông báo {kind} mức {severity}: {note} (nguồn: {source}).",
     "restricted_place": "{name}: nằm trong khu vực hạn chế ({kind}: {area}). Vẫn xếp trong lịch vì dữ liệu OpenStreetMap có thể chưa đủ; kiểm tra trước khi đi.",
     "crowd_day": "Ngày {day}: {why}. Nơi vốn đông sẽ đông hơn, mình để thêm thời gian chờ.",
@@ -186,6 +186,8 @@ def prepare(decision: dict, records: list[dict], cfg: Settings | None = None, li
 
     placed, unplaced = pl.build_places(decision, by_id, cfg)
     frame = ctx.get("frame") or {}
+    if by := ((frame.get("meals") or {}).get("by") or {}):
+        cfg = replace(cfg, meal_windows=meal_windows_by(cfg.meal_windows, by))
     said = frame.get("visit") or {}             # how long the user said a kind of place takes beats the estimate
     if said:
         placed = [replace(p, visit={**p.visit, "short": m, "typical": m, "long": m, "source": "user"})
@@ -321,6 +323,18 @@ def remote(where: str | None, cfg: Settings) -> bool:
     return bool(where) and where.strip().casefold() in {w.casefold() for w in cfg.realistic["remote_where"]}
 
 
+def meal_windows_by(windows: dict, by: dict) -> dict:
+    """The meal windows with the user's latest start ("ăn tối trước 6h": dinner starts by 18:00). A latest start before
+    the usual earliest one moves the earliest an hour before it, so the meal still has a window."""
+    out = dict(windows)
+    for meal, at in by.items():
+        if meal in out:
+            latest = to_min(at)
+            earliest, usual = out[meal]
+            out[meal] = (min(earliest, latest - 60), min(usual, latest))
+    return out
+
+
 def _skips(frame: dict) -> set[str]:
     meals = frame.get("meals") or {}
     return set(meals.get("skip") or ()) | ({"breakfast"} if meals.get("breakfast_at_lodging") else set())
@@ -361,7 +375,8 @@ def condition_warnings(ctxs: list) -> list[dict]:
         what = ", ".join(x for x in ("dông" if c.storm else "", f"mưa ~{c.rain_mm:.0f} mm" if c.rain_mm else "",
                                      f"gió giật ~{c.gust_kmh:.0f} km/h" if c.gust_kmh else "") if x)
         if c.weather != "none":
-            out.append(_warn("severe_weather" if c.weather == "severe" else "heavy_weather", day=n, what=what))
+            out.append(_warn("severe_weather" if c.weather == "severe" else "heavy_weather", day=n, what=what,
+                             cause=weather_cause(c, cx.cfg)))
         out += [_warn("advisory", day=n, kind=ADVISORY_KIND[a["kind"]], severity=SEVERITY_TEXT[a["severity"]],
                       note=a["note"] or "không ghi chú", source=a["source"]) for a in c.advisories]
         if c.crowd != "normal" and any(crowd_sensitive(p, c, cx.cfg) for p in cx.places.values()):
@@ -827,7 +842,7 @@ def shared_output(trip: Trip) -> dict:
     decision, travel = trip.decision, trip.travel
     conds = [cx.cond for cx in trip.ctxs]
     extra = {"day_conditions": [{"day": cx.day.index + 1, "date": cx.day.date.isoformat() if cx.day.date else None,
-                                 **(describe(cx.cond) or {})} for cx in trip.ctxs],
+                                 **(describe(cx.cond, cx.cfg) or {})} for cx in trip.ctxs],
              "crowd_tips": crowd_tips(list(trip.by_place.values()), conds, trip.cfg)} if any(conds) else {}
     return {**extra,
         "unplaced": [asdict(u) for u in trip.unplaced],

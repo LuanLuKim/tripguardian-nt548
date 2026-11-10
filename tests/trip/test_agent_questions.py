@@ -53,7 +53,8 @@ def test_chat_required_call_is_refused_but_valid_facts_survive(catalog, cfg, tmp
     card = run(e, sid, kind="text", text="đi 3 ngày")[-1][1]
     assert card["qid"] == "conversation"
     assert "ask_required" not in chat.seen[0][1]
-    assert "mobility" in e._readback(e.store.get(sid).state)["missing"]
+    assert "mobility" not in e._readback(e.store.get(sid).state)["missing"]
+    assert not e.store.get(sid).state.mobility.known
     if path == "record_fact":
         assert e.store.get(sid).state.days.value == 3
     fresh = Engine(catalog, cfg, SessionStore(tmp_path), ScriptedChat(), today=lambda: TODAY)
@@ -95,15 +96,10 @@ def test_gate_keeps_every_missing_topic_with_its_default_question(catalog, cfg):
     cfg = replace(cfg, max_tabs=7)
     gate = deck.build(TripState(), catalog, cfg, at="gate", ask="mobility", question=QUESTION)
     assert {t.qid: t.question for t in gate.tabs} == {
-        "trip": "Bạn ở Đà Lạt từ ngày nào đến ngày nào? Ngày đầu bắt đầu và ngày cuối xong lúc mấy giờ?",
-        "companions": "Ai đi cùng bạn, tổng cộng mấy người?",
-        "mobility": "Bạn đi lại bằng gì ở Đà Lạt?",
+        "trip": "Bạn ở Đà Lạt từ ngày nào đến ngày nào?",
         "care": "Có điều gì về sức khỏe, đi lại hay ăn uống cần lưu ý?",
-        "pace": "Bạn muốn đi thong thả hay ghé nhiều nơi?",
-        "budget": "Bạn muốn chi khoảng bao nhiêu và tính cho ai?",
-        "lodging": "Bạn muốn ở đâu?",
     }
-    assert all(t.kind == "required" for t in gate.tabs) and gate.left == gate.total == 7
+    assert all(t.kind == "required" for t in gate.tabs) and gate.left == gate.total == 2
 
 
 class PhotoLooks:

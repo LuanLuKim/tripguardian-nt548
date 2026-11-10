@@ -28,6 +28,8 @@ def to_taste(state: TripState):
     liked yet) and no evidence for an avoided one. Unknown is never against a place."""
     love, avoid = [], []
     for key, f in state.soft.items():
+        if any(e.tool == "board:preference" for e in f.evidence):
+            continue  # Board input is a ranking prior, never a membership filter.
         if f.known and WEIGHT_SIGN.get(f.value):
             k = SoftKey.parse(key)
             intent = {"feature": k.feature, "scope": f.requirement.scope if f.requirement else None}
@@ -44,6 +46,27 @@ def to_taste(state: TripState):
 def matching(state: TripState, catalog: Catalog | None) -> int:
     """Places past the hard limits and to the taste so far: the "Đang hợp với bạn" count."""
     return len(fitting(state, catalog))
+
+
+def fit_summary(state: TripState, catalog: Catalog | None) -> dict | None:
+    """Why the "Đang hợp với bạn" count is what it is, for the assistant to explain it in numbers, never a guess: the
+    count, how it is counted, and for each liked / avoided wish how many places past the hard limits carry it."""
+    if catalog is None:
+        return None
+    past_hard = [c for c in catalog.places if admissible(c, state.hard, state.activities.get(c.id))]
+    wishes = []
+    for key, f in sorted(state.soft.items()):
+        if f.known and (sign := WEIGHT_SIGN.get(f.value)):
+            k = SoftKey.parse(key)
+            wishes.append({"wish": key, "weight": f.value, "source": f.source,
+                           "places_with_it": sum(c.value(k.feature, k.context) == k.value for c in past_hard),
+                           "ranking_only": any(e.tool == "board:preference" for e in f.evidence)})
+    return {"now": len(fitting(state, catalog)), "total": len(catalog.places), "past_hard_limits": len(past_hard),
+            "rule": ("a place counts when it is past the hard limits, has evidence for at least one liked wish (any "
+                     "place when nothing is liked) and none for an avoided one; unknown never counts against it. "
+                     "Board preferences marked ranking_only do not filter this count. "
+                     "Ranking comes later: this count is not the shortlist."),
+            "wishes": wishes}
 
 
 BOARD = 24  # places the Understand screen's board shows
@@ -152,6 +175,7 @@ def view(state: TripState, catalog: Catalog, cfg: Settings) -> dict:
                      "state": a.state, "priority": a.priority} for i, a in enumerate(state.anchors)],
         "hard": hard,
         "soft": soft,
+        "wishes": state.wishes.model_dump(mode="json"),
         "activities": state.activities,
         "pace": row("pace"), "max_leg_min": row("max_leg_min"), "crowd_tolerance": row("crowd_tolerance"),
         "novelty": row("novelty"), "budget_vnd": budget(), "liked_groups": row("liked_groups"),

@@ -23,7 +23,8 @@ from .model import Item
 from .travel import km, rough_minutes
 
 SLOT_ROLES = {"breakfast": {"breakfast"}, "lunch": {"main"}, "dinner": {"main", "night_meal"},
-              "free": {"light", None}}
+              "free": {"light", None}, "late": {"night_meal", "light", "main"}}
+LATE_START = 21 * 60                    # free time from 21:00 (a late arrival) is for something to eat at night
 MEAL_SLOTS = ("breakfast", "lunch", "dinner")
 OPEN_FOR_MIN = 30                       # a place must stay open this long after the slot starts
 SHAKY_HOURS = ("UNCERTAIN", "OUTDATED")
@@ -167,6 +168,10 @@ def fill(ctxs, results, places: list, taken: set, dismissed: set, soft: list, po
     wanted = getattr(places, "wanted", []) if wanted is None else wanted
     unverified = getattr(places, "unverified", {})
     out = []
+    # A day with no stop and no known lodging still gets suggestions: they are measured from the middle of the trip's
+    # chosen places (an empty day 1 before the only pick on day 2 is the user's time too, not "no ghost").
+    picks = [(p.lat, p.lng) for cx in ctxs for p in cx.places.values() if p.lat is not None and p.lng is not None]
+    middle = (sum(a for a, _ in picks) / len(picks), sum(b for _, b in picks) / len(picks)) if picks else None
     shown: set = set()       # the first suggestion of every slot so far, over the whole trip
     shown_dishes: set = set()
     for cx, r in zip(ctxs, results):
@@ -190,16 +195,18 @@ def fill(ctxs, results, places: list, taken: set, dismissed: set, soft: list, po
             if it.kind == "meal_free" and it.name in MEAL_SLOTS:
                 kind = it.name
             elif it.kind == "free" and it.end - it.start >= rl["fill_min_gap"]:
-                kind = "free"
+                kind = "late" if it.start >= LATE_START else "free"
             else:
                 continue
             prev = next((i.place_id or i.to_id for i in reversed(items[:k]) if i.place_id or i.to_id), cx.day.start_node)
             nxt = next((i.place_id or i.to_id for i in items[k + 1:] if i.place_id or i.to_id), cx.day.end_node)
             before, after = _where(cx, prev, points), _where(cx, nxt, points)
+            if before is None and after is None:
+                before = middle
             rough = lambda a, b: rough_minutes(km(a, b), cx.mobility, cx.cfg)
             direct = rough(before, after) if before and after else 0
             ranked = []
-            for p in places if (before or after) else ():     # no stop to measure from: no ghost
+            for p in places if (before or after) else ():     # no stop and no pick in the whole trip: no ghost
                 if p.id in used or p.id in dismissed or p.meal_kind not in SLOT_ROLES[kind]:
                     continue
                 if not diet.allowed(p, cx) or hazard(p, cx.cond):
@@ -210,7 +217,7 @@ def fill(ctxs, results, places: list, taken: set, dismissed: set, soft: list, po
                 if min(legs) > radius:
                     continue
                 detour = max(0, sum(legs) - direct) if len(legs) == 2 else legs[0]
-                if kind != "free" and detour > rl["meal_detour_max"]:
+                if kind not in ("free", "late") and detour > rl["meal_detour_max"]:
                     continue
                 duration = min(visit_minutes(p, cx.cfg, cx.pace, cx.prefs), p.visit['short'])
                 inbound = rough(before, at) if before else 0
@@ -218,7 +225,7 @@ def fill(ctxs, results, places: list, taken: set, dismissed: set, soft: list, po
                 # The buffer follows a stop; the first slot of a day (breakfast before anything) has none to leave.
                 after_stop = prev is not None and prev != cx.day.start_node
                 start = it.start + inbound + (cx.cfg.buffer_min[cx.pace] if after_stop else 0)
-                if kind == 'free':
+                if kind in ('free', 'late'):
                     end = it.end
                 elif cover_frame:
                     # The frame's own timeline is fixed: a meal may use the idle time up to the next stop, never overlap it

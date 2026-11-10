@@ -331,7 +331,9 @@ class SimilarPlaces(BaseModel):
 
 
 class Weather(BaseModel):
-    """Rain chance in Đà Lạt for one day (forecast near, climate normals far). An error means no data: say so."""
+    """Weather in Đà Lạt for one day: rain chance and amount, min/max temperature °C, wind gusts, thunderstorm (forecast
+    within 16 days; beyond it the month's usual rain chance and usual_temp_of_month, which are averages, not a forecast).
+    Use it for "thời tiết", "lạnh không", "mặc gì". An error means no data: say so."""
     model_config = ConfigDict(extra="forbid")
     tool_name: ClassVar[str] = "weather"
 
@@ -354,7 +356,8 @@ class Trends(BaseModel):
     """What is trending in Đà Lạt now: places with many new TikTok videos or Maps reviews, upcoming events, the season,
     new and closed places. Computed daily from the corpus. Each item has its numbers, dates (dd/mm) and sources: say the
     date and where it comes from. as_of is the day it was computed; stale true = say it is old. A season is "đang vào
-    mùa", never "đang nở". An error or no item means no data: say so."""
+    mùa", never "đang nở". An error or no item means no data: say so. Asked WHY a place is hot, call get_place on it
+    and answer from what its videos and reviews say (voices, features), not from the video count alone."""
     model_config = ConfigDict(extra="forbid")
     tool_name: ClassVar[str] = "trends"
 

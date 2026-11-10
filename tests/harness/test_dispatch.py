@@ -140,6 +140,26 @@ def test_request_retry_does_not_apply_twice_and_payload_reuse_is_refused():
         h.request(v["id"], req.model_copy(update={"payload": {"type": "drop"}}))
 
 
+@pytest.mark.parametrize('stage', ['decision', 'planning'])
+def test_new_chat_keeps_outputs_and_replays_without_a_second_write(stage):
+    from harness import Request
+    h, tools = make()
+    v = decision(h)
+    if stage == 'planning':
+        v = run(h, v, 'advance', 'to-planning')
+        v = run(h, v, 'confirm', 'confirm-plan')
+    before = copy.deepcopy(v)
+    calls = tools[stage].calls
+    request = Request(request_id='new-chat', stage=stage, operation='new_chat', expected_revision=v['revision'],
+                      payload={'messages': [{'role': 'user', 'text': 'old conversation'}]})
+    after = h.request(v['id'], request)
+    assert h.request(v['id'], request) == after
+    assert tools[stage].calls == calls + 1
+    assert after['outputs'] == before['outputs']
+    assert after['sessions'] == before['sessions']
+    assert after['stage'] == stage
+
+
 def test_stale_revision_does_not_change_state():
     from harness import Conflict
     h, tools = make()

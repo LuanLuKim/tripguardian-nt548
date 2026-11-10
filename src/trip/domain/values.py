@@ -62,6 +62,12 @@ def parse(field: str, raw: str, catalog: Catalog) -> Any:
         raise ValueError(f"{field}: empty value")
     if field in ("frame.arrive", "frame.leave"):
         return json.loads(raw) if raw.startswith("{") else {"at": raw}
+    if field == "frame.meals":  # {"by": {"dinner": "18:00"}, "skip": ["breakfast"], "breakfast_at_lodging": true}
+        from .frame import Meals
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("frame.meals: a JSON object")
+        return Meals.model_validate(data).model_dump(exclude_unset=True)
     if field == "start_date":
         return date.fromisoformat(raw[:10])
     if field in ("drive_day_min", "frame.drive_day_min", "month", "days", "nights", "people", "max_leg_min"):

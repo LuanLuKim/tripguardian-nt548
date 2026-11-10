@@ -206,9 +206,12 @@ def find_services(turn, inp: FindServices) -> dict:
         out.append((d if d is not None else math.inf, -(r.get("rating") or 0) * math.log1p(r.get("reviews") or 0), r, d, w))
     out.sort(key=lambda t: t[:2])
     dates = sorted({str(r["fetched_at"])[:10] for _, _, r, _, _ in out if r.get("fetched_at")})
+    catalog = getattr(turn, "catalog", None)
+    known = getattr(catalog, "by_id", None) or {}
     result = {
         "anchor": anchor[0] if anchor else "unknown (no near_place and no lodging in the trip: distances are unknown)",
-        "rows": [{"name": r["name"], "kind": w, "category": r.get("category"),
+        # a row that is also a corpus place carries its id, so the reply may name it (the name check knows ids only)
+        "rows": [{**({"id": r["fid"]} if r.get("fid") in known else {}), "name": r["name"], "kind": w, "category": r.get("category"),
                   "distance_km": d, "address": r.get("address") or "unknown", "phone": r.get("phone") or "unknown",
                   "website": r.get("website") or "unknown", "hours": _hours(r), "open_status": r.get("status") or "unknown",
                   "rating": r.get("rating"), "reviews": r.get("reviews"), "maps_url": r.get("url")}
@@ -217,6 +220,10 @@ def find_services(turn, inp: FindServices) -> dict:
         "sources": ["Google Maps"], "crawled": dates[-1] if dates else "unknown",
         "note": "services, not tourist places: do not propose them as stops or plan places; phone / hours may be out of date",
     }
+    if keys := getattr(catalog, "name_keys", None):  # "Thuê xe máy Chợ Đà Lạt" names Chợ Đà Lạt: saying it back is no invention
+        from ..domain.text import squash
+        row_names = " | ".join(f" {squash(r['name'])} " for r in result["rows"])
+        result["places_named_in_rows"] = sorted({pid for key, pid in keys if f" {key} " in row_names})
     if not out:
         result["note"] = "no data for this kind in the crawl: say so, do not guess"
     return result

@@ -28,7 +28,7 @@ module → corpus / live qua public API, chỉ đọc Place Intelligence
 | `src/harness/server.py`, `__main__.py` | HTTP/SSE localhost, CLI |
 | `web/src/user/journey.ts` | Client chung: tuần tự mutation, retry và khôi phục pending request |
 
-Skill là khai báo do repo quản lý, không phải code thực thi hay skill tải từ người dùng. Workflow mô tả bước xử lý; `permit_tool` kiểm capability tại adapter. Trip chạy Clef trước Agent: Clef phân loại `needs_card` / `user_question` và cấp allowlist, Agent tạo card hoặc trả lời theo route, gọi tối đa số tool đọc trong `config/trip.yaml`; code validate argument và `guard` vẫn là đường duy nhất ghi state. Các agent dùng chung cấu hình model nhưng context, schema và quyền riêng.
+Skill là khai báo do repo quản lý, không phải code thực thi hay skill tải từ người dùng. Workflow mô tả bước xử lý; `permit_tool` kiểm capability tại adapter. Trip không có cổng Clef trước Agent: mọi lượt gõ đi thẳng tới Agent; Clef chỉ chạy song song và fail-open (kiểm rule của trợ lý, kiểm fact suy luận, chọn tool đọc để chạy trước, `docs/TRIP_UNDERSTANDING.md` §4, §19). Agent gọi tối đa số tool đọc trong `config/trip.yaml`; code validate argument và `guard` vẫn là đường duy nhất ghi state. Các agent dùng chung cấu hình model nhưng context, schema và quyền riêng.
 
 Trip/Decision có lượt chat. Planning có call riêng cho proposal nội bộ và không nhận `turn` qua router; quyền và kiểm chứng proposal ở `docs/PLANNING.md` §Agent đề xuất nội bộ. `live` cung cấp tool, không có agent LLM riêng. Corpus giữ pipeline offline riêng.
 
@@ -42,7 +42,7 @@ Trip/Decision có lượt chat. Planning có call riêng cho proposal nội bộ
 
 Lịch ngầm (`preview`) là đọc: harness lấy Decision Output nháp (`decision` read `draft`, không lưu) dưới khóa hành trình, rồi gọi `planning.Tools.preview` ngoài khóa; Planning dựng phương án không tạo phiên và cache theo hash Decision Output (15 phút, tối đa 16), `create` khi `advance` dùng lại đúng bản đã dựng. Web gọi sau mỗi thay đổi ở Chọn nơi, debounce 350 ms.
 
-Planning chưa đủ thông tin chuyến hoặc chưa xác nhận read-back → `TripNotReady`, HTTP 409 `trip_incomplete` kèm câu hỏi/read-back; không thay bằng lỗi `partial` của lựa chọn.
+Cổng lập lịch còn thiếu (ngày bắt đầu + số ngày, hoặc lưu ý sức khỏe / ăn uống còn mở; `docs/TRIP_UNDERSTANDING.md` §6) → `TripNotReady`, HTTP 409 `trip_incomplete` kèm câu hỏi/read-back; không cần xác nhận read-back và không thay bằng lỗi `partial` của lựa chọn.
 
 ### Đo chuyển Lựa chọn → Lịch trình
 
@@ -99,6 +99,8 @@ Khóa hành trình nằm trong một tiến trình; nhiều tiến trình cùng 
 **Giữ trạng thái khi đi lại.** Mở, đọc, xem lý do, chuyển bước không xóa output hay session, không mất trạng thái chốt; quay lại Lịch trình dùng session hiện có nếu đầu vào không đổi. Chỉ thay dữ liệu ảnh hưởng lịch mới bỏ output chốt để tính lại. Plan khôi phục bối cảnh (kể cả điểm xuất phát) từ `outputs.trip`, không lấy cache browser làm nguồn sự thật. Lưu Đánh giá chỉ kiểm quyền và ghi phản hồi, không khôi phục module / corpus.
 
 ## 4. API và SSE
+
+`POST /sessions/{id}/request` nhận thêm operation `new_chat` ở stage `decision` / `planning`, payload `{"messages":[{"role":"user|bot","text":"…"}]}`. Dùng nguyên khóa, kiểm chủ sở hữu, revision, receipt/retry và snapshot hiện có; không thêm endpoint. Module ghi mốc cùng bản chụp tin client vào log/chat append-only; dựng context chỉ lấy lượt sau mốc. Archive không nằm trong view trả cho người dùng; không đổi output, lựa chọn hay lịch. Web chỉ xóa tin stage tương ứng sau khi server lưu thành công. Quyết định chủ dự án 10/11/2026.
 
 ```sh
 python -m harness serve [--port 8769]

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from corpus.releases import Binding
 
 Stage = Literal["trip", "decision", "planning"]
-Operation = Literal["turn", "act", "advance", "back", "confirm", "recommend", "trip"]
+Operation = Literal["turn", "act", "advance", "back", "confirm", "recommend", "trip", "new_chat"]
 Emit = Callable[[str, dict], None]
 
 

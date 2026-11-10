@@ -52,6 +52,15 @@ class Tools:
             raise ToolError(404, "no such Decision session") from None
 
     def apply(self, sid: str, operation: str, payload: dict, emit) -> dict:
+        if operation == "new_chat":
+            messages = payload.get("messages")
+            if set(payload) != {"messages"} or not isinstance(messages, list) or not all(
+                    isinstance(m, dict) and set(m) == {"role", "text"} and m["role"] in ("user", "bot")
+                    and isinstance(m["text"], str) for m in messages):
+                raise ValueError("new_chat accepts messages with role and text")
+            with self.engine.store.lock(sid):
+                self.engine.store.get(sid).log.append({"action": {"type": "new_chat", "messages": messages}})
+            return self.load(sid)
         if operation == "act":
             permit_tool(self.skill, "decision.act")
             if payload.get("type") == "confirm":

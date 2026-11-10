@@ -162,3 +162,24 @@ def test_the_start_day_weather_runs_while_clef_is_asked(turn_tools_slow_weather,
     assert [w["date"] for w in data["thoi_tiet"]] == ["2026-10-30"]
     assert time.monotonic() - started < 0.95  # 0.6 s, not 0.5 + 0.6
     assert start_weather(TripState(), t) == {}
+
+
+def test_a_short_name_inside_a_longer_one_is_a_candidate_and_a_shown_place_wins(served_catalog):
+    # "Tao Ngộ đóng cửa rồi" after a card of "Lẩu Gà Lá É Tao Ngộ": the phrase names the longer place, and among
+    # several such places the one already shown is meant (never a place that merely shares one word)
+    from trip.agent.prefetch import place_id
+    ids = [pid for pid, _ in candidates("Cầu Đất", served_catalog)]
+    tea = next(p.id for p in served_catalog.places if p.name.lower().startswith("đồi chè cầu đất"))
+    assert tea in ids
+    assert place_id("Cầu Đất", served_catalog, {tea}) == tea
+
+
+def test_asked_hour_reads_only_a_written_time():
+    from trip.agent.prefetch import asked_hour
+    assert asked_hour("11h đêm còn chỗ nào ăn không") == "23:00"
+    assert asked_hour("10 giờ tối quán nào còn mở") == "22:00"
+    assert asked_hour("23h còn quán nào mở") == "23:00"
+    assert asked_hour("đi ăn khuya ở đâu") == "22:00"
+    assert asked_hour("6h sáng quán nào mở") == "06:00"
+    assert asked_hour("gợi ý quán cà phê view đẹp") is None
+    assert asked_hour("đi 3 ngày 2 đêm") is None

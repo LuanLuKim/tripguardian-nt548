@@ -978,11 +978,18 @@ class Harness:
                     if inp.kind not in {"deck", "drop", "readback_ok"}:
                         raise ValueError("decision.trip accepts only deck, drop or readback_ok")
                     trip = self._module(session, "trip")
-                    trip.apply(session.sessions["trip"], "turn", request.payload, capture)
-                    output = trip.read(session.sessions["trip"], "search_input", {})
-                    session.outputs["trip"] = SearchInput.model_validate(self._bound_output(session, output)).model_dump(mode="json")
-                    rebased = self._module(session, "decision").rebase(session.sessions["decision"],
-                        self._decision_input(session))
+                    payload = {**request.payload, "at": "plan" if request.payload.get("at") == "plan" else "gate"} if inp.kind == "deck" else request.payload
+                    trip.apply(session.sessions["trip"], "turn", payload, capture)
+                    readback = trip.read(session.sessions["trip"], "readback", {})
+                    if "care" in readback.get("missing", ()):
+                        # Save partial gate answers without compiling over an unresolved safety question.
+                        capture("readback", readback)
+                        rebased = self._module(session, "decision").load(session.sessions["decision"])
+                    else:
+                        output = trip.read(session.sessions["trip"], "search_input", {})
+                        session.outputs["trip"] = SearchInput.model_validate(self._bound_output(session, output)).model_dump(mode="json")
+                        rebased = self._module(session, "decision").rebase(session.sessions["decision"],
+                            self._decision_input(session))
                     result = {"id": rebased["id"], "view": rebased["view"]}
                     for key in ("decision", "planning"):
                         session.outputs.pop(key, None)
@@ -1104,6 +1111,10 @@ class Harness:
             session.stage = "planning"
             result = self._module(session, "planning").load(session.sessions["planning"])
         else:
+            # Read the current gate, including health hints that cannot be compiled into a SearchInput yet.
+            readback = self._module(session, "trip").read(session.sessions["trip"], "readback", {})
+            if needed := readback.get("missing"):
+                raise TripNotReady(needed, readback)
             with _advance_span(spans, "tools_ms"):
                 decision = self._module(session, "decision")
             with _advance_span(spans, "decision_handoff_ms"):

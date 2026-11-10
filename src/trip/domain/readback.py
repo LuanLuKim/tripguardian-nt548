@@ -213,6 +213,8 @@ def build(si: SearchInput) -> Readback:
             text += "; có ăn nhẹ"
         if meals.shift_min:
             text += f"; giờ ăn xê dịch {meals.shift_min} phút"
+        for meal, at in meals.by.items():
+            text += f"; {names[meal]} bắt đầu trước {at}"
         pace.append(part(text, "frame.meals"))
         if frame.pattern:
             pace.append(part("xen kẽ hoạt động phù hợp với trẻ em", "frame.pattern"))

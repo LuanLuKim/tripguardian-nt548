@@ -223,11 +223,11 @@ def test_rb11_the_trip_module_reads_back_and_compiles_for_the_harness(catalog, c
     tools = Tools(e)
     sid = e.create("first", "nothing")["id"]
     s = e.store.get(sid)
-    s.state = build(drop=("pace",))
+    s.state = build(drop=("care",))
     e.store.save(s)
     out = tools.read(sid, "readback", {})
-    assert out["missing"] == ["pace"] and out["ok"] is False
-    assert out["deck"]["kind"] == "deck" and [t["qid"] for t in out["deck"]["tabs"]] == ["pace"]
+    assert out["missing"] == ["care"] and out["ok"] is False
+    assert out["deck"]["kind"] == "deck" and [t["qid"] for t in out["deck"]["tabs"]] == ["care"]
     s.state = build()
     e.store.save(s)
     out = tools.read(sid, "readback", {})

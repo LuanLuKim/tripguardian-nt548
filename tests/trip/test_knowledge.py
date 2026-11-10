@@ -36,7 +36,9 @@ def test_place_and_similar(knowledge, kids_hard_state):
 def test_weather_at_the_center(knowledge):
     out = knowledge.weather(date(2026, 11, 1))
     assert out == {"date": "2026-11-01", "rain_prob": 0.4, "rain_mm": 2.5, "source": "open-meteo",
-                   "fetched_at": "2026-10-28T08:00:00Z"}
+                   "fetched_at": "2026-10-28T08:00:00Z",
+                   # the forecast row has no temperature: the month's long-run figures ride along, named as usual ones
+                   "usual_temp_of_month": {"tmax_c": 22, "tmin_c": 15}}  # whole degrees, as a reply says them
 
 
 def test_weather_unavailable_is_an_error_result(knowledge_no_live):

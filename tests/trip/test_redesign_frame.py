@@ -206,3 +206,40 @@ def _ev():
 def test_an_impossible_busy_block_is_refused_at_the_boundary(bad):
     with pytest.raises(ValueError):
         state(frame={"busy": [{"label": "x", "kind": "work", "where": "lodging", "on": "all", **bad}]})
+
+
+def test_a_meal_time_said_in_chat_is_recorded_merged_and_reaches_the_search_input():
+    # E2E elderly_slow_family (2026-11-09): "ông bà ăn tối trước 6 giờ chiều" had no field and the agent said it could not be set
+    from trip.domain.state import Evidence, Update, apply
+    from trip.domain import values
+    ev = Evidence(turn=1, quote="ông bà ăn tối trước 6 giờ chiều")
+    s = state()
+    for raw in ('{"by": {"dinner": "18:00"}}', '{"skip": ["breakfast"]}'):
+        s = apply(s, Update(field="frame.meals", op="set", value=values.parse("frame.meals", raw, None),
+                            source="user", confidence="high", evidence=ev))
+    meals = s.frame.meals.value
+    assert meals.by == {"dinner": "18:00"} and meals.skip == ("breakfast",)  # the second wish keeps the first
+    assert compile_search_input(s).context.frame.meals.by == {"dinner": "18:00"}
+
+
+def test_an_arrival_dated_from_the_old_dates_moves_when_the_dates_change():
+    # E2E ambiguous_dates_next_weekend (2026-11-09): "tới lúc 9 giờ" dated 21/11 from "cuối tuần sau", then the dates set
+    # to 14-15/11 left every day with no time
+    from trip.domain.state import Evidence, Update, apply
+    ev = Evidence(turn=2, quote="14/11")
+    s = state(days=2, start=date(2026, 11, 21), frame={"arrive": said({"at": "2026-11-21T09:00"}),
+                                                       "leave": said({"at": "2026-11-22T17:00"})})
+    s = apply(s, Update(field="start_date", op="set", value=date(2026, 11, 14), source="user", confidence="high", evidence=ev))
+    assert s.frame.arrive.value.at.startswith("2026-11-14T09:00") and s.frame.leave.value.at.startswith("2026-11-15T17:00")
+    f = frame(s)
+    assert all(d.end > d.start for d in f.days)
+    s = apply(s, Update(field="days", op="set", value=3, source="user", confidence="high", evidence=ev))
+    assert s.frame.arrive.value.at.startswith("2026-11-14T09:00") and s.frame.leave.value.at.startswith("2026-11-16T17:00")
+
+
+def test_an_arrival_said_with_its_own_date_outside_the_trip_stays():
+    from trip.domain.state import Evidence, Update, apply
+    s = state(days=2, start=date(2026, 11, 21), frame={"arrive": said({"at": "2026-11-25T09:00"})})
+    s = apply(s, Update(field="start_date", op="set", value=date(2026, 11, 14), source="user", confidence="high",
+                        evidence=Evidence(turn=2, quote="14/11")))
+    assert s.frame.arrive.value.at.startswith("2026-11-25T09:00")  # a physical bound is never moved

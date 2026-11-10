@@ -61,3 +61,10 @@ def test_afternoon_bus_arrival_keeps_a_normal_first_day_with_real_time_left():
     assert first.start == "15:15" and first.end > first.start
     assert first.intensity == "normal"
     assert not any(i.code == "day_has_no_time" for i in result.issues)
+
+
+def test_an_evening_arrival_keeps_time_for_a_late_meal_unless_the_user_set_the_end():
+    # E2E late_arrival_early_leave (2026-11-09): a bus at 21:30 left day 1 with no time against the default 21:00 end
+    result = compile_trip(arrive=field({"at": "2026-11-20T21:30", "how": "bus"}))
+    first = result.days[0]
+    assert first.end > first.start and first.intensity == "normal"

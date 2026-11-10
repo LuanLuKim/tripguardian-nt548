@@ -1,4 +1,4 @@
-"""python -m corpus {login <source> | <source> <phase> | judge <phase> | navigate <plan|compare> | local <extract|group> | review | aggregate | serving | snapshot | index | views <climate|calendar|restricted|all> | pulse} --city <key>
+"""python -m corpus {login <source> | <source> <phase> | judge <phase> | navigate <plan|compare|seed> | local <extract|group> | review | aggregate | serving | snapshot | index | views <climate|calendar|restricted|all> | pulse} --city <key>
 
 Phases per source, each reading only earlier phases' files: tiktok search -> list -> filter -> crawl, then per Maps
 place place_search -> place_filter -> place_crawl -> asr -> asr_check -> asr_alt -> (asr_check again) -> place_verify
@@ -147,8 +147,8 @@ def main() -> None:
     bp.add_argument("--city", default="dalat")
     bp.add_argument("--every", type=float, help="repeat the build every N minutes (while crawls add data)")
     bp.add_argument("--skip", nargs="*", default=[], help='steps to leave out, e.g. "tiktok" or "gmaps qc"')
-    navp = sub.add_parser("navigate", help="sol decides what to mine for a city (plan), code diffs it against the corpus (compare) -> data/<city>/navigate/")
-    navp.add_argument("phase", choices=["plan", "compare"])
+    navp = sub.add_parser("navigate", help="sol decides what to mine (plan), code diffs it against the corpus (compare), owner-approved names enter the resolve queue (seed) -> data/<city>/navigate/")
+    navp.add_argument("phase", choices=["plan", "compare", "seed"])
     navp.add_argument("--city", default="dalat")
     navp.add_argument("--map", type=pathlib.Path, help="compare: a mining map file (default: the latest, data/<city>/navigate/mining_map.json)")
     navp.add_argument("--no-latest", action="store_true", help="plan: write only mining_map_<ts>.json, leave mining_map.json (what web search reads) as it is")
@@ -292,6 +292,10 @@ def main() -> None:
                 result = asyncio.run(navigate.plan(args.city, latest=not args.no_latest))
                 print(f"navigate plan {args.city}: {len(result.aspects)} aspects, {len(result.general_claims)} general claims, "
                       f"{len(result.rejected)} rejected (model {result.model})")
+            elif args.phase == "seed":
+                added = navigate.seed(args.city)
+                print(f"navigate seed {args.city}: {added} added to resolve_queue")
+                print(f"next: python -m corpus gmaps resolve --city {args.city}")
             else:
                 mining_map = navigate.load_map(args.city, args.map)
                 if mining_map is None:

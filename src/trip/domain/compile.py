@@ -5,7 +5,7 @@ from .budget import intent, per_person_day
 from .diet import resolved as diet_days
 from .logistics import travel_bound, travel_moments, with_travel_points
 from .frame import FrameDefaults, compile_frame
-from .readiness import missing
+from .readiness import gate_missing
 from .state import (AnchorRef, Context, HardFilter, NoveltySpec, PaceSpec, SearchInput, SoftKey, SoftWeight, TripState,
                     Readiness, SCALARS, Field, VibeRef, WEIGHT_SIGN, ontology, pending_signals, unknown_fields)
 
@@ -82,7 +82,7 @@ def compile_search_input(state: TripState, arrival_buffer_min: int = ARRIVAL_BUF
         sources["frame.leave"] = state.outbound.source
     si = SearchInput(
         wishes=state.wishes,
-        readiness=Readiness(missing=tuple(key for key, _ in missing(state))), sources=sources,
+        readiness=Readiness(missing=tuple(key for key, _ in gate_missing(state))), sources=sources,
         ontology_version=ontology().version,
         context=Context(start_date=v("start_date"), month=v("month"), month_part=v("month_part"), days=v("days"), nights=v("nights"),
                         base=v("base"),

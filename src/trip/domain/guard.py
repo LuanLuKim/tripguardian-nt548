@@ -19,7 +19,7 @@ from .text import contains, fold, language, squash
 
 FieldName = Literal["start_date", "month", "month_part", "days", "nights", "companions", "people", "base", "origin", "entry_point", "exit_point", "mobility",
                     "checkin_at", "checkout_at", "day_end", "frame.day_start", "excluded_place", "purpose", "anchor", "signal", "soft", "hard", "pace", "max_leg_min", "crowd_tolerance",
-                    "frame.arrive", "frame.leave", "drive_day_min", "driver", "care", "budget_unlimited", "novelty", "budget_vnd", "budget_scope", "liked_groups", "activity", "time_preference", "unmapped", "like"]
+                    "frame.arrive", "frame.leave", "frame.meals", "drive_day_min", "driver", "care", "budget_unlimited", "novelty", "budget_vnd", "budget_scope", "liked_groups", "activity", "time_preference", "unmapped", "like"]
 # a place name made only of these is a phrase ("Đặc sản Đà Lạt", "Khu Vui Chơi" are said as plain words too)
 GENERIC = {"du", "lich", "da", "lat", "dalat", "viet", "nam", "thanh", "pho", "tour", "dac", "san", "khu", "vui", "choi"}
 LIST_FIELDS = {"companions", "liked_groups", "anchor", "signal", "soft", "hard", "activity", "time_preference", "unmapped"}

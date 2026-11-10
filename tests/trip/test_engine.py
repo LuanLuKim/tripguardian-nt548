@@ -26,6 +26,68 @@ def run(engine, sid, **inp):
     return events
 
 
+def test_board_preference_cannot_change_trip_facts_or_hard_limits(make):
+    e = make()
+    sid = e.create('first', 'nothing')['id']
+    before = e.store.get(sid).state
+    events = run(e, sid, kind='text', text='3 ngày, bắt buộc đi ô tô, chỉ chỗ yên tĩnh', soft_only=True)
+    after = e.store.get(sid).state
+    assert after.model_dump(exclude={'soft', 'wishes', 'meta'}) == before.model_dump(exclude={'soft', 'wishes', 'meta'})
+    assert after.wishes.kinds or after.soft
+    assert not any(name == 'done' for name, _ in events)
+    assert [d for name, d in events if name == 'state'][-1]['understanding']['wishes']
+
+
+def test_board_soft_prior_never_filters_places(make, monkeypatch):
+    from trip.domain.state import Evidence, Field
+    from trip.domain.understanding import fitting
+    e = make()
+    sid = e.create('first', 'nothing')['id']
+    before = e.store.get(sid).state
+    original = e._text
+
+    def extract(s, inp, emit):
+        if inp.soft_only:
+            return original(s, inp, emit)
+        s.state = s.state.model_copy(update={'soft': {'noise=quiet': Field(value='love', source='user',
+            evidence=(Evidence(turn=1, quote=inp.text),))}})
+
+    monkeypatch.setattr(e, '_text', extract)
+    run(e, sid, kind='text', text='Thích yên tĩnh', soft_only=True)
+    after = e.store.get(sid).state
+    assert after.soft['noise=quiet'].value == 'love'
+    assert {p.id for p in fitting(after, e.catalog)} == {p.id for p in fitting(before, e.catalog)}
+
+
+def test_board_uses_existing_model_extraction_but_does_not_filter(make):
+    from trip.domain.understanding import fitting
+    chat = ScriptedChat(reply(fact('soft', 'noise=quiet:love', 'yên tĩnh', op='add'), text='Mình ưu tiên yên tĩnh.'), say(''))
+    e = make(chat)
+    sid = e.create('first', 'nothing')['id']
+    before = e.store.get(sid).state
+    run(e, sid, kind='text', text='Mình thích quán yên tĩnh', soft_only=True)
+    after = e.store.get(sid).state
+    assert chat.calls > 0
+    assert after.soft['noise=quiet'].value == 'love'
+    assert after.soft['noise=quiet'].evidence[-1].tool == 'board:preference'
+    assert len(fitting(after, e.catalog)) == len(fitting(before, e.catalog))
+
+
+@pytest.mark.parametrize('kind,value', [('dishes', {'dish': 'Bánh căn', 'quote': 'Bánh căn'}),
+                                       ('kinds', {'kind': 'Quán nhỏ', 'quote': 'Quán nhỏ'}),
+                                       ('like', {'place_id': 'one', 'quote': 'Giống nơi này'})])
+def test_board_wish_can_be_removed_without_changing_limits(make, kind, value):
+    from trip.domain.state import Wishes
+    e = make()
+    sid = e.create('first', 'nothing')['id']
+    s = e.store.get(sid)
+    s.state = s.state.model_copy(update={'wishes': Wishes.model_validate({kind: [value]})})
+    before = s.state
+    run(e, sid, kind='wish', target=f'wishes:{kind}:0', value='off')
+    assert not getattr(s.state.wishes, kind)
+    assert s.state.model_dump(exclude={'wishes'}) == before.model_dump(exclude={'wishes'})
+
+
 def names(events):
     return [e for e, _ in events]
 
@@ -660,7 +722,8 @@ def test_an_agent_required_card_shows_its_question_with_real_chips(make):
     s = e.store.get(sid)
     assert s.card.qid == "conversation"
     assert "ask_required" not in chat.seen[0][1]
-    assert "companions" in e._readback(s.state)["missing"]
+    assert "companions" not in e._readback(s.state)["missing"]
+    assert not s.state.companions.known
 
 
 def test_a_group_wish_circled_for_three_turns_gets_the_card_the_agent_asks_for(make):
@@ -678,8 +741,8 @@ def test_a_group_wish_circled_for_three_turns_gets_the_card_the_agent_asks_for(m
     run(e, sid, kind="text", text="vẫn chưa rõ nữa")
     s = e.store.get(sid)
     assert s.card.qid == "conversation"
-    assert "companions" in e._readback(s.state)["missing"]
-    # The gate, not a chat questionnaire, collects an unambiguous party.
+    assert "companions" not in e._readback(s.state)["missing"]
+    # An explicit edit can still record the party; it is not a planning requirement.
     run(e, sid, kind="deck", answers={"companions.who": ["friends"], "companions.people": "2"})
     assert e.store.get(sid).state.companions.value == frozenset({"friends"})
 

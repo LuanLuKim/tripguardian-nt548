@@ -152,11 +152,21 @@ def crowd_tips(places: list[Place], conds: list[DayCond | None], cfg: Settings) 
     return out
 
 
-def describe(cond: DayCond | None) -> dict | None:
-    """One day's conditions for the user: facts and their wording, no decisions."""
+def weather_cause(c: DayCond, cfg) -> str:
+    """Name what made the day bad, so a dry windy day is not called rain: "dông", "mưa lớn", "gió mạnh" or a mix."""
+    t = cfg.conditions
+    causes = [w for w, hit in (("dông", c.storm),
+                               ("mưa lớn", c.rain_mm is not None and c.rain_mm >= t["heavy_rain_mm"]),
+                               ("gió mạnh", c.gust_kmh is not None and c.gust_kmh >= t["heavy_gust_kmh"])) if hit]
+    return " và ".join(causes) or "thời tiết xấu"
+
+
+def describe(cond: DayCond | None, cfg=None) -> dict | None:
+    """One day's conditions for the user: facts and their wording, no decisions. With cfg, a bad day names its cause."""
     if cond is None:
         return None
-    return {"weather": cond.weather, "storm": cond.storm, "rain_mm": cond.rain_mm, "gust_kmh": cond.gust_kmh,
+    return {"weather": cond.weather, **({"weather_cause": weather_cause(cond, cfg)} if cfg and cond.weather != "none" else {}),
+            "storm": cond.storm, "rain_mm": cond.rain_mm, "gust_kmh": cond.gust_kmh,
             "day_type": cond.day_type, "crowd": cond.crowd, "crowd_reasons": list(cond.crowd_reasons),
             "closure_risk": cond.closure_risk,
             "advisories": [{k: a[k] for k in ("kind", "severity", "note", "source")} for a in cond.advisories]}

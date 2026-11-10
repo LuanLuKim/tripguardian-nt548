@@ -42,3 +42,15 @@ cases:
   # ---- no block, no push, off topic
   - {id: nb-far, family: no_block, turns: ["Mình cứ muốn {p3} nằm ở ngày 1 dù hơi xa, chuyển giúp mình"], tools: [move_place]}
   - {id: nb-offtopic, family: no_block, turns: ["Hôm nay bạn khỏe không?"], expect: {unchanged: true}}
+  # ---- the stay and what the layout favours (tools added 2026-11-09)
+  - {id: ld-list, family: lodging, turns: ["Có chỗ ở nào khác gần mấy chỗ này hơn không?"], tools: [lodging_options], expect: {unchanged: true}}
+  - {id: ld-budget, family: lodging, turns: ["Chỗ ở dưới 800k một đêm thôi nhé"], tools: [set_lodging_budget], expect: {changed: true}}
+  - {id: ld-pick, family: lodging, turns: ["Cho mình xem các chỗ ở khác", "Lấy chỗ đầu tiên trong đó đi"], tools: [pick_lodging], expect: {changed: true}}
+  - {id: pr-travel, family: priority, turns: ["Xếp lại lịch sao cho ít phải đi lại nhất"], tools: [set_priority], expect: {changed: true}}
+  - {id: pr-rain, family: priority, turns: ["Mình sợ mưa, ưu tiên lịch nào trời mưa vẫn đi được"], tools: [set_priority], expect: {changed: true}}
+  - {id: pr-cheap, family: priority, turns: ["Ưu tiên tiết kiệm tiền giúp mình"], tools: [set_priority], expect: {changed: true}}
+  # ---- asks real travellers make
+  - {id: rl-ok, family: real, turns: ["Lịch này có ổn không, có chỗ nào gấp quá không?"], tools: [diagnostics], expect: {unchanged: true}}
+  - {id: rl-weather, family: real, trip: true, turns: ["Ngày 1 thời tiết thế nào, có lạnh không?"], tools: [weather], expect: {unchanged: true}}
+  - {id: rl-more, family: real, turns: ["Ngày 2 còn trống, thêm gì cho mình đi"], tools: [spare_places]}
+  - {id: rl-lunch, family: real, turns: ["Trưa ngày 1 ăn ở đâu vậy?"], tools: [plan], expect: {unchanged: true}}

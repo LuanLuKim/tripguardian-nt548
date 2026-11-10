@@ -4,6 +4,7 @@ agent call), compare, why-not, confirm. One lock per session; each change is one
 import asyncio
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import cache
@@ -143,6 +144,11 @@ class Assisted:
 def _earliest(actions: list[dict]) -> dict:
     scopes = [replan_scope(a) for a in actions]
     return min(scopes, key=lambda s: STEPS.index(s["from"]))
+
+
+def _accented(text: str) -> str:
+    """Lower case with the accents kept (NFC), punctuation as spaces: the accent-exact side of the search."""
+    return " ".join(re.sub(r"[^\w]+", " ", unicodedata.normalize("NFC", text or "").lower()).split())
 
 
 class Engine:
@@ -328,7 +334,9 @@ class Engine:
 
     def search(self, sid: str, q: str) -> dict:
         """Places of every tab (and the unverified ones) whose name, kind or tab starts with each typed word, accents
-        aside, best score first; and the places of the region with that name the lists do not hold, each with why."""
+        aside; a place that also matches the accents the user typed comes first (in its name, then in its kind or tab),
+        then the best score; and the places of the region with that name the lists do not hold, each with why, accent
+        matches first."""
         words = squash(q).split()
         if not words or len(" ".join(words)) < 2:
             return {"q": q, "total": 0, "cards": [], "outside": []}
@@ -336,6 +344,15 @@ class Engine:
         def hit(text: str) -> bool:
             ws = squash(text).split()
             return all(any(w.startswith(x) for w in ws) for x in words)
+
+        # The same test with the accents kept: "chè" before "che" and "chế" when the user typed the accents.
+        typed = _accented(q).split()
+
+        def accent(name: str, extra: str = "") -> int:
+            """2 = every typed word starts a word of the name accents and all; 1 = of the name, kind or tab; 0 = only
+            accents aside (or the user typed none, so every hit is equal here)."""
+            full = lambda text: all(any(w.startswith(x) for w in _accented(text).split()) for x in typed)  # noqa: E731
+            return 2 if full(name) else 1 if extra and full(f"{name} {extra}") else 0
 
         s = self._get(sid)
         with self.store.lock(sid):
@@ -354,16 +371,22 @@ class Engine:
                       and p not in s.hidden_ids and hit(names[region.index[p]] or "")
                       and not hit(f"{categories[region.index[p]] or ''} "
                                   f"{labels.get(res.group_of.get(p, ''), '')}")]
+            def name_kind(p: str) -> tuple[str, str]:
+                if p in region.index:
+                    i = region.index[p]
+                    return names[i] or "", f"{categories[i] or ''} {labels.get(res.group_of.get(p, ''), '')}"
+                return res.cands[p].name, ""
+
             found.sort(key=lambda p: (safety_priority(res.cands[p]),
                                       pet_access_priority(res.cands[p].rec, s.search_input.context.companions),
+                                      -accent(*name_kind(p)),
                                       -res.cands[p].score))  # stable: a tie keeps its tab's order
             have = set(ids) | set(found) | excluded | set(s.hidden_ids) | {c["id"] for g in res.view["groups"] for c in g["cards"]}
-            outside = []
-            for pid, name in zip(self.data.region.ids, self.data.region.places["name"].to_list()):
-                if len(outside) >= SEARCH_OUTSIDE or pid in have or pid in self.data.region.stay or not hit(name or ""):
-                    continue
-                why = why_not(res, pid, s.search_input, self.cfg)
-                outside.append({"id": pid, "name": name, "reasons": why["reasons"][:2]})
+            rest = [(pid, name) for pid, name in zip(self.data.region.ids, self.data.region.places["name"].to_list())
+                    if pid not in have and pid not in self.data.region.stay and hit(name or "")]
+            rest.sort(key=lambda x: -accent(x[1] or ""))  # stable: same accent match keeps the region's order
+            outside = [{"id": pid, "name": name, "reasons": why_not(res, pid, s.search_input, self.cfg)["reasons"][:2]}
+                       for pid, name in rest[:SEARCH_OUTSIDE]]
             return {"q": q, "total": len(found), "cards": [res.card_of(p) for p in found[:SEARCH_MAX]], "outside": outside}
 
     def report(self, place_id, text, reporter) -> dict:
@@ -436,7 +459,12 @@ class Engine:
                 actions = [a for a in actions if a.get("type") != "trip"]
                 new, done, skipped = self._apply(s, actions, before, strict=False)
             undone = assisted is not None and assisted.undo
-            say = say or ("Mình đã hoàn tác." if undone else DONE if done or trips else NONE)  # a guard-dropped say never leaves an empty bubble
+            # a guard-dropped say never leaves an empty bubble; a wish only handed to Trip says nothing yet: Trip's reply
+            # and the list change follow in the same bubble (harness _refine), so "đã cập nhật" is not claimed before it
+            if not say and trips and not done and not undone and s.trip_session:
+                say = ""
+            else:
+                say = say or ("Mình đã hoàn tác." if undone else DONE if done or trips else NONE)
             if say != "".join(streamed):
                 emit("say", {"replace": say})
             if assisted is not None and assisted.places:

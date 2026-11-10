@@ -28,7 +28,7 @@ def context_of(messages):
                       .removeprefix("CURRENT CONTEXT\n"))
 
 
-def test_chat_refuses_required_topic_and_gate_keeps_it(catalog, cfg, tmp_path):
+def test_chat_refuses_optional_topic_and_gate_does_not_require_it(catalog, cfg, tmp_path):
     cfg = replace(cfg, discovery=True)
     chat = ScriptedChat(reply(call("ask_required", topic="mobility", question="Bạn đi lại bằng gì?")), say("Thử khám phá vài kiểu nhé."))
     e = Engine(catalog, cfg, SessionStore(tmp_path), chat)
@@ -36,7 +36,7 @@ def test_chat_refuses_required_topic_and_gate_keeps_it(catalog, cfg, tmp_path):
     card = run(e, sid, kind="text", text="đi với người yêu")[-1][1]
     assert card["qid"] == "conversation"
     assert "ask_required" not in chat.seen[0][1]
-    assert "mobility" in {t.qid for t in deck.build(e.store.get(sid).state, catalog, cfg, at="gate").tabs}
+    assert {t.qid for t in deck.build(e.store.get(sid).state, catalog, cfg, at="gate").tabs} == {"trip", "care"}
 
 
 def test_ask_required_refuses_a_topic_that_is_not_needed(catalog, cfg, tmp_path):
@@ -198,7 +198,8 @@ def test_the_required_card_can_ride_with_the_facts(catalog, cfg, tmp_path):
     card = run(e, sid, kind="text", text="đi 3 ngày")[-1][1]
     assert chat.calls == 1 and card["qid"] == "conversation"
     assert e.store.get(sid).state.days.value == 3
-    assert "mobility" in e._readback(e.store.get(sid).state)["missing"]
+    assert "mobility" not in e._readback(e.store.get(sid).state)["missing"]
+    assert not e.store.get(sid).state.mobility.known
 
 
 def test_a_refused_fact_keeps_the_loop_going_for_a_corrected_reply(catalog, cfg, tmp_path):
@@ -350,7 +351,7 @@ def test_the_app_opens_a_missing_topic_when_the_agent_asks_nothing_but_never_a_s
         card = run(e, sid, kind="text", text=text)[-1][1]
         assert card["qid"] == "conversation"
     assert not e.store.get(sid).state.meta.nudged
-    assert len(e._readback(e.store.get(sid).state)["missing"]) == 7
+    assert e._readback(e.store.get(sid).state)["missing"] == ["trip", "care"]
 
 
 def test_the_app_does_not_open_a_topic_while_the_user_asks_a_question(catalog, cfg, tmp_path):

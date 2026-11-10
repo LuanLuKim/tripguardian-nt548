@@ -77,15 +77,16 @@ def _started():
     return two_day_started()
 
 
-def test_a_window_too_small_for_the_picks_cannot_be_confirmed():
+def test_a_window_too_small_for_the_picks_is_confirmed_with_the_left_out_places_named():
     e, sid = _started()
     e.act(sid, {"type": "set_day_window", "day": 0, "start": "09:00", "end": "09:20"})
-    with pytest.raises(NotConfirmable):
-        e.confirm(sid)
+    out = e.confirm(sid)
+    assert any(w.get('code') == 'picks_left_out' for w in out['warnings'])
 
 
 @pytest.mark.parametrize("start", ["03:00", "23:30"])
-def test_a_visit_forced_outside_the_opening_hours_is_refused(start):
+def test_a_visit_forced_outside_the_opening_hours_is_kept_and_flagged(start):
+    # owner 2026-11-09: the user's time stands; what it breaks is a warning on the plan, never a refusal
     e, sid = _started()
-    with pytest.raises(ActionError):
-        e.act(sid, {"type": "set_stop_time", "place": "c1", "start": start})
+    view = e.act(sid, {"type": "set_stop_time", "place": "c1", "start": start})["view"]
+    assert view["violations"]

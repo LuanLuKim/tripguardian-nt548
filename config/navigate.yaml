@@ -9,3 +9,58 @@ nominee:
 resolve:                # python -m corpus gmaps resolve: when a Maps result list names one clear place for a nominee
   margin: 0.25          # with several different places matching, the best name must beat the next by this much, else the nominee is ambiguous (stays a proposal)
   limit: 15             # Maps results read per nominee
+
+# Owner-approved names looked up by `gmaps resolve`; a name is a lookup request, not a place.
+seed:
+  dalat:
+    - name: Biệt thự Hằng Nga
+      area_hint: ""
+      why: famous architecture (Crazy House), missing from the grid search
+    - name: Nhà thờ Domaine de Marie
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Trường Đại học Đà Lạt
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Trường Cao đẳng Sư phạm Đà Lạt
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Thác Pongour
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Vườn quốc gia Bidoup Núi Bà
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Đường hầm đất sét
+      area_hint: Tà Nung
+      why: famous sight missing from the grid search
+    - name: Trang trại bò sữa Dalat Milk
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Dinh II Đà Lạt
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Biệt điện Trần Lệ Xuân
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Thác Voi
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Đồi cỏ hồng
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Ga Trại Mát
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Hầm rượu vang Vĩnh Tiến
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Thác Đambri
+      area_hint: ""
+      why: famous sight missing from the grid search
+    - name: Dinh 2
+      area_hint: ""
+      why: Dinh II, the name Maps uses
+    - name: Trung tâm Lưu trữ Quốc gia IV
+      area_hint: ""
+      why: Biệt điện Trần Lệ Xuân, the name Maps uses

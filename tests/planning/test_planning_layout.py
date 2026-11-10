@@ -259,3 +259,23 @@ def test_a_six_stop_day_the_seeded_order_cannot_fit_gets_the_exhaustive_search()
     assert not order_day(ids, cx).violations
     seeded = order_day(ids, cx, seed=ids)
     assert not seeded.violations and seeded.method == "exact"
+
+
+def test_a_selection_that_fits_gives_every_day_a_stop_at_a_bounded_cost_in_road():
+    # Four places of one area fit day 1; a day of its own costs each a ride out and back (under spread_extra_min).
+    recs = [spot(f"s{i}", SOUTH, i) for i in range(4)]
+    trip = trip_of(recs, days=3)
+    per_day, left = assign(trip, trip.ctxs, sorted(trip.by_place))
+    assert not left and all(per_day)
+    assert sorted(p for day in per_day for p in day) == ["s0", "s1", "s2", "s3"]
+
+
+def test_a_far_group_is_not_split_to_fill_an_empty_day():
+    far = (CENTRE[0] + 0.25, CENTRE[1])                 # the ride out and back is far more than spread_extra_min
+    recs = [spot("f0", far, 0), spot("f1", far, 1)]
+    trip = trip_of(recs, days=2)
+    per_day, left = assign(trip, trip.ctxs, sorted(trip.by_place))
+    assert not left and sorted(map(len, per_day)) == [0, 2]
+    near = trip_of(recs, days=2)
+    near = replace(near, cfg=replace(near.cfg, spread_extra_min=10_000))
+    assert all(assign(near, near.ctxs, sorted(near.by_place))[0])          # the bound is what keeps them together

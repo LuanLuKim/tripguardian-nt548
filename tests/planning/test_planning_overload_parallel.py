@@ -169,7 +169,7 @@ def test_deadline_draft_can_be_opened_without_losing_unplaced_selections(monkeyp
     monkeypatch.setattr(overload, "_FORK_WAIT_S", 0.1)
     monkeypatch.setattr(overload, "_direction", hung)
     engine = Engine(recs, cfg=CFG, live_cfg=FakeLive(), store=Store(None), geocode_fn=no_geocode,
-                    matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), background=False)
+                    matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), route_fn=lambda *a: None, background=False)
     created = engine.create(d)
     draft = next(v for v in created["view"]["variants"] if v["status"] == "available")
     opened = engine.act(created["id"], {"type": "pick_variant", "id": draft["id"]})
@@ -177,9 +177,8 @@ def test_deadline_draft_can_be_opened_without_losing_unplaced_selections(monkeyp
     assert "chưa" in created["view"]["overload"]["text"].lower()
     assert "thiếu ~" not in created["view"]["overload"]["text"]
     assert not engine._get(created["id"]).state.plan_dropped
-    from planning.engine import NotConfirmable
-    with pytest.raises(NotConfirmable):
-        engine.confirm(created["id"])
+    out = engine.confirm(created["id"])  # owner 2026-11-09: confirmed, the unplaced picks named as a warning
+    assert any(w.get("code") == "picks_left_out" for w in out["warnings"])
 
 
 def test_worker_settings_do_not_discard_the_main_day_route_cache():

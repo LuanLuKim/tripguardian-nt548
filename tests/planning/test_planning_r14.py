@@ -229,3 +229,16 @@ def test_arrival_and_departure_buffers_are_explained_without_inventing_airport_l
     assert any(w.get('code') == 'departure_buffer' and '19:00' in w['text'] and 'chưa' in w['text'].lower()
                for w in trip.warnings)
     assert '@entry' not in trip.travel.ids and '@exit' not in trip.travel.ids
+
+
+def test_one_pick_and_no_lodging_still_gives_every_empty_day_real_suggestions():
+    # E2E pick_one_only_three_days (2026-11-09): with no stay known, a day without a stop had no place to measure from
+    # and showed an empty "free" slot; it is measured from the trip's picks instead
+    from plan_fixtures import all_days
+    records = [rec(pid, CENTRE[0] + n * .001, CENTRE[1], hours=all_days('06:00', '23:00'))
+               for n, pid in enumerate(('a', 'c', 'd', 'e', 'f'))]
+    engine, sid = make_engine(records, decision(['a'], days=3))
+    view = engine.load(sid)['view']
+    for day in view['itinerary']:
+        if not any(i['kind'] == 'visit' for i in day['items']):
+            assert [g for g in view['ghosts'] if g['day'] == day['day'] - 1 and g['items']], (day, view['ghosts'])

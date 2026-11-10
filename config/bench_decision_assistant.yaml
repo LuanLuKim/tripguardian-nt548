@@ -53,3 +53,11 @@ cases:
   # ---- no block, no push, off topic
   - {id: nb-bad-pick, family: no_block, turns: ["Mình cứ muốn chọn {p1} dù nó hơi xa, thêm giúp mình"], tools: [select], expect: {selected: 1}}
   - {id: nb-offtopic, family: no_block, turns: ["Hôm nay bạn khỏe không?"], expect: {unchanged: true}}
+  # ---- asks real travellers make that the families above miss (2026-11-09)
+  - {id: rl-more-like, family: real, turns: ["Kiếm thêm mấy chỗ giống {p1} đi"], tools: [more_like]}
+  - {id: rl-kinds, family: real, turns: ["Trong tab ăn uống có những kiểu nào, chia nhóm giúp mình"], tools: [group_list], expect: {unchanged: true}}
+  - {id: rl-why-few, family: real, turns: ["Sao ít chỗ vậy, mình tưởng Đà Lạt nhiều quán lắm"], expect: {unchanged: true}, reply_lacks: ["^Có thể"]}
+  - {id: rl-rain, family: real, trip: true, turns: ["Mai mưa thì nên giữ chỗ nào trong danh sách?"], tools: [weather], expect: {unchanged: true}}
+  - {id: rl-junk, family: real, turns: ["gâu gâu"], expect: {unchanged: true}}
+  - {id: rl-visited-two, family: real, turns: ["{p1} với {p2} mình đi rồi"], tools: [visited], expect: {dropped: 2}}
+  - {id: rl-trip-days, family: real, turns: ["Mình đổi ý, đi thêm 1 ngày nữa"], tools: [trip]}

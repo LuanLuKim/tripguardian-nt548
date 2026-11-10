@@ -355,3 +355,21 @@ def test_a_restricted_place_the_plan_leaves_out_gets_no_sentence():
     kept = [_replace(r, items=[i for i in r.items if i.place_id != "s2"]) for r in s.results]
     assert {w["place_id"] for w in restricted_warnings(s.ctxs, kept)} == {"s1", "s3"}
     assert restricted_warnings(s.ctxs, [_replace(r, items=[]) for r in s.results]) == []
+
+
+def test_a_dry_windy_day_is_not_called_rain():
+    from types import SimpleNamespace
+    from planning.build import condition_warnings
+    windy = DayCond(weather="heavy", rain_mm=0.0, gust_kmh=67.0)
+    wet = DayCond(weather="heavy", storm=True, rain_mm=40.0)
+    ctx = lambda c, i: SimpleNamespace(cond=c, day=SimpleNamespace(index=i), cfg=CFG, places={})  # noqa: E731
+    texts = [w["text"] for w in condition_warnings([ctx(windy, 0), ctx(wet, 1)]) if w["code"] == "heavy_weather"]
+    assert "gió mạnh" in texts[0] and "mưa" not in texts[0].split("(")[0]
+    assert "dông và mưa lớn" in texts[1]
+
+
+def test_the_day_shown_to_the_user_names_what_made_it_bad_not_rain_by_default():
+    windy = conditions.describe(DayCond(weather="heavy", rain_mm=1.0, gust_kmh=53.0), CFG)
+    assert windy["weather_cause"] == "gió mạnh"
+    assert conditions.describe(DayCond(weather="heavy", storm=True, rain_mm=40.0), CFG)["weather_cause"] == "dông và mưa lớn"
+    assert "weather_cause" not in conditions.describe(DayCond(), CFG)          # a fine day names no cause

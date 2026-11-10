@@ -477,8 +477,10 @@ def assign(trip, ctxs: list[DayCtx], ids: list[str]) -> tuple[list[list[str]], l
                             not (r := simulate(day.ids(), _as_laid(day))).violations
                             and not any(n.startswith('meal_missed') for n in r.notes)
                             for day in (source, target)):
+                        # A day of its own costs a ride out and back: worth it up to spread_extra_min, since the
+                        # user came for every day of the trip; a far group stays together past that.
                         delta = target.tour() + source.tour() - donor.tour()
-                        if delta <= 0:
+                        if delta <= trip.cfg.spread_extra_min:
                             options.append((delta, pid, donor.k, source, target))
             if options:
                 _, _, k, source, target = min(options, key=lambda x: x[:3])

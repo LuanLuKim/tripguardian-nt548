@@ -118,8 +118,8 @@ def ask_model(system: str, user: str, temperature: float = 0.3, max_tokens: int 
     raise RuntimeError(f"model call failed: {type(last).__name__}")
 
 
-SIM_SYSTEM = ("Bạn đóng vai một người dùng Việt Nam đang chat với trợ lý lập lịch du lịch Đà Lạt. Chỉ viết MỘT tin nhắn người dùng "
-              "sẽ gõ, tiếng Việt, tối đa 25 từ, đúng giọng nhân vật. Chỉ dùng thông tin trong SỰ THẬT; điều không có trong sự thật "
+SIM_SYSTEM = ("Bạn đóng vai một người dùng đang chat với trợ lý lập lịch du lịch Đà Lạt. Chỉ viết MỘT tin nhắn người dùng "
+              "sẽ gõ, bằng đúng ngôn ngữ của NHÂN VẬT (tiếng Việt, trừ khi nhân vật viết tiếng Anh), tối đa 25 từ, đúng giọng nhân vật. Chỉ dùng thông tin trong SỰ THẬT; điều không có trong sự thật "
               "thì trả lời 'sao cũng được' hoặc 'chưa biết'. Nếu trợ lý hỏi một điều đã nói rồi thì nói 'mình nói rồi mà'. Không "
               "giải thích, không ngoặc kép, không tiền tố.")
 
@@ -967,7 +967,7 @@ def apply_edit(case, api: Api, e: prod_cases.Edit, view: dict, rec: dict, texts)
     if e.op == "assistant":
         r = api.request("planning", "turn", {"text": e.text}, sse=True)
         api.step("edit_assistant", r.secs, r.status == 200)
-        out.update(applied=r.status == 200, say=r.say, secs=round(r.secs, 2), status=r.status)
+        out.update(applied=r.status == 200, text=e.text, say=r.say, secs=round(r.secs, 2), status=r.status)
         texts.append(("edit.assistant.say", r.say))
         j = r.journey
         new_view = (j or {}).get("result", {}).get("view") if j else None
@@ -1444,6 +1444,9 @@ def finish(case, api: Api, rec: dict, texts, run_dir: Path, t_start: float) -> d
     failed = [f"{k}: {v['evidence'][:120]}" for k, v in rec["checks"].items() if v["status"] == "fail" and not v.get("noise")]
     if final:
         chat = "\n".join(f"U: {c['user']}\nA: {c['say'][:300]}" for c in rec["chat"][:12])
+        # what the Lịch trình chatbot answered: a criterion about it needs its words, not only the final plan
+        chat += "".join(f"\n[Lịch trình] U: {e.get('text') or ''}\nA: {(e.get('say') or '')[:400]}"
+                        for e, spec in zip(rec["edits"], case.edits) if spec.op == "assistant")
         try:
             rec["satisfaction"] = judge(case, plan_text(final), chat, failed, evidence={"picks": rec["picks"], "searches": rec["searches"], "checks": rec["checks"]})
         except Exception as exc:  # noqa: BLE001

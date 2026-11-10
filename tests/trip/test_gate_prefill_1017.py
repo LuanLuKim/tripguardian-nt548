@@ -117,21 +117,24 @@ def test_skipped_lodging_counts_as_resolved(catalog, cfg):
     from trip.domain import readiness
     from trip.domain.state import with_meta
     st = build(drop=("lodging",))
-    assert [k for k, _ in readiness.missing(st)] == ["lodging"]
+    assert readiness.gate_missing(st) == []
+    assert "lodging" in dict(readiness.missing(st, readiness.REQUIRED))
     st = with_meta(st, declined=("lodging",))
     assert readiness.missing(st) == []
 
 
-def test_gate_deck_has_every_missing_topic_including_lodging(catalog, cfg):
+def test_gate_deck_only_has_dates_and_care_without_optional_confirmations(catalog, cfg):
     from trip.domain import deck
     st = TripState()
     d = deck.build(st, catalog, cfg, at="gate")
-    assert [t.qid for t in d.tabs] == ["trip", "companions", "mobility", "care", "pace", "budget", "lodging"]
+    assert [t.qid for t in d.tabs] == ["trip", "care"]
+    assert d.tabs[0].inputs == ("dates",)
+    assert not any(o.id == "skip" for t in d.tabs for o in t.options)
     d = deck.build(build(drop=("lodging",)), catalog, cfg, at="gate")
-    assert [t.qid for t in d.tabs] == ["lodging"]
+    assert d.tabs == ()
 
 
-def test_skip_tap_on_lodging_ends_the_gate(catalog, cfg, tmp_path):
+def test_unknown_lodging_never_opens_a_gate_card(catalog, cfg, tmp_path):
     from trip.api.engine import TurnInput
     e = engine(catalog, cfg, tmp_path)
     sid = e.create("first", "nothing")["id"]
@@ -140,4 +143,5 @@ def test_skip_tap_on_lodging_ends_the_gate(catalog, cfg, tmp_path):
     e.store.save(s)
     e.turn(sid, TurnInput(kind="deck", answers={"lodging": ["skip"]}), lambda *_: None)
     from trip.domain import readiness
-    assert readiness.missing(e.store.get(sid).state) == []
+    assert readiness.gate_missing(e.store.get(sid).state) == []
+    assert not e.store.get(sid).state.lodging.known

@@ -21,7 +21,7 @@ from PIL import Image
 from pydantic import ValidationError, model_validator
 
 from ..agent import AgentError, Chat, TurnTools, build_messages, lookups, run_loop
-from agents.assistant import Guarded, last_shown, rule_reply
+from agents.assistant import REGISTRY, Guarded, last_shown, rule_reply
 from corpus import tags as corpus_tags
 
 from ..agent.tools import DATE_TOOLS
@@ -46,7 +46,7 @@ from ..domain.prepass import Prepass, prepass
 from ..domain.questions import (FIELD_LABEL, OFFER_QID, OTHER_CHIP, QUIZ_FIELD, REVIEW_QID, SOFT_LABEL, TO_QUIZ,
                                 apply_chip, care_q, c_effort, companions_q, find_quiz, is_quiz, pending_fields, strictest,
                                 quiz_queue, review_card)
-from ..domain.readiness import missing
+from ..domain.readiness import gate_missing, missing
 from ..domain.resolve import URL, anchor_for, search
 from ..domain.coverage import admissible
 from ..domain.covers import assign as distinct_covers
@@ -54,7 +54,7 @@ from ..domain.state import (MAX_TRIP_DAYS, SCALARS, Anchor, Draft, Evidence, Fro
                             ontology, pending_signals, settle, with_meta)
 from ..domain.text import fold, language, says_nothing, squash
 from ..domain.traits import compared_places
-from ..domain.understanding import chip_effects, view as understanding
+from ..domain.understanding import chip_effects, fit_summary, view as understanding
 from ..infrastructure.catalog import Catalog
 from ..infrastructure.images import sanitize_photo
 from ..infrastructure.profile import ProfileStore
@@ -86,6 +86,17 @@ def log_turn(sid: str, turn: int, text: str, log: list[str], say: str, card: str
 GREETING = "Chào bạn! Mình hỏi vài câu ngắn để hiểu chuyến Đà Lạt của bạn trước khi chọn chỗ."
 RECORDED_SAY = "Mình đã ghi lại ({got})."  # asks nothing: the next question card shows under it
 MOVE_ON_SAY = "Mình hỏi tiếp phần này nhé."  # the agent asked the same question again, so only its question is dropped
+def _ids_in(o) -> set[str]:
+    """Every string in a nested result that looks like a place id."""
+    if isinstance(o, dict):
+        return set().union(*map(_ids_in, o.values())) if o else set()
+    if isinstance(o, (list, tuple)):
+        return set().union(*map(_ids_in, o)) if o else set()
+    return {o} if isinstance(o, str) and PLACE_ID.fullmatch(o) else set()
+
+
+PLACE_ID = re.compile(r"0x[0-9a-f]+:0x[0-9a-f]+")
+PREPARED_GROUPS = frozenset({"places", "detail", "weather", "distance", "trends", "services"})  # agent/prefetch.covers
 INVENTED = ("numbers", "names place")  # bad_say reasons a reply loses only the sentences that hold them
 VAGUE = re.compile(r"\b(tuy|chua biet|khong biet|sao cung duoc|gi cung duoc|cung duoc|la duoc|ok|oke|duoc roi|chua chot|"
                    r"chua chac|bo qua|de trong|de sau)\b")
@@ -146,6 +157,8 @@ class TurnInput(Frozen):
     chips: tuple[str, ...] = ()
     value: str | None = None
     target: str = ""
+    soft_only: bool = False
+    at: Literal["understand", "gate", "plan"] = "understand"
 
     @model_validator(mode="after")
     def _one_answer(self):
@@ -460,8 +473,9 @@ class Engine:
                                     entry_min=self.cfg.entry_min, defaults=FrameDefaults(**self.cfg.frame))
 
     def _deck(self, s: Session, inp: TurnInput, emit: Emit) -> None:
-        legacy = not isinstance(s.card, Deck)
-        current = (deck.build(s.state, self.catalog, self.cfg, agent=s.card.agent, at=s.card.at, ask=s.card.ask,
+        legacy = not isinstance(s.card, Deck) and inp.at == "understand"
+        current = (deck.build(s.state, self.catalog, self.cfg, at=inp.at) if inp.at != "understand" else
+                   deck.build(s.state, self.catalog, self.cfg, agent=s.card.agent, at=s.card.at, ask=s.card.ask,
                               question=s.card.ask_question, agent_only=s.card.agent_only) if not legacy else
                    deck.build(s.state, self.catalog, self.cfg, at="gate" if s.card is None else "understand"))
         available = {t.qid: t for t in current.tabs}
@@ -489,7 +503,9 @@ class Engine:
                                                         ("budget_vnd", "budget_scope", "budget_unlimited")})
                 if tab.kind == "drill":
                     s.state = drill.skip(s.state, key.removeprefix("drill."))
-                s.state = with_meta(s.state, declined=tuple(dict.fromkeys((*s.state.meta.declined, key))),
+                at_gate = isinstance(s.card, Deck) and s.card.at == "gate" and tab.kind == "required"
+                s.state = with_meta(s.state, declined=tuple(dict.fromkeys((*s.state.meta.declined, key,
+                                                                           *((f"gate:{key}",) if at_gate else ())))),
                                     soft_skips=s.state.meta.soft_skips + (tab.kind != "required"))
                 continue
             if vals == ["other"]:
@@ -625,7 +641,9 @@ class Engine:
                 s.state = settle(st)
             except (ValueError, TypeError, ValidationError):
                 issues.append({"key": key, "code": "invalid"})
-        s.state = derive(s.state, self.catalog, turn)  # "Một mình" is one person, "gần trung tâm" a stay point, ...
+        if current.at != "gate":
+            # Gate answers must not silently resolve a pending health hint through unrelated derivations.
+            s.state = derive(s.state, self.catalog, turn)  # "Một mình" is one person, "gần trung tâm" a stay point, ...
         st = s.state
         if st.days.value == 1 and st.checkin_at.known and st.checkout_at.known and st.checkout_at.value < st.checkin_at.value:
             clock_keys = {"trip.start", "trip.end"} & flat.keys()
@@ -711,12 +729,12 @@ class Engine:
         if party_conflict(s.state.companions.value, s.state.people.value):
             emit("readback", self._readback(s.state))  # the clash is asked, not planned over
             return
-        if not missing(s.state, self.cfg.required):
+        if not gate_missing(s.state):
             s.state = with_meta(s.state, readback_digest=digest)
         emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
 
     def _readback(self, state: TripState) -> dict:
-        needed = [key for key, _ in missing(state, self.cfg.required)]
+        needed = [key for key, _ in gate_missing(state)]
         try:
             rb = build_readback(self._compile(state))
             clash = party_conflict(state.companions.value, state.people.value)
@@ -725,7 +743,8 @@ class Engine:
         except UnhandledSignal:
             data = {"lines": [], "digest": None, "ok": False}
         gate = deck.build(state, self.catalog, self.cfg, at="gate") if needed else None
-        return {**data, "missing": needed, "deck": self._card(state, gate)}
+        fill = deck.build(state, self.catalog, self.cfg, at="plan")
+        return {**data, "missing": needed, "deck": self._card(state, gate), "fill": self._card(state, fill) if fill.tabs else None}
 
     def _drop(self, s: Session, inp: TurnInput, emit: Emit) -> None:
         target = inp.target
@@ -821,6 +840,24 @@ class Engine:
         text = inp.text.strip()
         if not text:
             emit("card", self._card(s.state, s.card))
+            return
+        if inp.soft_only:
+            # Extract on a detached draft: only ranking preferences may cross back, never trip facts or limits.
+            draft = Session(s.id, with_meta(s.state.model_copy(deep=True), remember=False), s.card, list(s.transcript), list(s.photos))
+            self._text(draft, inp.model_copy(update={"soft_only": False}), lambda *_: None)
+            prior = Evidence(turn=s.state.meta.turn + 1, quote=text, tool="board:preference")
+            soft = {**s.state.soft, **{k: f.model_copy(update={"evidence": (*f.evidence, prior), "requirement": None})
+                                     for k, f in draft.state.soft.items() if f != s.state.soft.get(k)}}
+            wishes = draft.state.wishes
+            if soft == s.state.soft and wishes == s.state.wishes:
+                wishes = wishes.model_copy(update={"kinds": (*wishes.kinds, KindWish(kind=text, quote=text))})
+            s.state = s.state.model_copy(update={"soft": soft, "wishes": wishes})
+            s.state = with_meta(s.state, turn=s.state.meta.turn + 1)
+            say = "Mình ghi nhận điều bạn muốn như một ưu tiên mềm, không dùng để loại nơi."
+            s.transcript.extend([{"role": "user", "text": text, "turn": s.state.meta.turn},
+                                 {"role": "agent", "text": say, "turn": s.state.meta.turn}])
+            emit("say", {"replace": say})
+            emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
             return
         if isinstance(s.card, Deck):
             return self._run(s, text, emit)
@@ -1155,17 +1192,23 @@ class Engine:
             if self.cfg.assistant.hide_prepared_lookup and data and (data.get("tim_noi") or data.get("chi_tiet")):
                 tools.hidden.add("find_places")  # the model re-searched what data holds: one 3-8 s call each time
             mode = self.cfg.assistant.covered_tools
-            compound = re.search(r"[,;.!?…]\s*\w|\b(và|rồi|còn|từ|cách đi|đi lại|đồng thời)\b", text, re.I)
+            compound = re.search(r"[,;.!?…]\s*\w|\b(và|rồi|còn|từ|cách đi|đi lại|đồng thời|sao|vì sao|tại sao|why)\b", text, re.I)
             if mode in ("write", "none") and tools.route is not None and not compound and covers(tools.route, data):
                 # Compound requests keep reads: group-level coverage cannot prove every clause was answered.
                 # the prepared data answers every asked group: no lookup (each costs a 3-8 s second call)
                 keep = {"record_fact", "browse_tags", "hide_place"} if mode == "write" else set()  # a broad ask still gets its subtags
-                tools.hidden |= {n for n in tools.tool_names() if mode == "none" or n not in keep}
+                # only reads prefetch could have prepared go (and the ungrouped ones, web search): a tool prefetch never
+                # prepares stays, so an ask Clef routed elsewhere ("hết bao nhiêu tiền", "homestay dưới 600k") still
+                # finds estimate_cost / find_stays
+                tools.hidden |= {n for n in tools.tool_names() if mode == "none" or (
+                    n not in keep and ((t := REGISTRY.get(n)) is None or t.group is None or t.group in PREPARED_GROUPS))}
                 log.append(f"covered tools={mode}")
+        fit = fit_summary(st, self.catalog) if assistant else None  # the "Đang hợp" count and what narrows it
         messages = build_messages(st, text, s.transcript[:-1], prev.text if prev else None, self.today(), hints, compared,
                                    clarify, dict(needed), stuck, picked=picked, lookups=found, data=data,
                                    assistant=assistant, ask_words=self.cfg.assistant.ask_words,
                                    reply_style=self.cfg.assistant.reply_style, slots=tools.slots, discovery=self.cfg.discovery,
+                                   fit=fit,
                                    name_of=lambda pid: p.name if (p := self.catalog.by_id.get(pid)) else None)
         tools.step("read", "Đọc lựa chọn của bạn" if picked else "Đọc tin nhắn của bạn", "ok")
         if assistant:
@@ -1220,6 +1263,11 @@ class Engine:
         told = " ".join(tools.refusal_notes.values())
         if assistant:  # numbers in this turn's read results may be said, and the places they returned named
             told += " " + " ".join(map(str, sorted(tools.told_numbers)))
+            if fit:  # the count on the screen and per wish (places_fitting): "chỉ 6 nơi có máy sưởi" is grounded
+                told += f" {fit['now']} {fit['total']} {fit['past_hard_limits']} " + " ".join(
+                    str(w["places_with_it"]) for w in fit["wishes"])
+            # every place a result block holds (a tag's sample places, a service row that is a corpus place) may be named
+            tools.told_ids |= {x for b in tools.blocks for x in _ids_in(b) if x in self.catalog.by_id}
         check = lambda x: bad_say(x, heard, tools.state, self.catalog, {c["id"] for c in compared},  # noqa: E731
                                   reply_language=language(text), told=told, allowed_ids=frozenset(tools.told_ids))
         invented = lambda x: w if (w := check(x)) and w.startswith(INVENTED) else None  # noqa: E731
@@ -1235,7 +1283,7 @@ class Engine:
         if why := (why or tools.rejected_claim(say) or (tools.reply_problem() if say else None)):
             log.append(f"say replaced: {why}")
             # never leave a question without a visible reply; a told trip gets an honest pointer to the summary
-            say = (UNSURE_SAY if "?" in text else NOTED_TEXT_SAY) if say else ""
+            say = (NOTED_TEXT_SAY if "?" not in text and tools.recorded else UNSURE_SAY) if say else ""
             emit("say", {"replace": say})
         if language(text) == "en" and say and language(say) != "en":
             say = "I could not finish understanding that. Please tell me again."
@@ -1441,6 +1489,18 @@ class Engine:
         places the trip allows. qid = the tags block, target = the node path, value on / off. Never a hard filter."""
         if inp.value not in ("on", "off"):
             raise ValueError("wish needs value on or off")
+        if inp.target.startswith("wishes:") and inp.value == "off":
+            _, kind, index = inp.target.split(":", 2)
+            if kind not in {"dishes", "kinds", "like"} or not index.isdecimal():
+                raise ValueError("invalid wish target")
+            rows = getattr(s.state.wishes, kind)
+            if int(index) >= len(rows):
+                raise ValueError("invalid wish index")
+            s.state = s.state.model_copy(update={"wishes": s.state.wishes.model_copy(
+                update={kind: tuple(w for i, w in enumerate(rows) if i != int(index))})})
+            s.transcript.append({"role": "system", "text": f"wish off {inp.target}", "turn": s.state.meta.turn})
+            emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+            return
         node = self._stage_node(s, inp.qid, [r for r in inp.target.split("/") if r])
         if not node.get("ids"):  # a tag ref this release no longer knows (an old chat): nothing to wish for, keep the wishes
             emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})

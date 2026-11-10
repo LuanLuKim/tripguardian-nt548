@@ -22,7 +22,7 @@ SIMILAR_MAX = 4  # places a similar_places call averages
 SIMILAR_POOL = 120  # nearest places taken before the criteria and the limit are applied
 FIND_ALL = 500  # find asked for every place that passes (a filter over a similar list)
 FIND_POOL = 40  # places asked of corpus.retrieval before the hard filters keep `limit` of them
-WEATHER_KEYS = ("rain_prob", "rain_mm", "source", "fetched_at")
+WEATHER_KEYS = ("rain_prob", "rain_mm", "tmin_c", "tmax_c", "gust_kmh", "storm", "source", "fetched_at")
 EARTH_KM = 6371.0088
 
 
@@ -143,7 +143,18 @@ class Knowledge:
             row = None
         if not isinstance(row, dict):
             return {"error": "weather unavailable"}
-        return {"date": iso, **{k: row[k] for k in WEATHER_KEYS if row.get(k) is not None}}
+        out = {"date": iso, **{k: row[k] for k in WEATHER_KEYS if row.get(k) is not None}}
+        for k in ("tmin_c", "tmax_c", "gust_kmh"):  # whole numbers: what a reply says is what the result holds
+            if isinstance(out.get(k), float):
+                out[k] = round(out[k])
+        if "tmin_c" not in out and "tmax_c" not in out:  # beyond the forecast: the month's long-run temperatures, said as such
+            try:
+                c = self.more.climate(day.month)
+                if c.get("tmin_c") is not None or c.get("tmax_c") is not None:
+                    out["usual_temp_of_month"] = {k: round(c[k]) for k in ("tmin_c", "tmax_c") if c.get(k) is not None}
+            except Exception:  # no climate feed: the rain figures alone
+                pass
+        return out
 
     def _point(self, ref: str) -> tuple[str, tuple[float, float]]:
         if ref == "center":

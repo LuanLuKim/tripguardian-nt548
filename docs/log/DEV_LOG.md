@@ -29,6 +29,31 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 
 ## Các mục
 
+## planning-gate-2026-11-10 — Chỉ hỏi ngày đi và lưu ý an toàn trước lập lịch
+
+- file: `src/trip/{domain/readiness,domain/required,domain/deck,domain/compile,api/engine}.py`, `src/planning/engine.py`, `src/harness/dispatch.py`, `web/src/user/ui/{ReadbackSheet,Gate}.tsx`, `web/src/user/css/gate.css`; test Trip / Planning / Harness và `web/scripts/test_planning_gate_*.mjs`.
+- cách kiểm chứng: bộ pytest liên quan Trip / Planning / Harness đạt **454 passed, 39 deselected** (loại biến thể PostgreSQL vì sandbox chặn socket); `cd web && npx tsc --noEmit` và ba file test Node journey / planning state / render cổng đều đạt. Test trình duyệt `node web/scripts/test_planning_gate_ui.mjs` lưu ảnh vào `frontend_images/2026-11-10-planning-gate/`; môi trường sandbox của lượt sửa chặn socket Vite / Chromium nên chưa chụp được ảnh.
+
+### Hiện tại (10/11/2026)
+- hành vi (quyết định chủ dự án 10/11/2026): `GATE_REQUIRED` chỉ gồm `trip`, `care`; ngày cần ngày bắt đầu + số ngày, không cần giờ. Bảy nhóm `understanding.required` giữ nguyên cho hiển thị / sửa trong Tìm hiểu. Các trường tùy chọn chưa biết không chặn lập lịch, không ghi fallback thành fact. Không cần read-back/digest; contract cũ giữ tương thích. Planner tạo lịch bình thường với ngày + care, không gắn nhãn nháp vì thiếu thông tin tùy chọn.
+- ô điền ở trang Lịch trình: `read/trip/readback` trả thêm `fill` (bộ thẻ `deck.build(at="plan")`, chỉ `PLAN_FILL` = đi cùng, phương tiện, nhịp độ, ngân sách còn trống); câu trả lời gửi qua `decision.trip` với `at:"plan"`, rồi web gọi lại `advance`. Xếp lại từ câu trả lời nên chỉnh sửa tay trên lịch cũ không giữ. Web: `screens/plan/fill.tsx`, hàng *Thông tin chuyến* ở Tổng quan.
+- hành vi: sheet chỉ có thẻ ngày / care còn thiếu, giữ giấy kem và thẻ pastel; bỏ bộ đếm, thanh ghi nhận, trang đọc lại; lưu câu trả lời cuối thì tiến sang Planning. Tín hiệu sức khỏe hoặc câu hỏi ăn kiêng mở vẫn chặn; care đã ngừng lặp ở chat vẫn hiện tại cổng. Harness lưu được câu trả lời từng phần khi tín hiệu còn mở, không biên dịch ép hoặc làm mất câu trả lời.
+
+### Trước đó (09/11/2026)
+- hành vi: cổng dùng chung bảy nhóm hiển thị (ngày gồm cả giờ), cần xác nhận đọc lại trước lập lịch.
+
+## user-chat-preferences — Lịch sử gọn, mong muốn mềm và chat mới theo stage
+
+- file: `web/src/user/screens/understand/{History,Board}.tsx`, `Understand.tsx`, `css/workspace.css`, `ui/Assistant.tsx`, `store.ts`, `journey.ts`, `tu/types.ts`; `src/trip/{api/engine,domain/understanding}.py`, `src/{decision,planning}/{tools,assistant}.py`, `src/planning/engine.py`, `src/harness/{contracts,router}.py`.
+- cách kiểm chứng: pytest Trip engine / Decision assistant / Planning assistant-turn / Harness dispatch-new_chat; `npx tsc --noEmit`; `web/scripts/test_{understand_ui,assistant_chat,assistant_store,planning_state}.mjs` và fixture `trip-disc.fixture.tsx`.
+- kết quả: pytest liên quan 186 đạt, 1 bỏ qua; TypeScript đạt; Node store / planning state / journey 27 đạt. Playwright và ảnh chưa chạy được vì sandbox chặn socket Chromium và cổng Vite (`EPERM`).
+
+### Hiện tại (10/11/2026)
+- hành vi: lịch sử một dòng, màu khung giữ như thiết kế cũ (xám tím), ghim và xóa trong menu ba chấm (ghim nhớ ở trình duyệt, xóa gọi DELETE session), tìm kiếm tại chỗ; bảng Tìm hiểu giữ thiết kế cũ, không có mục sở thích; chat mới chỉ xóa stage hiện tại sau khi lưu archive/mốc trên server, context bỏ lượt trước mốc, giữ nguyên nghiệp vụ. Quyết định chủ dự án 10/11/2026.
+
+### Trước đó (trước 10/11/2026)
+- hành vi: lịch sử có dòng metadata và nền lạnh; gu chỉ ở discovery; trợ lý chưa có thao tác mở chat mới.
+
 ## flow-redesign-2026-11-08 — Tạo chuyến đi vào thẳng chat, 10 chủ đề có subtag, hai nút luồng ở rail, lịch không chặn (`docs/PLANNING.md` §Validate, `docs/Role_Web_Functional_Design.md` §6)
 
 - file: `src/planning/{variants,engine,pets}.py`, `web/src/user/home/{dialogs,Frame,ThemeBlog,themes,tagTopics}.ts(x)`, `web/src/user/ui/{Shell,Assistant}.tsx`, `web/src/user/screens/{Plan,Explore,Discover}.tsx`, `web/src/user/css/{explore,assistant,tagpick,home}.css`, `web/public/img/home/{temple,grill,garden,camp,falls}.jpg`, `web/public/img/brand/cat-peek.webp`; bỏ `home/TagPicker.tsx`, `ui/Shell.tsx` `FlowBar`
@@ -949,3 +974,30 @@ _không có_
 - cách kiểm chứng: `pytest --collect-in-virtualenv tests/{harness,planning,trip,decision,corpus,bench}`; `python -m planning evaluate`; trình duyệt signed-in trên tên miền prod
 ### Hiện tại (2026-11-04)
 - hành vi: Deploy prod 04/11 18:10. Harness: `Store.peek` (bản sao nông) cho metadata; Planning load/read render trên writer ngoài journey lock + kiểm revision/dấu runtime (bỏ fork; mở lại Lịch trình 2–8 s → 25–160 ms); `before` của request là bản mượn; danh sách chuyến chỉ lấy trường cần từ Postgres + cache theo `updated_at` (lạnh 3,7–13,7 s → 1,5 s, nóng 0,01 s); làm nóng 30 chuyến 48 h gần nhất sau restart; `web/server.mjs` nén JSON qua tunnel (Lựa chọn 557 KB → 61 KB, 1,4 s → 0,3 s). Planning: ghim mặt trời không áp cho quán ăn; dời nơi sang ngày trống tính theo `_as_laid`; ghim ngày không giữ được = bỏ + báo, không vi phạm; ngày chay chỉ chặn khi `fail`, chưa rõ/ô trống thành `diet_unknown`/`diet_meal_open`; ngân sách không chặn (`NO_BUDGET_CAP`, cảnh báo `budget_over`); quá tải hết hạn thêm hướng `kept` chốt được; ô ăn gợi ý mờ có quán (bữa sáng); cảnh báo an toàn chưa rõ gộp một dòng/nơi; bỏ chữ thô `plan_excluded`. Test: planning 1150/8 nền, harness 455, trip 1451, decision 596/1 nền, corpus 125, bench 115; planning evaluate 10/10 (trước 9/10).
+
+## ux-chat-2026-11-09 — UI thẻ ý tưởng / rail, chatbot đủ tool, không chặn người dùng, Clef GPU 1
+
+- file: `web/src/user/home/{ThemeBlog,themes,dialogs,Frame}.tsx`, `web/src/user/screens/{Understand,understand/History}.tsx`, `web/src/user/screens/plan/shared.ts`, `web/src/user/ui/icons.tsx`, `web/src/user/css/home.css`; `src/trip/{agent,api,domain,infrastructure}/…`, `src/agents/assistant/turn.py`, `src/live/weather/*`, `src/decision/engine.py`, `src/planning/{build,assistant,tool_schemas,engine,ghosts}.py`; `config/planning.yaml`, `config/bench_*`, `config/prod_journey_cases.yaml`, `scripts/prod_journey_e2e.py`, `run.sh`, `scripts/models_ctl.sh`
+- cách kiểm chứng: `pytest tests/trip tests/agents tests/planning tests/decision`; `python -m bench assistant --live --family realchat`; `python -m planning bench --live --trip --family lodging`; `python -m bench assistant --guard`; `scripts/prod_journey_e2e.py --only …`; ảnh `frontend_images/2026-11-09-ui-sidebar/`
+
+### Hiện tại (2026-11-09)
+- giao diện: 5 chủ đề, thẻ ý tưởng không còn chip kiểu; rail Trò chuyện / Lựa chọn / Lịch trình chỉ trên màn của luồng; thanh chuyến ở trang chủ không còn dãy bước; lịch sử chat đặt tên chuyến chưa gõ chữ là "Đà Lạt … · N nơi"; ô "Ăn đêm (tự chọn)".
+- chatbot Trò chuyện: `weather` có nhiệt độ (làm tròn; ngoài tầm dự báo kèm nhiệt độ thường gặp của tháng); `places_fitting` giải thích số "Những nơi đang hợp" bằng số thật; chế độ `covered_tools` chỉ ẩn tool mà prefetch chuẩn bị được, câu "vì sao" giữ tool đọc; prefetch đọc giờ người dùng hỏi thành `open_at`; tên quán ưu tiên nơi đã hiện ở lượt trước và khớp cụm trong tên dài ("Tao Ngộ"); trả lời sai ngôn ngữ thì viết lại một lần; tên trong khối kết quả / dòng dịch vụ được phép nhắc; câu dự phòng "Mình ghi lại…" chỉ khi có ghi; tự giới thiệu đủ khả năng; `frame.meals.by` ghi giờ ăn.
+- Lựa chọn: tìm kiếm đưa nơi khớp đúng dấu lên trước; lời muốn chuyển cho Trip không còn nói trước "đã cập nhật".
+- Lịch trình: tool `lodging_options`, `pick_lodging`, `set_lodging_budget`, `set_priority`; giờ ăn theo `meal_windows_by`; gợi ý lấp ngày khi không có điểm và chưa có chỗ ở; cảnh báo thời tiết gọi đúng dông / mưa lớn / gió mạnh.
+- không chặn (chủ dự án 2026-11-09): trợ lý không hoàn tác sửa đổi gây vi phạm (trả `serious`); `set_stop_time` giữ giờ người dùng; `confirm` không từ chối vì thiếu chỗ ở, chỗ ở không đạt, nơi bắt buộc / nơi đã chọn chưa xếp được (thành cảnh báo); phiên "khách sạn trước" không cấm chọn phương án / sửa lịch; bỏ qua mục bắt buộc lần hai ở bộ câu hỏi trước lịch không còn giữ lịch lại (trừ tín hiệu sức khỏe mở).
+- ngày: đổi ngày đi / số ngày dời giờ tới / về theo; tới muộn có thời gian cho bữa đêm.
+- vận hành: harness prod + dev ở GPU 0 (`HARNESS_GPU=0`), Clef nf4 ở GPU 1 (`CLEF_REPLICAS=1:30011`).
+- đo: bench mới `realchat` (27 câu), Lựa chọn `real` (7), Lịch trình `lodging/priority/real` (10); 4 kịch bản E2E mới. Còn 7 test planning trượt sẵn từ trước (overload_round1, qa_sweep, realism overload_explained) không thuộc phiên này. Toàn bộ suite: 4034 đạt; ngoài 7 test đó, `test_wish_speed` p95 (~150 ms > 120 ms) trượt cả ở HEAD sạch do máy tải nặng (load ~30/40 lõi). `set_stop_time` vượt giới hạn vật lý: không từ chối, kết quả tool có `time_not_kept` để trợ lý nói giờ thật (test edit_confirm_regressions viết lại theo luật mới).
+
+### Trước đó
+- _không có_
+
+## plan-spread-weather-2026-11-10 — ngày trống nhận nơi với giá đường có trần; ngày xấu gọi đúng nguyên nhân (`docs/PLANNING.md` ⓑ, §Điều kiện từng ngày)
+
+- file: `src/planning/{layout,settings,conditions,build,engine}.py`, `web/src/user/screens/plan/parts.tsx`, `web/src/user/planning/types.ts`, `tests/planning/{test_planning_layout,test_planning_conditions}.py`
+- cách kiểm chứng: `pytest tests/planning/test_planning_layout.py tests/planning/test_planning_conditions.py`; ảnh `frontend_images/2026-11-10-weather-cause/conditions.png`
+### Hiện tại (2026-11-10)
+- hành vi: Chưa deploy. `layout.assign`: tập nơi xếp đủ mà còn ngày trống thì ngày đó nhận một nơi từ ngày có ít nhất hai nơi khi tổng đường tăng không quá `spread_extra_min` (default 45 trong `settings.py`, chưa ghi vào YAML vì prod đọc `config/` trực tiếp); 4 nơi cùng khu / 3 ngày ra 2-1-1 thay vì 4-0-0; cụm xa vượt ngưỡng vẫn ở cùng nhau. `conditions.describe(cond, cfg)` thêm `weather_cause` vào `day_conditions`; web hiện "Gió mạnh (…)" thay nhãn cố định "Mưa lớn hoặc dông", lịch dựng trước đó giữ nhãn cũ.
+### Trước đó (2026-11-04)
+- hành vi: Chỉ dời nơi sang ngày trống khi tổng đường không tăng, nên chuyến có chỗ ở (mỗi ngày thêm một lượt đi-về) gần như không bao giờ dời. Web gọi mọi ngày `heavy` là "Mưa lớn hoặc dông", kể cả ngày chỉ có gió giật.

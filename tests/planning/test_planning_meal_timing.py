@@ -97,16 +97,14 @@ def test_picking_profile_does_not_rerun_the_scheduler(monkeypatch):
     e.act(sid, {'type': 'pick_variant', 'id': card['id']})
 
 
-def test_hotel_first_session_rejects_plan_selection_and_confirmation_without_a_hotel():
-    from planning.engine import NotConfirmable
-    from planning.session import ActionError
+def test_hotel_first_session_warns_without_a_hotel_but_never_refuses(monkeypatch):
+    # owner 2026-11-09: nothing is refused; the plan says what is missing and the user confirms
     e, sid = make_engine()
+    monkeypatch.setattr(e, 'route_fn', lambda *a, **k: None, raising=False)
     e.store.get(sid).require_lodging = True
+    assert e.load(sid)['view']['needs_hotel']
     card = e.variants(sid)[0]
-    with pytest.raises(ActionError, match='hotel'):
-        e.act(sid, {'type': 'pick_variant', 'id': card['id']})
-    with pytest.raises(NotConfirmable, match='hotel'):
-        e.confirm(sid)
+    e.act(sid, {'type': 'pick_variant', 'id': card['id']})
     e.act(sid, {'type': 'pick_lodging', 'id': 'h1'})
     assert not e.load(sid)['view']['needs_hotel']
 
@@ -181,3 +179,20 @@ def test_reloading_a_selected_plan_reuses_validation_and_robustness(monkeypatch)
     monkeypatch.setattr(engine_module, 'robustness_of', lambda *a, **kw: pytest.fail('unchanged plan was recomputed'))
     monkeypatch.setattr(engine_module, 'backups_of', lambda *a, **kw: pytest.fail('unchanged backups were recomputed'))
     assert e.load(sid)['view']['active_variant']['metrics'] == card['metrics']
+
+
+def test_a_latest_dinner_start_moves_the_dinner_window():
+    from planning.build import meal_windows_by
+    from planning.settings import to_min
+    w = meal_windows_by({"dinner": (to_min("17:30"), to_min("20:00")), "lunch": (to_min("11:00"), to_min("13:30"))},
+                        {"dinner": "18:00", "lunch": "11:00"})
+    assert w["dinner"] == (to_min("17:00"), to_min("18:00"))
+    assert w["lunch"] == (to_min("10:00"), to_min("11:00"))
+
+
+def test_dinner_starts_by_the_time_the_user_gave():
+    from planning.build import meal_windows_by
+    cx = day_ctx([rec('a', *CENTRE)], start=480, end=1260)
+    cx = replace(cx, cfg=replace(CFG, meal_windows=meal_windows_by(CFG.meal_windows, {'dinner': '18:00'})))
+    dinner = next(it for it in simulate(['a'], cx).items if it.kind == 'meal_free' and it.name == 'dinner')
+    assert dinner.start <= 18 * 60

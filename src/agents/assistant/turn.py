@@ -155,5 +155,8 @@ class TurnCore:
             if n >= 1000:
                 self.told_numbers.update(int(x) for x in f"{n:,}".split(","))
         elif isinstance(result, str):
+            if self.known_id(result):  # a place id anywhere in a result (a list of ids, a row's id) may be named
+                self.told_ids.add(result)
+                return
             for x in re.findall(r"\d+", result):
                 self.remember(int(x))

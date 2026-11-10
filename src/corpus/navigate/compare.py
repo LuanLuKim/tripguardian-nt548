@@ -10,6 +10,9 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
+
+import yaml
 
 from .. import data_root, load_ontology
 from ..crawl.web import seed_queries
@@ -168,7 +171,8 @@ def _nominee(nominee, places: list[Place], held: float, maybe: float, drop: set[
     return {"name": nominee.name, "area_hint": nominee.area_hint, "status": status, "matches": matches}
 
 
-def _queue(city: str, rows: list[dict]) -> int:
+def enqueue_nominees(city: str, rows: list[dict]) -> int:
+    """Append lookup requests not already queued, deduplicated by folded name; return the count written."""
     path = navigate_dir(city) / "resolve_queue.jsonl"
     seen = set()
     if path.exists():
@@ -184,6 +188,16 @@ def _queue(city: str, rows: list[dict]) -> int:
             for row in fresh:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
     return len(fresh)
+
+
+def seed(city: str, path: Path | None = None) -> int:
+    """Queue owner-approved names from navigate.yaml for Maps to resolve, not as proven places."""
+    cfg = config() if path is None else yaml.safe_load(path.read_text(encoding="utf-8"))
+    entries = ((cfg or {}).get("seed") or {}).get(city, [])
+    return enqueue_nominees(city, [
+        {"name": row["name"], "area_hint": row.get("area_hint", ""), "aspect": "seed", "why": row.get("why", "")}
+        for row in entries
+    ])
 
 
 def compare_map(city: str, mining_map: MiningMap | None = None, *, known: Known | None = None,
@@ -231,7 +245,7 @@ def compare_map(city: str, mining_map: MiningMap | None = None, *, known: Known 
         },
         "aspects": aspects, "new_features": new_features,
     }
-    report["summary"]["resolve_queue_added"] = _queue(city, queue)
+    report["summary"]["resolve_queue_added"] = enqueue_nominees(city, queue)
     write_json(navigate_dir(city) / f"compare_{stamp(now)}.json", report)
     return report
 

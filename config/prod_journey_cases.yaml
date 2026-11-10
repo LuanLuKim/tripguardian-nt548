@@ -1137,3 +1137,101 @@ cases:
         - "Lịch 3 ngày 5-7/12 cho 4 người"
         - "Ngày 1 bắt đầu khoảng 10h"
         - "Không hỏi lại nơi ở đã nói"
+
+  - id: junk_start_then_real
+    title: "Mở đầu bằng câu vô nghĩa và hỏi chatbot làm được gì, rồi mới kể chuyến (từ chat thật 09/11)"
+    axes: [junk_input, capability_question, trends, couple, motorbike, two_days]
+    persona: "Bạn trẻ 22 tuổi, gõ cụt, không dấu một nửa, hay hỏi lan man trước khi vào việc."
+    truth: {days: 2, start: 2026-11-28, people: 2, companions: [partner], mobility: motorbike, arrive: self, origin: TP.HCM,
+            start_hour: "08:00", pace: normal, budget_vnd: 600000, wants: [chỗ đang hot, cà phê, ăn đêm]}
+    chat:
+      - {text: "gi", kind: opening}
+      - {text: "bạn biết làm những gì", kind: detail}
+      - {text: "đà lạt dạo này có gì hot k, sao hot vậy", kind: detail}
+      - {text: "ok mình đi với người yêu 2 ngày 28-29/11, chạy xe máy từ sài gòn lên, 8h sáng đi chơi, khoảng 600k một người một ngày", kind: detail}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [cafe, sights, night, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: người yêu, people: người yêu, start_hour: 8h sáng đi chơi}
+      stated: [trip, companions, mobility, budget]
+      start_hour: "08:00"
+      criteria:
+        - "Câu vô nghĩa đầu tiên được hỏi lại nhẹ nhàng, không bịa địa điểm"
+        - "Trả lời được làm những gì: tìm nơi, thời tiết, chỗ ở, đường lên Đà Lạt, lên lịch"
+        - "Nói chỗ đang hot kèm nguồn và lý do từ video / đánh giá, không chỉ đếm video"
+        - "Lịch 2 ngày 28-29/11 cho hai người đi xe máy, bắt đầu khoảng 8h"
+        - "Có ít nhất một chỗ ăn hoặc chơi buổi tối"
+
+  - id: english_tourist
+    title: "Khách nước ngoài nói tiếng Anh, đi một mình, taxi, 2 ngày"
+    axes: [english, foreign, solo, taxi, two_days]
+    persona: "Backpacker from Germany, 29, writes short English sentences, no Vietnamese."
+    truth: {days: 2, start: 2026-12-03, people: 1, companions: [solo], mobility: walk, arrive: bus, origin: TP.HCM,
+            start_hour: "09:00", pace: normal, budget_vnd: 800000, wants: [coffee with a view, local food, waterfall], notes: "takes Grab, no motorbike"}
+    chat:
+      - {text: "Hi! I'm travelling alone to Da Lat for 2 days, Dec 3-4, coming by sleeper bus from Saigon. I'll use Grab, no motorbike. I like coffee with a view, local food and a waterfall. I start around 9am.", kind: opening}
+      - {text: "Is it cold in early December? What should I wear?", kind: weather}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [cafe, meal, nature]}
+    edits:
+      - {op: assistant, text: "Is day 1 too packed? Make it less travel please", verify: none}
+    expect:
+      chat_evidence: {companions: travelling alone, people: travelling alone, start_hour: start around 9am}
+      stated: [trip, companions, mobility]
+      start_hour: "09:00"
+      criteria:
+        - "Every chat reply is in English"
+        - "The weather answer gives a temperature and says if it is a forecast or a long-run average"
+        - "Plan of 2 days Dec 3-4 for one person without a self-driven motorbike"
+        - "Has a coffee place with a view and a waterfall"
+        - "The planning assistant answers in English and either reduces travel or says why not"
+
+  - id: planning_lodging_priority_chat
+    title: "Ở màn Lịch trình nhờ chatbot đổi chỗ ở rẻ hơn và xếp lịch ít đi lại"
+    axes: [assistant, lodging_change, priority, friends, car, three_days]
+    persona: "Nhóm 3 bạn văn phòng, có dấu, nói thẳng yêu cầu."
+    truth: {days: 3, start: 2026-12-11, people: 3, companions: [friends], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "08:30", pace: normal, budget_vnd: 900000, wants: [cà phê, thiên nhiên, quán nướng]}
+    chat:
+      - {text: "Nhóm 3 đứa bạn đi Đà Lạt 11-13/12, ô tô tự lái từ Sài Gòn, 8h30 sáng đi, mỗi người tầm 900k một ngày, thích cà phê, thiên nhiên với quán nướng.", kind: opening}
+    sim_replies: 2
+    pick: {mode: medium, n: 7, groups: [cafe, nature, meal, sights]}
+    edits:
+      - {op: assistant, text: "Có chỗ ở nào rẻ hơn, dưới 800k một đêm không?", verify: none}
+      - {op: assistant, text: "Xếp lại lịch sao cho ít phải đi lại nhất giúp mình", verify: none}
+    expect:
+      chat_evidence: {companions: Nhóm 3 đứa bạn, people: Nhóm 3 đứa bạn, start_hour: 8h30 sáng đi}
+      stated: [trip, companions, mobility, budget]
+      start_hour: "08:30"
+      criteria:
+        - "Chatbot liệt kê chỗ ở có giá từ dữ liệu hoặc nói rõ chưa có chỗ ở hợp mức giá, không bịa giá"
+        - "Chatbot đổi ưu tiên sang ít đi lại và nói lịch thay đổi thế nào, hoặc nói rõ vì sao không đổi"
+        - "Lịch 3 ngày 11-13/12 cho 3 người đi ô tô"
+        - "Có quán nướng cho bữa tối"
+        - "Không chặn hay giảng giải lựa chọn của người dùng"
+
+  - id: count_drop_question
+    title: "Nói sợ lạnh rồi thắc mắc vì sao số nơi đang hợp giảm (từ chat thật 09/11)"
+    axes: [count_question, cold_averse, couple, car, two_days]
+    persona: "Chị 30 tuổi, có dấu, để ý con số trên màn hình."
+    truth: {days: 2, start: 2026-12-18, people: 2, companions: [partner], mobility: car, arrive: self, origin: TP.HCM,
+            start_hour: "09:00", pace: slow, budget_vnd: 1000000, wants: [quán ấm, cà phê, spa], notes: "sợ lạnh"}
+    chat:
+      - {text: "Hai vợ chồng đi Đà Lạt 18-19/12, ô tô nhà, 9h sáng mới đi, đi chậm thôi. Thời tiết đà lạt như nào vậy, tui sợ lạnh.", kind: opening}
+      - {text: "ủa sao tự nhiên địa điểm hợp với mình giảm thế", kind: detail}
+    sim_replies: 2
+    pick: {mode: medium, n: 5, groups: [cafe, spa, meal]}
+    edits:
+      - {op: drop_first, verify: absent}
+    expect:
+      chat_evidence: {companions: Hai vợ chồng, people: Hai vợ chồng, start_hour: 9h sáng mới đi}
+      stated: [trip, companions, mobility, pace]
+      start_hour: "09:00"
+      criteria:
+        - "Trả lời thời tiết có nhiệt độ, nói rõ dự báo hay khí hậu nhiều năm"
+        - "Giải thích số nơi đang hợp giảm bằng đúng mong muốn nào và con số, không đoán mò"
+        - "Lịch 2 ngày 18-19/12 cho 2 người, nhịp chậm"
+        - "Có quán ấm cúng hoặc spa"
+        - "Không ghi sợ lạnh thành ràng buộc cứng làm mất gần hết lựa chọn"

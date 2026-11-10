@@ -468,6 +468,8 @@ def history(log: list[dict]) -> list[dict]:
     out: list[dict] = []
     for entry in log:
         a = entry.get("action") or {}
+        if a.get("type") == "new_chat":
+            out.clear()
         if a.get("type") == "turn" and a.get("text") and a.get("say"):
             out += [{"role": "user", "content": a["text"]}, {"role": "assistant", "content": a["say"]}]
     return out

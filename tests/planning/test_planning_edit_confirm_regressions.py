@@ -57,8 +57,8 @@ def test_exact_stop_time_and_another_edit_are_one_undoable_replayable_turn():
     e.confirm(sid)
 
 
-@pytest.mark.parametrize("start", ["23:00", "25:00", "15:99"])
-def test_a_refused_stop_time_changes_neither_history_nor_plan(start):
+@pytest.mark.parametrize("start", ["25:00", "15:99"])
+def test_a_malformed_stop_time_changes_neither_history_nor_plan(start):
     e, sid = started()
     before = e._get(sid).model_dump()
     shown = e.load(sid)["view"]["itinerary"]
@@ -72,16 +72,32 @@ def test_a_refused_stop_time_changes_neither_history_nor_plan(start):
     assert e.load(sid)["view"]["itinerary"] == shown
 
 
-def test_exact_time_cannot_move_departure_or_leave_a_redoable_rejected_edit():
+def test_a_stop_time_past_the_day_is_kept_warned_and_said():
+    # owner 2026-11-09: nothing is refused; the day's end stays a physical bound, so the stop keeps another time and the
+    # chatbot is told which, with the warning on the plan
+    e, sid = started()
+    shown = e.load(sid)["view"]["itinerary"]
+    e.assistant = chat = Script(reply(call("set_stop_time", place="horizon", start="23:00", quote="Horizon sang 23:00")), say("Đã ghi."))
+    turn(e, sid, "đổi Horizon sang 23:00")
+    result = tool_results(chat.seen[1][0])[0]
+    assert result["done"] == "set_stop_time"
+    assert result["time_not_kept"]["asked"] == "23:00" and result["time_not_kept"]["placed"] != "23:00"
+    assert any(f["rule"] == "start_time" for f in result["flagged"])
+    e.act(sid, {"type": "undo"})
+    assert e.load(sid)["view"]["itinerary"] == shown
+
+
+def test_exact_time_after_departure_is_kept_as_a_warning_never_moves_departure():
     e, sid = started()
     e.act(sid, {"type": "move_place", "place": "horizon", "day": 1})
-    before = e._get(sid).model_dump()
-    with pytest.raises(ActionError, match="Không đổi giờ"):
-        e.act(sid, {"type": "set_stop_time", "place": "horizon", "start": "15:00"})
-    assert e._get(sid).model_dump() == before
-    with pytest.raises(ActionError, match="nothing to redo"):
-        e.act(sid, {"type": "redo"})
-    e.confirm(sid)
+    before = e.load(sid)["view"]
+    view = e.act(sid, {"type": "set_stop_time", "place": "horizon", "start": "15:00"})["view"]
+    assert visit(view)["start"] != "15:00"            # the departure is physical: no code path relaxes it
+    assert any(v["kind"] == "start_time" for v in view["violations"])
+    assert view["itinerary"][-1]["window"] == before["itinerary"][-1]["window"]
+    assert any(v["kind"] == "start_time" for v in e.confirm(sid)["violations"])   # flagged, not gated
+    e.act(sid, {"type": "undo"})
+    assert e.load(sid)["view"]["itinerary"] == before["itinerary"]
 
 
 def test_same_prefix_is_not_authorization_to_change_the_wrong_stop():

@@ -2,9 +2,10 @@
 
 Typed text goes through agents.assistant.run_loop. The model reads the plan with Planning's own tools and changes it only
 through the acts a button click uses (`Engine.act`), one tool call per act; the engine merges the acts of the turn into ONE
-plan version (`Engine.collapse`), so one undo takes the turn back. An act that would leave a NEW physical or impossible
-violation is taken back at once and reported; a soft one (day past its end, off the best time, closed hour) is kept and flagged
-like the buttons do: the model never relaxes a rule and the plan stays unconfirmable until the flags are fixed. Place data
+plan version (`Engine.collapse`), so one undo takes the turn back. Every act stays (owner 2026-11-09: warn, never refuse):
+a NEW physical or impossible violation comes back as `serious`, said first with undo offered; a soft one (day past its end,
+off the best time, closed hour) is flagged like the buttons do. The model never relaxes a rule or hides a warning, and the
+user can still confirm the plan. Place data
 (hours, price, distance, weather) comes from a real Trip TurnTools (`reader`), the same shared read tools Lựa chọn uses.
 The model writes words: it never writes a score, a place nobody named or a number no tool gave."""
 
@@ -24,14 +25,15 @@ from trip import contains, squash
 from .guard import names_in
 from .session import ActionError
 from .settings import to_min
-from .tool_schemas import (AddPlace, Diagnostics, ExtendDays, LocalFacts, LockPlace, MovePlace, Options, PickOption,
+from .tool_schemas import (AddPlace, LodgingOptions, PickLodging, SetLodgingBudget, SetPriority, Diagnostics, ExtendDays, LocalFacts, LockPlace, MovePlace, Options, PickOption,
                            PreviewEdit, ReadPlan, ReadStop, RemovePlace, ReorderDay, SetDayWindow, SetPace,
                            SetStopTime, SetVisitMinutes, SparePlaces, SwapPlace, Undo, UnlockPlace, WhyHere)
 
 NOTE_HEAD = "[note]"
-# Violations an assistant edit never leaves on the plan (also every physical one): the config key `assistant.blocking_violations`
-# replaces this list. The rest (day_window, hours, timed, busy, meal_*, ...) is flagged on its row, as the buttons do.
-BLOCKING_VIOLATIONS = ("hard", "departure", "duplicate", "anchor", "overlap", "travel", "hazard")
+# Violations an assistant edit reports as serious (also every physical one): the config key `assistant.serious_violations`
+# replaces this list. Nothing is taken back for them (owner 2026-11-09: warn, the user decides); the rest (day_window, hours,
+# timed, busy, meal_*, ...) is flagged on its row, as the buttons do.
+SERIOUS_VIOLATIONS = ("hard", "departure", "duplicate", "anchor", "overlap", "travel", "hazard")
 # "chỗ này", "quán đầu", "cái cuối", "nơi thứ hai", "nó": a stop the user points at without naming it
 POINTER = re.compile(r"\b(?:dau|tien|nay|do|kia|ay|thu|cuoi|tren|duoi|giua|vua roi|truoc|sau|no)\b")
 THOUSANDS = re.compile(r"(?<=\d)[.,]000(?!\d)")
@@ -49,8 +51,9 @@ How to work:
 - Aliases (P1, P2...) are fixed for this message: they name the stops as CURRENT CONTEXT lists them, even after your edits moved things. Never say an alias to the user: say the place's name.
 - For 'đổi Horizon sang 15:00' or any request for a stop's exact start time, call `set_stop_time`, not `move_place` or `set_day_window`. Do not claim exact times are unsupported or change the day's departure to make them fit.
 - After a change, say what changed in plain words using the tool's effect (which day, which stops, the new times): "mình dời X sang ngày 2, buổi chiều". Never claim a change the result does not show. A result with `error` changed nothing: say honestly why and what the user can do instead.
+- For the stay ('chỗ ở gần hơn', 'đổi khách sạn', 'dưới 800k/đêm') use `lodging_options`, then `pick_lodging` or `set_lodging_budget`; for what the layout should favour ('ít đi lại', 'rẻ', 'mưa vẫn đi được') use `set_priority`. A place not in `spare_places` is added by picking it in Lựa chọn, not here.
 - To describe the plan or answer 'có ổn không', call `plan`, `diagnostics` or `stop`. To answer 'tại sao', call `why_here`. To suggest something to add or swap, call `spare_places`. For 'nếu... thì sao', call `preview_edit` first. For facts about a place (hours, price, parking, noise, distance, weather) use the shared read tools. Say only what their results say; nothing in the result means you do not know: say so, never guess.
-- The plan is checked by rules (opening hours, time windows, travel, budget). A result with `error` + `would_break` was refused for a rule that cannot be bent: say which, and offer another day, another order or a place that leaves. A result with `flagged` WAS made: the user's choice stands; tell them plainly what is now flagged (which day runs late, which place is outside its hours) and what would fix it. You never relax or bypass a rule, and you cannot confirm the plan: the user presses Chốt.
+- The plan is checked by rules (opening hours, time windows, travel, budget). Every change the user asks for is made; nothing is refused for a rule. A result with `serious` broke a rule that may not work in reality (travel time, overlap, departure, a hard limit): say it first and plainly, and offer undo or a fix (another day, another order, a place that leaves). A result with `flagged`: tell them plainly what is now flagged (which day runs late, which place is outside its hours) and what would fix it. A result with `time_not_kept`: the stop could not start at the asked time (the day's end or the departure is a physical bound); say the time it got instead and offer another day or undo. The user decides; they can still confirm. You never relax a rule or hide a warning, and you cannot confirm the plan: the user presses Chốt.
 - When the picks do not fit the days, `options` lists a small fixed set of trade-offs in a fixed order. Explain them if asked; the user chooses.
 - Never block, warn about, or push the user's choice. Do not tell them what to choose unless they ask; when they ask, use the tools and say what each option costs.
 - Name only places that CURRENT CONTEXT or a tool result shows. Say a number (minutes, hours, prices, days) only if the user, CURRENT CONTEXT or a tool result said it. Never write a score of your own.
@@ -245,11 +248,11 @@ class PlanTurn(LoopHost, TurnCore):
     # ---------- writing ----------
 
     def commit(self, action: dict, *, preview: bool = False, expect: str | None = None) -> dict:
-        """Run one act through Engine.act (the button's own path). What the act leaves NEW is split like the screen splits it:
-        a physical violation or an impossibility (config `assistant.blocking_violations`) takes the act back at once and the
-        result is an error naming it; everything else (the day running past its end, a place off its best time of day, a
-        closed hour the engine flags on its row) stays on the plan as `flagged`: the plan is then not confirmable until the
-        user fixes it, as with the button. -> the result for the model."""
+        """Run one act through Engine.act (the button's own path). The act always stays: the user asked for it. What it
+        leaves NEW is split like the screen splits it: a physical violation or an impossibility (config
+        `assistant.serious_violations`) comes back as `serious` (said first and plainly, with undo offered); everything else
+        (the day running past its end, a place off its best time of day, a closed hour) as `flagged`. Neither blocks the
+        plan: the user can still confirm it. -> the result for the model."""
         if self.undo:
             raise ValueError("undo is used alone in a turn")
         before = self.view
@@ -260,23 +263,27 @@ class PlanTurn(LoopHost, TurnCore):
         out = engine.act(sid, send)
         view = out["view"]
         new = [v for v in view.get("violations") or [] if (v["kind"], v.get("day"), v.get("place_id")) not in violation_keys(before)]
-        blocking_kinds = set(engine.cfg.assistant.get("blocking_violations", BLOCKING_VIOLATIONS))
-        hard = [v for v in new if v.get("physical") or v["kind"] in blocking_kinds]
-        if hard:
-            engine.act(sid, {"type": "undo"})
-            return {"error": "this change would break a rule of the plan, so it was not made",
-                    "would_break": [self.flag(v) for v in hard[:4]],
-                    "physical": any(v.get("physical") for v in hard)}
+        serious_kinds = set(engine.cfg.assistant.get("serious_violations", SERIOUS_VIOLATIONS))
+        serious = [v for v in new if v.get("physical") or v["kind"] in serious_kinds]
         self.acts.append(action)
         eff = self.effect(before, view)
         self.view = view
         result = {"done": action["type"], "effect": eff}
+        if action["type"] == "set_stop_time":
+            placed = next((i["start"] for d in view.get("itinerary") or [] for i in d["items"]
+                           if i["kind"] == "visit" and i.get("place_id") == action["place"]), None)
+            if placed != action["start"]:
+                # A physical bound (the day's end, the departure) keeps the stop elsewhere; the user must hear it.
+                result["time_not_kept"] = {"asked": action["start"], "placed": placed}
+        if serious:
+            result["serious"] = [self.flag(v) for v in serious[:4]]
+            result["physical"] = any(v.get("physical") for v in serious)
         remaining = view.get("violations") or []
         if remaining:
             result["flagged"] = [self.flag(v) for v in remaining[:4]]
-            result["note"] = ("the change is made and these rules are flagged on the plan, which cannot be confirmed until they are "
-                              "fixed: say so plainly and offer what fixes them (another day, another order, a wider day window "
-                              "or a place that leaves), or undo")
+            result["note"] = ("the change is made as the user asked. Say plainly what is now wrong (serious first: it may not work "
+                              "in reality) and what fixes it (another day, another order, a wider day window, a place that "
+                              "leaves) or undo; the user decides and can still confirm the plan")
         return result
 
     def flag(self, v: dict) -> dict:
@@ -628,6 +635,53 @@ def undo(turn: PlanTurn, inp: Undo) -> dict:
     return {"done": "undo"}
 
 
+LODGING_MAX = 8
+
+
+def _stays(turn: PlanTurn, max_per_night: int | None = None) -> list[dict]:
+    out = []
+    for c in (turn.view.get("lodging") or {}).get("candidates") or []:
+        price = c.get("price_vnd")
+        if max_per_night is not None and (price is None or price > max_per_night):
+            continue
+        row = {k: c[k] for k in ("id", "name", "category", "price_vnd", "price_kind", "price_at", "rating", "reviews",
+                                 "avg_min") if c.get(k) not in (None, [], "")}
+        row["why"] = [w["text"] for w in c.get("why") or []]
+        row["tradeoffs"] = [w.get("text", w) if isinstance(w, dict) else w for w in c.get("tradeoffs") or []]
+        out.append(row)
+    return out
+
+
+@action_tool("planning", LodgingOptions)
+def lodging_options(turn: PlanTurn, inp: LodgingOptions) -> dict:
+    st = turn.view.get("state") or {}
+    stays = _stays(turn, inp.max_per_night)
+    return {"current": lodging_name(turn, turn.view), "booked_by_user": bool(st.get("lodging_point")),
+            "status": (turn.view.get("lodging") or {}).get("status"), "stays": stays[:LODGING_MAX],
+            "note": ("pick_lodging accepts only these ids; avg_min = average road minutes to the trip's places" if stays else
+                    "no stay on offer fits: say so") + "; price_kind reference = a Maps listing price, not a quote"}
+
+
+@action_tool("planning", PickLodging)
+def pick_lodging(turn: PlanTurn, inp: PickLodging) -> dict:
+    turn.quoted(inp.quote)
+    if inp.id not in {c["id"] for c in _stays(turn)}:
+        raise ValueError(f"{inp.id!r} is not a stay lodging_options offers: call lodging_options and use its ids")
+    return turn.commit({"type": "pick_lodging", "id": inp.id})
+
+
+@action_tool("planning", SetLodgingBudget)
+def set_lodging_budget(turn: PlanTurn, inp: SetLodgingBudget) -> dict:
+    turn.quoted(inp.quote)
+    return turn.commit({"type": "set_lodging_budget", "max_per_night": inp.max_per_night})
+
+
+@action_tool("planning", SetPriority)
+def set_priority(turn: PlanTurn, inp: SetPriority) -> dict:
+    turn.quoted(inp.quote)
+    return turn.commit({"type": "set_objective", "name": inp.priority})
+
+
 # ---------- CURRENT CONTEXT ----------
 
 @context_block("planning", "today")
@@ -683,6 +737,8 @@ def history(chat: list[dict]) -> list[dict]:
     """The earlier typed turns of this session as chat messages: what the user wrote and what was answered."""
     out: list[dict] = []
     for entry in chat:
+        if entry.get("type") == "new_chat":
+            out.clear()
         if entry.get("text") and entry.get("say"):
             out += [{"role": "user", "content": entry["text"]}, {"role": "assistant", "content": entry["say"]}]
     return out

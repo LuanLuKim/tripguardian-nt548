@@ -345,8 +345,10 @@ class TurnTools(TripRules, TurnCore):
 
     def resolve_place(self, ref: str) -> str | None:
         """A place the model wrote by name ("lululola") as its id (agent/prefetch.place_id), so it reads the prepared
-        result instead of an error and a second model call. A name that fits no place, or several, is None (no guess)."""
-        return place_id(ref, self.catalog, self.told_ids)
+        result instead of an error and a second model call. A name that fits no place, or several, is None (no guess).
+        The places shown this turn and in earlier turns win: "Tao Ngộ đóng cửa rồi" after a card of Tao Ngộ means that
+        place, not another whose name merely contains "Ngộ"."""
+        return place_id(ref, self.catalog, self.told_ids | set(self.state.meta.shown_ids))
 
     def _remember(self, result) -> None:
         self.remember(result)

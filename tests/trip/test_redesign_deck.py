@@ -49,7 +49,7 @@ def test_dk1_an_empty_trip_opens_no_required_tab_without_the_agent(catalog, cfg)
     d = build(TripState(), catalog, cfg)
     assert qids(d) == []  # Only the agent opens a required topic in chat.
     assert qids(build(TripState(), catalog, cfg, ask="mobility")) == ["mobility"]  # the topic the agent chose
-    assert qids(build(TripState(), catalog, cfg, at="gate"))[:4] == ["trip", "companions", "mobility", "care"]
+    assert qids(build(TripState(), catalog, cfg, at="gate")) == ["trip", "care"]
     assert (d.left, d.total) == (7, 7)
 
 
@@ -61,7 +61,7 @@ def test_dk2_a_said_answer_is_never_asked_again(catalog, cfg):
 
 def test_dk3_a_guess_is_a_prefilled_chip_that_says_why(catalog, cfg):
     d = build(st(**{k: v for k, v in READY.items() if k != "pace"}, pace=said("slow", source="inferred", quote="thong thả thôi")), catalog, cfg,
-              at="gate")
+              ask="pace")
     tab = next(t for t in d.tabs if t.qid == "pace")
     pre = [o for o in tab.options if o.prefilled]
     assert [o.id for o in pre] == ["slow"] and "thong thả thôi" in pre[0].because
@@ -69,19 +69,19 @@ def test_dk3_a_guess_is_a_prefilled_chip_that_says_why(catalog, cfg):
 
 def test_dk4_a_contradiction_is_asked_with_nothing_chosen_for_the_user(catalog, cfg):
     state = st(**{k: v for k, v in READY.items() if k != "pace"}, meta={"conflicts": ["pace"]})
-    tab = next(t for t in build(state, catalog, cfg, at="gate").tabs if t.qid == "pace")
+    tab = next(t for t in build(state, catalog, cfg, ask="pace").tabs if t.qid == "pace")
     assert not any(o.prefilled for o in tab.options) and "cả hai" in tab.why
 
 
-def test_dk5_a_skipped_required_tab_waits_for_the_gate(catalog, cfg):
+def test_dk5_a_skipped_optional_topic_does_not_hold_the_gate(catalog, cfg):
     state = st(**DATES, meta={"declined": ["companions"]})
     assert "companions" not in qids(build(state, catalog, cfg, at="understand"))
-    assert "companions" in qids(build(state, catalog, cfg, at="gate"))
+    assert "companions" not in qids(build(state, catalog, cfg, at="gate"))
 
 
 def test_dk5_the_gate_deck_shows_only_what_is_missing(catalog, cfg):
-    d = build(st(**{k: v for k, v in READY.items() if k != "pace"}), catalog, cfg, at="gate")
-    assert qids(d) == ["pace"] and d.left == 1
+    d = build(st(**{k: v for k, v in READY.items() if k != "care"}), catalog, cfg, at="gate")
+    assert qids(d) == ["care"] and d.left == 1
 
 
 def test_dk19_a_date_the_user_typed_is_theirs_not_a_guess(catalog, cfg, tmp_path):
@@ -156,22 +156,22 @@ def test_dk11_a_skipped_confirm_question_never_comes_back(catalog, cfg):
 
 # ---------- DK12-DK14: how many questions ----------
 
-def test_dk12_required_first_then_confirm_at_most_four_tabs(catalog, cfg):
+def test_dk12_the_gate_never_adds_optional_or_confirmation_cards(catalog, cfg):
     state = st(**{k: v for k, v in READY.items() if k not in ("pace", "budget_unlimited", "companions", "people")},
                companions=said(["partner", "baby"]), people=said(3),
                soft={"cloud_hunting=present": said("love", quote="săn mây"),
                      "live_music=present": said("love", quote="nhạc sống")})
     d = build(state, catalog, cfg, at="gate")
-    assert qids(d)[:2] == ["pace", "budget"] and len(d.tabs) <= 4
-    assert all(t.kind == "confirm" for t in d.tabs[2:])
+    assert d.tabs == () and d.left == 0
+    assert deck.confirm_tabs(state, catalog, cfg)  # They still exist in Understand, never at the gate.
 
 
 def test_dk13_two_skips_stop_the_optional_questions_not_the_required_ones(catalog, cfg):
-    state = st(**{k: v for k, v in READY.items() if k != "pace"},
+    state = st(**{k: v for k, v in READY.items() if k != "care"},
                soft={"cloud_hunting=present": said("love", quote="săn mây")},
                meta={"soft_skips": 2})
     d = build(state, catalog, cfg, at="gate")
-    assert qids(d) == ["pace"]
+    assert qids(d) == ["care"]
 
 
 def test_dk14_a_user_in_a_hurry_gets_no_optional_question(catalog, cfg, tmp_path):

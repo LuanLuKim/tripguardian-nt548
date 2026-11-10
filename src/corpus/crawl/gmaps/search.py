@@ -78,9 +78,18 @@ def place_row(name: str, url: str, info: str = "", stars: str = "", card_text: s
 async def parse_feed(page: Page, url: str | None = None) -> list[dict]:
     rows = [place_row(*r) for r in await page.evaluate(FEED_JS)]
     if not rows:  # exact match: Maps opened the place page itself
+        if url is None and not _FID.search(page.url):
+            # the title renders while the URL is still /maps/search/...; the fid arrives with /maps/place/... a moment later
+            try:
+                await page.wait_for_url(lambda u: _FID.search(u) is not None, timeout=10000)
+            except Exception:
+                pass  # no fid: place_row returns None and the list stays empty, as before
         name, category, stars, count = await page.evaluate(
             "() => [document.querySelector('h1.DUwDvf')?.innerText.trim() ?? '',"
-            " document.querySelector('button[jsaction*=\"category\"]')?.innerText.trim() ?? '',"
+            # a hotel's header has no category button, only "4,3 (16.608) · Khách sạn 3 sao": take the last text part
+            " document.querySelector('button[jsaction*=\"category\"]')?.innerText.trim()"
+            "   || ((document.querySelector('h1.DUwDvf')?.closest('div.TIHn2, div.lMbq3e')?.innerText ?? '')"
+            "        .split('·').map(s => s.trim()).filter(s => /\\p{L}{2}/u.test(s) && !s.includes('\\n')).pop() ?? ''),"
             " [...document.querySelectorAll('[aria-label]')].map(e => e.getAttribute('aria-label').trim())"
             "   .find(l => /^[\\d,]+ sao$/.test(l)) ?? '',"
             " [...document.querySelectorAll('[aria-label]')].map(e => e.getAttribute('aria-label').trim())"

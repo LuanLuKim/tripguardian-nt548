@@ -1,0 +1,104 @@
+import {CODE, DATA} from '../paths.mjs';
+import {join} from 'node:path';
+process.chdir(DATA);
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import * as THREE from '../vendor/node_modules/three/build/three.module.js';
+import {mergeGeometries} from '../vendor/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js';
+
+const builders={},scene=new THREE.Scene(),walkableGeometries=[],roofRecords=[];
+const context={THREE,scene,walkableGeometries,roofRecords,mergeGeometries,currentEnvelope:[],
+  place:{route:[]},material:c=>new THREE.MeshStandardMaterial({color:c}),
+  registerObjectType:(name,builder)=>{builders[name]=builder;},
+  document:{createElement:()=>({getContext:()=>new Proxy({measureText:()=>({width:50})},{get:(t,k)=>t[k]??(()=>{})})})}};
+vm.runInNewContext(fs.readFileSync(join(CODE, 'kits/garden.js'),'utf8'),context);
+const types=['terrain','field','bridge','stairs','platform','swing','sculpture','shelter','conifer'];
+for(const type of types)assert.equal(typeof builders['garden_'+type],'function','missing reusable garden_'+type);
+let serial=0;
+function build(type,options={}){
+  const id='fixture-'+serial++;
+  builders['garden_'+type]({...options,id});
+  const group=scene.getObjectByName(id+'-garden');group.updateWorldMatrix(true,true);
+  assert.ok(!new THREE.Box3().setFromObject(group).isEmpty(),type+' has geometry');
+  group.traverse(p=>{if(p.geometry)for(const v of p.geometry.attributes.position.array)assert.ok(Number.isFinite(v),type+' finite geometry');});
+  return group;
+}
+function hit(group,x,z){return new THREE.Raycaster(new THREE.Vector3(x,50,z),new THREE.Vector3(0,-1,0)).intersectObject(group,true).find(h=>h.object.isMesh)?.point.y;}
+const profile=[[-10,4],[-5,4],[-3,2],[3,2],[5,0],[10,0]];
+const terrain=build('terrain',{size:[20,20],profile,bend:0});
+assert.ok(Math.abs(hit(terrain,0,-4)-3)<.01,'bank is a continuous slope, not a slab');
+assert.ok(Math.abs(hit(terrain,0,0)-2)<.01,'terrace datum');
+assert.ok(Math.abs(hit(terrain,0,7))<.01,'valley datum');
+for(const species of ['hydrangea','sunflower','cosmos']){
+  const field=build('field',{size:[12,10],species,spacing:.9,rowSpacing:1.1,terrain:{profile}});
+  let instances=0,drawables=0,triangles=0;field.traverse(p=>{if(p.isMesh){drawables++;triangles+=(p.geometry.index?.count??p.geometry.attributes.position.count)/3*(p.count??1);}if(p.isInstancedMesh)instances+=p.count;});
+  assert.ok(instances>100,'dense '+species+' uses instances');assert.ok(drawables<12,'bounded '+species+' draw calls');
+  assert.ok(triangles<21000,'bounded crop triangles, including instances: '+species+' '+triangles);
+}
+const cropDetail=build('field',{size:[3,3],headSegments:[8,5]});
+assert.equal(cropDetail.getObjectByName('garden-crop-heads').geometry.parameters.heightSegments,5,'JSON can request rounded close-view flower heads');
+assert.equal(cropDetail.getObjectByName('garden-crop-heads').castShadow,false,'microscopic crop shadows are opt-in; studio AO supplies ground contact');
+assert.equal(build('field',{size:[3,3],castShadow:true}).getObjectByName('garden-crop-heads').castShadow,true,'hero crops can opt into authored shadows');
+const lush=build('field',{species:'sunflower',size:[3,3],leavesPerPlant:5,leafScale:[2,1.2,2],headRadius:.4});
+assert.equal(lush.getObjectByName('garden-crop-leaves').count,lush.getObjectByName('garden-crop-stems').count*5,'JSON controls tall-crop foliage density');
+assert.equal(lush.getObjectByName('garden-crop-centres').geometry.type,'CircleGeometry','sunflower disks are round rather than diamond-shaped crop dots');
+const disk= lush.getObjectByName('garden-crop-centres'),diskMatrix=new THREE.Matrix4(),diskPosition=new THREE.Vector3();disk.getMatrixAt(0,diskMatrix);diskPosition.setFromMatrixPosition(diskMatrix).applyMatrix4(lush.matrixWorld);
+assert.ok(new THREE.Raycaster(diskPosition.clone().add(new THREE.Vector3(0,0,-1)),new THREE.Vector3(0,0,1)).intersectObject(disk).length,'sunflower heads remain visible from the rear orbit');
+assert.equal(lush.getObjectByName('garden-crop-heads').material.side,THREE.DoubleSide,'petals also remain visible from the rear orbit');
+const lushMatrix=new THREE.Matrix4(),lushScale=new THREE.Vector3();lush.getObjectByName('garden-crop-leaves').getMatrixAt(0,lushMatrix);lushScale.setFromMatrixScale(lushMatrix);
+assert.ok(Math.abs(lushScale.x-.63)<.0001,'JSON scales the foliage footprint without multiplying meshes');
+const bridge=build('bridge',{points:[[-15,0],[0,-5],[15,0]],deckHeight:5,width:3,hands:[{position:[-8,0,-3],height:7},{position:[8,0,-3],height:7}]});
+assert.ok(hit(bridge,0,-5)>4.9,'curved bridge has a real elevated deck');
+assert.equal(bridge.getObjectsByProperty('name','garden-hand').length,2,'integrated independent stone hands');
+const stairs=build('stairs',{kind:'sky',width:4,steps:16,rise:.3,tread:.6,taper:.5});
+assert.ok(new THREE.Box3().setFromObject(stairs).max.y>4.7,'sky stair rises');
+const under=new THREE.Raycaster(new THREE.Vector3(0,.2,-7),new THREE.Vector3(0,0,-1),0,.1).intersectObject(stairs,true);
+assert.equal(under.length,0,'sky staircase has air beneath rather than solid stacked slabs');
+const beforeSky=walkableGeometries.length;
+build('stairs',{kind:'sky',walkable:false,landing:1.5});
+assert.equal(walkableGeometries.length,beforeSky,'non-walkable sky stairs also exclude their landing');
+for(const kind of ['relief','statue','plinth','hand'])build('sculpture',{kind});
+const relief=build('sculpture',{kind:'relief'}),chisel=relief.getObjectByName('garden-carving-chisel-lines').geometry.attributes.position;
+for(let i=0;i<chisel.count;i++)assert.ok(chisel.getZ(i)>1.38,'beard grooves stay in front of the carved mass');
+const translatedHand=build('sculpture',{kind:'hand',position:[13,2,19],rotation:35});
+assert.deepEqual(translatedHand.getObjectByName('garden-hand').position.toArray(),[0,0,0],'standalone hand transform applied only once');
+for(const roof of ['gable','arched','sawtooth'])build('shelter',{roof,kind:'greenhouse',size:[9,22,3]});
+const shed=build('shelter',{kind:'shed',roof:'gable',size:[12,10,4],sign:'GARDEN'});
+const gableHit=new THREE.Raycaster(new THREE.Vector3(0,5,7),new THREE.Vector3(0,0,-1)).intersectObject(shed,true).find(h=>h.object.isMesh);
+assert.ok(gableHit&&Math.abs(gableHit.point.z-5)<.1,'pointed shed has glazed front gable, not an empty triangle');
+build('platform');build('swing');
+for(const form of ['pine','cypress','wall'])build('conifer',{form,points:[[0,0],[4,0]]});
+const hedge=build('conifer',{form:'wall',color:'#819072'}).getObjectByName('garden-conifer-crowns');
+assert.ok(hedge.instanceColor,'clipped hedge uses authored foliage colour, not default white');
+const walkCount=walkableGeometries.length;
+build('path',{points:[[0,0],[0,-10]],width:3,kerbWidth:.22,kerbHeight:.18,tileRows:3,terrain:{profile}});
+assert.ok(walkableGeometries.length>walkCount,'new kerbed paths register walkable surfaces');
+build('furniture',{kind:'lamp',height:4,points:[[0,0],[5,0]]});
+const farmProfile=[[-68,9],[-53,9],[-47,6],[-35,6],[-29,3],[-22,3],[-16,0],[66,0]];
+const farmTerrain=build('terrain',{size:[146,138],profile:farmProfile,bend:4});
+const bankPath=build('path',{points:[[25,-32],[38,-34]],width:2.8,kerbWidth:.2,terrain:{profile:farmProfile,bend:4,width:146}});
+assert.ok(hit(bankPath,38,-34)>hit(farmTerrain,38,-34)+.04,'path is above the bank at profile crests');
+const narrowBank=[[-10,0],[.8,0],[.9,3],[1.1,3],[1.2,0],[10,0]];
+const narrowPath=build('path',{points:[[0,0],[10,0]],width:4,terrain:{profile:narrowBank}});
+assert.ok(hit(narrowPath,5,1)>3.06,'adaptive paving samples narrow profile breakpoints, not only triangle midpoints');
+const farmPlace=JSON.parse(fs.readFileSync('places/camtucau/place.json','utf8'));
+context.place.route=farmPlace.route;
+const farmWalk=build('path',farmPlace.objects.find(o=>o.id==='walking-path'));
+assert.ok(Number.isFinite(hit(farmWalk,48.17411422729492,-14.515296936035156)),'adaptive bank paving has no shared-triangle raycast cracks');
+const elbow=build('path',{points:[[0,0],[0,-10],[10,-10]],width:4,kerbWidth:.2});
+assert.ok(hit(elbow,-1.5,-11.5)>.07,'joined paving fills the outside of a right angle');
+assert.ok(hit(elbow,.5,-9.5)<.1,'kerbs do not cross the inside of the joined walking surface');
+const ring=build('path',{shape:'rectangle',size:[10,8],closed:true,width:2,kerbWidth:.2});
+assert.ok(hit(ring,5,0)>.07,'kerbed shape path preserves its authored ring');
+const excluded=build('field',{size:[12,12],exclude:[[[-2,-2],[2,-2],[2,2],[-2,2]]]});
+assert.equal(hit(excluded,0,0),undefined,'excluded field patch has neither plants nor substrate');
+context.place.route=[[[0,-10],[0,10]]];
+const cleared=build('field',{size:[12,16],clearRoute:true,routeMargin:2});
+assert.equal(hit(cleared,0,0),undefined,'route clearance removes substrate as well as plants');
+const rotatedClearance=build('field',{size:[12,16],position:[3,0,0],rotation:90,clearRoute:true,routeMargin:2});
+assert.equal(hit(rotatedClearance,0,0),undefined,'world route clearance follows translated and rotated field roots');
+cleared.traverse(p=>{if(!p.isInstancedMesh)return;const matrix=new THREE.Matrix4(),pos=new THREE.Vector3();for(let i=0;i<p.count;i++){p.getMatrixAt(i,matrix);pos.setFromMatrixPosition(matrix);assert.ok(Math.abs(pos.x)>1.8,'field leaves the authored route corridor clear');}});
+for(const bad of [{spacing:0},{rowSpacing:0},{soilResolution:0}])assert.throws(()=>build('field',bad),{name:'RangeError'});
+assert.throws(()=>build('terrain',{profile:[[0,0],[0,2]]}),{name:'RangeError'},'duplicate profile z rejected');
+console.log('garden extension: terrain, species, landmarks, sculpture, shelters, park fixtures PASS');

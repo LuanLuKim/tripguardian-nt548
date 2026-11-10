@@ -1,0 +1,2798 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://cdn.jsdelivr.net __SCRIPT_HASHES__; style-src 'unsafe-inline'; img-src 'self' data:; connect-src https://cdn.jsdelivr.net;">
+<title>Khám phá 3D</title>
+<!--
+Place schema: coordinates are [x,y,z] in metres, with +z facing the entrance.
+site: {width,depth,centerZ?:0,outline?:[[worldX,worldZ],...],hill?:{profile:[[z,height],...],undulation}};
+Optional outline defines a flat polygonal plinth and replaces rectangular framing corners.
+hill profile runs from the street (+z) to the rear (-z), with smooth interpolation.
+objects: array of typed primitives with optional stable id.
+Positions are bases except terrace.position, which is the box centre.
+terrace: position,size,color; slope: corners [[x,y,z],...],color;
+retaining_wall: points [[x,y,z],...],height;
+road: points,width,curved (draped on hill),graded (grade points cut/fill terrain),
+approach (straight axis),groups,stepsPerGroup,stepRise,tread;
+planting: position,size,draped,outline (optional world [x,z] perimeter);
+stairs: position,width,steps,rise,run,flights (step counts),landing (between each flight);
+building: position,size,color,roof,role (main selects an open colonnade);
+gate: position,width,height,wood,sign (optional);
+roof: legacy string or {overhang,curve,cornerLift,thickness,tiers,tierGap,ridgeOrnament,
+eaveHeight,ridgeHeight,color,tileSpacing,tileBand}; heights are relative to the object's base.
+All architectural roofs use vietnameseRoof; the ridge follows the longer side.
+pavilion: position,size,storeys,statue; tower: position,height,grounded;
+statue: position,kind; tree: position,kind,height,grounded; rock/lamp/bench: position.
+grounded samples the rendered hill rather than retaining a fixed base elevation.
+hotspots: id,title,caption,anchor,camera,target,subjects (object ids),
+bounds (fallback w,h,d centred on target),photos (local evidence basenames),walk ([x,z]).
+hotspot.fill defaults to .58; cutaway selects an object id; interior + building select an interior kit.
+building.interior.kit names a registered kit; building.cutaway.lift defaults to 7.4.
+route: walking polylines of [x,z] linking consecutive outdoor stops, draped on walkable geometry.
+path_steps: position (base centre),width (z),length (x),steps,rise,direction (outward x sign).
+camera defines the viewing direction; subject vertices determine fly-in distance.
+-->
+<style>
+:root { color-scheme: light; --ink:#30322e; --muted:#6d6b61; --paper:#f3f0e9; --line:#d9d4c8; --accent:#a45e3e; }
+* { box-sizing:border-box; }
+body { background:var(--paper); color:var(--ink); margin:0; font-family:Georgia,'Times New Roman',serif; overflow:hidden; }
+button { font:inherit; color:inherit; cursor:pointer; }
+button:focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
+button:disabled { opacity:.35; cursor:default; }
+[hidden] { display:none !important; }
+#canvas { background:radial-gradient(at 53%,#fcf8ef 5%,#f2eadb 80%); position:absolute; inset:0; }
+#canvas:before { content:""; pointer-events:none; background-image:linear-gradient(#bcb9ab0a 1px,#0000 1px),linear-gradient(90deg,#bcb9ab0a 1px,#0000 1px); background-size:48px 48px; position:absolute; inset:0; mask-image:radial-gradient(ellipse at 58% 46%,#0000 35%,#000 85%); }
+canvas { display:block; position:relative; }
+.masthead { pointer-events:none; justify-content:space-between; align-items:flex-start; padding:18px 30px; display:flex; position:absolute; top:0; left:0; right:0; }
+.masthead > div { background:#f8f6f0eb; padding:12px; }
+.masthead.interior { opacity:.4; }
+.masthead.interior > div { padding:7px 9px; background:#f8f6f033; }
+.masthead.interior h1 { font-size:22px; }
+.masthead.interior .eyebrow,.masthead.interior .subtitle,.masthead.interior .top-right { display:none; }
+.eyebrow,.small { text-transform:uppercase; letter-spacing:.16em; font:600 10px Arial,sans-serif; }
+.eyebrow { color:var(--accent); margin:0 0 9px; }
+.masthead h1 { letter-spacing:-.035em; margin:0; font-size:31px; font-weight:400; }
+.subtitle { color:#504f47; margin:6px 0; font:12px Arial,sans-serif; }
+.top-right { text-align:right; color:#514f47; border-top:1px solid #bfb9ac; line-height:1.8; }
+.footer { pointer-events:none; position:absolute; bottom:30px; left:42px; }
+.hint { color:#615f55; font:11px/1.9 Arial,sans-serif; letter-spacing:.02em; }
+.pin { z-index:3; color:#83533d; background:#faf8f2; border:1px solid #ac8c6b55; border-radius:50%; width:26px; height:26px; padding:0; font:600 10px Arial,sans-serif; transition:background .2s,color .2s,box-shadow .2s; position:absolute; transform:translate(-50%,-50%); box-shadow:0 1px 4px #61584d24; }
+.pin:before { content:""; position:absolute; inset:-7px; border-radius:50%; }
+.pin:hover,.pin:focus-visible,.pin.highlight,.pin.current { color:#fff; background:var(--accent); }
+.pin.current { box-shadow:0 0 0 4px #a45e3e24,0 2px 6px #61584d25; }
+.pin.has-inside:after { content:""; position:absolute; right:-2px; bottom:0; width:5px; height:5px; background:#a45e3e; border:2px solid #faf8f2; border-radius:50%; }
+#tour-hint { display:block; color:#9a7156; font:10px/1.4 Arial,sans-serif; margin-top:4px; }
+#tour-hint:empty { display:none; }
+.pin.next { animation:next-stop 3s ease-out infinite; }
+@keyframes next-stop { 0%,100% { box-shadow:0 0 0 3px #a45e3e18; } 60% { box-shadow:0 0 0 8px #a45e3e00; } }
+.pin span { pointer-events:none; white-space:nowrap; color:#fff; background:#31352f; border-radius:3px; padding:7px 9px; font:11px Arial,sans-serif; display:none; position:absolute; top:0; left:34px; }
+.pin:hover span,.pin:focus-visible span { display:block; }
+.pin-leaders { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; }
+.pin-leaders line { stroke:#958c7e; stroke-width:.65; opacity:.5; }
+.tour-bar { z-index:6; position:absolute; left:50%; bottom:24px; transform:translateX(-50%); display:flex; align-items:center; gap:20px; max-width:calc(100% - 48px); min-height:88px; padding:15px 18px; border:1px solid #d7cfc0; border-radius:8px; background:#fbf9f3f5; box-shadow:0 6px 28px #51433112; }
+.tour-bar button { min-height:42px; border:0; border-radius:4px; padding:0 15px; background:transparent; white-space:nowrap; font:12px Arial,sans-serif; transition:background .2s; }
+.tour-bar button:hover:not(:disabled) { background:#eee7dc; }
+.tour-bar .primary { background:var(--accent); color:#fffaf2; }
+.tour-bar .primary:hover:not(:disabled) { background:#8c4b30; }
+.tour-copy { min-width:310px; text-align:center; }
+.tour-copy h2 { margin:0 0 6px; font-size:19px; font-weight:400; }
+.tour-copy p { margin:0; color:#676155; font:12px/1.5 Arial,sans-serif; }
+#tour-count { font:11px Arial,sans-serif; color:var(--muted); white-space:nowrap; }
+#tour-overview { border-left:1px solid var(--line); border-radius:0; color:#73685b; padding-left:19px; font-size:11px; }
+.tour-progress { position:absolute; bottom:0; height:2px; left:8px; right:8px; overflow:hidden; background:#e8dfd1; }
+.tour-progress:after { content:""; display:block; height:100%; width:var(--progress,0%); background:#a45e3e; transition:width .35s ease; }
+@media (max-width:1000px) { .footer { bottom:125px; left:24px; } .tour-bar { gap:8px; padding:12px; } .tour-copy { min-width:260px; } }
+@media (max-width:600px) { .masthead { padding:12px; } .masthead h1 { font-size:25px; } .masthead .top-right { display:none; } .subtitle { max-width:260px; line-height:1.5; } .tour-bar { bottom:12px; max-width:calc(100% - 24px); width:calc(100% - 24px); flex-wrap:wrap; justify-content:center; gap:3px; } .tour-copy { order:-1; width:100%; min-width:0; padding-bottom:8px; } .tour-copy h2 { font-size:17px; } .tour-copy p { font-size:11px; } .tour-bar button { padding:0 12px; } .footer { display:none; } }
+@media (prefers-reduced-motion:reduce) { *,*:before,*:after { animation:none !important; transition:none !important; } }
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="canvas" aria-label="Mô hình kiến trúc ba chiều"></div>
+<header class="masthead" id="masthead">
+  <div>
+    <p class="eyebrow">Khám phá 3D / Kiến trúc</p>
+    <h1 id="place-name"></h1>
+    <p class="subtitle">Mô hình minh họa dựa trên ảnh thực tế · tỷ lệ tham khảo</p>
+  </div>
+  <div class="top-right small">Hồ sơ địa điểm<br><span id="place-location"></span></div>
+</header>
+<div class="footer"><div class="hint">Kéo để xoay · Cuộn để phóng to</div></div>
+<nav class="tour-bar" id="tour-bar" aria-label="Điều hướng tham quan">
+  <button id="tour-previous" hidden>← Trước</button>
+  <div class="tour-copy" aria-live="polite" aria-atomic="true">
+    <h2 id="tour-title"></h2>
+    <p id="tour-caption"></p>
+    <small id="tour-hint"></small>
+  </div>
+  <span id="tour-count"></span>
+  <button class="primary" id="tour-start">Bắt đầu tham quan</button>
+  <button class="primary" id="tour-next" hidden>Tiếp →</button>
+  <button id="tour-overview" hidden title="Trở về toàn cảnh (Esc)">Toàn cảnh</button>
+  <div class="tour-progress" id="tour-progress" aria-hidden="true"></div>
+</nav>
+<script type="module">
+// Avoid a burst of direct module requests on resource-constrained render clients.
+const THREE = await import("three");
+const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
+const { EffectComposer } = await import("three/addons/postprocessing/EffectComposer.js");
+const { RenderPass } = await import("three/addons/postprocessing/RenderPass.js");
+const { GTAOPass } = await import("three/addons/postprocessing/GTAOPass.js");
+const { OutputPass } = await import("three/addons/postprocessing/OutputPass.js");
+const { ShaderPass } = await import("three/addons/postprocessing/ShaderPass.js");
+const { mergeGeometries } = await import("three/addons/utils/BufferGeometryUtils.js");
+// === Config / palette ===
+const place = __PLACE__;
+const config = {
+  defaultAzimuth: 35,
+  defaultPolar: 73,
+  frameFill: .80,
+  edgeThreshold: 27,
+  useGTAO: true
+};
+config.frameFill = place.site.frameFill ?? config.frameFill;
+config.defaultPolar = place.site.overviewPolar ?? config.defaultPolar;
+config.defaultAzimuth = place.site.overviewAzimuth ?? config.defaultAzimuth;
+// Warm, photo-like palette (owner 2026-11-04: vivid, true to photos, not grey or cold).
+const palette = {
+  stone: "#efe5d3",
+  stair: "#dccdb4",
+  roof: "#a8492d",
+  roofEdge: "#7c3420",
+  wood: "#875a3a",
+  ochre: "#ebc574",
+  green: "#b7d39b",
+  bed: "#94c27a",
+  pine: "#5f9a57",
+  trunk: "#8a6a4e",
+  white: "#f8f2e6",
+  blue: "#9ec4c6",
+  dark: "#6c5a49",
+  gold: "#d6a94e",
+  line: "#978d7f"
+};
+const $ = (id) => document.getElementById(id);
+$("place-name").textContent = place.name;
+document.title = place.name + " · Khám phá 3D";
+$("place-location").textContent = place.location || "";
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(Math.max(place.site.overviewFov??36,innerWidth<innerHeight?36:0), innerWidth / innerHeight, place.site.overviewNear??.1, 800);
+const overview = {
+  position: new THREE.Vector3(112, 106, 132),
+  target: new THREE.Vector3(0, 6, place.site.centerZ || 0)
+};
+let freeArea;
+function frameView(focused = false) {
+  const left = 40, right = 40, top = focused ? 150 : 100, bottom = 140;
+  freeArea = {
+    left,
+    top,
+    width: innerWidth - left - right,
+    height: innerHeight - top - bottom
+  };
+  camera.setViewOffset(innerWidth, innerHeight, -(left - right) / 2, -(top - bottom) / 2, innerWidth, innerHeight);
+}
+// Fit the actual projected site envelope, not a sphere or a fixed orbit distance.
+function fitOverview(azimuth, polar) {
+  camera.fov=Math.max(place.site.overviewFov??36,camera.aspect<1?36:0);
+  camera.updateProjectionMatrix();
+  frameView(false);
+  const direction = new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, THREE.MathUtils.degToRad(polar), THREE.MathUtils.degToRad(azimuth)));
+  const points = [];
+  for (const x of [-place.site.width / 2, place.site.width / 2]) {
+    for (const z of [-place.site.depth / 2, place.site.depth / 2]) points.push(new THREE.Vector3(x, -3, z + (place.site.centerZ || 0)));
+  }
+  if(place.site.outline)points.splice(0,points.length,...place.site.outline.map(([x,z])=>new THREE.Vector3(x,-3,z)));
+  if(place.site.overviewSubjects&&(place.site.overviewAllAngles||azimuth===config.defaultAzimuth&&polar===config.defaultPolar)&&typeof modelEnvelopes!=='undefined') {
+    const subjects=place.site.overviewSubjects.flatMap(id=>modelEnvelopes.get(id)||[]);
+    if(subjects.length){points.length=0;for(const point of subjects)points.push(point);}
+  }
+  // The plinth is the measured envelope. Object y values have mixed centre/base
+  // semantics and must not be inflated into imaginary y+h+5 bounding boxes.
+  const heightFill=Math.min(place.site.overviewHeightFill??.88,(innerHeight-88)/freeArea.height);
+  let low = 10, high = 600;
+  for (let i = 0; i < 25; i++) {
+    const distance = (low + high) / 2;
+    camera.position.copy(overview.target).addScaledVector(direction, distance);
+    camera.lookAt(overview.target);
+    camera.updateMatrixWorld();
+    const bounds=projectedBounds(points);
+    const width = (bounds.maxX-bounds.minX) * innerWidth / 2;
+    const height = (bounds.maxY-bounds.minY) * innerHeight / 2;
+    if (Math.max(width / (freeArea.width * config.frameFill), height / (freeArea.height * heightFill)) > 1) low = distance;
+    else high = distance;
+  }
+  overview.position.copy(overview.target).addScaledVector(direction, high);
+  camera.position.copy(overview.position);
+  camera.updateMatrixWorld();
+  const bounds=projectedBounds(points),centerX=bounds.centerX,centerY=bounds.centerY;
+  camera.setViewOffset(innerWidth, innerHeight, camera.view.offsetX + centerX - (freeArea.left + freeArea.width / 2), camera.view.offsetY + centerY - (freeArea.top + freeArea.height / 2), innerWidth, innerHeight);
+  console.info("overview-bbox", JSON.stringify({azimuth, polar, distance:high,
+    widthFraction:bounds.widthFraction,
+    heightFraction:bounds.heightFraction,
+    binding:`plinth: width ${config.frameFill} / height ${heightFill}`}));
+}
+function projectedBounds(points) {
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  const p=new THREE.Vector3();
+  for(const point of points) {
+    p.copy(point).project(camera);
+    minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);
+    minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y);
+  }
+  return {minX,maxX,minY,maxY,widthFraction:(maxX-minX)*innerWidth/2/freeArea.width,
+    heightFraction:(maxY-minY)*innerHeight/2/freeArea.height,
+    centerX:(maxX+minX)*innerWidth/4+innerWidth/2,
+    centerY:innerHeight/2-(maxY+minY)*innerHeight/4};
+}
+function fitSpot(spot) {
+  if(spot.interior)return {position:new THREE.Vector3(...spot.camera),target:new THREE.Vector3(...spot.target)};
+  const savedPosition=camera.position.clone(), savedQuaternion=camera.quaternion.clone();
+  const target=new THREE.Vector3(...spot.target);
+  const direction=new THREE.Vector3(...spot.camera).sub(target).normalize();
+  const bounds=spot.bounds;
+  const points=spot.subjects && typeof modelEnvelopes!=="undefined"
+    ? spot.subjects.flatMap(id=>modelEnvelopes.get(id)||[]) : [];
+  if(spot.cutaway && typeof roofRecords!=='undefined') {
+    const object=place.objects.find(o=>o.id===spot.cutaway);
+    for(const record of roofRecords.filter(r=>r.objectId===spot.cutaway)) {
+      const lifted=new THREE.Box3().setFromObject(record.group);
+      lifted.translate(new THREE.Vector3(0,(record.baseY||0)+(object?.cutaway?.lift??7.4)-record.group.position.y,0));
+      for(const dx of [lifted.min.x,lifted.max.x])for(const dy of [lifted.min.y,lifted.max.y])for(const dz of [lifted.min.z,lifted.max.z])points.push(new THREE.Vector3(dx,dy,dz));
+    }
+  }
+  if(!points.length) for(const dx of [-1,1]) for(const dy of [-1,1]) for(const dz of [-1,1])
+    points.push(target.clone().add(new THREE.Vector3(dx*bounds[0]/2,dy*bounds[1]/2,dz*bounds[2]/2)));
+  if(typeof routeSegments!=='undefined' && spot.walk && spot.frameRoute!==false) {
+    const index=place.hotspots.filter(s=>s.walk).findIndex(s=>s.id===spot.id),leg=routeSegments[index];
+    points.push(new THREE.Vector3(spot.walk[0],routeHeight(...spot.walk)+.7,spot.walk[1]));
+    if(leg)for(const sample of leg.samples)if(sample.d<=8)points.push(sample.point);
+  }
+  let low=3,high=300, widthFraction=0,heightFraction=0;
+  for(let i=0;i<25;i++) {
+    const distance=(low+high)/2;
+    camera.position.copy(target).addScaledVector(direction,distance);
+    camera.lookAt(target);camera.updateMatrixWorld();
+    ({widthFraction,heightFraction}=projectedBounds(points));
+    if(Math.max(widthFraction,heightFraction)>(spot.fill??.58)) low=distance; else high=distance;
+  }
+  const position=target.clone().addScaledVector(direction,high);
+  camera.position.copy(position);camera.lookAt(target);camera.updateMatrixWorld();
+  const {centerX:cx,centerY:cy}=projectedBounds(points);
+  camera.setViewOffset(innerWidth,innerHeight,camera.view.offsetX+cx-(freeArea.left+freeArea.width/2),camera.view.offsetY+cy-(freeArea.top+freeArea.height/2),innerWidth,innerHeight);
+  camera.position.copy(savedPosition);camera.quaternion.copy(savedQuaternion);camera.updateMatrixWorld();
+  console.info("hotspot-bbox",JSON.stringify({id:spot.id,widthFraction,heightFraction,distance:high}));
+  return {position,target};
+}
+frameView();
+camera.position.copy(overview.position);
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: true
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = .96;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.VSMShadowMap;
+$("canvas").appendChild(renderer.domElement);
+const environmentGenerator = new THREE.PMREMGenerator(renderer);
+scene.environment = environmentGenerator.fromScene(new RoomEnvironment(), .04).texture;
+scene.environmentIntensity = .18;
+environmentGenerator.dispose();
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(overview.target);
+controls.enableDamping = true;
+controls.zoomToCursor = true;
+controls.dampingFactor = .08;
+controls.maxPolarAngle = Math.PI / 2.08;
+controls.minDistance = 3;
+controls.maxDistance = 600;
+controls.autoRotate = true;
+controls.autoRotateSpeed = .3;
+// Warm sun with a slightly blue sky fill: the colour contrast between lit and shaded faces reads as daylight.
+scene.add(new THREE.HemisphereLight("#fdf7ec", "#d2c7ae", 1.3));
+const fill = new THREE.DirectionalLight("#dfe9f6", .55);
+fill.position.set(80, 65, -65);
+scene.add(fill);
+const sun = new THREE.DirectionalLight("#ffeccf", 1.9);
+sun.position.set(-65, 120, 80);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {
+  left: -85,
+  right: 85,
+  top: 75,
+  bottom: -75,
+  near: 20,
+  far: 250
+});
+sun.shadow.bias = -15e-5;
+sun.shadow.normalBias = .06;
+sun.shadow.radius = 7;
+sun.shadow.blurSamples = 8;
+scene.add(sun);
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
+// === Materials ===
+const mats = new Map();
+const grainCanvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
+let grain = null;
+if (grainCanvas) {
+grainCanvas.width = grainCanvas.height = 128;
+const grainContext = grainCanvas.getContext("2d"), grainImage = grainContext.createImageData(128, 128);
+for (let i = 0; i < 128 * 128; i++) {
+  const v = 247 + Math.round(3 * Math.sin(i * 12.9898) * Math.sin(i * .071));
+  grainImage.data.set([v, v, v, 255], i * 4);
+}
+grainContext.putImageData(grainImage, 0, 0);
+grain = new THREE.CanvasTexture(grainCanvas);
+grain.colorSpace = THREE.SRGBColorSpace;
+}
+function material(color) {
+  // Legacy declarative colours remain stable; their finish follows the studio palette.
+  color = ({'#e9e4da':palette.stone,'#d9d2c4':palette.stair,'#cfae6a':palette.ochre,
+    '#cbb783':'#ddcea9','#62372e':palette.roof,'#725144':'#a07861',
+    '#849b79':palette.green,'#a7b48f':palette.bed,'#a8aaa1':'#e2dccf',
+    '#a56f56':'#cfb9a2','#30221d':palette.wood,'#4a2a20':palette.wood,
+    '#b7aa8e':'#d4cdbc','#a49b88':'#c7c1b5','#6b7c58':'#a3b096',
+    '#607c87':'#afbcb9','#455d66':'#aeb8b5','#516c77':'#b4bfbc','#405963':'#98a4a2',
+    '#d1b772':'#d8c9a4','#a58a4c':'#c3b18e','#263d58':'#57616d',
+    '#793e35':'#90665b','#854b3c':'#997468','#45382d':'#7b6857',
+    '#a69e90':'#c9c1b4','#c5bcaa':'#d7cfc0','#b8ad96':'#d0c7b7',
+    '#805442':'#9a7962','#a27659':'#b3977c'})[color] || color;
+  if (!mats.has(color)) mats.set(color, new THREE.MeshStandardMaterial({
+    color,
+    map: [palette.stone, palette.stair, palette.ochre, palette.green, palette.bed].includes(color) ? grain : null,
+    roughness: color === palette.blue ? .78 : .94,
+    metalness: 0,
+    emissive: color==="#30221d" ? color : "#000000",
+    emissiveIntensity: .35
+  }));
+  return mats.get(color);
+}
+const edgeMaterial = new THREE.LineBasicMaterial({
+  color: palette.line,
+  transparent: true,
+  opacity: .22,
+  depthTest: true,
+  depthWrite: false
+});
+const tileMaterial = new THREE.LineBasicMaterial({
+  color: '#b8967c',
+  transparent: true,
+  opacity: .08,
+  depthTest: true,
+  depthWrite: false
+});
+const roofRecords = [];
+// === Geometry helpers ===
+const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
+const batches = new Map();
+const walkableGeometries = [];
+const modelEnvelopes = new Map();
+let currentEnvelope = null, currentObject = null;
+function box(x, y, z, w, h, d, color, part = null) {
+  if(currentObject && (currentObject.type === 'terrace' || currentObject.type === 'path_steps' ||
+    (currentObject.type === 'stairs' && w >= currentObject.width))) {
+    const surface=boxGeometry.clone();surface.scale(w,h,d);surface.translate(x,y,z);walkableGeometries.push(surface);
+  }
+  if(currentEnvelope) for(const dx of [-1,1])for(const dy of [-1,1])for(const dz of [-1,1])
+    currentEnvelope.push(new THREE.Vector3(x+dx*w/2,y+dy*h/2,z+dz*d/2));
+  const batchKey=part ? color+'|'+part : color;
+  let list = batches.get(batchKey);
+  if (!list) {
+    list = [];
+    batches.set(batchKey, list);
+  }
+  list.push({
+    x,
+    y,
+    z,
+    w,
+    h,
+    d
+  });
+}
+function mesh(geometry, color, x, y, z, outlined = true) {
+  const result = new THREE.Mesh(geometry, material(color));
+  result.position.set(x, y, z);
+  result.castShadow = true;
+  result.receiveShadow = true;
+  scene.add(result);
+  if (outlined) result.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, config.edgeThreshold), edgeMaterial));
+  return result;
+}
+const detailBatches = new Map();
+let vegetationMode = false;
+function detail(key, geometry, color, position, scale, rotation = 0, lean = 0, part = null) {
+  const batchKey = key + "|" + color + "|" + vegetationMode + '|' + part;
+  let batch = detailBatches.get(batchKey);
+  if (!batch) {
+    batch = {
+      geometry,
+      color,
+      part,
+      transforms: [],
+      owners: [],
+      outlined: !vegetationMode
+    };
+    detailBatches.set(batchKey, batch);
+  }
+  const matrix = new THREE.Matrix4();
+  matrix.compose(new THREE.Vector3(...position), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotation, lean)), new THREE.Vector3(...scale));
+  batch.transforms.push(matrix);
+  batch.owners.push(currentObject);
+  if(currentEnvelope) {
+    const vertices=geometry.getAttribute("position");
+    for(let i=0;i<vertices.count;i++) currentEnvelope.push(new THREE.Vector3().fromBufferAttribute(vertices,i).applyMatrix4(matrix));
+  }
+}
+function cylinder(x, y, z, radius, height, color, top = radius, segments = 8, part = null) {
+  const ratio = top / radius;
+  detail("cylinder" + ratio + ":" + segments, new THREE.CylinderGeometry(ratio, 1, 1, segments), color, [
+    x,
+    y,
+    z
+  ], [
+    radius,
+    height,
+    radius
+  ], 0, 0, part);
+}
+function ball(x, y, z, radius, color) {
+  detail("ball", new THREE.IcosahedronGeometry(1, 1), color, [
+    x,
+    y,
+    z
+  ], [
+    radius,
+    radius,
+    radius
+  ]);
+}
+function modelPickMeshes(root) {
+  const meshes = [];
+  root.traverse(object => {
+    if (object.isMesh && !object.userData.contact) meshes.push(object);
+  });
+  return meshes;
+}
+// Rounded exponential masks have a smooth shoulder rather than a hard decal edge.
+const contactTextures = new Map();
+function contactShadow(x, y, z, width, depth, opacity = .2, round = false, draped = false) {
+  const key = round ? "round" : "rect";
+  if (!contactTextures.has(key)) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 128;
+    const context = canvas.getContext("2d"), pixels = context.createImageData(128, 128);
+    for (let row = 0; row < 128; row++) for (let col = 0; col < 128; col++) {
+      const u = Math.abs((col + .5) / 64 - 1), v = Math.abs((row + .5) / 64 - 1);
+      const radius = round ? Math.hypot(u, v) : Math.pow(Math.pow(u, 6) + Math.pow(v, 6), 1 / 6);
+      const alpha = Math.exp(-Math.pow(radius / (round ? .68 : .86), 4)) * Math.max(0, Math.min(1, (1 - radius) * 10));
+      const i = (row * 128 + col) * 4;
+      pixels.data[i] = 62;
+      pixels.data[i + 1] = 53;
+      pixels.data[i + 2] = 43;
+      pixels.data[i + 3] = Math.round(alpha * 255);
+    }
+    context.putImageData(pixels, 0, 0);
+    contactTextures.set(key, new THREE.CanvasTexture(canvas));
+  }
+  const shadowGeometry=new THREE.PlaneGeometry(width,depth,draped?8:1,draped?8:1);
+  if(draped) {
+    const p=shadowGeometry.attributes.position;
+    for(let i=0;i<p.count;i++) p.setZ(i,hillSurfaceHeight(x+p.getX(i),z-p.getY(i))-y);
+  }
+  const shadowContact = new THREE.Mesh(shadowGeometry, new THREE.MeshBasicMaterial({
+    map: contactTextures.get(key),
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1
+  }));
+  shadowContact.rotation.x = -Math.PI / 2;
+  shadowContact.position.set(x, y + .025, z);
+  shadowContact.userData.contact = true;
+  shadowContact.renderOrder = 1;
+  scene.add(shadowContact);
+  return shadowContact;
+}
+function addObjectContacts(object) {
+  const [x, ground, z] = object.position || [
+    0,
+    0,
+    0
+  ];
+  const y=object.grounded ? hillSurfaceHeight(x,z)+.02 : ground;
+  if (object.type === "tree") {
+    const contact=contactShadow(x, y, z, object.kind === "bonsai" ? 4 : 5, object.kind === "bonsai" ? 4 : 5, .18, true, object.kind !== "bonsai" && z>18);
+    contact.userData.contactOwner=object;
+  } else if (["building", "pavilion"].includes(object.type)) {
+    const [w, , d] = object.size;
+    contactShadow(x, y, z, w + 5, d + 5, .3);
+  } else if (object.type === "statue") {
+    contactShadow(x,y,z,2.1,2.1,.18);
+  } else if ([
+    "tower",
+    "rock"
+  ].includes(object.type)) {
+    contactShadow(x, y, z, 4.5, 4.5, .25, true, !!object.grounded);
+  } else if (object.type === "gate") {
+    for (const side of [-1, 1]) contactShadow(x + side * (object.width / 2 - .7), y, z, 3.3, 3.3, .28,false,!object.wood&&!!place.site.hill);
+  } else if (object.type === "terrace" && object.size[1] > 1) {
+    const [w, h, d] = object.size;
+    for (const side of [-1, 1]) {
+      contactShadow(x, y - h / 2, z + side * d / 2, w + 2, 2.5, .2);
+      contactShadow(x + side * w / 2, y - h / 2, z, 2.5, d + 2, .2);
+    }
+  }
+}
+// === Roof ===
+// t runs from eave (0) to ridge (1); u spans each trapezoid / triangular hip.
+function roofSurfacePoint(face, u, t, p) {
+  const halfWidth = p.width / 2 + p.overhang, halfDepth = p.depth / 2 + p.overhang;
+  const ridgeHalf = Math.max(.02, halfWidth - halfDepth);
+  const corner = THREE.MathUtils.smoothstep(Math.abs(u), .8, 1);
+  const profile = t - p.curve * Math.sin(Math.PI * t);
+  const y = p.eaveHeight + (p.ridgeHeight - p.eaveHeight) * profile + p.cornerLift * corner * Math.pow(1 - t, 3);
+  if (face < 2) return new THREE.Vector3(THREE.MathUtils.lerp(u * halfWidth, u * ridgeHalf, t), y, (face === 0 ? 1 : -1) * halfDepth * (1 - t));
+  return new THREE.Vector3((face === 2 ? 1 : -1) * THREE.MathUtils.lerp(halfWidth, ridgeHalf, t), y, u * halfDepth * (1 - t));
+}
+function vietnameseRoof({ position, width, depth, eaveHeight, ridgeHeight, overhang = .9, curve = .17, cornerLift = .55, thickness = .22, tiers = 1, tierGap = .65, ridgeOrnament = true, color = palette.roof, tileSpacing = .65, tileBand = null, trimColor = palette.roofEdge }) {
+  const [x, base, z] = position;
+  const rotate = depth > width;
+  if (rotate) [width, depth] = [depth, width];
+  for (let tier = 0; tier < tiers; tier++) {
+    const shrink = Math.pow(.64, tier), rise = ridgeHeight - eaveHeight;
+    const p = {
+      width: width * shrink,
+      depth: depth * shrink,
+      overhang: overhang * shrink,
+      curve,
+      cornerLift: cornerLift * shrink,
+      eaveHeight: base + eaveHeight + tier * (rise * .7 + tierGap),
+      ridgeHeight: base + eaveHeight + tier * (rise * .7 + tierGap) + rise * shrink
+    };
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    if (rotate) group.rotation.y = Math.PI / 2;
+    scene.add(group);
+    const addRoofMesh = (geometry, roofColor, outline = false) => {
+      const cover = new THREE.Mesh(geometry, material(roofColor));
+      cover.castShadow = true;
+      cover.receiveShadow = true;
+      group.add(cover);
+      if (outline) cover.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, config.edgeThreshold), edgeMaterial));
+      return cover;
+    };
+    const tilePositions = [];
+    for (let face = 0; face < 4; face++) {
+      const vertices = [], indices = [], nu = Math.min(width,depth)<3 ? 8 : 24, nt = Math.min(width,depth)<3 ? 4 : 12;
+      for (let row = 0; row <= nt; row++) for (let col = 0; col <= nu; col++) vertices.push(...roofSurfacePoint(face, col / nu * 2 - 1, row / nt, p).toArray());
+      for (let row = 0; row < nt; row++) for (let col = 0; col < nu; col++) {
+        const a = row * (nu + 1) + col, b = a + 1, c = a + nu + 1, d = c + 1;
+        if (face === 0 || face === 3) indices.push(a, b, c, b, d, c);
+        else indices.push(a, c, b, b, c, d);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      addRoofMesh(geometry, color, true);
+      if(tileBand) {
+        const bandPositions=[],bandIndex=[];
+        for(let col=0;col<=nu;col++)for(const t of [.02,.13]) {
+          const pnt=roofSurfacePoint(face,col/nu*2-1,t,p);pnt.y+=.018;bandPositions.push(...pnt.toArray());
+        }
+        for(let col=0;col<nu;col++) {
+          const a=col*2;
+          if(face===0||face===3)bandIndex.push(a,a+2,a+1,a+1,a+2,a+3);
+          else bandIndex.push(a,a+1,a+2,a+1,a+3,a+2);
+        }
+        const ribbon=new THREE.BufferGeometry();ribbon.setAttribute('position',new THREE.Float32BufferAttribute(bandPositions,3));ribbon.setIndex(bandIndex);ribbon.computeVertexNormals();
+        addRoofMesh(ribbon,tileBand).material.side=THREE.DoubleSide;
+      }
+      const underside = geometry.clone();
+      underside.translate(0, -thickness * shrink, 0);
+      const undersideIndex = underside.index;
+      for (let i = 0; i < undersideIndex.count; i += 3) {
+        const b = undersideIndex.getX(i + 1);
+        undersideIndex.setX(i + 1, undersideIndex.getX(i + 2));
+        undersideIndex.setX(i + 2, b);
+      }
+      underside.computeVertexNormals();
+      addRoofMesh(underside, trimColor);
+      // Fascia is a vertical ribbon following the swept eave, never a flat slab.
+      const band = [], bandIndices = [];
+      for (let i = 0; i <= nu; i++) {
+        const point = roofSurfacePoint(face, i / nu * 2 - 1, 0, p);
+        band.push(point.x, point.y, point.z, point.x, point.y - thickness * shrink, point.z);
+        if (i < nu) {
+          const a = i * 2;
+          bandIndices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+      }
+      const fascia = new THREE.BufferGeometry();
+      fascia.setAttribute("position", new THREE.Float32BufferAttribute(band, 3));
+      fascia.setIndex(bandIndices);
+      fascia.computeVertexNormals();
+      const fasciaMesh = addRoofMesh(fascia, trimColor, true);
+      fasciaMesh.material.side = THREE.DoubleSide;
+      const rowCount = Math.max(4, Math.round(Math.hypot(p.depth/2+p.overhang,p.ridgeHeight-p.eaveHeight) / tileSpacing));
+      for (let row = 1; row < rowCount; row++) {
+        const t = row / rowCount;
+        for (let col = 0; col < nu; col++) {
+          for (const u of [col / nu * 2 - 1, (col + 1) / nu * 2 - 1]) {
+            const point = roofSurfacePoint(face, u, t, p);
+            point.y += .018;
+            tilePositions.push(...point.toArray());
+          }
+        }
+      }
+    }
+    const tileGeometry = new THREE.BufferGeometry();
+    tileGeometry.setAttribute("position", new THREE.Float32BufferAttribute(tilePositions, 3));
+    group.add(new THREE.LineSegments(tileGeometry, tileMaterial));
+    const ridgeHalf = Math.max(.02, (p.width - p.depth) / 2), ridgeY = p.ridgeHeight + .11;
+    const ridge = new THREE.BoxGeometry(Math.max(.3, 2 * ridgeHalf), .22 * shrink, .28 * shrink);
+    ridge.translate(0, ridgeY, 0);
+    addRoofMesh(ridge, trimColor, true);
+    // Tiny cap roofs need tiny hooks, not full-size hall ornaments.
+    const trimScale=shrink*THREE.MathUtils.clamp(Math.min(width,depth)/4,.15,1);
+    // Hip beads follow the same surface equation, then curl gently beyond the eave.
+    for (const face of [0, 1]) for (const side of [-1, 1]) {
+      const points = [];
+      for (let i = 0; i <= 20; i++) {
+        const point = roofSurfacePoint(face, side, 1 - i / 20, p);
+        point.y += .07 * shrink;
+        points.push(point);
+      }
+      const end = points[points.length - 1], out = new THREE.Vector3(side, 0, face === 0 ? 1 : -1).normalize();
+      points.push(end.clone().addScaledVector(out, .25 * trimScale).add(new THREE.Vector3(0, .05 * trimScale, 0)), end.clone().addScaledVector(out, .5 * trimScale).add(new THREE.Vector3(0, .28 * trimScale, 0)));
+      addRoofMesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), Math.min(width,depth)<3?12:36, .065 * trimScale, 5, false), trimColor);
+    }
+    for (const side of ridgeHalf>.75 ? [-1, 1] : []) {
+      const points = [
+        new THREE.Vector3(side * ridgeHalf, ridgeY, 0),
+        new THREE.Vector3(side * (ridgeHalf + .35 * trimScale), ridgeY + .06 * trimScale, 0),
+        new THREE.Vector3(side * (ridgeHalf + .65 * trimScale), ridgeY + .38 * trimScale, 0)
+      ];
+      addRoofMesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 12, .105 * trimScale, 5, false), trimColor);
+    }
+    if (ridgeOrnament && tier === tiers - 1) {
+      const scale = THREE.MathUtils.clamp(Math.min(p.width, p.depth) * .085, .28, 1.15), centerY = ridgeY + .65 * scale;
+      const disc = new THREE.CylinderGeometry(.47 * scale, .47 * scale, .12 * scale, 24);
+      disc.rotateX(Math.PI / 2);
+      disc.translate(0, centerY, 0);
+      addRoofMesh(disc, trimColor, true);
+      const wheel = new THREE.TorusGeometry(.51 * scale, .055 * scale, 5, 24);
+      wheel.translate(0, centerY, .08 * scale);
+      addRoofMesh(wheel, palette.stair);
+      const spokes = [];
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4;
+        spokes.push(0, centerY, .08 * scale, Math.cos(a) * .43 * scale, centerY + Math.sin(a) * .43 * scale, .08 * scale);
+      }
+      const wheelLines = new THREE.BufferGeometry();
+      wheelLines.setAttribute("position", new THREE.Float32BufferAttribute(spokes, 3));
+      group.add(new THREE.LineSegments(wheelLines, edgeMaterial));
+      const dragon = new THREE.Shape();
+      dragon.moveTo(.65, .2);
+      dragon.lineTo(.75, .63);
+      dragon.lineTo(.59, .83);
+      dragon.lineTo(.85, .8);
+      dragon.lineTo(.98, 1.02);
+      dragon.lineTo(1.06, .78);
+      dragon.lineTo(1.37, .69);
+      dragon.lineTo(1.21, .51);
+      dragon.lineTo(1.03, .51);
+      dragon.bezierCurveTo(1.3, .15, 1.55, .12, 1.95, .48);
+      dragon.bezierCurveTo(2.3, .78, 2.57, .5, 2.84, .87);
+      dragon.lineTo(2.71, .3);
+      dragon.bezierCurveTo(2.27, .11, 2.11, .33, 1.86, .18);
+      dragon.lineTo(2.04, .04);
+      dragon.lineTo(1.77, .04);
+      dragon.lineTo(1.54, .14);
+      dragon.lineTo(1.31, .03);
+      dragon.lineTo(1.1, .03);
+      dragon.lineTo(1.14, .2);
+      dragon.closePath();
+      for (const side of [-1, 1]) {
+        const geometry = new THREE.ExtrudeGeometry(dragon, {
+          depth: .14,
+          bevelEnabled: true,
+          bevelSize: .035,
+          bevelThickness: .025,
+          bevelSegments: 1,
+          steps: 1,
+          curveSegments: 8
+        });
+        geometry.scale(side * scale, scale, scale);
+        geometry.translate(0, ridgeY + .12 * scale, -.07 * scale);
+        if (side < 0) {
+          const index = geometry.index;
+          if (index) {
+            for (let i = 0; i < index.count; i += 3) {
+              const b = index.getX(i + 1);
+              index.setX(i + 1, index.getX(i + 2));
+              index.setX(i + 2, b);
+            }
+          } else {
+            const pos = geometry.attributes.position;
+            for (let i = 0; i < pos.count; i += 3) {
+              const b = new THREE.Vector3().fromBufferAttribute(pos, i + 1), c = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+              pos.setXYZ(i + 1, c.x, c.y, c.z);
+              pos.setXYZ(i + 2, b.x, b.y, b.z);
+            }
+          }
+          geometry.computeVertexNormals();
+        }
+        addRoofMesh(geometry, trimColor, true);
+      }
+    }
+    // Merge each material into one draw; keep fine linework separate from surfaces.
+    const mergeBatches = new Map();
+    group.traverse(object => {
+      if (!object.isMesh && !object.isLineSegments) return;
+      const key = object.material;
+      if (!mergeBatches.has(key)) mergeBatches.set(key, {geometry: [], lines: object.isLineSegments});
+      const geometry = object.geometry.index ? object.geometry.toNonIndexed() : object.geometry.clone();
+      for (const attribute of Object.keys(geometry.attributes)) {
+        if (attribute !== 'position' && attribute !== 'normal') geometry.deleteAttribute(attribute);
+      }
+      mergeBatches.get(key).geometry.push(geometry);
+    });
+    group.traverse(object => { if (object.geometry) object.geometry.dispose(); });
+    group.clear();
+    for (const [roofMaterial, {geometry, lines}] of mergeBatches) {
+      const merged = mergeGeometries(geometry);
+      const object = lines ? new THREE.LineSegments(merged, roofMaterial) : new THREE.Mesh(merged, roofMaterial);
+      object.castShadow = !lines;
+      object.receiveShadow = !lines;
+      group.add(object);
+      geometry.forEach(part => part.dispose());
+    }
+    roofRecords.push({
+      group,
+      parameters: p,
+      tiers,
+      thickness,
+      ridgeOrnament
+    });
+  }
+}
+// === Vegetation ===
+const foliageGeometries = Array.from({length: 4}, (_, variant) => {
+  const pieces = [];
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.SphereGeometry(1, 12, 8);
+    const p = g.getAttribute("position");
+    for (let j = 0; j < p.count; j++) {
+      const px=p.getX(j),py=p.getY(j),pz=p.getZ(j);
+      const n = 1 + .035 * Math.sin(px*5+variant+i) * Math.cos(pz*4-py*3);
+      p.setXYZ(j, px * n, py * n, pz * n);
+    }
+    // Preserve the sphere's seamless radial normals across the tiny foam displacement.
+    const a = i * 2.4 + variant, r = i ? .48 : 0;
+    g.scale(.59 + (i % 3) * .04, .52 + (i % 2) * .05, .55);
+    g.translate(Math.sin(a) * r, Math.sin(i * 4 + variant) * .12, Math.cos(a) * r);
+    pieces.push(g);
+  }
+  return mergeGeometries(pieces).toNonIndexed();
+});
+function tree(object) {
+  const [x, ground, z] = object.position, h = object.height;
+  const y=object.grounded ? hillSurfaceHeight(x,z)+.03 : ground;
+  if (object.kind === "bonsai") {
+    smallBonsai(object);
+    return;
+  }
+  if (object.kind === "round") {
+    cylinder(x, y + h * .35, z, .24, h * .7, palette.trunk, .14);
+    const variant = Math.abs(Math.round(x + z)) % 2;
+    detail("broadleaf-" + variant, foliageGeometries[variant], variant ? "#b9c4ad" : "#aebba1",
+      [x, y + h * .70, z], [h * .30, h * .37, h * .28], x * .1);
+    return;
+  }
+  const lean = Math.sin(x * .31 + z * .17) * .008;
+  detail("pine-trunk", new THREE.CylinderGeometry(.3, 1, 1, 8), palette.trunk,
+    [x - lean * h * .5, y + h * .5, z], [.14, h, .14], 0, lean);
+  for(let branch=0;branch<4;branch++) {
+    const angle=branch*2.35+x*.17+z*.11,r=h*(.105+.015*Math.sin(angle)),rise=h*.10;
+    detail('pine-branch',new THREE.CylinderGeometry(.35,1,1,6),palette.trunk,
+      [x+Math.cos(angle)*r/2,y+h*.72+rise/2,z-Math.sin(angle)*r/2],
+      [.055,Math.hypot(r,rise),.055],angle,-Math.atan2(r,rise));
+  }
+  const levels=[[.71,.14,-.055],[.77,.19,.06],[.80,.14,-.08],[.86,.21,.04],[.90,.16,-.03],[.94,.15,.05],[.96,.095,0]];
+  for (let level = 0; level < levels.length; level++) {
+    const angle = level * 2.4 + x * .17 + z * .11;
+    const variant = Math.abs(Math.round(x * 3 + z + level)) % 4;
+    const [elevation,spread,offset]=levels[level];
+    const radius = h * spread * (1 + .16 * Math.sin(angle));
+    detail("pine-crown-" + variant, foliageGeometries[variant], ['#7b8a72','#84937b','#8c9a82'][level%3], [
+      x - lean * h * elevation + Math.sin(angle) * h * .05+offset*h,
+      y + h * (elevation + .011*Math.sin(angle)),
+      z + Math.cos(angle) * h * .075
+    ], [radius, radius * (.25+.05*Math.cos(angle)), radius * (.78 + .16 * Math.cos(angle))], angle, .075*Math.sin(angle));
+  }
+}
+// === Primitives ===
+function smallBonsai(object) {
+  const [x,y,z]=object.position,h=object.height;
+  cylinder(x,y+.17,z,h*.22,.34,'#805442',h*.28,20);
+  cylinder(x,y+.35,z,h*.29,.07,'#a27659',h*.29,20);
+  const trunk=new THREE.CatmullRomCurve3([[0,.15,0],[-.05,.36,0],[.07,.62,.02],[.02,.9,0]].map(p=>new THREE.Vector3(...p)));
+  detail('bonsai-trunk',new THREE.TubeGeometry(trunk,20,.028,8,false),palette.trunk,[x,y,z],[h,h,h]);
+  for(let i=0;i<5;i++) {
+    const a=i*2.4,dx=Math.sin(a)*(.22-i*.02),dz=Math.cos(a)*.13,py=.48+i*.095;
+    const branch=new THREE.CatmullRomCurve3([[.02,py-.12,0],[dx*.6,py-.03,dz*.5],[dx,py,dz]].map(p=>new THREE.Vector3(...p)));
+    detail('bonsai-branch-'+i,new THREE.TubeGeometry(branch,10,.014,6,false),palette.trunk,[x,y,z],[h,h,h]);
+    for(let j=0;j<3;j++) {
+      const crown=new THREE.SphereGeometry(1,12,8),v=crown.attributes.position;
+      for(let k=0;k<v.count;k++) {
+        const vx=v.getX(k),vy=v.getY(k),vz=v.getZ(k),n=1+.035*Math.sin(vx*5+vz*4)*Math.cos(vy*4);
+        v.setXYZ(k,vx*n,vy*n,vz*n);
+      }
+      // Radial normals remain smooth at the duplicate longitude seam.
+      detail('bonsai-foliage',crown,j%2?'#b9c4ad':'#a3b096',
+        [x+h*(dx+(j-1)*.055),y+h*(py+.04+(j%2)*.025),z+h*(dz+Math.sin(j*2.4)*.05)],
+        [h*(.14-i*.009),h*.085,h*.12],a);
+    }
+  }
+}
+function stairway(object) {
+  const [x,y,z]=object.position,flights=object.flights||[object.steps];
+  let count=0,offset=0;
+  const pier=(px,py,pz,footingDepth=0)=>{
+    box(px,py+.48,pz,.52,.96,.58,palette.stair);
+    if(footingDepth)box(px,py-footingDepth/2,pz,.52,footingDepth+.02,.58,palette.stair);
+    box(px,py+1.01,pz,.66,.10,.72,palette.stone);
+    box(px,py+1.09,pz,.52,.06,.58,palette.stair);
+  };
+  for(let flight=0;flight<flights.length;flight++) {
+    const n=flights[flight],front=z-count*object.run-offset+object.run/2;
+    for(let j=0;j<n;j++) {
+      const i=count+j,py=y+i*object.rise,pz=z-i*object.run-offset;
+      box(x,y+i*object.rise/2,pz,object.width,i*object.rise+.15,object.run+.02,['#dbd3c5','#d8d0c2','#ddd5c9'][i%3]);
+      for(const side of [-1,1]) {
+        const px=x+side*(object.width/2+.3);
+        box(px,y+i*object.rise/2,pz,.9,i*object.rise+.15,object.run+.02,palette.stair);
+        box(px,py+.19,pz,.28,.35,object.run+.02,palette.stair);
+        if(j%2===0)box(px,py+.64,pz,.14,.65,.14,palette.stone);
+      }
+    }
+    for(const side of [-1,1]) {
+      const px=x+side*(object.width/2+.3),length=n*object.run;
+      const coping=mesh(new THREE.BoxGeometry(.24,.10,Math.hypot(length,n*object.rise)),palette.stone,px,y+(count+n/2)*object.rise+.96,front-length/2,false);
+      coping.rotation.x=Math.atan2(n*object.rise,length);
+      pier(px,y+count*object.rise,front);
+    }
+    count+=n;
+    if(flight<flights.length-1) {
+      const pz=z-count*object.run-offset+object.run/2-object.landing/2,top=y+count*object.rise;
+      box(x,y+count*object.rise/2,pz,object.width,count*object.rise,object.landing,palette.stair);
+      if(flight===0&&flights.length===3)for(const side of [-1,1])box(x+side*(object.width/2+1.325),top-.3,pz,2.65,.6,2.5,palette.stair);
+      for(const side of [-1,1]) {
+        const px=x+side*(object.width/2+.3);
+        box(px,y+count*object.rise/2,pz,.9,count*object.rise+.15,object.landing,palette.stair);
+        box(px,top+.19,pz,.28,.35,object.landing,palette.stair);
+        box(px,top+.96,pz,.24,.10,object.landing,palette.stone);
+        for(const end of [-1,1])pier(px,top,pz+end*object.landing/2);
+        for(const t of [-.25,.25])box(px,top+.64,pz+t*object.landing,.14,.65,.14,palette.stone);
+      }
+      offset+=object.landing;
+    } else for(const side of [-1,1])pier(x+side*(object.width/2+.3),y+count*object.rise,z-count*object.run-offset+object.run/2,object.rise);
+  }
+}
+function guardianLion(object) {
+  const [x,y,z]=object.position;
+  box(x,y+.10,z,2.1,.20,2.1,palette.stair);
+  box(x,y+.27,z,1.85,.14,1.9,palette.stone);
+  box(x,y+.38,z,2.0,.08,2.05,palette.stair);
+  const sculptDetail=(key,geometry,color,position,scale)=>detail(key,geometry,color,
+    [x+(position[0]-x)*1.2,y+.42+(position[1]-y-.9)*.78,z+(position[2]-z)*1.2],
+    [scale[0]*1.2,scale[1]*.78,scale[2]*1.2]);
+  const smooth=new THREE.SphereGeometry(1,20,14);
+  const part=(key,px,py,pz,sx,sy,sz,color=palette.blue)=>sculptDetail(key,smooth,color,[x+px,y+py,z+pz],[sx,sy,sz]);
+  part('lion-haunch',0,1.40,-.27,.65,.5,.75);
+  const chest=[[0,0],[.33,.02],[.46,.25],[.49,.75],[.37,1.18],[.2,1.39],[0,1.41]].map(p=>new THREE.Vector2(...p));
+  sculptDetail('lion-chest',new THREE.LatheGeometry(chest,24),palette.blue,[x,y+1.02,z+.1],[1,1,1]);
+  for(const side of [-1,1]) {
+    part('lion-leg',side*.38,1.38,.43,.19,.48,.22);
+    part('lion-paw',side*.4,1.04,.66,.27,.14,.4);
+    part('lion-hindleg',side*.54,1.18,-.27,.28,.28,.49);
+    part('lion-ear',side*.43,2.72,.08,.10,.12,.09);
+  }
+  const mane=new THREE.Shape();
+  mane.moveTo(-.34,-.57);mane.quadraticCurveTo(-.55,-.42,-.53,-.18);
+  mane.quadraticCurveTo(-.70,.03,-.57,.24);mane.quadraticCurveTo(-.63,.46,-.44,.59);
+  mane.quadraticCurveTo(-.30,.74,0,.66);mane.quadraticCurveTo(.30,.74,.44,.59);
+  mane.quadraticCurveTo(.63,.46,.57,.24);mane.quadraticCurveTo(.70,.03,.53,-.18);
+  mane.quadraticCurveTo(.55,-.42,.34,-.57);mane.closePath();
+  sculptDetail('lion-mane',new THREE.ExtrudeGeometry(mane,{depth:.56,bevelEnabled:true,bevelSize:.09,bevelThickness:.11,bevelSegments:3}),palette.blue,[x,y+2.23,z-.32],[.87,.90,1]);
+  const head=smooth.clone(),face=head.attributes.position;
+  for(let i=0;i<face.count;i++) {
+    const px=face.getX(i),py=face.getY(i),pz=face.getZ(i);
+    face.setXYZ(i,Math.sign(px)*Math.pow(Math.abs(px),.82),Math.sign(py)*Math.pow(Math.abs(py),.88),Math.min(.72,pz));
+  }
+  head.computeVertexNormals();
+  sculptDetail('lion-head',head,palette.blue,[x,y+2.51,z+.28],[.47,.35,.40]);
+  part('lion-jaw',0,2.25,.50,.31,.12,.18);
+  for(const side of [-1,1]) part('lion-muzzle',side*.13,2.38,.60,.16,.10,.11);
+  part('lion-mouth',0,2.30,.694,.11,.005,.005,'#455d66');
+  part('lion-nose',0,2.46,.715,.14,.045,.033,'#516c77');
+  for(const side of [-1,1]) {
+    part('lion-brow',side*.235,2.66,.56,.15,.045,.06);
+    part('lion-eye',side*.245,2.62,.594,.025,.015,.009,'#405963');
+    for(let i=0;i<3;i++) {
+      const curl=new THREE.CatmullRomCurve3([[side*.43,2.68-i*.18,.32],[side*.50,2.63-i*.18,.35],[side*.46,2.56-i*.18,.38]].map(p=>new THREE.Vector3(...p)));
+      sculptDetail('lion-mane-curl-'+side+'-'+i,new THREE.TubeGeometry(curl,10,.025,6,false), '#607c87',[x,y,z],[1,1,1]);
+    }
+  }
+  const tail=new THREE.CatmullRomCurve3([new THREE.Vector3(.5,1.12,-.5),new THREE.Vector3(.78,1.18,-.73),new THREE.Vector3(.7,1.55,-.83),new THREE.Vector3(.38,1.64,-.75)]);
+  sculptDetail('lion-tail',new THREE.TubeGeometry(tail,18,.09,8,false),palette.blue,[x,y,z],[1,1,1]);
+}
+function pavilion(object) {
+  const [x, y, z] = object.position, [width, height, depth] = object.size, levels = object.storeys || 1;
+  box(x, y + .24, z, width + .5, .48, depth + .5, palette.stone);
+  box(x, y + .55, z, width, .16, depth, "#b89374");
+  for (let level = 0; level < levels; level++) {
+    const floorHeight = levels===2 ? height*(level ? .57 : .43) : height;
+    const base = y + .6 + (level ? height*.43 : 0);
+    for (const dx of [-1, 1]) for (const dz of [-1, 1]) {
+      const px=x+dx*(width/2-.5),pz=z+dz*(depth/2-.5);
+      cylinder(px,base+floorHeight/2,pz,levels===2?.22:.19,floorHeight,"#854b3c",levels===2?.19:.17,12);
+      cylinder(px,base+.12,pz,.38,.24,palette.stair,.34,12);
+      box(px,base+floorHeight-.12,pz,.65,.24,.65,palette.ochre);
+      if(levels===2) {
+        box(px,base+.09,pz,.84,.18,.84,palette.stair);
+        cylinder(px,base+.28,pz,.34,.23,'#b7a78c',.3,16);
+        for(const axis of [0,1]) {
+          const bracket=new THREE.Shape();
+          bracket.moveTo(0,0);bracket.lineTo(.8,0);bracket.quadraticCurveTo(.6,-.12,.48,-.35);bracket.lineTo(.18,-.55);bracket.lineTo(0,-.55);bracket.closePath();
+          detail('pavilion-bracket',new THREE.ExtrudeGeometry(bracket,{depth:.16,bevelEnabled:false}),palette.ochre,
+            [px,base+floorHeight-.28,pz],[1,1,1],axis===0?(dx>0?Math.PI:0):(dz>0?Math.PI/2:-Math.PI/2));
+        }
+      }
+    }
+    if(levels===2) for(const side of [-1,1]) {
+      box(x,base+floorHeight-.15,z+side*(depth/2-.5),width-.6,.28,.3,'#854b3c');
+      box(x+side*(width/2-.5),base+floorHeight-.15,z,.3,.28,depth-.6,'#854b3c');
+    }
+    if (level) {
+      box(x, base, z, width, .35, depth, palette.ochre);
+      box(x,base+.17,z+depth/2-.27,width-.4,.42,.14,'#d8c9a4');
+      for (const side of [-1,1]) {
+        for (let i=0;i<=12;i++) {
+          box(x-width/2+.3+i*(width-.6)/12,base+.65,z+side*(depth/2-.3),.065,1.2,.065,"#d1b772");
+          box(x+side*(width/2-.3),base+.65,z-depth/2+.3+i*(depth-.6)/12,.065,1.2,.065,"#d1b772");
+        }
+        for(const dy of [.15,1.2]) {
+          box(x,base+dy,z+side*(depth/2-.3),width-.4,.09,.1,"#d1b772");
+          box(x+side*(width/2-.3),base+dy,z,.1,.09,depth-.4,"#d1b772");
+        }
+      }
+      box(x,base+floorHeight-.42,z,width-.8,.32,.32,palette.wood);
+      const bellBase=base+1.10,bellTop=bellBase+2.65;
+      cylinder(x,(bellTop+base+floorHeight-.6)/2,z,.055,base+floorHeight-.6-bellTop,'#66513a',.055,10);
+      const profile=[[.88,0],[1.06,.07],[1.10,.18],[.96,.30],[.79,.53],[.74,1.85],[.61,2.17],[.36,2.35],[.20,2.43],[.14,2.65]].map(p=>new THREE.Vector2(...p));
+      const bell=mesh(new THREE.LatheGeometry(profile,32),"#766047",x,bellBase,z,false);bell.name='hanging-bell';
+      for(const dy of [.18,.59,1.70]) cylinder(x,bellBase+dy,z,dy<.2?1.07:.78,.045,'#a28957',dy<.2?1.07:.78,24);
+      const loop=mesh(new THREE.TorusGeometry(.16,.045,6,16),'#766047',x,bellTop,z,false);loop.scale.y=1.3;
+    }
+  }
+  if(levels===2) {
+    for(let i=0;i<3;i++) box(x,y+.09+i*.14,z+depth/2+.7-i*.28,width*.58,.18,.6,palette.stair);
+    for(const side of [-1,1]) {
+      box(x+side*(width/2-.5),y+1.05,z,.1,.65,depth-1,'#b89964');
+      box(x+side*(width/2-.5),y+1.4,z,.18,.09,depth-1,'#b89964');
+    }
+    box(x,y+1.25,z+.6,2.3,.23,.9,palette.wood);
+    for(const side of [-1,1]) box(x+side*.85,y+.88,z+.6,.15,.65,.65,palette.wood);
+    cylinder(x,y+1.65,z+.6,.35,.52,'#a58a4c',.46,16);
+  }
+  vietnameseRoof({
+    position: [
+      x,
+      y,
+      z
+    ],
+    width,
+    depth,
+    eaveHeight: height + .5,
+    ridgeHeight: height + (object.statue ? 1.25 : 1.55),
+    overhang: .85,
+    cornerLift: .27,
+    thickness: .12,
+    ridgeOrnament: false,
+    color: object.statue ? "#7b6243" : palette.roof
+  });
+  if(levels===2) vietnameseRoof({position:[x,y,z],width:width*.64,depth:depth*.64,eaveHeight:height+1.65,ridgeHeight:height+2.5,overhang:.60,cornerLift:.22,thickness:.10,ridgeOrnament:true});
+  if (object.statue) {
+    box(x,y+height/2+.55,z-depth/2+.25,width-.8,height-.3,.25,"#d3bd87");
+    box(x,y+3,z-depth/2+.43,width-2.2,4.8,.09,"#8a5142");
+    box(x,y+3,z-depth/2+.49,width-2.4,4.6,.06,"#dbc591");
+    for (const side of [-1, 1]) {
+      const px=x+side*(width/2-.55),pz=z+depth/2-.5;
+      box(px,y+height/2+.6,pz,.64,height,.6,"#754638");
+      box(px,y+height/2+.6,pz+.32,.45,height-.55,.04,"#d9c99f");
+    }
+    cylinder(x,y+.9,z,.87,.55,palette.white,1,24);
+    for(let i=0;i<10;i++) {
+      const a=i*Math.PI/5;
+      const petal=new THREE.Shape();petal.moveTo(0,-.3);petal.bezierCurveTo(-.43,-.1,-.43,.3,0,.63);petal.bezierCurveTo(.43,.3,.43,-.1,0,-.3);
+      detail("lotus",new THREE.ExtrudeGeometry(petal,{depth:.12,bevelEnabled:true,bevelSize:.055,bevelThickness:.045,bevelSegments:2,curveSegments:8}),palette.white,[x+Math.sin(a)*.65,y+1.17,z+Math.cos(a)*.65],[.75,.65,.7],a);
+    }
+    const robe=[[0,0],[.76,.04],[.67,.3],[.46,.85],[.43,1.7],[.50,2.15],[.29,2.55],[.17,2.65],[0,2.65]].map(p=>new THREE.Vector2(...p));
+    const robeGeometry=new THREE.LatheGeometry(robe,32),rp=robeGeometry.attributes.position;
+    for(let i=0;i<rp.count;i++) {
+      const angle=Math.atan2(rp.getZ(i),rp.getX(i)),py=rp.getY(i);
+      const fold=1+(.08*Math.cos(angle*7)+.035*Math.sin(angle*11))*Math.exp(-py*.9);
+      rp.setXYZ(i,rp.getX(i)*fold,py+.035*Math.cos(angle*7)*Math.exp(-py*4),rp.getZ(i)*fold);
+    }
+    robeGeometry.computeVertexNormals();
+    const draped=mesh(robeGeometry,palette.white,x,y+1.35,z,false);draped.name='draped-robe';
+    const head=mesh(new THREE.SphereGeometry(1,20,16),palette.white,x,y+4.26,z+.04,false);head.scale.set(.23,.32,.23);
+    const veilProfile=[[.40,0],[.36,.35],[.28,.70],[.18,1.02],[0,1.10]].map(p=>new THREE.Vector2(...p));
+    const veil=mesh(new THREE.LatheGeometry(veilProfile,24,.55,Math.PI*2-1.10),palette.white,x,y+3.65,z-.04,false);
+    veil.name='statue-veil';veil.material.side=THREE.DoubleSide;
+    for(const side of [-1,1]) {
+      const sleeve=new THREE.Shape();sleeve.moveTo(.29,3.84);
+      if(side<0) {sleeve.quadraticCurveTo(.64,3.75,.78,3.25);sleeve.lineTo(.67,2.7);sleeve.quadraticCurveTo(.43,2.68,.27,3.13);}
+      else {sleeve.quadraticCurveTo(.64,3.45,.66,2.80);sleeve.lineTo(.42,2.28);sleeve.quadraticCurveTo(.30,2.35,.27,3.05);}
+      sleeve.closePath();
+      const sg=new THREE.ExtrudeGeometry(sleeve,{depth:.22,bevelEnabled:true,bevelSize:.07,bevelThickness:.06,bevelSegments:3});
+      if(side<0) sg.rotateY(Math.PI);
+      mesh(sg,palette.white,x,y,z+.08,false);
+    }
+    const arm=new THREE.CatmullRomCurve3([new THREE.Vector3(-.55,3.38,.16),new THREE.Vector3(-.7,3.62,.24),new THREE.Vector3(-.64,3.98,.3)]);
+    mesh(new THREE.TubeGeometry(arm,16,.065,8,false),palette.white,x,y,z,false);
+    const hand=mesh(new THREE.SphereGeometry(1,12,10),palette.white,x-.64,y+4.01,z+.3,false);hand.scale.set(.065,.12,.055);
+    const loweredHand=mesh(new THREE.SphereGeometry(1,12,10),palette.white,x+.39,y+2.85,z+.30,false);loweredHand.scale.set(.06,.11,.055);
+    // A few broad drapery folds, not a wireframe over the statue.
+    for(let i=0;i<3;i++) {
+      const s=i*.065;
+      const fold=new THREE.CatmullRomCurve3([new THREE.Vector3(-.24+s,3.83-i*.12,.26),new THREE.Vector3(-.08+s,3.15-i*.17,.48),new THREE.Vector3(.26+s,2.60-i*.18,.46),new THREE.Vector3(.46+s,1.65-i*.14,.47)]);
+      mesh(new THREE.TubeGeometry(fold,20,.012,4,false),'#dcd8cb',x,y,z,false);
+    }
+    const urnZ=z+depth/2+.28;
+    cylinder(x,y+1.04,urnZ,.48,.68,"#a58a4c",.58,16);
+    cylinder(x,y+1.42,urnZ,.62,.12,"#b59b61",.62,20);
+    for(const dx of [-.4,0,.4]) cylinder(x+dx,y+.60,urnZ,.07,.40,"#a58a4c",.07,8);
+    for(const side of [-1,1]) {
+      mesh(new THREE.TorusGeometry(.18,.045,6,16),"#a58a4c",x+side*.62,y+1.35,urnZ);
+      cylinder(x+side*1.6,y+1.02,urnZ,.38,.85,palette.white,.50,16);
+      vegetationMode=true;
+      for(let i=0;i<7;i++) {
+        const a=i*2.4,fx=x+side*1.6+Math.sin(a)*.26,fz=urnZ+Math.cos(a)*.22,fy=y+1.72+(i%3)*.13;
+        cylinder(fx,fy-.15,fz,.017,.4,'#6a7956',.017,6);
+        for(let p=0;p<5;p++) {
+          const pa=p*Math.PI*2/5;
+          detail('flower-petal',new THREE.SphereGeometry(1,8,6),i%2?'#934c56':'#b99362',[fx+Math.cos(pa)*.075,fy+Math.sin(pa)*.085,fz],[.07,.1,.035],pa,pa);
+        }
+        detail('flower-leaf',new THREE.SphereGeometry(1,8,6),'#6a7956',[fx+.08,fy-.16,fz],[.07,.15,.035],a,.6);
+      }
+      vegetationMode=false;
+    }
+  }
+}
+function tower(object) {
+  const [x, ground, z] = object.position, h = object.height;
+  const y=object.grounded ? hillSurfaceHeight(x,z)+.02 : ground;
+  const w=h/11;
+  box(x,y+.13,z,w*1.8,.26,w*1.8,palette.stair);
+  box(x,y+.42,z,w*1.48,.32,w*1.48,'#793e35');
+  box(x,y+.72,z,w*1.25,.3,w*1.25,'#263d58');
+  box(x,y+h*.45,z,w,h*.72,w,'#793e35');
+  for(const side of [-1,1]) {
+    box(x,y+h*.45,z+side*w*.51,w*.78,h*.66,.025,'#263d58');
+    box(x,y+h*.45,z+side*w*.53,w*.57,h*.62,.025,'#ded9bd');
+    box(x+side*w*.51,y+h*.45,z,.025,h*.66,w*.78,'#263d58');
+    box(x+side*w*.53,y+h*.45,z,.025,h*.62,w*.57,'#ded9bd');
+    for(let i=0;i<9;i++) {
+      const py=y+1.3+i*h*.061,mark=w*(.09+(i%3)*.025);
+      box(x,py,z+side*w*.55,mark,.033,.009,'#859184');
+      box(x+side*w*.55,py,z,.009,.033,mark,'#859184');
+    }
+  }
+  box(x,y+h*.82,z,w*1.42,.18,w*1.42,'#793e35');
+  box(x,y+h*.86,z,w*.82,.55,w*.82,'#ded9bd');
+  for(let i=0;i<3;i++) vietnameseRoof({
+    position:[x,y,z],width:w*(1.4-i*.24),depth:w*(1.4-i*.24),
+    eaveHeight:h*.89+i*.34,ridgeHeight:h*.89+i*.34+.24,
+    overhang:.12,curve:.12,cornerLift:.11,thickness:.055,ridgeOrnament:false
+  });
+}
+function gate(object) {
+  const [x, y, z] = object.position, w = object.width, h = object.height, c = object.wood ? palette.wood : '#b5b6ae';
+  const footing=(px,pw,pd,ph)=>{
+    let bottom=y;
+    if(!object.wood&&typeof hillSurfaceHeight==='function') for(const dx of [-pw/2,0,pw/2]) for(const dz of [-pd/2,0,pd/2])
+      bottom=Math.min(bottom,hillSurfaceHeight(px+dx,z+dz)-.05);
+    box(px,(y+ph+bottom)/2,z,pw,y+ph-bottom,pd,palette.stair);
+  };
+  for (const side of [-1, 1]) {
+    const px=x+side*(w/2-.7),pw=object.wood?.52:1.05;
+    box(px,y+h/2,z,pw,h,object.wood?.58:1.2,c);
+    footing(px,pw+.3,pw+.4,.4);
+    box(px,y+h-.22,z,pw+.35,.24,pw+.4,object.wood?'#795340':palette.stair);
+    if(!object.wood) for(let row=1;row<13;row++) {
+      box(px,y+row*h/14,z+.606,pw,.016,.012,'#928d7d');
+      box(px+(row%2?-.18:.18),y+(row+.5)*h/14,z+.61,.012,h/14,.012,'#928d7d');
+    }
+  }
+  box(x, y + h - (object.wood ? .15 : .8), z, w, object.wood ? .2 : 1.1, 1.25, object.wood ? palette.wood : palette.ochre);
+  vietnameseRoof({
+    position: [
+      x,
+      y,
+      z
+    ],
+    width: w,
+    depth: 2,
+    eaveHeight: h,
+    ridgeHeight: h + .65,
+    overhang: .8,
+    cornerLift: .22,
+    thickness: .1,
+    tiers: object.wood ? 1 : 2,
+    tierGap: object.wood ? .65 : 1.35,
+    ridgeOrnament: false,
+    color: object.wood ? palette.roof : '#7d8d83',
+    trimColor: object.wood ? palette.roofEdge : '#667a77',
+    tileBand: object.wood ? null : '#9ca99d'
+  });
+  if (!object.wood) {
+    for (const side of [-1, 1]) {
+      box(x + side * (w / 2 + 1.5), y + h * .64, z, 3.8, .6, 1, c);
+      vietnameseRoof({
+        position: [x + side * (w/2+1.5),y,z],
+        width: 3,
+        depth: 2,
+        eaveHeight: h * .65,
+        ridgeHeight: h * .65 + .7,
+        overhang: .4,
+        cornerLift: .14,
+        thickness: .09,
+        ridgeOrnament: false,
+        tileBand: '#9ca99d',
+        color: '#7d8d83',
+        trimColor: '#667a77'
+      });
+      box(x+side*(w/2+3),y+h*.32,z,.95,h*.64,1.2,c);
+      footing(x+side*(w/2+3),1.35,1.55,.5);
+      box(x+side*(w/2+3),y+h*.64-.12,z,1.2,.24,1.4,palette.stair);
+      for(let row=1;row<9;row++) box(x+side*(w/2+3),y+row*h*.064,z+.606,.95,.016,.012,'#928d7d');
+      box(x+side*(w/2+4.9),y+1.1,z,2.8,2.2,.55,c);
+      box(x+side*(w/2+4.9),y+2.25,z,3,.18,.75,palette.stair);
+    }
+    box(x,y+h+1.13,z,w*.48,1.22,.56,palette.ochre);
+    const niche=new THREE.Shape();niche.moveTo(-1.15,0);niche.lineTo(1.15,0);niche.lineTo(1.15,1.25);niche.lineTo(-1.15,1.25);niche.closePath();
+    const arch=new THREE.Path();arch.moveTo(-.56,0);arch.lineTo(-.56,.56);arch.bezierCurveTo(-.56,1.22,.56,1.22,.56,.56);arch.lineTo(.56,0);arch.closePath();niche.holes.push(arch);
+    const nicheMesh=mesh(new THREE.ExtrudeGeometry(niche,{depth:.08,bevelEnabled:true,bevelSize:.025,bevelThickness:.018,bevelSegments:1}), '#d5c9ad',x,y+h+.52,z+.34,false);nicheMesh.name='gate-niche-frame';
+    box(x,y+h+1.1,z+.29,1.12,1.12,.04,'#6b746c');
+    const votive=new THREE.LatheGeometry([[0,0],[.18,0],[.12,.42],[.08,.55],[0,.56]].map(p=>new THREE.Vector2(...p)),12);
+    mesh(votive,'#c6bc9f',x,y+h+.57,z+.36,false).name='gate-niche-votive';
+    for(const side of [-1,1]) {
+      box(x+side*1.29,y+h+1.13,z+.35,.12,1.22,.08,'#85918a');
+      box(x,y+h-.03,z+side*1.79,w-.35,.11,.13,'#85918a');
+      box(x,y+h+1.77,z+side*1.14,w*.63,.09,.10,'#85918a');
+    }
+    if(object.sign) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 96;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#e3cf9e";
+    context.fillRect(0, 0, 512, 96);
+    context.strokeStyle='#ccb789';context.lineWidth=2;
+    for(let px=-80;px<550;px+=22) for(let py=-22;py<110;py+=22) {
+      context.beginPath();context.moveTo(px,py);context.lineTo(px+15,py+15);context.lineTo(px+7,py+23);context.stroke();
+    }
+    context.fillStyle='#e3cf9e';context.fillRect(18,23,476,53);
+    context.strokeStyle='#8e947f';context.strokeRect(4,4,504,88);
+    context.fillStyle = "#514d46";
+    context.font = "bold 52px Georgia";
+    context.textAlign = "center";
+    let signFont=52;
+    while(context.measureText(object.sign).width>476 && signFont>1)context.font=`bold ${--signFont}px Georgia`;
+    context.fillText(object.sign, 256, 66);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(w * .91, 1.05), new THREE.MeshBasicMaterial({ map: texture }));
+    sign.position.set(x, y + h - .8, z + .64);
+    scene.add(sign);
+    }
+    const crest=new THREE.Shape();crest.moveTo(-.48,0);crest.quadraticCurveTo(-.76,.28,-.55,.38);crest.lineTo(-.24,.30);crest.lineTo(-.40,.64);crest.lineTo(-.10,.52);crest.lineTo(0,1.08);crest.lineTo(.10,.52);crest.lineTo(.40,.64);crest.lineTo(.24,.30);crest.lineTo(.55,.38);crest.quadraticCurveTo(.76,.28,.48,0);crest.closePath();
+    mesh(new THREE.ExtrudeGeometry(crest,{depth:.10,bevelEnabled:false}), '#a9a58c',x,y+h+2.52,z-.05,false).name='gate-crest';
+  } else {
+    const frame=new THREE.Shape();
+    frame.moveTo(-2.55,0);frame.lineTo(-2.55,1.65);frame.lineTo(2.55,1.65);frame.lineTo(2.55,0);frame.lineTo(2.2,0);
+    frame.lineTo(2.2,.4);frame.quadraticCurveTo(2.2,.6,1.83,.6);frame.lineTo(1.7,.6);frame.lineTo(1.7,.92);
+    frame.quadraticCurveTo(1.7,1.13,1.35,1.13);frame.lineTo(-1.35,1.13);frame.quadraticCurveTo(-1.7,1.13,-1.7,.92);
+    frame.lineTo(-1.7,.6);frame.lineTo(-1.83,.6);frame.quadraticCurveTo(-2.2,.6,-2.2,.4);frame.lineTo(-2.2,0);frame.closePath();
+    // A pierced fret panel sits above the scalloped, open walk-through contour.
+    const cutout=new THREE.Path();cutout.moveTo(-1.1,1.28);cutout.lineTo(1.1,1.28);cutout.lineTo(1.1,1.48);cutout.lineTo(-1.1,1.48);cutout.closePath();frame.holes.push(cutout);
+    for(const [index,color] of ['#94745d','#b09b80'].entries()) {
+      const geometry=new THREE.ExtrudeGeometry(frame,{depth:.10,bevelEnabled:true,bevelSize:.025,bevelThickness:.018,bevelSegments:1});
+      geometry.scale(w/7,index? .93:1,1);
+      const relief=mesh(geometry,color,x,y+h-1.85+(index?.03:0),z+.22+index*.14,false);
+      relief.name=index?'timber-carved-relief':'timber-carved-frame';
+    }
+    for(let i=0;i<7;i++) {
+      const px=x+(i-3)*.55;
+      const scroll=new THREE.CatmullRomCurve3([new THREE.Vector3(px-.18,y+h-.9,z+.49),new THREE.Vector3(px,y+h-1.08,z+.49),new THREE.Vector3(px+.18,y+h-.9,z+.49)]);
+      mesh(new THREE.TubeGeometry(scroll,8,.035,4,false),'#a5a88d',0,0,0,false);
+    }
+    const crest=new THREE.Shape();
+    crest.moveTo(-2.25,0);crest.bezierCurveTo(-2.7,.7,-2.1,1.3,-1.7,1.07);crest.lineTo(-1.86,1.42);crest.lineTo(-1.50,1.23);crest.lineTo(-1.22,1.20);crest.lineTo(-1.45,1.02);crest.bezierCurveTo(-2.2,.76,-1.65,.22,-.9,.32);
+    crest.lineTo(-.25,.70);crest.lineTo(-.42,.88);crest.lineTo(-.18,.88);crest.lineTo(0,1.53);crest.lineTo(.18,.88);crest.lineTo(.42,.88);crest.lineTo(.25,.70);crest.lineTo(.9,.32);
+    crest.bezierCurveTo(1.65,.22,2.2,.76,1.45,1.02);crest.lineTo(1.22,1.20);crest.lineTo(1.50,1.23);crest.lineTo(1.86,1.42);crest.lineTo(1.7,1.07);crest.bezierCurveTo(2.1,1.3,2.7,.7,2.25,0);crest.closePath();
+    const sun=new THREE.Path();sun.absellipse(0,1.13,.065,.11,0,Math.PI*2,true);crest.holes.push(sun);
+    const crownGeometry=new THREE.ExtrudeGeometry(crest,{depth:.12,bevelEnabled:true,bevelSize:.025,bevelThickness:.018,bevelSegments:1});crownGeometry.scale(1,.78,1);
+    mesh(crownGeometry,'#a3a38d',x,y+h+.77,z-.06,false).name='timber-crest';
+    for(const side of [-1,1]) {
+      const trim=new THREE.Shape();trim.moveTo(0,0);trim.lineTo(1.05,0);trim.quadraticCurveTo(.35,-.25,0,-1.05);trim.closePath();
+      const g=new THREE.ExtrudeGeometry(trim,{depth:.12,bevelEnabled:true,bevelSize:.025,bevelThickness:.02,bevelSegments:2});
+      g.translate(0,0,-.06);if(side>0) g.rotateY(Math.PI);
+      mesh(g,'#795340',x+side*(w/2-.7),y+h-1.65,z+.2,false);
+    }
+    for(const side of [-1,1]) {
+      box(x+side*(w/2+1.6),y+.65,z,3.6,1.3,.5,"#b8a687");
+      box(x+side*(w/2+1.6),y+1.4,z,3.8,.18,.7,palette.wood);
+    }
+  }
+}
+function building(object) {
+  const [x, y, z] = object.position, [w, h, d] = object.size;
+  const inside=typeof place!=='undefined'?place.hotspots?.find(s=>s.interior):null;
+  const main = inside?.building ? object.id===inside.building : object.role === "main", front = z + d / 2;
+  box(x, y + .3, z, w + 1.6, .6, d + 1.6, palette.stone);
+  box(x, y + .62, z, w + .7, .12, d + .7, "#b7aa93");
+  box(x, y + h / 2 + .6, z - d / 2 + .2, w, h, .4, object.color || palette.ochre);
+  for (const side of [-1,1]) {
+    box(x + side * (w / 2 - .2), y + h / 2 + .6, z, .4, h, d, object.color || palette.ochre);
+    for (const offset of [-d*.22,d*.20]) {
+      box(x + side * (w / 2 + .015), y + h * .55, z + offset, .08, 2.5, 2.1, palette.wood);
+      box(x + side * (w / 2 + .06), y + h * .55, z + offset, .05, 2.15, 1.75, "#45382d");
+      for (const dz of [-.57,0,.57]) box(x + side * (w/2+.10), y+h*.55, z+offset+dz, .05, 2.15, .045, palette.ochre);
+      box(x + side * (w/2+.11), y+h*.55, z+offset, .05, .06, 1.75, palette.ochre);
+    }
+  }
+  if (main) {
+    // Recessed sanctuary, with a genuinely open three-dimensional front porch.
+    const wallWidth=w*.71,wallHeight=h-.3,doorWidth=2.2,doorHeight=3.3,bottom=y+.75;
+    for(const side of [-1,1])box(x+side*(wallWidth+doorWidth)/4,bottom+wallHeight/2,front-2.4,(wallWidth-doorWidth)/2,wallHeight,.18,"#30221d",'hall-front-panel');
+    box(x,bottom+(wallHeight+doorHeight)/2,front-2.4,doorWidth,wallHeight-doorHeight,.18,"#30221d",'hall-front-panel');
+    box(x,bottom+doorHeight/2,front-2.4,doorWidth,doorHeight,.18,"#30221d",'hall-front-door');
+    for(const side of [-1,1])box(x+side*w*.425,y+h/2+.6,front-.22,w*.15,h,.38,palette.ochre,'hall-front');
+    box(x, y + .7, front - 1.1, w - .8, .12, 2.8, "#77614b");
+    for (let i=0;i<10;i++) {
+      const px=x-w*.35+i*w*.70/9;
+      box(px,y+.6+h/2,front-.1,.38,h,.38,palette.wood,'hall-front');
+      cylinder(px,y+.78,front-.1,.32,.3,"#afa18c",.32,12,'hall-front');
+      box(px,y+h-.15,front-.1,.72,.18,.7,palette.wood,'hall-front');
+    }
+    box(x,y+h+.4,front-.1,w,.22,.55,palette.wood,'hall-front');
+    box(x,y+h-.17,front-.09,w*.72,.94,.20,palette.wood,'hall-front');
+    const pattern=[];
+    for(let i=0;i<40;i++) {
+      const px=x-w*.35+i*w*.70/40,py=y+h-.53;
+      for(const dy of [0,.30])pattern.push(px,py+dy,front+.025,px+.32,py+dy+.32,front+.025,px+.32,py+dy+.32,front+.025,px+.53,py+dy+.10,front+.025);
+    }
+    const fasciaGeometry=new THREE.BufferGeometry();fasciaGeometry.setAttribute('position',new THREE.Float32BufferAttribute(pattern,3));
+    const fascia=new THREE.LineSegments(fasciaGeometry,new THREE.LineBasicMaterial({color:'#d3c3a1',transparent:true,opacity:.66}));fascia.name='hall-patterned-fascia';fascia.userData.hallFront=true;scene.add(fascia);
+    for(const offset of [-.22,0,.27]) {
+      const px=x+w*offset;
+      cylinder(px,y+.98,front+.55,.53,.62,"#744638",.67,12);
+      cylinder(px,y+1.54,front+.55,.09,.75,palette.trunk,.05,8);
+      vegetationMode=true;
+      detail("hall-bonsai",new THREE.SphereGeometry(1,8,5),"#6b7c58",[px,y+1.96,front+.55],[.72,.34,.6]);
+      vegetationMode=false;
+    }
+  } else {
+    box(x,y+h/2+.6,front-.18,w,h,.36,object.color||palette.ochre);
+    for(let i=0;i<4;i++) {
+      const px=x-w/2+2+i*(w-4)/3;
+      box(px,y+2.6,front+.03,1.75,2.7,.12,"#72634b");
+      for(const dx of [-.9,0,.9]) box(px+dx,y+2.6,front+.11,.09,2.9,.12,palette.wood);
+      for(const dy of [-1.4,0,1.4]) box(px,y+2.6+dy,front+.11,1.9,.08,.12,palette.wood);
+    }
+  }
+  const options = typeof object.roof === "object" ? object.roof : {};
+  vietnameseRoof({
+    position: [
+      x,
+      y,
+      z
+    ],
+    width: w,
+    depth: d,
+    eaveHeight: h + .6,
+    ridgeHeight: main ? h + 2.15 : h + 2.9,
+    overhang: main ? 1.05 : 1.5,
+    cornerLift: main ? .38 : .7,
+    thickness: main ? .12 : .22,
+    tileSpacing: main ? .5 : .65,
+    color: main ? '#62372e' : palette.roof,
+    ...options
+  });
+}
+function stoneStele(object) {
+  const [x,y,z]=object.position;
+  contouredBed({position:[x-.6,y+.015,z],size:[4.8,.15,3.3]});
+  const shape=new THREE.Shape();
+  shape.moveTo(-.87,0);shape.quadraticCurveTo(-.62,1,-.76,1.9);
+  shape.quadraticCurveTo(-.8,2.28,-.47,2.32);shape.quadraticCurveTo(-.06,2.28,.35,2.17);
+  shape.quadraticCurveTo(.54,2.12,.52,1.79);shape.quadraticCurveTo(.51,.92,.86,.12);shape.quadraticCurveTo(.2,-.09,-.87,0);
+  const slab=new THREE.ExtrudeGeometry(shape,{depth:.44,steps:6,curveSegments:12,bevelEnabled:true,bevelThickness:.10,bevelSize:.09,bevelSegments:4});
+  const v=slab.attributes.position;
+  for(let i=0;i<v.count;i++) {
+    const px=v.getX(i),py=v.getY(i),pz=v.getZ(i);
+    const n=Math.sin(px*8.1+py*5.4)*Math.cos(py*9.1+pz*3.2);
+    v.setXYZ(i,px+.018*n,py+.018*n,pz+.023*n);
+  }
+  slab.computeVertexNormals();
+  // Extrusion duplicates triangle vertices; average by position after displacement.
+  const normals=slab.attributes.normal,normalGroups=new Map();
+  for(let i=0;i<v.count;i++) {
+    const key=[v.getX(i),v.getY(i),v.getZ(i)].map(value=>value.toFixed(5)).join(',');
+    if(!normalGroups.has(key)) normalGroups.set(key,{sum:new THREE.Vector3(),indices:[]});
+    const group=normalGroups.get(key);group.sum.add(new THREE.Vector3().fromBufferAttribute(normals,i));group.indices.push(i);
+  }
+  for(const {sum,indices} of normalGroups.values()) {
+    sum.normalize();for(const i of indices) normals.setXYZ(i,sum.x,sum.y,sum.z);
+  }
+  mesh(slab,"#b7aa8e",x,y+.12,z-.2,false).name='stone-slab';
+  // Sparse abstract incisions, deliberately non-legible and not a transcription.
+  const points=[];
+  for(const [ax,ay,bx,by] of [[-.13,1.94,.09,1.91],[.02,1.84,-.04,1.64],
+    [-.14,1.49,-.05,1.37],[-.05,1.37,.12,1.44],[.14,1.24,.12,.88]])
+    points.push(x+ax,y+ay+.12,z+.355,x+bx,y+by+.12,z+.355);
+  const lines=new THREE.BufferGeometry();lines.setAttribute("position",new THREE.Float32BufferAttribute(points,3));
+  const inscription=new THREE.LineSegments(lines,new THREE.LineBasicMaterial({color:"#797061",transparent:true,opacity:.64}));
+  inscription.name='stele-inscription';scene.add(inscription);
+  for(const [index,[dx,dz,s]] of [[-.9,.48,.65],[.72,.55,.48],[1.02,-.42,.32],[-.64,-.55,.35],[.12,.85,.28],[-1.15,-.4,.25]].entries()) {
+    const g=new THREE.DodecahedronGeometry(s,0),p=g.attributes.position;
+    for(let i=0;i<p.count;i++) {
+      const px=p.getX(i),py=p.getY(i),pz=p.getZ(i),n=1+.20*Math.sin(px*8+py*5+index)*Math.cos(pz*7);
+      p.setXYZ(i,px*n,py*n,pz*n);
+    }
+    g.computeVertexNormals();
+    const rock=mesh(g,index%2?'#c2b9a9':'#a49b88',x+dx,y+.15+s*.4,z+dz,false);rock.name='natural-rock';
+    rock.scale.set(1,.78,.70+index*.055);rock.rotation.set(index*.21,dx*.72,dx*.25);
+  }
+}
+function approachProfile(object) {
+  const [start,end]=object.points,groups=object.groups,steps=object.stepsPerGroup;
+  const groupRun=(start[2]-end[2])/groups,stepRun=steps*object.tread;
+  const landingRise=(end[1]-start[1]-groups*steps*object.stepRise)/groups;
+  const profile=[];
+  let y=start[1],z=start[2];
+  for(let group=0;group<groups;group++) {
+    for(let step=0;step<steps;step++) {
+      profile.push({kind:'riser',a:[0,y,z],b:[0,y+object.stepRise,z]});y+=object.stepRise;
+      profile.push({kind:'tread',a:[0,y,z],b:[0,y,z-object.tread]});z-=object.tread;
+    }
+    profile.push({kind:'landing',a:[0,y,z],b:[0,y+landingRise,z-(groupRun-stepRun)]});
+    y+=landingRise;z-=groupRun-stepRun;
+  }
+  profile.at(-1).b=[...end];
+  return profile;
+}
+function road(object) {
+  if(object.approach) {
+    const profile=approachProfile(object),top=[],edge=[],w=object.width/2;
+    const quad=(out,a,b,c,d)=>out.push(...a,...b,...c,...a,...c,...d);
+    for(const {a,b,kind} of profile) {
+      quad(top,[-w,a[1],a[2]],[w,a[1],a[2]],[w,b[1],b[2]],[-w,b[1],b[2]]);
+      for(const side of [-1,1]) {
+        const x=side*(w+.11);
+        quad(edge,[x-.11,a[1]+.13,a[2]],[x+.11,a[1]+.13,a[2]],[x+.11,b[1]+.13,b[2]],[x-.11,b[1]+.13,b[2]]);
+        for(const dx of [-.11,.11])quad(edge,[x+dx,a[1]-.4,a[2]],[x+dx,a[1]+.13,a[2]],[x+dx,b[1]+.13,b[2]],[x+dx,b[1]-.4,b[2]]);
+      }
+      if(kind==='landing')for(let i=1;i<=3;i++) {
+        const t=i/4,z=THREE.MathUtils.lerp(a[2],b[2],t),y=THREE.MathUtils.lerp(a[1],b[1],t);
+        box(0,y+.003,z,object.width,.006,.014,'#c7c1b5');
+      }
+    }
+    for(const [data,color,name] of [[top,palette.stair,'approach-paving'],[edge,palette.stair,'approach-edging']]) {
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(data,3));g.computeVertexNormals();
+      const m=mesh(g,color,0,0,0,false);m.name=name;m.material.side=THREE.DoubleSide;
+    }
+    // Close the paving with the exact stair profile extruded across its width.
+    const path=[profile[0].a,...profile.map(s=>s.b)],section=new THREE.Shape();
+    section.moveTo(-path[0][2],path[0][1]);
+    for(const p of path.slice(1))section.lineTo(-p[2],p[1]);
+    for(const p of path.slice(1).reverse())section.lineTo(-p[2],p[1]-.45);
+    section.closePath();
+    const solid=new THREE.ExtrudeGeometry(section,{depth:object.width,bevelEnabled:false});
+    solid.rotateY(Math.PI/2);solid.translate(-w,0,0);
+    const p=solid.attributes.position,n=solid.attributes.normal,foundation=[];
+    for(let i=0;i<p.count;i+=3)if(n.getY(i)<.01&&n.getZ(i)<.01)
+      for(let j=0;j<3;j++)foundation.push(p.getX(i+j),p.getY(i+j),p.getZ(i+j));
+    for(const [low,high] of [[path[1][1]-.45,path[0][1]]])
+      quad(foundation,[-w,low,path[0][2]],[w,low,path[0][2]],[w,high,path[0][2]],[-w,high,path[0][2]]);
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(foundation,3));g.computeVertexNormals();
+    mesh(g,palette.stair,0,0,0,false).name='approach-foundation';solid.dispose();
+    return;
+  }
+  if(object.curved && place.site.hill) {
+    const samples=roadSurface(object),positions=[],wallPositions=[],foundation=[];
+    const quad=(array,a,b,c,d)=>array.push(...a.toArray(),...b.toArray(),...c.toArray(),...a.toArray(),...c.toArray(),...d.toArray());
+    for(let i=1;i<samples.length;i++) {
+      const a=samples[i-1],b=samples[i];
+      const point=(sample,t)=>{
+        const p=sample.left.clone().lerp(sample.right,t);p.y=terrainHeight(p.x,p.z)+.09;return p;
+      };
+      const down=new THREE.Vector3(0,-.34,0);
+      for(let j=0;j<12;j++) {
+        const p=point(a,j/12),q=point(b,j/12),r=point(b,(j+1)/12),s=point(a,(j+1)/12);
+        quad(positions,p,q,r,s);
+        quad(foundation,s.clone().add(down),r.clone().add(down),q.clone().add(down),p.clone().add(down));
+        if(i===1) quad(foundation,s,p,p.clone().add(down),s.clone().add(down));
+        if(i===samples.length-1) quad(foundation,q,r,r.clone().add(down),q.clone().add(down));
+      }
+      for(const side of ['left','right']) {
+        const p=a[side],q=b[side],up=new THREE.Vector3(0,.48,0);
+        const offsetA=p.clone().sub(a.center).setY(0).normalize().multiplyScalar(.24);
+        const offsetB=q.clone().sub(b.center).setY(0).normalize().multiplyScalar(.24);
+        const po=p.clone().add(offsetA),qo=q.clone().add(offsetB);
+        quad(wallPositions,p,q,q.clone().add(up),p.clone().add(up));
+        quad(wallPositions,qo,po,po.clone().add(up),qo.clone().add(up));
+        quad(wallPositions,p.clone().add(up),q.clone().add(up),qo.clone().add(up),po.clone().add(up));
+        quad(wallPositions,po,qo,q,p);
+        if(i===1) quad(wallPositions,po,p,p.clone().add(up),po.clone().add(up));
+        if(i===samples.length-1) quad(wallPositions,q,qo,qo.clone().add(up),q.clone().add(up));
+        quad(foundation,p,p.clone().add(down),q.clone().add(down),q);
+      }
+    }
+    for(const [data,color,name] of [[positions,palette.stair,'hill-road-surface'],[foundation,palette.stair,'hill-road-foundation'],[wallPositions,'#b8ad96','hill-road-retaining']]) {
+      const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(data,3));geometry.computeVertexNormals();
+      const part=mesh(geometry,color,0,0,0,false);part.name=name;part.material.side=THREE.DoubleSide;
+    }
+    return;
+  }
+  for (let index = 1; index < object.points.length; index++) {
+    const a = new THREE.Vector3(...object.points[index - 1]), b = new THREE.Vector3(...object.points[index]), delta = b.clone().sub(a), mid = a.clone().add(b).multiplyScalar(.5);
+    const part = mesh(new THREE.BoxGeometry(object.width, .18, delta.length()), palette.stair, mid.x, mid.y, mid.z);
+    part.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), delta.normalize());
+  }
+}
+function contouredBed(object) {
+  const [x,y,z]=object.position,[w,,d]=object.size,n=40,rings=7,vertices=[],indices=[];
+  let outline=object.outline;
+  if(outline) {
+    const area=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0);
+    if(area<0)outline=[...outline].reverse();
+  }
+  const point=(r,i)=>{
+    const angle=i/n*Math.PI*2,noise=1+.07*Math.sin(angle*3+x)+.035*Math.cos(angle*5-z);
+    let px=x+Math.cos(angle)*w/2*r*noise,pz=z+Math.sin(angle)*d/2*r*noise;
+    if(outline) {
+      const t=i/n*outline.length,j=Math.floor(t)%outline.length;
+      const a=outline[j],b=outline[(j+1)%outline.length];
+      px=THREE.MathUtils.lerp(x,THREE.MathUtils.lerp(a[0],b[0],t-Math.floor(t)),r);
+      pz=THREE.MathUtils.lerp(z,THREE.MathUtils.lerp(a[1],b[1],t-Math.floor(t)),r);
+    }
+    const base=object.draped ? hillSurfaceHeight(px,pz)+.05 : y;
+    return new THREE.Vector3(px,base+.14+(object.outline ? .14 : .48)*(1-r*r),pz);
+  };
+  for(let j=0;j<=rings;j++)for(let i=0;i<=n;i++)vertices.push(...point(j/rings,i).toArray());
+  for(let j=0;j<rings;j++)for(let i=0;i<n;i++){
+    const a=j*(n+1)+i,b=a+n+1;indices.push(a,a+1,b,a+1,b+1,b);
+  }
+  const floorStart=vertices.length/3;
+  for(let i=0;i<=n;i++){const p=point(1,i);p.y-=.32;vertices.push(...p.toArray());}
+  for(let i=0;i<n;i++){
+    const a=rings*(n+1)+i,b=floorStart+i;indices.push(a,b,a+1,a+1,b,b+1);
+  }
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));g.setIndex(indices);g.computeVertexNormals();
+  mesh(g,palette.bed,0,0,0,false).name='contoured-soil';
+  const edge=Array.from({length:n},(_,i)=>point(1,i).add(new THREE.Vector3(0,.025,0)));
+  const rim=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(edge,true,'centripetal'),80,.085,5,true);
+  mesh(rim,palette.stair,0,0,0,false).name='planting-stone-edge';
+}
+function slope(object) {
+  const corners=object.corners.map(p=>new THREE.Vector3(...p)),n=16,vertices=[],indices=[];
+  const point=(u,v)=>corners[0].clone().lerp(corners[1],u).lerp(corners[3].clone().lerp(corners[2],u),v);
+  for(let j=0;j<=n;j++)for(let i=0;i<=n;i++){
+    const p=point(i/n,j/n);p.y+=.28*Math.sin(Math.PI*i/n)*Math.sin(Math.PI*j/n);vertices.push(...p.toArray());
+  }
+  for(let j=0;j<n;j++)for(let i=0;i<n;i++){const a=j*(n+1)+i,b=a+n+1;indices.push(a,a+1,b,a+1,b+1,b);}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));g.setIndex(indices);g.computeVertexNormals();
+  mesh(g,palette.green,0,0,0,false).name='planted-bank';
+  for(const u of [0,1]){
+    const edge=Array.from({length:17},(_,i)=>point(u,i/16).add(new THREE.Vector3(0,.045,0)));
+    mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(edge),24,.075,5,false),palette.stair,0,0,0,false);
+  }
+}
+function retainingWall(object) {
+  for (let i = 1; i < object.points.length; i++) {
+    const a = new THREE.Vector3(...object.points[i - 1]), b = new THREE.Vector3(...object.points[i]);
+    const d = b.clone().sub(a), center = a.clone().add(b).multiplyScalar(.5);
+    const wall = mesh(new THREE.BoxGeometry(.35, object.height, d.length()), "#c5bcaa", center.x, center.y + object.height / 2, center.z);
+    wall.rotation.y = Math.atan2(d.x, d.z);
+    const length = d.length(), angle = Math.atan2(d.x, d.z);
+    for (let row = .48; row < object.height; row += .48) for (const side of [-1, 1]) {
+      const joint = mesh(new THREE.BoxGeometry(.025, .025, length), "#a69e90", center.x + side * .19 * Math.cos(angle), center.y + row, center.z - side * .19 * Math.sin(angle), false);
+      joint.rotation.y = angle;
+    }
+  }
+}
+function pavingGrid(object) {
+  const [x, y, z] = object.position, [w, h, d] = object.size;
+  if(object.color === "#a56f56") {
+    const points=[],top=y+h/2+.016;
+    for(let row=0;row<=Math.floor(d/.8);row++) {
+      const pz=z-d/2+row*.8;
+      points.push(x-w/2,top,pz,x+w/2,top,pz);
+      for(let px=x-w/2+(row%2)*.6;px<x+w/2;px+=1.2)
+        points.push(px,top,pz,px,top,Math.min(z+d/2,pz+.8));
+    }
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute("position",new THREE.Float32BufferAttribute(points,3));
+    scene.add(new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({color:"#a79985",transparent:true,opacity:.16})));
+    return;
+  }
+  if (w < 10 || d < 8 || object.color !== "#e9e4da") return;
+  const points = [], top = y + h / 2 + .015;
+  for (let dx = -w / 2 + 3; dx < w / 2; dx += 3) points.push(x + dx, top, z - d / 2, x + dx, top, z + d / 2);
+  for (let dz = -d / 2 + 3; dz < d / 2; dz += 3) points.push(x - w / 2, top, z + dz, x + w / 2, top, z + dz);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+  scene.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({color: "#afa79a", transparent: true, opacity: .12})));
+}
+// === Hill terrain ===
+const hillRoadProfiles=place.objects.filter(o=>o.type==='road'&&o.graded).map(object=>({
+  axial:!!object.approach,
+  halfWidth:object.width/2+1.65,
+  points:object.approach ? approachProfile(object).flatMap(s=>[new THREE.Vector3(...s.a),new THREE.Vector3(...s.b)]) : new THREE.CatmullRomCurve3(object.points.map(p=>new THREE.Vector3(...p)),false,'centripetal').getPoints(240).map((p,i)=>{
+    const j=Math.min(object.points.length-2,Math.floor(i/240*(object.points.length-1)));
+    p.y=THREE.MathUtils.clamp(p.y,Math.min(object.points[j][1],object.points[j+1][1]),Math.max(object.points[j][1],object.points[j+1][1]));
+    return p;
+  })
+}));
+function terrainHeight(x,z) {
+  const hill=place.site.hill;
+  if(!hill) return 0;
+  const profile=hill.profile;
+  let height=profile.at(-1)[1];
+  if(z>=profile[0][0]) height=profile[0][1];
+  else for(let i=1;i<profile.length;i++) if(z>=profile[i][0]) {
+    const t=(profile[i-1][0]-z)/(profile[i-1][0]-profile[i][0]);
+    height=THREE.MathUtils.lerp(profile[i-1][1],profile[i][1],t*t*(3-2*t));break;
+  }
+  const envelope=Math.sin(Math.PI*THREE.MathUtils.clamp((profile[1][0]-z)/(profile[1][0]-(hill.undulationEndZ??profile.at(-2)[0])),0,1));
+  height+=(hill.undulation||0)*Math.sin(x*.11)*Math.sin(x*.11)*envelope;
+  // Cut/fill a graded corridor, blending back into the natural grassy banks.
+  for(const road of hillRoadProfiles) {
+    let nearest=Infinity,grade=height;
+    for(let i=1;i<road.points.length;i++) {
+      const a=road.points[i-1],b=road.points[i],dx=b.x-a.x,dz=b.z-a.z;
+      if(dx*dx+dz*dz<1e-10)continue;
+      const t=THREE.MathUtils.clamp(((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz),0,1);
+      const distance=Math.hypot(x-a.x-t*dx,z-a.z-t*dz);
+      if(distance<nearest) {nearest=distance;grade=THREE.MathUtils.lerp(a.y,b.y,t);}
+    }
+    const blend=Math.max(THREE.MathUtils.smoothstep(nearest,road.halfWidth,road.halfWidth+3),
+      road.axial ? THREE.MathUtils.smoothstep(z,road.points[0].z,road.points[0].z+1.5) : 0);
+    height=THREE.MathUtils.lerp(grade,height,blend);
+  }
+  return height;
+}
+function terrainVertexHeight(x,z) {
+  let allowance=0;
+  for(const road of hillRoadProfiles) {
+    let nearest=Infinity;
+    for(let i=1;i<road.points.length;i++) {
+      const a=road.points[i-1],b=road.points[i],dx=b.x-a.x,dz=b.z-a.z;
+      if(dx*dx+dz*dz<1e-10)continue;
+      const t=THREE.MathUtils.clamp(((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz),0,1);
+      nearest=Math.min(nearest,Math.hypot(x-a.x-t*dx,z-a.z-t*dz));
+    }
+    // Grading allowance keeps the triangulated subgrade below the finished road slab.
+    allowance=Math.max(allowance,.16*(1-THREE.MathUtils.smoothstep(nearest,road.halfWidth,road.halfWidth+2)));
+  }
+  return terrainHeight(x,z)-.035-allowance;
+}
+function hillSurfaceHeight(x,z) {
+  const w=place.site.width-.9,d=place.site.depth-.9,nx=64,nz=88;
+  const cz=place.site.centerZ||0;
+  const gx=THREE.MathUtils.clamp((x+w/2)*nx/w,0,nx-1e-8),gz=THREE.MathUtils.clamp((z-cz+d/2)*nz/d,0,nz-1e-8);
+  const i=Math.floor(gx),j=Math.floor(gz),u=gx-i,v=gz-j;
+  const sample=(di,dj)=>terrainVertexHeight(-w/2+(i+di)*w/nx,cz-d/2+(j+dj)*d/nz);
+  const a=sample(0,0),c=sample(1,1);
+  return v>=u ? a*(1-v)+sample(0,1)*(v-u)+c*u : a*(1-u)+c*v+sample(1,0)*(u-v);
+}
+function roadSurface(object) {
+  const curve=new THREE.CatmullRomCurve3(object.points.map(p=>new THREE.Vector3(...p)),false,'centripetal');
+  return Array.from({length:81},(_,i)=>{
+    const t=i/80,center=curve.getPoint(t),tangent=curve.getTangent(t);
+    const side=new THREE.Vector3(-tangent.z,0,tangent.x).normalize().multiplyScalar(object.width/2);
+    const left=center.clone().add(side),right=center.clone().sub(side);
+    for(const p of [center,left,right]) p.y=terrainHeight(p.x,p.z)+.09;
+    return {center,left,right};
+  });
+}
+function buildHill() {
+  if(!place.site.hill) return;
+  if(place.site.outline) {
+    const shape=new THREE.Shape(place.site.outline.map(([x,z])=>new THREE.Vector2(x,-z)));
+    const geometry=new THREE.ShapeGeometry(shape);geometry.rotateX(-Math.PI/2);
+    const vertices=geometry.attributes.position;
+    for(let i=0;i<vertices.count;i++)vertices.setY(i,terrainVertexHeight(vertices.getX(i),vertices.getZ(i)));
+    geometry.computeVertexNormals();mesh(geometry,palette.stone,0,0,0,false);
+    const sides=[];for(let i=0;i<place.site.outline.length;i++) {
+      const [x,z]=place.site.outline[i],[u,v]=place.site.outline[(i+1)%place.site.outline.length],a=[x,-.82,z],b=[u,-.82,v],c=[u,terrainVertexHeight(u,v),v],d=[x,terrainVertexHeight(x,z),z];
+      sides.push(...a,...b,...c,...a,...c,...d);
+    }
+    const side=new THREE.BufferGeometry();side.setAttribute('position',new THREE.Float32BufferAttribute(sides,3));side.computeVertexNormals();
+    const face=mesh(side,'#e2dccf',0,0,0,false);face.name='hill-cut-face';face.material.side=THREE.DoubleSide;return;
+  }
+  const w=place.site.width-.9,d=place.site.depth-.9,positions=[],indices=[],nx=64,nz=88;
+  for(let j=0;j<=nz;j++) for(let i=0;i<=nx;i++) {
+    const x=-w/2+i*w/nx,z=(place.site.centerZ||0)-d/2+j*d/nz;positions.push(x,terrainVertexHeight(x,z),z);
+    if(i<nx&&j<nz) {
+      const a=j*(nx+1)+i,b=a+nx+1,c=b+1,e=a+1;
+      indices.push(a,b,c,a,c,e);
+    }
+  }
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);geometry.computeVertexNormals();
+  mesh(geometry,palette.stone,0,0,0,false);
+  // The side bands share exactly the same top boundary as the terrain.
+  const perimeter=[];
+  for(let i=0;i<=nx;i++) perimeter.push([-w/2+i*w/nx,-d/2]);
+  for(let j=1;j<=nz;j++) perimeter.push([w/2,-d/2+j*d/nz]);
+  for(let i=nx-1;i>=0;i--) perimeter.push([-w/2+i*w/nx,d/2]);
+  for(let j=nz-1;j>=0;j--) perimeter.push([-w/2,-d/2+j*d/nz]);
+  for(let band=0;band<1;band++) {
+    const data=[];
+    const point=([x,z],level)=>{z+=place.site.centerZ||0;return [x,-.82+(terrainVertexHeight(x,z)+.82)*level,z];};
+    for(let i=1;i<perimeter.length;i++) {
+      const a=point(perimeter[i-1],band),b=point(perimeter[i],band),c=point(perimeter[i],band+1),e=point(perimeter[i-1],band+1);
+      data.push(...a,...b,...c,...a,...c,...e);
+    }
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(data,3));g.computeVertexNormals();
+    const face=mesh(g,'#e2dccf',0,0,0,false);face.name='hill-cut-face';face.material.side=THREE.DoubleSide;
+  }
+}
+// === Site ===
+const shape = new THREE.Shape();
+const sw = place.site.width, sd = place.site.depth;
+shape.moveTo(-sw / 2 + 2, -sd / 2);
+shape.lineTo(sw / 2 - 2, -sd / 2);
+shape.lineTo(sw / 2, -sd / 2 + 2);
+shape.lineTo(sw / 2, sd / 2 - 2);
+shape.lineTo(sw / 2 - 2, sd / 2);
+shape.lineTo(-sw / 2 + 2, sd / 2);
+shape.lineTo(-sw / 2, sd / 2 - 2);
+shape.lineTo(-sw / 2, -sd / 2 + 2);
+shape.closePath();
+if(place.site.outline) {
+  shape.curves.length=0;
+  place.site.outline.forEach(([x,z],i)=>i?shape.lineTo(x,-z):shape.moveTo(x,-z));shape.closePath();
+}
+const slab = new THREE.ExtrudeGeometry(shape, {
+  depth: .20,
+  bevelEnabled: true,
+  bevelThickness: .08,
+  bevelSize: .25,
+  bevelSegments: 1
+});
+slab.rotateX(-Math.PI / 2);
+if(!place.site.outline)slab.translate(0,0,place.site.centerZ||0);
+const plinth = mesh(slab, '#c4bbae', 0, -1.15, 0, false);
+plinth.name = 'plinth-reveal';
+buildHill();
+const KITS={objects:Object.create(null),interiors:Object.create(null)};
+function registerObjectType(type,builder) {KITS.objects[type]=builder;}
+function registerInteriorKit(name,builder) {KITS.interiors[name]=builder;}
+registerInteriorKit('pagoda',(building)=>({group:buildHallInterior(building),ceiling:buildHallCeiling(building)}));
+/*__KITS__*/
+place.hotspots=(place.hotspots||[]).filter(stop=>!stop.interior ||
+  Boolean(KITS.interiors[resolveInteriorBuilding(place,stop)?.interior?.kit]));
+for(const stop of place.hotspots)if(stop.insideView&&!place.hotspots.some(s=>s.id===stop.insideView))delete stop.insideView;
+for (const object of place.objects) {
+  currentObject=object;
+  currentEnvelope=[];
+  const firstChild=scene.children.length;
+  const firstRoof=roofRecords.length;
+  const [x, y, z] = object.position || [
+    0,
+    0,
+    0
+  ];
+  switch (object.type) {
+    case "terrace":
+      if (object.color === "#a7b48f") {
+        const [w, h, d] = object.size, r = 2, s = new THREE.Shape();
+        s.moveTo(-w/2+r,-d/2); s.lineTo(w/2-r,-d/2); s.quadraticCurveTo(w/2,-d/2,w/2,-d/2+r);
+        s.lineTo(w/2,d/2-r); s.quadraticCurveTo(w/2,d/2,w/2-r,d/2);
+        s.lineTo(-w/2+r,d/2); s.quadraticCurveTo(-w/2,d/2,-w/2,d/2-r);
+        s.lineTo(-w/2,-d/2+r); s.quadraticCurveTo(-w/2,-d/2,-w/2+r,-d/2);
+        const bed = mesh(new THREE.ExtrudeGeometry(s,{depth:h,bevelEnabled:false,curveSegments:4}), object.color, x,y-h/2,z,false);
+        bed.rotation.x = -Math.PI/2;
+      } else box(x, y, z, ...object.size, object.color || palette.stone);
+      pavingGrid(object);
+      break;
+    case "road":
+      road(object);
+      break;
+    case "bench": {
+      const benchY=object.grounded ? hillSurfaceHeight(x,z)+.02 : y;
+      for(const dx of [-.7,.7])box(x+dx,benchY+.3,z,.18,.6,.55,palette.stair);
+      box(x,benchY+.65,z,2,.15,.65,palette.wood);
+      box(x,benchY+1,z-.28,2,.48,.12,palette.wood);
+      break;
+    }
+    case "slope":
+      slope(object);
+      break;
+    case "planting":
+      contouredBed(object);
+      break;
+    case "retaining_wall":
+      retainingWall(object);
+      break;
+    case "stairs":
+      stairway(object);
+      break;
+    case "path_steps": {
+      for(let i=0;i<object.steps;i++) {
+        const run=object.length/object.steps,top=y+(object.steps-i)*object.rise;
+        box(x+object.direction*(-object.length/2+(i+.5)*run),(y+top)/2,z,run+.01,top-y,object.width,palette.stair);
+      }
+      break;
+    }
+    case "building":
+      building(object);
+      break;
+    case "pavilion":
+      pavilion(object);
+      break;
+    case "gate":
+      gate(object);
+      break;
+    case "tower":
+      tower(object);
+      break;
+    case "tree":
+      vegetationMode = true;
+      tree(object);
+      vegetationMode = false;
+      break;
+    case "statue":
+      guardianLion(object);
+      break;
+    case "rock":
+      stoneStele(object);
+      break;
+    case "lamp":
+      cylinder(x, y + 1.7, z, .12, 3.4, palette.wood);
+      box(x, y + 3.5, z, .65, .65, .65, palette.white);
+      break;
+    default:
+      KITS.objects[object.type]?.(object);
+  }
+  for(const record of roofRecords.slice(firstRoof)) {
+    record.objectId=object.id;record.baseY=record.group.position.y;
+  }
+  // Collect the actual roof/mesh vertices after local transforms, plus the
+  // instance vertices recorded by box/detail. Focus fitting has no fake padding.
+  scene.updateMatrixWorld(true);
+  for(const child of scene.children.slice(firstChild)) child.traverse(part=>{
+    if(!part.isMesh||part.isInstancedMesh) return;
+    const vertices=part.geometry.getAttribute("position");
+    for(let i=0;i<vertices.count;i++) currentEnvelope.push(new THREE.Vector3().fromBufferAttribute(vertices,i).applyMatrix4(part.matrixWorld));
+  });
+  if(object.id) {
+    const unique=new Map();
+    for(const point of currentEnvelope) unique.set(point.toArray().map(v=>Math.round(v*10000)).join(","),point);
+    modelEnvelopes.set(object.id,[...unique.values()]);
+  }
+  currentEnvelope=null;currentObject=null;
+}
+// Low planting gathers against existing retaining walls without obscuring routes.
+vegetationMode = true;
+for (const band of place.site.landscape?.wallBands||[]) for (let i = 0; i < band.count; i++) {
+  const x = band.side * (band.startX + i * band.spacing), z = band.z + Math.sin(i * 2.1) * .45;
+  detail("shrub-" + i % 4, foliageGeometries[i % 4], i % 2 ? "#b0bba3" : "#a3b096", [x, band.y, z], [.75, .55, .65], i);
+}
+for(const [cx,cz] of place.site.landscape?.hillClusters||[]) for(let i=0;i<7;i++) {
+  const x=cx+Math.sin(i*2.4)*2.6,z=cz+Math.cos(i*2.4)*1.6;
+  detail('hill-shrub-'+i%4,foliageGeometries[i%4],i%2?'#b0bba3':'#a3b096',
+    [x,terrainHeight(x,z)+.35,z],[1.05,.65,.9],i);
+}
+for(const [cx,cz] of place.site.landscape?.slopeClusters||[])for(let i=0;i<5;i++){
+  const x=cx+(i-2)*1.05,z=cz+Math.sin(i*2.4+cx)*1.1;
+  detail('hill-shrub-'+i%4,foliageGeometries[i%4],i%2?'#b0bba3':'#a3b096',
+    [x,hillSurfaceHeight(x,z)+.42,z],[.95,.52,.80],i*2.4);
+}
+vegetationMode = false;
+for (const object of place.objects) addObjectContacts(object);
+contactShadow(0, -1.24, place.site.centerZ||0, sw + 12, sd + 12, .16);
+// Draw architectural edges as one combined line batch, keeping foliage unoutlined.
+const edgePositions = [];
+const hallFrontLayer=new THREE.Group();hallFrontLayer.name='hall-front';scene.add(hallFrontLayer);
+for(const child of [...scene.children])if(child.userData.hallFront)hallFrontLayer.attach(child);
+const unitEdges = new THREE.EdgesGeometry(boxGeometry, 25).getAttribute("position");
+for (const [key, items] of batches) {
+  const [color,part]=key.split('|'),parent=part?.startsWith('hall-front')?hallFrontLayer:scene;
+  const partEdges=part?[]:edgePositions;
+  const batch = new THREE.InstancedMesh(boxGeometry, part?material(color).clone():material(color), items.length), matrix = new THREE.Matrix4();
+  items.forEach((item, index) => {
+    matrix.makeScale(item.w, item.h, item.d);
+    matrix.setPosition(item.x, item.y, item.z);
+    batch.setMatrixAt(index, matrix);
+    if (!['hall-front-panel','hall-front-door'].includes(part) && !(item.w > 10 && item.d < 1 && item.h < 6)) for (let i = 0; i < unitEdges.count; i++) partEdges.push(item.x + unitEdges.getX(i) * item.w, item.y + unitEdges.getY(i) * item.h, item.z + unitEdges.getZ(i) * item.d);
+  });
+  batch.castShadow = true;
+  batch.receiveShadow = true;
+  if(part==='hall-front-door')batch.name='hall-entrance-door';
+  parent.add(batch);
+  if(partEdges!==edgePositions){
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(partEdges,3));
+    parent.add(new THREE.LineSegments(g,edgeMaterial.clone()));
+  }
+}
+const edgeGeometry = new THREE.BufferGeometry();
+edgeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(edgePositions, 3));
+scene.add(new THREE.LineSegments(edgeGeometry, edgeMaterial));
+const focusFoliage=[];
+for (const { geometry, color, transforms, owners, outlined, part } of detailBatches.values()) {
+  const parent=part==='hall-front'?hallFrontLayer:scene;
+  const batch = new THREE.InstancedMesh(geometry, part?material(color).clone():material(color), transforms.length);
+  transforms.forEach((matrix, index) => batch.setMatrixAt(index, matrix));
+  transforms.forEach((_, index) => batch.setColorAt(index, new THREE.Color(0xffffff)));
+  batch.castShadow = !owners.some(owner=>owner?.type==="tree" && owner.kind!=="bonsai");
+  batch.receiveShadow = true;
+  parent.add(batch);
+  if(owners.some(owner=>owner?.type==="tree"&&owner.kind!=="bonsai")) focusFoliage.push({batch,transforms,owners});
+  if (outlined) {
+    const edges = new THREE.EdgesGeometry(geometry, config.edgeThreshold), positions = [], point = new THREE.Vector3(), attribute = edges.getAttribute("position");
+    for (const matrix of transforms) for (let i = 0; i < attribute.count; i++) positions.push(...point.fromBufferAttribute(attribute, i).applyMatrix4(matrix).toArray());
+    const lines = new THREE.BufferGeometry();
+    lines.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    parent.add(new THREE.LineSegments(lines, part?edgeMaterial.clone():edgeMaterial));
+    edges.dispose();
+  }
+}
+// === Hall interior ===
+function buildHallInterior(hall) {
+  const [x,y,z]=hall.position,[w,h,d]=hall.size;
+  const group=new THREE.Group();group.name='hall-interior';group.position.set(x,y+.7,z);
+  const pieces=new Map(),materials=new Map();
+  const timber='#49362c',bronze='#a17f42',gold='#c4a56a',cream='#f0ebdf';
+  function add(name,geometry,color,position=[0,0,0],scale=[1,1,1],rotation=0) {
+    geometry.scale(...scale);geometry.rotateZ(rotation);geometry.translate(...position);
+    const key=name+'|'+color;if(!pieces.has(key))pieces.set(key,[]);pieces.get(key).push(geometry);
+  }
+  function block(name,position,size,color){add(name,new THREE.BoxGeometry(...size),color,position);}
+  function sphere(name,position,scale,color){add(name,new THREE.SphereGeometry(1,12,8),color,position,scale);}
+  function lathe(name,profile,color,position,segments=20){add(name,new THREE.LatheGeometry(profile.map(p=>new THREE.Vector2(...p)),segments),color,position);}
+  const back=-d/2+1.5;
+  block('timber-floor',[0,.015,-.9],[w-1.0,.03,d-3.2], '#a28b6e');
+  for(let row=0;row<5;row++)for(const side of [-1,1]) {
+    const pz=back+.95+row*1.9;
+    block('green-mats',[side*(w/4+.15),.055,pz],[w/2-1.2,.04,1.84],row%2?'#7b9c76':'#85a37e');
+    for(const edge of [-.82,.82])block('mat-binding',[side*(w/4+.15),.080,pz+edge],[w/2-1.2,.008,.025],'#bdb27c');
+    for(let joint=1;joint<4;joint++)block('mat-panel-seams',[side*(w/4+.15)+(joint-2)*(w/2-1.2)/4,.079,pz],[.018,.008,1.82],'#718b69');
+  }
+  block('red-runner',[0,.085,-.9],[1.65,.045,10.7],'#a75b4c');
+  for(let row=0;row<5;row++)for(const edge of [-.05,.05])block('runner-binding',[0,.11,back+row*1.9+.12+edge],[1.65,.008,.025],'#c5a16d');
+  for(const side of [-1,1])for(let column=0;column<7;column++) {
+    const pz=back+.8+column*1.48;
+    add('timber-columns',new THREE.CylinderGeometry(.17,.21,h-.45,12),timber,[side*4.7,(h-.45)/2,pz]);
+    add('column-bases',new THREE.CylinderGeometry(.27,.29,.16,12),'#b6a792',[side*4.7,.08,pz]);
+    if(column%2===0) {
+      block('red-couplets',[side*4.7,2.7,pz+.215],[.26,2.7,.025],'#964a3d');
+      for(let i=0;i<12;i++)block('couplet-gold-inlays',[side*4.7,1.53+i*.21,pz+.231],[.10,.05,.008],gold);
+    }
+  }
+  for(const side of [-1,1])block('timber-tie-beams',[side*4.7,h-.64,back+5.24],[.22,.28,9.4],timber);
+  for(const pz of [back+.8,back+5.24,back+9.68])block('timber-tie-beams',[0,h-.64,pz],[9.6,.28,.20],timber);
+  for(const side of [-1,1])for(let i=0;i<3;i++)add('meditation-cushions',new THREE.CylinderGeometry(.29,.30,.15,24),'#86704e',[side*3.25,.15,back+2.2+i*.95]);
+  // Windows repeat on the inside faces; no pieces cross the existing shell.
+  for(const side of [-1,1])for(const pz of [-d*.22,d*.20]) {
+    block('inner-window-frame',[side*(w/2-.46),2.25,pz],[.06,2.4,2.12],timber);
+    block('inner-window-pane',[side*(w/2-.50),2.25,pz],[.025,2.06,1.78],'#b3bcb2');
+    for(const dz of [-.6,0,.6])block('inner-window-mullions',[side*(w/2-.52),2.25,pz+dz],[.025,2.1,.045],cream);
+  }
+  block('altar-plinth',[0,.16,back+.38],[10.8,.32,1.45],timber);
+  block('altar-backdrop',[0,2.33,back-.29],[10.8,4.35,.20],'#d9c594');
+  for(const side of [-1,1]) {
+    block('altar-carved-frame',[side*5.35,2.35,back-.05],[.44,4.5,.40],timber);
+    block('altar-carved-frame',[side*4.9,4.14,back+.04],[.5,.55,.20],timber);
+    for(let i=0;i<5;i++) {
+      const curl=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(side*.13,.10,0),new THREE.Vector3(side*.08,.25,0),new THREE.Vector3(-side*.08,.32,0),new THREE.Vector3(-side*.10,.18,0)]);
+      add('altar-carved-relief',new THREE.TubeGeometry(curl,12,.022,5,false),'#705443',[side*5.35,.65+i*.65,back+.18]);
+    }
+  }
+  block('altar-carved-frame',[0,4.42,back-.04],[11.15,.40,.40],timber);
+  block('altar-carved-frame',[0,4.12,back+.06],[8.8,.24,.23],timber);
+  block('altar-lintel-band',[0,4.57,back+.20],[11.3,.12,.12],'#75563c');
+  for(let i=-14;i<=14;i++)block('altar-lintel-inlays',[i*.37,4.58,back+.27],[.20,.035,.025],gold);
+  for(const px of [-3.8,-1.9,0,1.9,3.8]) {
+    add('altar-lintel-rosettes',new THREE.TorusGeometry(.125,.024,5,16),'#795a41',[px,4.32,back+.235]);
+    add('altar-lintel-rosettes',new THREE.CircleGeometry(.052,12),'#9b7954',[px,4.32,back+.24]);
+  }
+  const scallop=new THREE.Shape();
+  scallop.moveTo(-5.1,4.35);scallop.lineTo(5.1,4.35);scallop.lineTo(5.1,2.88);
+  scallop.bezierCurveTo(4.3,3.08,4.9,3.72,3.85,3.72);scallop.quadraticCurveTo(3.6,4.05,2.8,4.05);
+  scallop.lineTo(1.75,4.05);scallop.quadraticCurveTo(1.4,3.90,.95,3.98);
+  scallop.lineTo(-.95,3.98);scallop.quadraticCurveTo(-1.4,3.90,-1.75,4.05);
+  scallop.lineTo(-2.8,4.05);scallop.quadraticCurveTo(-3.6,4.05,-3.85,3.72);
+  scallop.bezierCurveTo(-4.9,3.72,-4.3,3.08,-5.1,2.88);scallop.closePath();
+  add('altar-carved-spandrels',new THREE.ExtrudeGeometry(scallop,{depth:.12,bevelEnabled:true,bevelSize:.025,bevelThickness:.02,bevelSegments:1,curveSegments:10}),timber,[0,0,back+.06]);
+  block('altar-tiers',[0,.52,back+.65],[7.8,.44,1.30],timber);
+  block('altar-tiers',[0,.87,back+.35],[5.8,.28,.94],timber);
+  lathe('lotus-base',[[0,0],[1.22,0],[1.34,.12],[1.16,.28],[.9,.4],[0,.4]],gold,[0,.98,back+.4]);
+  for(let i=0;i<12;i++) {
+    const a=i*Math.PI/6;
+    sphere('lotus-petals',[Math.sin(a)*1.13,1.20,back+.4+Math.cos(a)*.68],[.23,.18,.35],bronze);
+  }
+  const bodyBase=1.4,bz=back+.44;
+  lathe('buddha-body',[[0,0],[.78,.04],[.72,.24],[.42,.47],[.37,.8],[.48,1.15],[.32,1.34],[.16,1.43],[0,1.43]],bronze,[0,bodyBase,bz]);
+  sphere('buddha-knees',[0,bodyBase+.18,bz+.19],[1.03,.25,.55],bronze);
+  sphere('buddha-head',[0,3.10,bz],[.29,.37,.27],bronze);
+  sphere('buddha-hair',[0,3.34,bz-.02],[.27,.15,.26],'#685331');
+  lathe('buddha-ushnisha',[[.12,0],[.13,.12],[.07,.25],[0,.31]],bronze,[0,3.40,bz]);
+  for(const side of [-1,1]) {
+    sphere('buddha-ears',[side*.30,3.04,bz],[.055,.18,.055],bronze);
+    sphere('buddha-eyes',[side*.105,3.13,bz+.245],[.065,.013,.012],'#59452c');
+    sphere('buddha-brows',[side*.105,3.19,bz+.245],[.07,.014,.016],bronze);
+    sphere('buddha-sleeves',[side*.46,2.24,bz+.04],[.20,.49,.21],bronze);
+    sphere('buddha-hands',[side*.18,1.84,bz+.45],[.24,.08,.13],gold);
+  }
+  sphere('buddha-nose',[0,3.055,bz+.278],[.042,.075,.045],bronze);
+  sphere('buddha-mouth',[0,2.955,bz+.245],[.066,.012,.014],'#795d34');
+  sphere('buddha-urna',[0,3.24,bz+.258],[.018,.018,.009],cream);
+  for(let i=0;i<5;i++) {
+    const fold=new THREE.CatmullRomCurve3([new THREE.Vector3(-.37,2.62-i*.12,bz+.21),new THREE.Vector3(-.12,2.45-i*.12,bz+.42),new THREE.Vector3(.36,2.48-i*.12,bz+.25)]);
+    add('buddha-robe-folds',new THREE.TubeGeometry(fold,12,.012,5,false),'#c2a065');
+  }
+  add('halo-disc',new THREE.CircleGeometry(.98,40),'#c5ad77',[0,3.02,back+.01]);
+  add('halo-ring',new THREE.TorusGeometry(.99,.035,5,40),bronze,[0,3.02,back+.035]);
+  for(let i=0;i<32;i++) {
+    const a=i*Math.PI/16;
+    add('halo-rays',new THREE.BoxGeometry(.018,.28,.025),i%2?cream:gold,[Math.sin(a)*.81,3.02+Math.cos(a)*.81,back+.055],[1,1,1],-a);
+  }
+  const bannerColors=['#d4ab54','#4d8e84','#e0c77d','#b15540','#508b9d'];
+  for(const side of [-1,1]) {
+    block('banner-canopies',[side*3.25,4.0,back+.32],[1.85,.14,.70],gold);
+    for(let i=0;i<9;i++) {
+      const length=2.5+(i%3)*.24;
+      block('banner-clusters',[side*3.25+(i-4)*.19,3.86-length/2,back+.32+(i%2)*.12],[.12,length,.035],bannerColors[i%5]);
+      block('banner-fringe',[side*3.25+(i-4)*.19,3.81-length,back+.32+(i%2)*.12],[.055,.17,.035],gold);
+    }
+    const vx=side*5.0,vz=back+1.08;
+    lathe('patterned-vases',[[.30,0],[.46,.10],[.49,.55],[.44,1.3],[.25,1.8],[.25,2.1],[.36,2.28],[.32,2.35]],'#b99a69',[vx,.03,vz]);
+    for(const dy of [.3,.55,.8,1.05,1.3])add('vase-pattern',new THREE.TorusGeometry(.445,.012,4,20).rotateX(Math.PI/2),'#6e624b',[vx,dy,vz],[1,.5,1],0);
+    for(let i=0;i<12;i++) {
+      const a=i*Math.PI/6;
+      block('vase-pattern-strokes',[vx+Math.sin(a)*.46,.72+(i%3)*.19,vz+Math.cos(a)*.46],[.025,.10,.025],'#6e624b');
+    }
+    for(let row=0;row<4;row++)for(let i=0;i<5-row;i++) {
+      const fx=side*(2.10+(i-(4-row)/2)*.21)+Math.sin(i*2.4+row)*.06,fy=1.19+row*.31+Math.sin(i+row)*.055,fz=back+1.07+Math.cos(i*2.4)*.10;
+      add('white-flowers',new THREE.IcosahedronGeometry(.18,1),cream,[fx,fy,fz],[1.06,.82,1]);
+      block('flower-stems',[fx,fy-.25,fz],[.025,.45,.025],'#7a8b66');
+    }
+    lathe('flower-vessels',[[.25,0],[.32,.1],[.29,.45],[.35,.5]],'#c9cec2',[side*2.1,.69,back+1.0],16);
+  }
+  const tableZ=back+3.0;
+  block('offering-table',[0,1.07,tableZ],[4.65,.18,1.15],'#79523c');
+  block('offering-table',[0,.77,tableZ+.48],[4.3,.42,.10],'#79523c');
+  for(const px of [-1.35,0,1.35]) {
+    block('offering-table-inset',[px,.77,tableZ+.538],[1.16,.27,.022],timber);
+    for(const dy of [-.135,.135])block('offering-table-trim',[px,.77+dy,tableZ+.557],[1.20,.025,.02],'#a67c50');
+    for(const dx of [-.59,.59])block('offering-table-trim',[px+dx,.77,tableZ+.557],[.025,.28,.02],'#a67c50');
+  }
+  for(const side of [-1,1])for(const dz of [-.40,.40])block('offering-table',[side*2.0,.49,tableZ+dz],[.16,.98,.16],timber);
+  for(const side of [-1,1]) {
+    lathe('candlesticks',[[.16,0],[.06,.1],[.045,.55],[.12,.6]],gold,[side*1.65,1.16,tableZ],12);
+    block('candles',[side*1.65,1.93,tableZ],[.07,.34,.07],cream);
+    sphere('offerings',[side*.88,1.27,tableZ],[.29,.12,.22],'#a9ae78');
+  }
+  for(const [key,geometries] of pieces) {
+    const [name,color]=key.split('|');
+    if(!materials.has(color))materials.set(color,new THREE.MeshStandardMaterial({color,roughness:.93,metalness:color===bronze?.12:0}));
+    const geometry=geometries.length===1?geometries[0]:mergeGeometries(geometries);
+    const object=new THREE.Mesh(geometry,materials.get(color));object.name=name;
+    object.castShadow=true;object.receiveShadow=true;
+    if(name==='timber-columns'){object.userData.rows=2;object.userData.columnsPerRow=7;}
+    if(name.startsWith('buddha-')) {
+      geometry.translate(0,-1.4,-(back+.44));geometry.scale(1.12,1.12,1.12);geometry.translate(0,1.4,back+.44);
+    }
+    group.add(object);if(geometries.length>1)geometries.forEach(g=>g.dispose());
+  }
+  return group;
+}
+function buildHallCeiling(hall) {
+  const [w,h,d]=hall.size;
+  const group=new THREE.Group();group.name='timber-ceiling';group.position.y=hall.position[1]+h+.43;
+  const timber=new THREE.MeshStandardMaterial({color:'#806149',roughness:.96});
+  const count=52,spacing=(d-.7)/count;
+  timber.customProgramCacheKey=()=>`hall-ceiling-planks-${count}-${spacing}`;
+  timber.onBeforeCompile=shader=>{
+    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying float vPlankCoordinate;').replace('#include <begin_vertex>',`#include <begin_vertex>\nvPlankCoordinate=position.z/${spacing};`);
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying float vPlankCoordinate;').replace('#include <color_fragment>',`#include <color_fragment>
+      float plankDistance=.5-abs(fract(vPlankCoordinate)-.5);
+      float plankAA=max(fwidth(vPlankCoordinate),.0001);
+      float plankJoint=1.-smoothstep(.018-plankAA,.018+plankAA,plankDistance);
+      diffuseColor.rgb*=(1.-plankJoint*.13)*(.94+mod(floor(vPlankCoordinate),3.)*.04);`);
+  };
+  // A continuous substrate prevents float-rounded instance seams from leaking sky.
+  const boardGeometry=new THREE.BoxGeometry(w-.7,.10,d-.7);
+  const boards=new THREE.InstancedMesh(boardGeometry,timber,1);boards.name='ceiling-boards';
+  boards.userData.plankCount=count;boards.setMatrixAt(0,new THREE.Matrix4());
+  group.add(boards);
+  const darkTimber=new THREE.MeshStandardMaterial({color:'#49362c',roughness:.96});
+  const beams=new THREE.Group();beams.name='ceiling-beams';group.add(beams);
+  for(const z of [-d/2+2.3,-d/2+6.74,-d/2+11.18]) {
+    const beam=new THREE.Mesh(new THREE.BoxGeometry(w-.7,.28,.22),darkTimber);beam.position.set(0,-.19,z);beams.add(beam);
+  }
+  return group;
+}
+function createHallCutaway(roof,front,center,motion,invalidateShadow=()=>{},lift=7.4,objectId=null) {
+  const baseY=roof.position.y,entries=[],shadowObjects=[];
+  for(const group of [roof,front])group.traverse(object=>{if(object.isMesh)shadowObjects.push({object,castShadow:object.castShadow});});
+  front.traverse(object=>{
+    if(!object.material)return;
+    const materials=Array.isArray(object.material)?object.material:[object.material];
+    for(const material of materials)entries.push({material,opacity:material.opacity,transparent:material.transparent,depthWrite:material.depthWrite});
+  });
+  let value=0,goal=false,transition=null;
+  function apply(v) {
+    value=v;roof.position.y=baseY+lift*v;
+    let shadowChanged=false;
+    for(const entry of shadowObjects) {
+      const cast=v===0&&entry.castShadow;
+      if(entry.object.castShadow!==cast){entry.object.castShadow=cast;shadowChanged=true;}
+    }
+    if(shadowChanged)invalidateShadow();
+    for(const entry of entries) {
+      entry.material.opacity=entry.opacity*(1-.85*v);
+      const transparent=v>0||entry.transparent;
+      if(entry.material.transparent!==transparent){entry.material.transparent=transparent;entry.material.needsUpdate=true;}
+      entry.material.depthWrite=v===0?entry.depthWrite:false;
+    }
+    roof.updateMatrixWorld(true);front.updateMatrixWorld(true);
+  }
+  return {
+    manual:null,
+    set(on,instant=false,now=performance.now()) {
+      on=Boolean(on);
+      if(instant||motion.matches){goal=on;transition=null;apply(on?1:0);return;}
+      if(goal===on)return;
+      goal=on;transition={start:now,from:value,to:on?1:0};
+    },
+    update(now) {
+      if(!transition)return;
+      const t=motion.matches?1:Math.min(1,Math.max(0,(now-transition.start)/1100));
+      apply(THREE.MathUtils.lerp(transition.from,transition.to,t*t*(3-2*t)));
+      if(t===1)transition=null;
+    },
+    wantsReveal(position,target,spot) {
+      return Boolean(spot?.cutaway)&&!spot.interior&&(!objectId||spot.cutaway===objectId);
+    },
+    get amount(){return value;}
+  };
+}
+function configureInteriorView(spot) {
+  const inside=Boolean(spot?.interior);
+  camera.near=spot||typeof place==='undefined' ? .1 : (place.site.overviewNear??.1);
+  camera.fov=inside?62:spot?36:(typeof place==='undefined'?36:Math.max(place.site.overviewFov??36,camera.aspect<1?36:0));camera.updateProjectionMatrix();
+  controls.enableZoom=!inside;controls.enablePan=!inside;controls.zoomToCursor=!inside;
+  const offset=inside?new THREE.Vector3(...spot.camera).sub(new THREE.Vector3(...spot.target)):null;
+  const azimuth=inside?new THREE.Spherical().setFromVector3(offset).theta:0;
+  const yawLimit=THREE.MathUtils.degToRad(4);
+  controls.minAzimuthAngle=inside?azimuth-yawLimit:-Infinity;controls.maxAzimuthAngle=inside?azimuth+yawLimit:Infinity;
+  const polar=inside?new THREE.Spherical().setFromVector3(offset).phi:0;
+  controls.minPolarAngle=inside?polar-.045:0;controls.maxPolarAngle=inside?polar+.045:Math.PI/2.08;
+  controls.minDistance=inside?offset.length():3;controls.maxDistance=inside?offset.length():600;
+}
+function resolveInteriorBuilding(data,stop=data.hotspots.find(s=>s.interior)) {
+  return stop?.building ? data.objects.find(o=>o.id===stop.building) : data.objects.find(o=>o.role==='main');
+}
+function buildInteriorFlightPath(from,to,entering,data,stop=data.hotspots.find(s=>s.interior)) {
+  const hall=resolveInteriorBuilding(data,stop);
+  if(!hall||!stop)return [from.clone(),to.clone()];
+  if(hall.interior?.entry) {
+    const entry=new THREE.Vector3(...hall.interior.entry),approach=new THREE.Vector3(...(hall.interior.approach||hall.interior.entry));
+    const outward=approach.clone().sub(entry).setY(0).normalize();
+    if(outward.lengthSq()<1e-8)outward.set(0,0,1);
+    const toLocal=p=>{
+      const delta=p.clone().sub(new THREE.Vector3(...(hall.interior.boundsCenter||hall.position)));
+      return new THREE.Vector3(delta.x*outward.z-delta.z*outward.x,p.y-(hall.interior.floorY??hall.position[1]),delta.dot(outward));
+    };
+    const local=toLocal(from);
+    const depth=hall.interior.boundsDepth??hall.size[2]??hall.size[1];
+    const fromInside=Math.abs(local.x)<(hall.interior.size?.[0]??hall.size[0])/2&&Math.abs(local.z)<depth/2&&local.y<(hall.interior.doorHeight??3);
+    if(entering&&fromInside)return [from.clone(),to.clone()];
+    if(hall.interior.safeApproach) {
+      const localApproach=toLocal(approach);
+      const inDoorway=Math.abs(local.x)<(hall.interior.doorWidth??3)/2&&local.z>=-depth/2&&local.z<=localApproach.z&&local.y<(hall.interior.doorHeight??3);
+      if(entering&&inDoorway)return [from.clone(),entry,to.clone()];
+      const safeY=Math.max(from.y,to.y,hall.position[1]+(hall.interior.ridgeHeight??hall.roof?.ridgeHeight??hall.size[1])+(hall.cutaway?.lift??7.4)+5);
+      const above=p=>new THREE.Vector3(p.x,safeY,p.z);
+      if(entering)return [from.clone(),above(from),above(approach),approach,entry,to.clone()];
+      if(fromInside)return [from.clone(),entry,approach,above(approach),above(to),to.clone()];
+      if(inDoorway)return [from.clone(),approach,above(approach),above(to),to.clone()];
+      return [from.clone(),above(from),above(to),to.clone()];
+    }
+    return entering?[from.clone(),approach,entry,to.clone()]:[from.clone(),entry,approach,to.clone()];
+  }
+  const doorway=new THREE.Vector3(hall.position[0],stop.camera[1],hall.position[2]+hall.size[2]/2+2.6);
+  const safeY=Math.max(from.y,to.y,hall.position[1]+Math.max(hall.size[1]+2.15,hall.roof?.ridgeHeight||0)+(hall.cutaway?.lift??7.4)+5);
+  const path=[from.clone()];
+  const fromInside=Math.abs(from.x-hall.position[0])<hall.size[0]/2&&from.z>hall.position[2]-hall.size[2]/2&&from.z<doorway.z&&from.y<hall.position[1]+(hall.interior?.doorHeight??4.8);
+  if(entering&&fromInside)return [from.clone(),to.clone()];
+  if(entering) {
+    if(from.z<doorway.z)path.push(new THREE.Vector3(from.x,safeY,from.z),new THREE.Vector3(doorway.x,safeY,doorway.z));
+    path.push(doorway);
+  } else {
+    if(!fromInside&&from.z<doorway.z)path.push(new THREE.Vector3(from.x,safeY,from.z),new THREE.Vector3(doorway.x,safeY,doorway.z));
+    path.push(doorway);
+    if(to.z<doorway.z)path.push(new THREE.Vector3(doorway.x,safeY,doorway.z),new THREE.Vector3(to.x,safeY,to.z));
+  }
+  path.push(to.clone());
+  return path;
+}
+function sampleCameraFlight(flight,ease) {
+  if(!flight.path) {
+    const position=flight.from.clone().lerp(flight.to,ease);
+    position.y+=Math.sin(Math.PI*ease)*flight.arc;
+    return position;
+  }
+  const lengths=flight.path.slice(1).map((p,i)=>p.distanceTo(flight.path[i]));
+  let remaining=ease*lengths.reduce((a,b)=>a+b,0);
+  for(let i=0;i<lengths.length;i++) {
+    if(remaining<=lengths[i]||i===lengths.length-1)return flight.path[i].clone().lerp(flight.path[i+1],THREE.MathUtils.clamp(remaining/Math.max(lengths[i],1e-8),0,1));
+    remaining-=lengths[i];
+  }
+  return flight.to.clone();
+}
+// === Hall cutaway setup ===
+const interiorStop=place.hotspots.find(s=>s.interior);
+const mainHall=interiorStop?resolveInteriorBuilding(place,interiorStop):null;
+const hallRoof=roofRecords.find(r=>r.objectId===mainHall?.id)?.group;
+const interiorKit=mainHall?KITS.interiors[mainHall.interior.kit](mainHall,{roof:hallRoof,front:hallFrontLayer}):null;
+if(interiorKit?.group)scene.add(interiorKit.group);
+if(interiorKit?.ceiling)hallRoof?.add(interiorKit.ceiling);
+const hallDoor=interiorKit?.door||hallFrontLayer.getObjectByName('hall-entrance-door');
+const cutaways=roofRecords.filter(r=>r.objectId&&place.hotspots.some(s=>s.cutaway===r.objectId)).map(record=>{
+  const object=place.objects.find(o=>o.id===record.objectId);
+  return {id:object.id,controller:createHallCutaway(record.group,object===mainHall?(interiorKit?.front||hallFrontLayer):new THREE.Group(),
+    new THREE.Vector3(...object.position),window.matchMedia('(prefers-reduced-motion: reduce)'),
+    ()=>{renderer.shadowMap.needsUpdate=true;},object.cutaway?.lift??7.4,object.id)};
+});
+const hallCutaway={manual:null,selected:cutaways[0]?.id,
+  select(id){this.selected=id??cutaways[0]?.id;},
+  set(on,instant=false){for(const entry of cutaways)entry.controller.set(on&&entry.id===this.selected,instant);},
+  update(now){for(const entry of cutaways)entry.controller.update(now);},
+  wantsReveal(position,target,spot){return cutaways.some(e=>e.id===spot?.cutaway)&&!spot.interior;},
+  get amount(){return Math.max(0,...cutaways.map(e=>e.controller.amount));}
+};
+const altarLight=new THREE.PointLight('#ffe2ad',0,14,2);altarLight.name='altar-warm-light';
+const interiorFill=new THREE.PointLight('#fff0d8',0,22,2);interiorFill.name='interior-fill-light';
+if(mainHall) {
+  const [x,y,z]=mainHall.position,[w,h,d]=mainHall.size;
+  altarLight.position.fromArray(mainHall.interior.lights?.altar||[x,y+3.7,z-d/2+4]);
+  interiorFill.position.fromArray(mainHall.interior.lights?.fill||[x,y+3.3,z+d/2-4.2]);
+}
+scene.add(altarLight);scene.add(interiorFill);
+const interiorRegion=mainHall ? {x:mainHall.position[0],z:mainHall.position[2],w:(mainHall.interior.dimmingSize?.[0]??mainHall.size[0])/2+1.2,d:(mainHall.interior.dimmingSize?.[1]??mainHall.size[2]??mainHall.size[1])/2+1.2} : {x:0,z:0,w:0,d:0};
+const interiorEntry=mainHall?.interior?.entry,interiorApproach=mainHall?.interior?.approach;
+const interiorAngle=interiorEntry&&interiorApproach
+  ? Math.atan2(interiorApproach[0]-interiorEntry[0],interiorApproach[2]-interiorEntry[2])
+  : (mainHall?.rotation||0)*Math.PI/180;
+const exteriorDim={value:1},dimmedMaterials=new Set();
+scene.traverse(object=>{
+  if(!object.material)return;
+  const materials=Array.isArray(object.material)?object.material:[object.material];
+  for(const mat of materials) {
+    if(dimmedMaterials.has(mat))continue;dimmedMaterials.add(mat);
+    const original=mat.onBeforeCompile.bind(mat);
+    mat.onBeforeCompile=shader=>{
+      original(shader);shader.uniforms.exteriorDim=exteriorDim;
+      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vSitePosition;').replace('#include <project_vertex>',`#include <project_vertex>
+        vec4 sitePosition=vec4(transformed,1.0);
+        #ifdef USE_INSTANCING
+        sitePosition=instanceMatrix*sitePosition;
+        #endif
+        vSitePosition=(modelMatrix*sitePosition).xyz;`);
+      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vSitePosition; uniform float exteriorDim;').replace('#include <dithering_fragment>',`#include <dithering_fragment>
+        vec2 hallOffset=vSitePosition.xz-vec2(${interiorRegion.x.toFixed(8)},${interiorRegion.z.toFixed(8)});
+        vec2 hallLocal=mat2(${Math.cos(interiorAngle).toFixed(8)},${Math.sin(interiorAngle).toFixed(8)},${(-Math.sin(interiorAngle)).toFixed(8)},${Math.cos(interiorAngle).toFixed(8)})*hallOffset;
+        float inHall=step(abs(hallLocal.x),${interiorRegion.w.toFixed(8)})*step(abs(hallLocal.y),${interiorRegion.d.toFixed(8)});
+        gl_FragColor.rgb*=mix(exteriorDim,1.0,inHall);`);
+    };
+    mat.needsUpdate=true;
+  }
+});
+// === Walking route ===
+const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+const walkableBuffers=walkableGeometries.map(geometry=>{
+  const surface=geometry.index?geometry.toNonIndexed():geometry.clone();
+  for(const key of Object.keys(surface.attributes))if(!['position','normal'].includes(key))surface.deleteAttribute(key);
+  if(!surface.attributes.normal)surface.computeVertexNormals();
+  return surface;
+});
+const walkableMesh=new THREE.Mesh(walkableBuffers.length?mergeGeometries(walkableBuffers):new THREE.BufferGeometry(),new THREE.MeshBasicMaterial({side:THREE.DoubleSide}));
+const walkableMeshes=[walkableMesh,...scene.children.filter(m=>m.name==='approach-paving')];
+walkableMesh.updateMatrixWorld(true);
+for(const geometry of walkableGeometries)geometry.dispose();
+for(const geometry of walkableBuffers)geometry.dispose();
+const routeGroundRay=new THREE.Raycaster(new THREE.Vector3(),new THREE.Vector3(0,-1,0));
+function routeHeight(x,z) {
+  x=Math.fround(x);z=Math.fround(z);
+  routeGroundRay.ray.origin.set(x,80,z);
+  const hits=routeGroundRay.intersectObjects(walkableMeshes,false);
+  if(!hits.length)throw new Error(`Walking route has no paved ground at ${x},${z}`);
+  return hits[0].point.y+.045;
+}
+function roundWalkingPath(leg) {
+  const points=leg.map(p=>new THREE.Vector2(...p)),result=[points[0]];
+  for(let i=1;i<points.length-1;i++) {
+    const c=points[i],before=points[i-1].clone().sub(c),after=points[i+1].clone().sub(c);
+    const nearStair=(place.routeSharpBounds||[]).some(([x1,x2,z1,z2])=>c.x>x1&&c.x<x2&&c.y>z1&&c.y<z2);
+    const radius=Math.min(.8,before.length()*.24,after.length()*.24);
+    if(nearStair||Math.abs(before.clone().normalize().dot(after.clone().normalize()))>.995) {result.push(c);continue;}
+    const a=c.clone().add(before.normalize().multiplyScalar(radius)),b=c.clone().add(after.normalize().multiplyScalar(radius));
+    result.push(a);
+    for(let k=1;k<=12;k++) {
+      const t=k/12;
+      result.push(a.clone().multiplyScalar((1-t)**2).addScaledVector(c,2*t*(1-t)).addScaledVector(b,t*t));
+    }
+  }
+  result.push(points.at(-1));return result.map(p=>p.toArray());
+}
+const routeSegments=(place.route||[]).map((leg,index)=>{
+  leg=roundWalkingPath(leg);
+  const baseSamples=[];let length=0;
+  for(let j=1;j<leg.length;j++) {
+    const a=new THREE.Vector2(...leg[j-1]),b=new THREE.Vector2(...leg[j]);
+    const run=a.distanceTo(b),count=Math.ceil(run/.25);
+    for(let k=j===1?0:1;k<=count;k++) {
+      const p=a.clone().lerp(b,k/count);
+      baseSamples.push({d:length+run*k/count,point:new THREE.Vector3(p.x,routeHeight(p.x,p.y),p.y)});
+    }
+    length+=run;
+  }
+  const samples=[baseSamples[0]];
+  function refine(a,b,depth=0) {
+    const delta=b.point.y-a.point.y;
+    if(Math.abs(delta)<=.018) {samples.push(b);return;}
+    const horizontal=b.point.clone().sub(a.point).setY(0);
+    if(horizontal.length()>.0003 && depth<18) {
+      const point=a.point.clone().lerp(b.point,.5);point.y=routeHeight(point.x,point.z);
+      const mid={d:(a.d+b.d)/2,point};
+      refine(a,mid,depth+1);refine(mid,b,depth+1);return;
+    }
+    // Put each near-vertical connection on the lower side of the physical riser.
+    const forward=horizontal.normalize(),ascending=delta>0;
+    const p=(ascending?a.point:b.point).clone();
+    const d=ascending?a.d:b.d;
+    if(ascending) {
+      samples.push({d:d+.00000001,point:new THREE.Vector3(p.x,b.point.y,p.z),riser:true,forward});
+    } else {
+      samples.push({d:d-.00000001,point:new THREE.Vector3(p.x,a.point.y,p.z),riser:true,forward});
+    }
+    samples.push(b);
+  }
+  for(let i=1;i<baseSamples.length;i++)refine(baseSamples[i-1],baseSamples[i]);
+  const segment={samples,length,index,flowUniform:{value:0}};
+  // Wide arrows stay narrow wherever the paved surface has a lateral step or edge.
+  const carrierWidth=baseSamples.some((sample,i)=>{
+    const other=baseSamples[i===baseSamples.length-1?i-1:i+1];
+    const tangent=other.point.clone().sub(sample.point).setY(0).normalize();
+    const side=new THREE.Vector3(-tangent.z,0,tangent.x);
+    return [-1,1].some(sign=>{
+      const q=sample.point.clone().addScaledVector(side,.7*sign);
+      try{return Math.abs(routeHeight(q.x,q.z)-sample.point.y)>.01;}catch{return true;}
+    });
+  })?.4:.7;
+  const vertices=[],uvs=[],lifts=[],hitVertices=[];
+  const quad=(out,a,b,c,d)=>out.push(...a.toArray(),...b.toArray(),...c.toArray(),...a.toArray(),...c.toArray(),...d.toArray());
+  for(let j=1;j<samples.length;j++) {
+    const a=samples[j-1],b=samples[j],direction=b.point.clone().sub(a.point).setY(0);
+    if(direction.lengthSq()<1e-8&&(a.forward||b.forward))direction.copy(a.forward||b.forward);
+    if(direction.lengthSq()<1e-12)direction.copy(baseSamples[1].point).sub(baseSamples[0].point).setY(0);
+    direction.normalize();
+    const side=new THREE.Vector3(-direction.z,0,direction.x);
+    const edge=(sample,w)=>{
+      const q=sample.point.clone().addScaledVector(side,w);
+      // The inserted riser vertices intentionally keep their lower-side XZ position.
+      q.y=sample.point.y;return q;
+    };
+    quad(vertices,edge(a,carrierWidth),edge(b,carrierWidth),edge(b,-carrierWidth),edge(a,-carrierWidth));
+    uvs.push(a.d,carrierWidth,b.d,carrierWidth,b.d,-carrierWidth,a.d,carrierWidth,b.d,-carrierWidth,a.d,-carrierWidth);
+    lifts.push(...[a,b,b,a,b,a].map(s=>s.riser?1:0));
+    quad(hitVertices,edge(a,.85),edge(b,.85),edge(b,-.85),edge(a,-.85));
+  }
+  const geometry=(data)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(data,3));return g;};
+  const routeMaterial=new THREE.MeshBasicMaterial({color:'#a45e3e',transparent:true,opacity:.68,depthTest:true,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
+  routeMaterial.onBeforeCompile=(shader)=>{
+    shader.uniforms.routeFlow=segment.flowUniform;
+    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec2 routeUv; varying vec2 vRouteUv;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvRouteUv=routeUv;');
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vRouteUv; uniform float routeFlow;')
+      .replace('#include <alphamap_fragment>',`#include <alphamap_fragment>
+        float across=abs(vRouteUv.y);
+        float dashPhase=mod(vRouteUv.x,1.75);
+        float dash=(1.0-smoothstep(.22,.25,across))*smoothstep(.0,.07,dashPhase)*(1.0-smoothstep(1.0,1.07,dashPhase));
+        float arrowPhase=mod(vRouteUv.x-routeFlow,4.0);
+        float chevron=(1.0-smoothstep(.60,.68,across))*(1.0-smoothstep(.11,.18,abs(arrowPhase-(2.0-across*1.65))));
+        diffuseColor.a*=max(dash*.88,chevron);
+        if(diffuseColor.a<.01)discard;`);
+  };
+  routeMaterial.customProgramCacheKey=()=>'walking-route-flow-v1';
+  const ribbonGeometry=geometry(vertices);
+  ribbonGeometry.setAttribute('routeUv',new THREE.Float32BufferAttribute(uvs,2));
+  ribbonGeometry.setAttribute('groundLift',new THREE.Float32BufferAttribute(lifts,1));
+  segment.ribbon=new THREE.Mesh(ribbonGeometry,routeMaterial);
+  segment.ribbon.name=`walking-route-${index}`;segment.ribbon.userData.contact=true;segment.ribbon.renderOrder=4;scene.add(segment.ribbon);
+  segment.hit=new THREE.Mesh(geometry(hitVertices),new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));
+  segment.hit.userData.contact=true;segment.hit.userData.routeIndex=index;segment.hit.visible=false;
+  return segment;
+});
+function updateRoute(index) {
+  const stop=place.hotspots[index];
+  const outdoor=place.hotspots.filter(s=>s.walk);
+  index=stop?.interior?outdoor.findIndex(s=>s.insideView===stop.id):stop?outdoor.findIndex(s=>s.id===stop.id):-1;
+  for(const segment of routeSegments) {
+    const active=segment.index===index,past=index>=0&&segment.index<index;
+    segment.ribbon.material.opacity=active?.98:past?.26:index<0?.94:.58;
+    segment.hit.userData.active=active;
+  }
+}
+function animateRoute(now) {
+  if(reducedMotion.matches)return;
+  for(const segment of routeSegments)segment.flowUniform.value=now*.00022;
+}
+animateRoute(0);
+// === Hotspots / UI ===
+let sceneTriangles=0;
+scene.traverse(part=>{
+  if(part.isMesh) sceneTriangles+=(part.geometry.index?.count||part.geometry.getAttribute("position").count)/3*(part.isInstancedMesh?part.count:1);
+});
+console.info("scene-metrics",JSON.stringify({triangles:sceneTriangles,roofInput:palette.roof,
+  roofLinear:material(palette.roof).color.toArray(),colorManagement:THREE.ColorManagement.enabled,
+  output:renderer.outputColorSpace,exposure:renderer.toneMappingExposure}));
+const pickableMeshes = modelPickMeshes(scene);
+const raycaster = new THREE.Raycaster(), pins = [];
+const leaderLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+leaderLayer.classList.add("pin-leaders");
+document.body.appendChild(leaderLayer);
+const leaders = [];
+let current = null, flight = null;
+function highlightSpot(spot, index) {
+  pins.forEach((pin, i) => pin.classList.toggle("highlight", Boolean(spot) && i === index));
+}
+place.hotspots.forEach((spot, index) => {
+  if(spot.walk)spot.anchor=[spot.walk[0],routeHeight(...spot.walk)+.65,spot.walk[1]];
+  const leader = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  leaderLayer.appendChild(leader);
+  leaders.push(leader);
+  const pin = document.createElement("button");
+  pin.className = "pin"+(spot.insideView||spot.interior?' has-inside':'');
+  pin.dataset.hotspot = spot.id;
+  pin.innerHTML = `${index + 1}<span></span>`;
+  pin.querySelector("span").textContent = spot.title;
+  pin.setAttribute("aria-label", `${index + 1}. ${spot.title}`);
+  pin.addEventListener("click", () => openSpot(spot));
+  for(const [event,on] of [["mouseenter",true],["mouseleave",false],["focus",true],["blur",false]])
+    pin.addEventListener(event, () => highlightSpot(on ? spot : null, index));
+  document.body.appendChild(pin);
+  pins.push(pin);
+});
+function stopRotation() {
+  controls.autoRotate = false;
+}
+function setForegroundVisibility(position=null,target=null) {
+  const focusCamera=camera.clone();
+  if(position) {focusCamera.position.copy(position);focusCamera.lookAt(target);focusCamera.updateMatrixWorld();}
+  const direction=position ? target.clone().sub(position).normalize() : null;
+  const distance=position ? position.distanceTo(target) : 0;
+  scene.fog=null;
+  const hiddenMatrix=new THREE.Matrix4().makeScale(0,0,0);
+  const hiddenTrees=new Set();
+  for(const {batch,transforms,owners} of focusFoliage) {
+    transforms.forEach((matrix,i)=>{
+      const owner=owners[i];let hidden=false;
+      if(position&&owner?.type==="tree"&&owner.kind!=="bonsai") {
+        const center=new THREE.Vector3(...owner.position);center.y+=owner.height*.74;
+        const along=center.clone().sub(position).dot(direction),p=center.clone().project(focusCamera);
+        const sx=(p.x+1)*innerWidth/2,sy=(1-p.y)*innerHeight/2;
+        hidden=along>0&&along<distance+3&&sx>freeArea.left-80&&sx<freeArea.left+freeArea.width+80&&sy>freeArea.top-80&&sy<freeArea.top+freeArea.height+180;
+      }
+      batch.setMatrixAt(i,hidden?hiddenMatrix:matrix);
+      if(hidden) hiddenTrees.add(owner);
+    });
+    batch.instanceMatrix.needsUpdate=true;
+  }
+  scene.traverse(object=>{if(object.userData.contactOwner)object.visible=!hiddenTrees.has(object.userData.contactOwner);});
+  if(typeof renderer!=='undefined')renderer.shadowMap.needsUpdate=true;
+  if(position) console.info("focus-foreground",JSON.stringify({hiddenTrees:hiddenTrees.size}));
+}
+controls.addEventListener("start", () => {
+  stopRotation();
+  if(flight && (current?.interior||flight.path)) {
+    const {to,targetTo,viewTo}=flight;
+    moveTo(to,targetTo,true,viewTo);
+  }
+  flight = null;
+});
+function moveTo(position, target, instant = false, viewTo = null, fromInterior = false) {
+  const viewFrom={x:camera.view?.offsetX||0,y:camera.view?.offsetY||0};
+  viewTo=viewTo||viewFrom;
+  if (instant || reducedMotion.matches) {
+    flight = null;
+    camera.position.copy(position);
+    controls.target.copy(target);
+    camera.setViewOffset(innerWidth,innerHeight,viewTo.x,viewTo.y,innerWidth,innerHeight);
+    controls.update();
+    return;
+  }
+  flight = {
+    start: performance.now(),
+    arc: current?.interior||fromInterior ? 0 : Math.min(12,camera.position.distanceTo(position)*.14),
+    path: current?.interior||fromInterior ? buildInteriorFlightPath(camera.position,position,Boolean(current?.interior),place) : null,
+    viewFrom,viewTo,
+    from: camera.position.clone(),
+    targetFrom: controls.target.clone(),
+    to: position.clone(),
+    targetTo: target.clone()
+  };
+}
+function openSpot(spot, instant = false) {
+  stopRotation();
+  const fromInterior=Boolean(current?.interior||flight?.path);
+  const viewFrom={x:camera.view.offsetX,y:camera.view.offsetY};
+  current = spot;
+  configureInteriorView(spot);
+  exteriorDim.value=spot.interior?.25:1;
+  altarLight.intensity=spot.interior?7:0;
+  interiorFill.intensity=spot.interior?10:0;
+  hallCutaway.manual=null;
+  hallCutaway.select?.(spot.cutaway);
+  hallCutaway.set(Boolean(spot.cutaway)&&!spot.interior,instant);
+  frameView(true);
+  if(spot.interior)camera.setViewOffset(innerWidth,innerHeight,0,0,innerWidth,innerHeight);
+  const {position,target} = fitSpot(spot);
+  const viewTo={x:camera.view.offsetX,y:camera.view.offsetY};
+  camera.setViewOffset(innerWidth,innerHeight,viewFrom.x,viewFrom.y,innerWidth,innerHeight);
+  setForegroundVisibility(position,target);
+  moveTo(position,target,instant,viewTo,fromInterior);
+  updateTour();
+}
+function closeSpot(instant = false) {
+  stopRotation();
+  const fromInterior=Boolean(current?.interior||flight?.path);
+  const viewFrom={x:camera.view.offsetX,y:camera.view.offsetY};
+  current = null;
+  configureInteriorView(null);exteriorDim.value=1;altarLight.intensity=0;
+  interiorFill.intensity=0;
+  hallCutaway.manual=null;
+  hallCutaway.set(false,instant);
+  setForegroundVisibility();
+  const fromPosition=camera.position.clone();
+  fitOverview(config.defaultAzimuth,config.defaultPolar);
+  const viewTo={x:camera.view.offsetX,y:camera.view.offsetY};
+  camera.setViewOffset(innerWidth,innerHeight,viewFrom.x,viewFrom.y,innerWidth,innerHeight);
+  camera.position.copy(fromPosition);
+  moveTo(overview.position,overview.target,instant,viewTo,fromInterior);
+  updateTour();
+}
+function updateTour() {
+  $("masthead").classList.toggle("interior",Boolean(current?.interior));
+  const index=current ? place.hotspots.findIndex(spot=>spot.id===current.id) : -1;
+  $("tour-start").hidden=index>=0;
+  $("tour-count").hidden=index>=0;
+  $("tour-count").textContent=`${place.hotspots.length} điểm dừng`;
+  for(const id of ["tour-previous","tour-next","tour-overview"]) $(id).hidden=index<0;
+  $("tour-previous").disabled=index<=0;
+  $("tour-title").textContent=index<0 ? (place.tourTitle||place.name) : `${index+1} / ${place.hotspots.length} · ${current.title}`;
+  $("tour-caption").textContent=index<0 ? (place.tourCaption||"") : current.caption;
+  $("tour-hint").textContent=current?.insideView ? "Tiếp: vào bên trong" : "";
+  $("tour-next").textContent=index===place.hotspots.length-1 ? "Xem toàn cảnh" : "Tiếp →";
+  $("tour-progress").style.setProperty("--progress",`${index<0 ? 0 : (index+1)/place.hotspots.length*100}%`);
+  pins.forEach((pin,i)=>{
+    pin.classList.toggle("current",i===index);
+    pin.classList.toggle("next",i===index+1);
+    pin.setAttribute("aria-current",i===index ? "step" : "false");
+  });
+  updateRoute(index);
+}
+function goTour(index, instant=false) {
+  if(Number.isInteger(index) && index>=0 && index<place.hotspots.length) openSpot(place.hotspots[index],instant);
+}
+function nextTour() {
+  const index=current ? place.hotspots.findIndex(spot=>spot.id===current.id) : -1;
+  if(index===place.hotspots.length-1) closeSpot(); else goTour(index+1);
+}
+$("tour-start").onclick=()=>goTour(0);
+$("tour-previous").onclick=()=>{if(current)goTour(place.hotspots.findIndex(spot=>spot.id===current.id)-1);};
+$("tour-next").onclick=nextTour;
+$("tour-overview").onclick=()=>closeSpot();
+window.addEventListener("keydown",(event)=>{
+  if(event.target?.closest?.("input,textarea,select,[contenteditable=true]"))return;
+  if(event.key==="Escape") {event.preventDefault();closeSpot();}
+  if(event.key==="ArrowRight") {event.preventDefault();nextTour();}
+  if(event.key==="ArrowLeft" && current) {event.preventDefault();$("tour-previous").onclick();}
+});
+let down = null;
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  down = [event.clientX, event.clientY];
+});
+renderer.domElement.addEventListener("pointercancel", () => { down = null; });
+renderer.domElement.addEventListener("pointerup", (event) => {
+  const start = down;
+  down = null;
+  if (!start || Math.hypot(event.clientX - start[0], event.clientY - start[1]) > 4) return;
+  const pointer = new THREE.Vector2(event.clientX / innerWidth * 2 - 1, -event.clientY / innerHeight * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(pickableMeshes, false);
+  const nextSegment=routeSegments.find(segment=>segment.hit.userData.active);
+  const routeHit=nextSegment&&raycaster.intersectObject(nextSegment.hit,false)[0];
+  if(routeHit && (!hits.length || routeHit.distance<=hits[0].distance+.2)) {
+    const from=place.hotspots.filter(s=>s.walk)[nextSegment.index];
+    goTour(current ? place.hotspots.findIndex(s=>s.id===current.id)+1 : place.hotspots.findIndex(s=>s.id===from?.id)+1);
+    return;
+  }
+  if (!hits.length) return;
+  let best = null, distance = Infinity;
+  for (const spot of place.hotspots) {
+    const anchor = new THREE.Vector3(...spot.anchor);
+    const dx = hits[0].point.x - anchor.x, dz = hits[0].point.z - anchor.z, score = Math.hypot(dx, dz);
+    if (score < distance) {
+      distance = score;
+      best = spot;
+    }
+  }
+  if (distance < 9) openSpot(best);
+});
+let lastRouteHover=0;
+renderer.domElement.addEventListener('pointermove',(event)=>{
+  if(performance.now()-lastRouteHover<100)return;
+  lastRouteHover=performance.now();
+  const next=routeSegments.find(segment=>segment.hit.userData.active);
+  raycaster.setFromCamera(new THREE.Vector2(event.clientX/innerWidth*2-1,-event.clientY/innerHeight*2+1),camera);
+  const hit=next&&raycaster.intersectObject(next.hit,false)[0];
+  const cover=hit&&raycaster.intersectObjects(pickableMeshes,false)[0];
+  renderer.domElement.style.cursor=hit&&(!cover||hit.distance<=cover.distance+.2)?'pointer':'';
+});
+// === Render loop / post ===
+const composer = new EffectComposer(renderer);
+renderer.info.autoReset = false;
+composer.addPass(new RenderPass(scene, camera));
+const gtao = new GTAOPass(scene, camera, innerWidth * .5, innerHeight * .5);
+function excludeContactFromAO(pass) {
+  const original = pass.overrideVisibility.bind(pass);
+  pass.overrideVisibility = () => {
+    original();
+    pass.scene.traverse(object => {
+      if (object.userData.contact || (hallCutaway.amount>0 && object.parent===hallFrontLayer)) object.visible = false;
+    });
+  };
+}
+excludeContactFromAO(gtao);
+gtao.updateGtaoMaterial({
+  radius: 2.2,
+  distanceExponent: 1.2,
+  thickness: .7,
+  scale: 1,
+  samples: 8
+});
+gtao.blendIntensity = .4;
+gtao.enabled = config.useGTAO;
+composer.addPass(gtao);
+composer.addPass(new OutputPass());
+// Display-space grade shared by every kit (owner 2026-11-04: vivid, true to photos, not grey or cold):
+// chroma up on coloured surfaces only (neutral paving and plaster stay clean), olive greens pulled to leaf green.
+const grade = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, saturation: { value: 1.32 }, vibrance: { value: .55 }, leaf: { value: .5 }, warmth: { value: .012 }, contrast: { value: 1.07 } },
+  vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }",
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float saturation, vibrance, leaf, warmth, contrast; varying vec2 vUv;
+vec3 hsv(vec3 c){ vec4 K = vec4(0., -1./3., 2./3., -1.); vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r)); float d = q.x - min(q.w, q.y);
+  return vec3(abs(q.z + (q.w - q.y) / (6. * d + 1e-6)), d / (q.x + 1e-6), q.x); }
+vec3 rgb(vec3 c){ vec3 p = abs(fract(c.xxx + vec3(1., 2./3., 1./3.)) * 6. - 3.); return c.z * mix(vec3(1.), clamp(p - 1., 0., 1.), c.y); }
+void main(){
+  vec4 c = texture2D(tDiffuse, vUv);
+  vec3 h = hsv(c.rgb);
+  float coloured = smoothstep(.05, .15, h.y);
+  h.x = mix(h.x, .29, leaf * coloured * smoothstep(.15, .19, h.x) * (1. - smoothstep(.31, .37, h.x)));
+  h.y = clamp(h.y * (1. + (saturation - 1. + vibrance * (1. - smoothstep(.35, .65, h.y))) * coloured), 0., 1.);
+  vec3 col = rgb(h);
+  col *= vec3(1. + warmth, 1., 1. - warmth);
+  col = (col - .5) * contrast + .5;
+  gl_FragColor = vec4(clamp(col, 0., 1.), c.a);
+}`
+});
+composer.addPass(grade);
+gtao.setSize(Math.round(innerWidth * .5), Math.round(innerHeight * .5));
+const frameTimes = [];
+const frameIntervals = [];
+let previousFrame = null;
+fitOverview(config.defaultAzimuth, config.defaultPolar);
+controls.update();
+window.addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  frameView(Boolean(current));
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  gtao.setSize(Math.round(innerWidth * .5), Math.round(innerHeight * .5));
+  if (current) {
+    if(current.interior)camera.setViewOffset(innerWidth,innerHeight,0,0,innerWidth,innerHeight);
+    const {position,target} = fitSpot(current);
+    setForegroundVisibility(position,target);
+    moveTo(position,target,true);
+  } else {
+    fitOverview(config.defaultAzimuth, config.defaultPolar);
+    moveTo(overview.position,overview.target,true);
+  }
+});
+function animate(now) {
+  requestAnimationFrame(animate);
+  if (previousFrame !== null && frameIntervals.length < 12) frameIntervals.push(now-previousFrame);
+  previousFrame = now;
+  if (flight) {
+    const progress = Math.min((now - flight.start) / 1400, 1), ease = progress * progress * (3 - 2 * progress);
+    camera.position.copy(sampleCameraFlight(flight,ease));
+    camera.setViewOffset(innerWidth,innerHeight,THREE.MathUtils.lerp(flight.viewFrom.x,flight.viewTo.x,ease),THREE.MathUtils.lerp(flight.viewFrom.y,flight.viewTo.y,ease),innerWidth,innerHeight);
+    controls.target.lerpVectors(flight.targetFrom, flight.targetTo, ease);
+    if (progress === 1) flight = null;
+  }
+  controls.target.x = THREE.MathUtils.clamp(controls.target.x, -sw / 2, sw / 2);
+  controls.target.z = THREE.MathUtils.clamp(controls.target.z, (place.site.centerZ||0)-sd / 2, (place.site.centerZ||0)+sd / 2);
+  if(flight) {camera.lookAt(controls.target);camera.updateMatrixWorld();} else controls.update();
+  if(!flight)hallCutaway.set(hallCutaway.manual??hallCutaway.wantsReveal(camera.position,controls.target,current));
+  hallCutaway.update(now);
+  const doorOpen=Boolean(current?.interior||flight?.path);
+  if(hallDoor&&hallDoor.visible===doorOpen){hallDoor.visible=!doorOpen;renderer.shadowMap.needsUpdate=true;}
+  animateRoute(now);
+  const start = performance.now();
+  renderer.info.reset();
+  composer.render();
+  if (frameTimes.length < 12) renderer.getContext().finish();
+  const frameMs = performance.now() - start;
+  if (frameTimes.length < 12) {
+    frameTimes.push(frameMs);
+    if (frameTimes.length === 12) console.info("frame-ms", JSON.stringify({
+      mode: config.useGTAO ? "GTAO" : "contact",
+      mean: frameTimes.slice(2).reduce((a, b) => a + b, 0) / 10,
+      rafMean: frameIntervals.reduce((a,b)=>a+b,0)/Math.max(1,frameIntervals.length),
+      calls: renderer.info.render.calls,
+      triangles: renderer.info.render.triangles
+    }));
+  }
+  updatePins();
+}
+function updatePins() {
+  const activeIndex=current ? place.hotspots.findIndex(spot=>spot.id===current.id) : -1;
+  const priority=index=>index===activeIndex?0:index===activeIndex+1?1:2;
+  const order=place.hotspots.map((_,index)=>index).sort((a,b)=>priority(a)-priority(b));
+  const placed=[];
+  order.forEach(index => {
+    const spot=place.hotspots[index];
+    const anchor = new THREE.Vector3(...spot.anchor), projected = anchor.clone().project(camera);
+    const hidden = Boolean(current?.interior) || ![projected.x,projected.y,projected.z].every(Number.isFinite) || projected.z > 1 || projected.z < -1 || Math.abs(projected.x)>1 || Math.abs(projected.y)>1;
+    const pin = pins[index];
+    if(hidden){pin.style.display='none';leaders[index].style.display='none';return;}
+    const ax = (projected.x * .5 + .5) * innerWidth, ay = (-projected.y * .5 + .5) * innerHeight;
+    const candidates=[spot.pinOffset||[20,-24],[-30,-18],[30,-18],[0,-36],[-30,18],[30,18],[0,36]];
+    const position=candidates.find(([dx,dy])=>{
+      const x=ax+dx,y=ay+dy;
+      return x>=18&&x<=innerWidth-18&&y>=135&&y<=innerHeight-135&&placed.every(other=>
+        other.style.display==='none'||Math.hypot(x-parseFloat(other.style.left),y-parseFloat(other.style.top))>=31);
+    });
+    const px=ax+(position?.[0]??0),py=ay+(position?.[1]??0);
+    const clipped=hidden||!position;
+    pin.style.display = clipped ? "none" : "block";
+    pin.style.left = px + "px";
+    pin.style.top = py + "px";
+    if(!clipped)placed.push(pin);
+    const leader = leaders[index];
+    leader.style.display = clipped ? "none" : "block";
+    leader.setAttribute("x1", ax); leader.setAttribute("y1", ay);
+    const leaderEnd=new THREE.Vector2(px-ax,py-ay),leaderLength=leaderEnd.length();
+    leaderEnd.multiplyScalar(Math.max(0,leaderLength-13)/Math.max(1,leaderLength));
+    leader.setAttribute("x2", ax+leaderEnd.x); leader.setAttribute("y2", ay+leaderEnd.y);
+  });
+}
+// === Test hooks ===
+window.__hotspots = place.hotspots.map((spot) => spot.id);
+window.__tour = (index) => goTour(index,true);
+window.__explode = (on) => {stopRotation();hallCutaway.manual=Boolean(on)&&!current?.interior;hallCutaway.set(hallCutaway.manual,true);};
+window.__open = (request) => {
+  const id = typeof request === "string" ? request : request.id;
+  let spot = place.hotspots.find((item) => item.id === id);
+  if (spot && request.focus && modelEnvelopes.has(request.focus)) {
+    const center=new THREE.Box3().setFromPoints(modelEnvelopes.get(request.focus)).getCenter(new THREE.Vector3());
+    const direction=new THREE.Vector3(...spot.camera).sub(new THREE.Vector3(...spot.target));
+    spot={...spot,subjects:[request.focus],target:center.toArray(),camera:center.clone().add(direction).toArray()};
+  }
+  if (spot) openSpot(spot, true);
+  if (request.orbit) window.__orbitSubject(...request.orbit);
+  if(typeof request==='object' && typeof request.explode==='boolean')window.__explode(request.explode);
+};
+window.__close = () => closeSpot(true);
+window.__orbit = (azimuth, polar, distance) => {
+  if(current?.interior){window.__orbitSubject(azimuth,polar,distance);return;}
+  stopRotation();
+  flight = null;
+  if (distance == null) fitOverview(azimuth, polar);
+  const spherical = new THREE.Spherical(distance ?? overview.position.distanceTo(overview.target), THREE.MathUtils.degToRad(polar), THREE.MathUtils.degToRad(azimuth));
+  controls.target.copy(overview.target);
+  camera.position.copy(overview.target).add(new THREE.Vector3().setFromSpherical(spherical));
+  controls.update();
+};
+window.__orbitSubject = (azimuth, polar, distance) => {
+  stopRotation();
+  flight = null;
+  const target = current ? new THREE.Vector3(...current.target) : overview.target;
+  const spherical = new THREE.Spherical(distance ?? camera.position.distanceTo(target), THREE.MathUtils.degToRad(polar), THREE.MathUtils.degToRad(azimuth));
+  controls.target.copy(target);
+  camera.position.copy(target).add(new THREE.Vector3().setFromSpherical(spherical));
+  controls.update();
+};
+window.__inspect = () => ({
+  hallReveal:hallCutaway.amount,
+  insideView:Boolean(current?.interior),
+  cameraPosition:camera.position.toArray(),
+  exteriorDim:exteriorDim.value,
+  altarLight:altarLight.intensity,
+  roofs: roofRecords.map(({ parameters, tiers, thickness, ridgeOrnament }) => ({
+    parameters,
+    tiers,
+    thickness,
+    ridgeOrnament
+  })),
+  freeArea,
+  frameTimes,
+  frameIntervals
+});
+// Per-place recolour from photos (owner 2026-11-04): place.colorMap {"#old": "#photo"} swaps a built colour wherever it
+// appears (material colour, instance colour, vertex colour). Keys are sRGB hex as listed by batch/colour_inventory.mjs.
+// No map = no change, so every place without one renders exactly as before.
+(function applyColorMap(map) {
+  const swaps = new Map(Object.entries(map || {}).map(([k, v]) => [k.toLowerCase().replace('#', ''), new THREE.Color(v)]));
+  if (!swaps.size) return;
+  const seen = new Set(), c = new THREE.Color();
+  const swap = color => { const to = color && swaps.get(color.getHexString()); if (to) color.copy(to); };
+  scene.traverse(m => {
+    for (const mat of [m.material].flat()) if (mat && !seen.has(mat)) { seen.add(mat); swap(mat.color); }
+    if (m.instanceColor && !seen.has(m.instanceColor)) {
+      seen.add(m.instanceColor);
+      for (let i = 0; i < m.count; i++) { m.getColorAt(i, c); const to = swaps.get(c.getHexString()); if (to) m.setColorAt(i, to); }
+      m.instanceColor.needsUpdate = true;
+    }
+    const vc = m.geometry?.getAttribute?.('color');
+    if (vc && !seen.has(vc)) {
+      seen.add(vc);
+      for (let i = 0; i < vc.count; i++) {
+        c.setRGB(vc.getX(i), vc.getY(i), vc.getZ(i));
+        const to = swaps.get(c.getHexString());
+        if (to) vc.setXYZ(i, to.r, to.g, to.b);
+      }
+      vc.needsUpdate = true;
+    }
+  });
+  for (const mat of mats.values()) if (!seen.has(mat)) swap(mat.color);
+})(place.colorMap);
+updateTour();
+requestAnimationFrame(animate);
+window.__ready = true;
+
+</script>
+</body>
+</html>

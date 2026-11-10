@@ -64,3 +64,4 @@ tests/fixtures/tiktok/
 *.pt
 *.npy
 *.parquet
+scripts/diorama/vendor/node_modules/

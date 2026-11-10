@@ -1,0 +1,775 @@
+{
+  "name": "Pagoda kit catalogue",
+  "tourTitle": "Pagoda family sample",
+  "kits": [
+    "pagoda"
+  ],
+  "site": {
+    "width": 112,
+    "depth": 96,
+    "hill": {
+      "profile": [
+        [
+          100,
+          0
+        ],
+        [
+          -100,
+          0
+        ]
+      ],
+      "undulation": 0
+    },
+    "overviewHeightFill": 1,
+    "overviewAllAngles": true,
+    "overviewSubjects": [
+      "example-hall",
+      "example-gate",
+      "example-bell",
+      "example-tower",
+      "example-stupa",
+      "example-tiered-stupa",
+      "example-statue",
+      "example-standing",
+      "example-stairs",
+      "example-court",
+      "example-path",
+      "example-garden",
+      "example-pond",
+      "example-incense",
+      "example-bench",
+      "example-masonry-gate",
+      "example-stone-gate",
+      "example-icon-quan_am",
+      "example-icon-buddha",
+      "example-icon-maitreya",
+      "example-icon-guardian",
+      "example-row"
+    ]
+  },
+  "objects": [
+    {
+      "id": "example-hall",
+      "type": "pagoda_building",
+      "form": "hall",
+      "position": [
+        0,
+        0,
+        -12
+      ],
+      "rotation": 12,
+      "footprint": [
+        18,
+        12
+      ],
+      "height": 5.5,
+      "plinth": 0.5,
+      "bays": 5,
+      "veranda": 2,
+      "columnRadius": 0.2,
+      "doorHeight": 3.5,
+      "openingStyle": "arched",
+      "lintelRise": 0.35,
+      "lanterns": {
+        "count": 6,
+        "height": 0.45,
+        "width": 0.22
+      },
+      "sign": "CHÁNH ĐIỆN",
+      "roof": {
+        "tiers": 2,
+        "rise": 2,
+        "gap": 1.7,
+        "shrink": 0.9,
+        "depthShrink": 0.65,
+        "overhang": 0.8,
+        "curl": 0.9,
+        "curve": 0.16,
+        "thickness": 0.15,
+        "ornament": true,
+        "tileSpacing": 0.4,
+        "soffit": false,
+        "crest": true
+      },
+      "colors": {
+        "wall": "#d0bd8e",
+        "roof": "#927c68",
+        "wood": "#705c50",
+        "trim": "#b9ad90",
+        "stone": "#c7c1b3"
+      },
+      "size": [
+        18,
+        5.5,
+        12
+      ],
+      "facade": {
+        "style": "stone",
+        "wallThickness": 0.3,
+        "roundWindows": [
+          [
+            -5.8,
+            3.5
+          ],
+          [
+            5.8,
+            3.5
+          ]
+        ],
+        "windowRadius": 0.6,
+        "courseHeight": 0.65,
+        "blockWidth": 1.4,
+        "jointColor": "#927f79",
+        "doorColor": "#4e5149"
+      },
+      "doorWidth": 2.5,
+      "signWidth": 7,
+      "signHeight": 0.55,
+      "wings": [
+        {
+          "position": [
+            -13,
+            0
+          ],
+          "footprint": [
+            8,
+            7
+          ],
+          "height": 3,
+          "rotation": 0,
+          "roofRise": 1,
+          "curl": 0.35,
+          "text": "佛 光",
+          "textWidth": 6,
+          "textHeight": 1,
+          "textColor": "#62594b",
+          "textPosition": [
+            -1.7,
+            1.8
+          ],
+          "openings": [
+            [
+              2.2,
+              1.1,
+              2.2
+            ]
+          ]
+        }
+      ],
+      "interior": {
+        "kit": "buddhist_altar",
+        "rotation": 12,
+        "floor": 0.5,
+        "ceilingHeight": 4.8,
+        "statueHeight": 2.5,
+        "statueSpacing": 2.9,
+        "altarHeight": 0.6,
+        "altarWidth": 11,
+        "altarZ": -3.8,
+        "offeringWidth": 7,
+        "goldColor": "#b6a076",
+        "redColor": "#92564e",
+        "wallColor": "#c4b5a0",
+        "floorColor": "#b7b5a7",
+        "ceilingColor": "#85775e",
+        "cofferSize": 0.65,
+        "domeRadius": 2,
+        "entry": [
+          1.4,
+          2,
+          -5.4
+        ],
+        "approach": [
+          2.1,
+          2,
+          -2.1
+        ],
+        "safeApproach": true,
+        "lights": {
+          "altar": [
+            -0.6,
+            3,
+            -15
+          ],
+          "fill": [
+            0.6,
+            3,
+            -9
+          ]
+        }
+      }
+    },
+    {
+      "id": "example-gate",
+      "type": "pagoda_building",
+      "form": "gate",
+      "position": [
+        -33,
+        0,
+        32
+      ],
+      "footprint": [
+        10,
+        3
+      ],
+      "height": 4,
+      "plinth": 0.08,
+      "sign": "TAM QUAN",
+      "signWidth": 3.9,
+      "signHeight": 0.34,
+      "roof": {
+        "tiers": 2,
+        "rise": 1.3
+      }
+    },
+    {
+      "id": "example-bell",
+      "type": "pagoda_building",
+      "form": "pavilion",
+      "position": [
+        -36,
+        0,
+        -14
+      ],
+      "footprint": [
+        6,
+        6
+      ],
+      "height": 4.5,
+      "railing": true,
+      "bell": {
+        "height": 1.6,
+        "radius": 0.55,
+        "color": "#9c8e6c"
+      },
+      "roof": {
+        "tiers": 2,
+        "gap": 1.2,
+        "shrink": 0.76
+      }
+    },
+    {
+      "id": "example-tower",
+      "type": "pagoda_building",
+      "form": "tower",
+      "position": [
+        35,
+        0,
+        -25
+      ],
+      "footprint": [
+        6,
+        6
+      ],
+      "height": 3,
+      "levels": 3,
+      "storeyHeight": 5.9,
+      "taper": 0.86,
+      "core": {
+        "size": [
+          1.2,
+          1.2
+        ],
+        "offset": [
+          0,
+          -1.2
+        ],
+        "color": "#d1bc87"
+      },
+      "roof": {
+        "tiers": 1
+      }
+    },
+    {
+      "id": "example-stupa",
+      "type": "pagoda_stupa",
+      "position": [
+        -26,
+        0,
+        14
+      ],
+      "kind": "dome",
+      "radius": 2,
+      "height": 7,
+      "tiers": 5,
+      "color": "#b7a57e",
+      "baseColor": "#bdb7a6"
+    },
+    {
+      "id": "example-tiered-stupa",
+      "type": "pagoda_stupa",
+      "position": [
+        27,
+        0,
+        5
+      ],
+      "kind": "tiered",
+      "radius": 1.4,
+      "height": 5,
+      "tiers": 4
+    },
+    {
+      "id": "example-statue",
+      "type": "pagoda_statue",
+      "position": [
+        -13,
+        0,
+        13
+      ],
+      "pose": "seated",
+      "height": 2.4,
+      "baseHeight": 0.4,
+      "halo": true,
+      "color": "#d2c9ac",
+      "baseColor": "#bcb8a9",
+      "hairColor": "#65665b",
+      "haloColor": "#b7a37c"
+    },
+    {
+      "id": "example-standing",
+      "type": "pagoda_statue",
+      "position": [
+        13,
+        0,
+        13
+      ],
+      "pose": "standing",
+      "height": 3,
+      "halo": false
+    },
+    {
+      "id": "example-stairs",
+      "type": "pagoda_stairs",
+      "position": [
+        0,
+        0,
+        31
+      ],
+      "width": 6,
+      "steps": 5,
+      "rise": 0.15,
+      "run": 0.35,
+      "rail": true,
+      "color": "#c8c1ae",
+      "railColor": "#ded5c1",
+      "dragon": {
+        "height": 0.8,
+        "radius": 0.104,
+        "color": "#b7a37c"
+      }
+    },
+    {
+      "id": "example-court",
+      "type": "pagoda_court",
+      "position": [
+        0,
+        0,
+        9
+      ],
+      "size": [
+        22,
+        10
+      ],
+      "grid": 1.5,
+      "color": "#cecabd"
+    },
+    {
+      "id": "example-path",
+      "type": "pagoda_path",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "points": [
+        [
+          0,
+          32
+        ],
+        [
+          0,
+          18
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "width": 4,
+      "surfaceY": 0.1,
+      "grid": 1.2,
+      "color": "#cecabd",
+      "jointColor": "#b4b1a2"
+    },
+    {
+      "id": "example-garden",
+      "type": "pagoda_landscape",
+      "position": [
+        -25,
+        0,
+        -24
+      ],
+      "size": [
+        18,
+        12
+      ],
+      "shape": "ellipse",
+      "density": 0.7,
+      "spacing": 1.3,
+      "flowers": 0.3,
+      "groundColor": "#b6ad95",
+      "shrubColors": [
+        "#a6b299",
+        "#94a58b",
+        "#b2bda1"
+      ],
+      "flowerColors": [
+        "#baa5a2",
+        "#d6cdb0",
+        "#a8b9b9"
+      ],
+      "trees": [
+        [
+          -4,
+          0,
+          10
+        ],
+        [
+          4,
+          -2,
+          12
+        ]
+      ],
+      "border": true,
+      "borderColor": "#b9b3a4",
+      "surface": "needles",
+      "needleCount": 648,
+      "clearings": [
+        [
+          0,
+          0,
+          4,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "example-pond",
+      "type": "pagoda_water",
+      "position": [
+        24,
+        0,
+        24
+      ],
+      "size": [
+        16,
+        10
+      ],
+      "shape": "ellipse",
+      "stones": 24,
+      "color": "#9fbbb4",
+      "bankColor": "#adaf9c",
+      "stoneColor": "#b9b3a4"
+    },
+    {
+      "id": "example-incense",
+      "type": "pagoda_furniture",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "kind": "incense",
+      "size": [
+        1.8,
+        1.5,
+        1.4
+      ],
+      "color": "#948d78",
+      "baseColor": "#b9b3a4",
+      "standHeight": 0.5
+    },
+    {
+      "id": "example-bench",
+      "type": "pagoda_furniture",
+      "position": [
+        8,
+        0,
+        20
+      ],
+      "kind": "bench",
+      "size": [
+        2,
+        0.9,
+        0.65
+      ],
+      "rotation": 30
+    },
+    {
+      "id": "example-masonry-gate",
+      "type": "pagoda_gate",
+      "style": "brick",
+      "position": [
+        0,
+        0,
+        32
+      ],
+      "footprint": [
+        13,
+        2
+      ],
+      "height": 5,
+      "plinth": 0.08,
+      "sign": "TAM QUAN",
+      "signWidth": 5.5,
+      "signHeight": 0.4,
+      "walls": {
+        "length": 5,
+        "height": 2,
+        "depth": 0.7
+      },
+      "colors": {
+        "wall": "#ad8870",
+        "trim": "#c0ae8b"
+      }
+    },
+    {
+      "id": "example-stone-gate",
+      "type": "pagoda_gate",
+      "style": "stone",
+      "position": [
+        35,
+        0,
+        32
+      ],
+      "footprint": [
+        9,
+        2
+      ],
+      "height": 4
+    },
+    {
+      "id": "example-icon-quan_am",
+      "type": "pagoda_icon",
+      "kind": "quan_am",
+      "position": [
+        -21,
+        0,
+        4
+      ],
+      "height": 4,
+      "baseHeight": 0.6,
+      "baseWidth": 2.2,
+      "baseSteps": 3,
+      "baseDepthRatio": 0.8,
+      "folds": 32,
+      "color": "#e2dfd3",
+      "baseColor": "#b9b3a4",
+      "hairColor": "#777967",
+      "crownColor": "#d4c9ae",
+      "vaseColor": "#c8c3b2",
+      "armorColor": "#b5a37c",
+      "staffColor": "#9d9276",
+      "beadColor": "#a09375",
+      "halo": true,
+      "haloRadius": 0.15,
+      "haloColor": "#b7a37c"
+    },
+    {
+      "id": "example-icon-buddha",
+      "type": "pagoda_icon",
+      "kind": "buddha",
+      "position": [
+        -8,
+        0,
+        4
+      ],
+      "height": 4.4,
+      "baseHeight": 0.6,
+      "baseWidth": 4,
+      "baseSteps": 3,
+      "baseDepthRatio": 0.8,
+      "folds": 32,
+      "color": "#e2dfd3",
+      "baseColor": "#b9b3a4",
+      "hairColor": "#777967",
+      "crownColor": "#d4c9ae",
+      "vaseColor": "#c8c3b2",
+      "armorColor": "#b5a37c",
+      "staffColor": "#9d9276",
+      "beadColor": "#a09375",
+      "halo": true,
+      "haloRadius": 0.15,
+      "haloColor": "#b7a37c"
+    },
+    {
+      "id": "example-icon-maitreya",
+      "type": "pagoda_icon",
+      "kind": "maitreya",
+      "position": [
+        5,
+        0,
+        4
+      ],
+      "height": 4.8,
+      "baseHeight": 0.6,
+      "baseWidth": 4,
+      "baseSteps": 3,
+      "baseDepthRatio": 0.8,
+      "folds": 32,
+      "color": "#b7a36c",
+      "baseColor": "#b9b3a4",
+      "hairColor": "#777967",
+      "crownColor": "#d4c9ae",
+      "vaseColor": "#c8c3b2",
+      "armorColor": "#b5a37c",
+      "staffColor": "#9d9276",
+      "beadColor": "#a09375",
+      "halo": true,
+      "haloRadius": 0.1,
+      "haloColor": "#b7a37c"
+    },
+    {
+      "id": "example-icon-guardian",
+      "type": "pagoda_icon",
+      "kind": "guardian",
+      "position": [
+        18,
+        0,
+        4
+      ],
+      "height": 5.2,
+      "baseHeight": 0.6,
+      "baseWidth": 4,
+      "baseSteps": 3,
+      "baseDepthRatio": 0.8,
+      "folds": 32,
+      "color": "#948570",
+      "baseColor": "#b9b3a4",
+      "hairColor": "#777967",
+      "crownColor": "#d4c9ae",
+      "vaseColor": "#c8c3b2",
+      "armorColor": "#b5a37c",
+      "staffColor": "#9d9276",
+      "beadColor": "#a09375",
+      "halo": true,
+      "haloRadius": 0.15,
+      "haloColor": "#b7a37c"
+    },
+    {
+      "id": "example-row",
+      "type": "pagoda_statue_row",
+      "kind": "quan_am",
+      "position": [
+        -35,
+        0,
+        11
+      ],
+      "rotation": 90,
+      "height": 2.5,
+      "baseHeight": 0.3,
+      "count": 4,
+      "spacing": 3,
+      "placements": [
+        [
+          -4.5,
+          0,
+          0
+        ],
+        [
+          -1.5,
+          0,
+          0
+        ],
+        [
+          1.5,
+          0,
+          0
+        ],
+        [
+          4.5,
+          0,
+          0
+        ]
+      ],
+      "color": "#dddace",
+      "halo": true
+    }
+  ],
+  "hotspots": [
+    {
+      "id": "overview",
+      "title": "Pagoda family",
+      "caption": "One JSON, shared builders.",
+      "anchor": [
+        0,
+        4,
+        -12
+      ],
+      "camera": [
+        36,
+        25,
+        35
+      ],
+      "target": [
+        0,
+        4,
+        -12
+      ],
+      "subjects": [
+        "example-hall"
+      ],
+      "photos": []
+    },
+    {
+      "id": "cutaway",
+      "title": "Mái và nội thất",
+      "caption": "Một vỏ chính điện, trần đi theo mái.",
+      "anchor": [
+        0,
+        3,
+        -12
+      ],
+      "camera": [
+        23,
+        16,
+        20
+      ],
+      "target": [
+        0,
+        3,
+        -12
+      ],
+      "subjects": [
+        "example-hall"
+      ],
+      "cutaway": "example-hall",
+      "photos": [],
+      "frameRoute": false
+    },
+    {
+      "id": "inside",
+      "title": "Nội thất mẫu",
+      "caption": "Ba tượng đứng, tường đỏ, ô trần vàng và tranh vòm.",
+      "anchor": [
+        0.6,
+        1.95,
+        -9
+      ],
+      "camera": [
+        0.6,
+        1.95,
+        -9
+      ],
+      "target": [
+        -0.7,
+        2.4,
+        -15.6
+      ],
+      "interior": true,
+      "building": "example-hall",
+      "photos": []
+    }
+  ],
+  "route": []
+}

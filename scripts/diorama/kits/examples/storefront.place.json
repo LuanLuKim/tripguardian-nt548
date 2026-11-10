@@ -1,0 +1,1037 @@
+{
+  "name": "Sample garden shop",
+  "tourTitle": "A small JSON-only shop",
+  "kits": [
+    "storefront"
+  ],
+  "site": {
+    "width": 82,
+    "depth": 82,
+    "centerZ": 0,
+    "frameFill": 0.82,
+    "hill": {
+      "profile": [
+        [
+          100,
+          0
+        ],
+        [
+          -100,
+          0
+        ]
+      ],
+      "undulation": 0
+    }
+  },
+  "objects": [
+    {
+      "id": "sample-shop",
+      "type": "storefront",
+      "role": "main",
+      "position": [
+        -5,
+        0,
+        -8
+      ],
+      "rotation": 0,
+      "size": [
+        12,
+        4,
+        7
+      ],
+      "floorY": 0.18,
+      "wall": "#d7c8a8",
+      "trim": "#eee7d9",
+      "wood": "#75604f",
+      "foundation": "#aaa28e",
+      "facade": {
+        "kind": "arched",
+        "bays": 3,
+        "openingWidth": 2.4,
+        "openingHeight": 3.1,
+        "glass": "#899c94",
+        "brick": {
+          "height": 0.19,
+          "width": 0.48,
+          "joint": "#ba9782"
+        }
+      },
+      "roof": {
+        "kind": "hip",
+        "rise": 1.5,
+        "overhang": 0.28,
+        "parapet": true,
+        "color": "#77776c",
+        "lineColor": "#9a9381"
+      },
+      "veranda": {
+        "depth": 2.4,
+        "height": 3.7,
+        "openingWidth": 3.4,
+        "balcony": true,
+        "railSpacing": 0.38
+      },
+      "awning": {
+        "depth": 1.2,
+        "drop": 0.3,
+        "color": "#d8c9a7"
+      },
+      "sign": {
+        "text": "GARDEN SHOP",
+        "width": 10,
+        "height": 0.6,
+        "y": 3.7,
+        "background": "#75604f",
+        "color": "#eee7d9"
+      },
+      "cutaway": {
+        "lift": 5
+      },
+      "interior": {
+        "kit": "storefront_room",
+        "size": [
+          11.5,
+          6.5
+        ],
+        "floorY": 0.18,
+        "height": 3.5,
+        "floor": "#afa797",
+        "wall": "#ded2b7",
+        "wood": "#75604f",
+        "joint": "#bfb7a7",
+        "tileSize": 0.5,
+        "ceiling": "#93745e",
+        "plankWidth": 0.26,
+        "beams": true,
+        "doorWidth": 2.4,
+        "doorHeight": 3,
+        "windows": [
+          -2,
+          0,
+          2
+        ],
+        "windowWidth": 1.4,
+        "windowHeight": 2.5,
+        "windowColor": "#a7b5a5",
+        "trim": "#eee7d9",
+        "counter": {
+          "position": [
+            0,
+            -2.4
+          ],
+          "width": 4.2,
+          "label": "COFFEE & CAKE",
+          "labelY": 3.2,
+          "backdrop": {
+            "width": 3,
+            "height": 3,
+            "color": "#8a9e99"
+          }
+        },
+        "clock": {
+          "position": [
+            -3,
+            2.7,
+            -3.1
+          ],
+          "radius": 0.25
+        },
+        "tables": [
+          [
+            -3,
+            0
+          ],
+          [
+            3,
+            0
+          ]
+        ],
+        "plants": [
+          [
+            -5,
+            -2.5
+          ],
+          [
+            5,
+            -2.5
+          ]
+        ],
+        "hideFront": false,
+        "entry": [
+          -5,
+          1.78,
+          -4.4
+        ],
+        "approach": [
+          -5,
+          1.78,
+          0
+        ],
+        "safeApproach": true,
+        "boundsDepth": 7,
+        "boundsCenter": [
+          -5,
+          0,
+          -8
+        ],
+        "dimmingSize": [
+          12,
+          7
+        ],
+        "ridgeHeight": 5.5,
+        "lights": {
+          "altar": [
+            -5,
+            2.8,
+            -10
+          ],
+          "fill": [
+            -5,
+            3,
+            -6
+          ]
+        },
+        "windowKind": "rectangular",
+        "pendants": [
+          [
+            0,
+            -1
+          ]
+        ],
+        "pendantColor": "#b7a486",
+        "jars": {
+          "position": [
+            -4.5,
+            0.18,
+            -2.6
+          ],
+          "color": "#9d8664",
+          "shelf": {
+            "size": [
+              1.7,
+              1.8,
+              0.6
+            ],
+            "levels": 2,
+            "columns": 3,
+            "jarHeight": 0.65,
+            "jarRadius": 0.2
+          }
+        }
+      }
+    },
+    {
+      "id": "glass-shop",
+      "type": "storefront",
+      "storeys": 2,
+      "position": [
+        10,
+        0,
+        -8
+      ],
+      "size": [
+        8,
+        7.6,
+        6
+      ],
+      "rotation": 12,
+      "facade": {
+        "kind": "glass",
+        "bays": 4
+      },
+      "roof": {
+        "kind": "flat",
+        "parapet": true
+      }
+    },
+    {
+      "id": "solid-shop",
+      "type": "storefront",
+      "position": [
+        11,
+        0,
+        2
+      ],
+      "size": [
+        5,
+        3.3,
+        4
+      ],
+      "facade": {
+        "kind": "solid",
+        "bays": 2
+      },
+      "roof": {
+        "kind": "gable",
+        "rise": 1.1
+      },
+      "awning": {
+        "depth": 1,
+        "drop": 0.3
+      }
+    },
+    {
+      "id": "path",
+      "type": "storefront_paving",
+      "position": [
+        -5,
+        0,
+        5
+      ],
+      "size": [
+        3.4,
+        12
+      ],
+      "height": 0.1,
+      "grid": 0.8,
+      "color": "#d0c8b8",
+      "joint": "#b8b1a1",
+      "surface": "stone"
+    },
+    {
+      "id": "boardwalk",
+      "type": "storefront_paving",
+      "position": [
+        3,
+        0,
+        13
+      ],
+      "size": [
+        8,
+        2.5
+      ],
+      "height": 0.12,
+      "grid": 1,
+      "surface": "timber",
+      "rail": {
+        "spacing": 0.5,
+        "color": "#75604f"
+      },
+      "rise": 0.2
+    },
+    {
+      "id": "bed",
+      "type": "storefront_garden",
+      "position": [
+        -12,
+        0,
+        5
+      ],
+      "size": [
+        7,
+        6
+      ],
+      "kind": "bed",
+      "height": 0.06,
+      "color": "#b5bda4",
+      "density": 3,
+      "rows": 4,
+      "plantScale": 0.8,
+      "seed": 17,
+      "leaf": "#8e9f80",
+      "flowers": [
+        "#c5bbb0",
+        "#aa91a3"
+      ],
+      "border": true,
+      "borderColor": "#b1a48c"
+    },
+    {
+      "id": "grass",
+      "type": "storefront_garden",
+      "position": [
+        7,
+        0,
+        8
+      ],
+      "size": [
+        8,
+        4
+      ],
+      "kind": "lawn"
+    },
+    {
+      "id": "pines",
+      "type": "storefront_grove",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "trees": [
+        [
+          -16,
+          -10,
+          5
+        ],
+        [
+          -16,
+          -4,
+          4
+        ]
+      ],
+      "kind": "pine",
+      "color": "#8e9f80",
+      "trunk": "#8c806b",
+      "understory": true
+    },
+    {
+      "id": "cypress",
+      "type": "storefront_grove",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "trees": [
+        [
+          16,
+          -10,
+          4
+        ]
+      ],
+      "kind": "cypress",
+      "understory": false
+    },
+    {
+      "id": "shade",
+      "type": "storefront_grove",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "trees": [
+        [
+          16,
+          11,
+          4
+        ]
+      ],
+      "kind": "broadleaf"
+    },
+    {
+      "id": "tables",
+      "type": "storefront_terrace",
+      "position": [
+        -12,
+        0,
+        12
+      ],
+      "size": [
+        7,
+        4
+      ],
+      "height": 0.1,
+      "color": "#c5b89e",
+      "wood": "#75604f",
+      "fabric": "#d8c9a7",
+      "tables": [
+        [
+          -1.5,
+          0,
+          0
+        ],
+        [
+          1.5,
+          0,
+          90
+        ]
+      ],
+      "umbrellas": [
+        [
+          0,
+          0,
+          1.8,
+          2.65
+        ]
+      ],
+      "rail": {
+        "spacing": 0.5,
+        "color": "#75604f"
+      }
+    },
+    {
+      "id": "gate",
+      "type": "storefront_sign",
+      "position": [
+        -5,
+        0,
+        10
+      ],
+      "kind": "arch",
+      "size": [
+        3.5,
+        4
+      ],
+      "color": "#ded7c3"
+    },
+    {
+      "id": "board",
+      "type": "storefront_sign",
+      "position": [
+        1,
+        0,
+        6
+      ],
+      "kind": "board",
+      "size": [
+        2,
+        0.7
+      ],
+      "height": 1.8,
+      "text": "OPEN",
+      "color": "#75604f",
+      "textColor": "#eee7d9"
+    },
+    {
+      "id": "pergola",
+      "type": "storefront_pergola",
+      "position": [
+        -12,
+        0,
+        17
+      ],
+      "size": [
+        5,
+        2
+      ],
+      "height": 2.7,
+      "spacing": 0.45,
+      "color": "#75604f",
+      "vines": true,
+      "leaf": "#8e9f80"
+    },
+    {
+      "id": "steps",
+      "type": "storefront_steps",
+      "position": [
+        -5,
+        0,
+        -1.3
+      ],
+      "size": [
+        3,
+        1
+      ],
+      "steps": 2,
+      "rise": 0.09,
+      "color": "#b7b0a0"
+    },
+    {
+      "id": "sample-shed",
+      "type": "storefront_shelter",
+      "position": [
+        -26,
+        0,
+        9
+      ],
+      "rotation": 10,
+      "size": [
+        13,
+        5,
+        11
+      ],
+      "steel": "#7b857c",
+      "postSpacing": 4,
+      "postWidth": 0.17,
+      "braces": true,
+      "trusses": false,
+      "floor": {
+        "height": 0.1,
+        "color": "#a3a798"
+      },
+      "roof": {
+        "kind": "shed",
+        "rise": 1,
+        "pitch": 0.22,
+        "ribWidth": 0.025,
+        "ribDepth": 0.03,
+        "thickness": 0.09,
+        "overhang": 0.4,
+        "color": "#8f988d",
+        "lineColor": "#adb3a4",
+        "fasciaColor": "#7d8278"
+      }
+    },
+    {
+      "id": "sample-stilts",
+      "type": "storefront_stilt_house",
+      "position": [
+        -26,
+        0,
+        -20
+      ],
+      "size": [
+        10,
+        5.5,
+        7
+      ],
+      "stiltHeight": 2.1,
+      "bays": 3,
+      "plankWidth": 0.22,
+      "windowWidth": 1.5,
+      "windowHeight": 1.7,
+      "wood": "#896e55",
+      "trim": "#b19675",
+      "glass": "#697265",
+      "joint": "#a88b6b",
+      "balcony": {
+        "depth": 1.5,
+        "railSpacing": 0.3,
+        "jars": 11,
+        "jarHeight": 0.6,
+        "jarColor": "#9c825f"
+      },
+      "roof": {
+        "kind": "gable",
+        "rise": 1.5,
+        "overhang": 0.65,
+        "pitch": 0.24
+      }
+    },
+    {
+      "id": "sample-jars",
+      "type": "storefront_jars",
+      "position": [
+        -20,
+        0,
+        -10
+      ],
+      "color": "#a08866",
+      "colors": [
+        "#a18b69",
+        "#8e7858"
+      ],
+      "rimColor": "#b49a76",
+      "entries": [
+        [
+          -2,
+          0,
+          1,
+          1.5,
+          0.55
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          0.35
+        ]
+      ],
+      "shelf": {
+        "size": [
+          5,
+          2.8,
+          0.8
+        ],
+        "levels": 3,
+        "columns": 8,
+        "base": 0.1,
+        "jarHeight": 0.7,
+        "jarRadius": 0.21,
+        "color": "#7d6b52"
+      }
+    },
+    {
+      "id": "sample-pavilion",
+      "type": "storefront_pavilion",
+      "position": [
+        24,
+        0,
+        -23
+      ],
+      "size": [
+        4.5,
+        3,
+        3
+      ],
+      "wood": "#84735a",
+      "floorY": 0.12,
+      "floorColor": "#969b8b",
+      "roof": {
+        "kind": "hip",
+        "material": "thatch",
+        "rise": 1.5,
+        "overhang": 0.6,
+        "pitch": 0.1,
+        "fringe": 0.22,
+        "color": "#a59b7e",
+        "lineColor": "#bbaf91"
+      }
+    },
+    {
+      "id": "sample-figures",
+      "type": "storefront_figures",
+      "position": [
+        20,
+        0,
+        -15
+      ],
+      "figures": [
+        [
+          -1,
+          0,
+          1.6,
+          0
+        ],
+        [
+          1,
+          0,
+          1.8,
+          90
+        ]
+      ],
+      "color": "#988061",
+      "faceColor": "#b29a75"
+    },
+    {
+      "id": "sample-mushroom",
+      "type": "storefront_mushroom_stair",
+      "position": [
+        26,
+        0,
+        -12
+      ],
+      "radius": 1.7,
+      "height": 3,
+      "steps": 18,
+      "turn": 250,
+      "startAngle": 25,
+      "stairWidth": 0.65,
+      "color": "#b4a374",
+      "ribColor": "#a38f61"
+    },
+    {
+      "id": "sample-rockery",
+      "type": "storefront_rockery",
+      "position": [
+        -22,
+        0,
+        28
+      ],
+      "size": [
+        9,
+        8
+      ],
+      "height": 3.5,
+      "tiers": 5,
+      "tierRocks": true,
+      "tierRockScale": 1.1,
+      "fallWidth": 2,
+      "pool": [
+        5,
+        3
+      ],
+      "boulders": 30,
+      "ferns": 30,
+      "fernScale": 1.1,
+      "seed": 9,
+      "color": "#989d8f",
+      "waterColor": "#aabeb1",
+      "leaf": "#889b7d"
+    },
+    {
+      "id": "sample-rope",
+      "type": "storefront_rope_bridge",
+      "position": [
+        -9,
+        0,
+        27
+      ],
+      "rotation": 90,
+      "size": [
+        2.4,
+        9
+      ],
+      "height": 0.9,
+      "sag": 0.3,
+      "plankWidth": 0.2,
+      "railHeight": 0.95,
+      "postSpacing": 2,
+      "ropeRadius": 0.027,
+      "color": "#9d8e76",
+      "ropeColor": "#93947e"
+    },
+    {
+      "id": "sample-hall",
+      "type": "storefront_dining_hall",
+      "position": [
+        25,
+        0,
+        9
+      ],
+      "size": [
+        7,
+        3.5,
+        21
+      ],
+      "rotation": 5,
+      "postSpacing": 3.5,
+      "postWidth": 0.16,
+      "braces": true,
+      "trusses": true,
+      "floorY": 0.12,
+      "floorColor": "#b5a795",
+      "wood": "#8c795f",
+      "tables": [
+        [
+          -1.8,
+          -8
+        ],
+        [
+          1.8,
+          -8
+        ],
+        [
+          -1.8,
+          -4
+        ],
+        [
+          1.8,
+          -4
+        ],
+        [
+          -1.8,
+          0
+        ],
+        [
+          1.8,
+          0
+        ],
+        [
+          -1.8,
+          4
+        ],
+        [
+          1.8,
+          4
+        ],
+        [
+          -1.8,
+          8
+        ],
+        [
+          1.8,
+          8
+        ]
+      ],
+      "roof": {
+        "kind": "gable",
+        "ridgeAxis": "z",
+        "rise": 1,
+        "pitch": 0.24,
+        "overhang": 0.4
+      }
+    },
+    {
+      "id": "sample-curves",
+      "type": "storefront_garden",
+      "position": [
+        8,
+        0,
+        28
+      ],
+      "size": [
+        11,
+        7
+      ],
+      "shape": "kidney",
+      "kind": "lawn",
+      "border": true,
+      "borderRadius": 0.065,
+      "borderColor": "#c0b79e"
+    },
+    {
+      "id": "sample-outline",
+      "type": "storefront_garden",
+      "position": [
+        24,
+        0,
+        29
+      ],
+      "size": [
+        10,
+        6
+      ],
+      "outline": [
+        [
+          -5,
+          0
+        ],
+        [
+          -3,
+          -3
+        ],
+        [
+          2,
+          -2.5
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          -3,
+          2
+        ]
+      ],
+      "density": 5,
+      "flowers": false,
+      "seed": 9
+    },
+    {
+      "id": "sample-aged",
+      "type": "storefront_grove",
+      "position": [
+        5,
+        0,
+        29
+      ],
+      "kind": "aged",
+      "trees": [
+        [
+          -2,
+          0,
+          9
+        ],
+        [
+          2,
+          1,
+          8
+        ]
+      ],
+      "trunkRadius": 0.025,
+      "crownDensity": 0.2,
+      "seed": 11,
+      "understory": false
+    },
+    {
+      "id": "sample-stone",
+      "type": "storefront",
+      "position": [
+        0,
+        0,
+        -28
+      ],
+      "size": [
+        10,
+        7,
+        8
+      ],
+      "storeys": 2,
+      "facade": {
+        "kind": "rectangular",
+        "bays": 3,
+        "openingWidth": 1.4,
+        "openingHeight": 2.1
+      },
+      "cladding": {
+        "kind": "stone",
+        "course": 0.28,
+        "width": 0.6,
+        "joint": "#c4c1af",
+        "color": "#aba997",
+        "seed": 3
+      },
+      "sideWindows": [
+        [
+          1,
+          -1,
+          4.8,
+          1.2,
+          1.7
+        ]
+      ],
+      "roof": {
+        "kind": "gable",
+        "ridgeAxis": "z",
+        "rise": 2.8
+      }
+    },
+    {
+      "id": "sample-open-stairs",
+      "type": "storefront_steps",
+      "position": [
+        7,
+        0,
+        -26
+      ],
+      "size": [
+        1.8,
+        6
+      ],
+      "steps": 19,
+      "rise": 0.18,
+      "openRisers": true,
+      "color": "#8e7b63",
+      "rail": {
+        "height": 0.95,
+        "spacing": 0.6,
+        "color": "#806e57"
+      }
+    }
+  ],
+  "hotspots": [
+    {
+      "id": "outside",
+      "title": "The shop",
+      "caption": "A reusable storefront.",
+      "anchor": [
+        -5,
+        3,
+        -3
+      ],
+      "camera": [
+        20,
+        22,
+        30
+      ],
+      "target": [
+        -5,
+        2,
+        -8
+      ],
+      "bounds": [
+        14,
+        6,
+        12
+      ],
+      "subjects": [
+        "sample-shop"
+      ],
+      "cutaway": "sample-shop",
+      "insideView": "inside",
+      "photos": []
+    },
+    {
+      "id": "inside",
+      "title": "Inside",
+      "caption": "A quiet counter.",
+      "interior": true,
+      "building": "sample-shop",
+      "anchor": [
+        -5,
+        1.78,
+        -5.5
+      ],
+      "camera": [
+        -5,
+        1.78,
+        -5.5
+      ],
+      "target": [
+        -5,
+        1.7,
+        -10
+      ],
+      "photos": []
+    }
+  ],
+  "route": []
+}

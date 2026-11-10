@@ -1,0 +1,646 @@
+{
+  "name": "Mẫu kit nhà thờ",
+  "tourTitle": "Một vòng thư viện nhà thờ",
+  "tourCaption": "Ví dụ tham số, không đại diện địa điểm thật.",
+  "location": "Ví dụ · Đà Lạt",
+  "kits": [
+    "church"
+  ],
+  "site": {
+    "width": 110,
+    "depth": 102,
+    "centerZ": -3,
+    "overviewAzimuth": 32,
+    "overviewPolar": 64,
+    "frameFill": 0.83,
+    "hill": {
+      "profile": [
+        [
+          100,
+          0
+        ],
+        [
+          -100,
+          0
+        ]
+      ],
+      "undulation": 0
+    }
+  },
+  "objects": [
+    {
+      "id": "ground",
+      "type": "parish_ground",
+      "position": [
+        0,
+        0,
+        -3
+      ],
+      "size": [
+        108,
+        100
+      ]
+    },
+    {
+      "id": "cream-chapel",
+      "type": "church_gabled",
+      "position": [
+        -23,
+        0,
+        2
+      ],
+      "size": [
+        16,
+        28
+      ],
+      "eaveHeight": 3,
+      "ridgeHeight": 19,
+      "baseHeight": 1.1,
+      "wallColor": "#e6dfcf",
+      "roofColor": "#d9d4c3",
+      "roofEdgeColor": "#b28d76",
+      "roofCourseColor": "#bdb5a3",
+      "sideBands": [
+        {
+          "from": 0,
+          "to": 1.1,
+          "color": "#b4b1a2"
+        },
+        {
+          "from": 1.1,
+          "to": 3,
+          "color": "#e6dfcf"
+        }
+      ],
+      "sideWindows": {
+        "count": 7,
+        "y": 1.2,
+        "width": 1,
+        "height": 1.6
+      },
+      "facade": {
+        "arches": [
+          {
+            "x": -4.1,
+            "y": 1.1,
+            "width": 2.7,
+            "height": 8,
+            "doorHeight": 2.8,
+            "trimWidth": 0.2
+          },
+          {
+            "x": 0,
+            "y": 1.1,
+            "width": 3.7,
+            "height": 12,
+            "doorHeight": 3.5,
+            "glassColor": "#98a7a0"
+          },
+          {
+            "x": 4.1,
+            "y": 1.1,
+            "width": 2.7,
+            "height": 8,
+            "doorHeight": 2.8
+          }
+        ],
+        "rose": {
+          "y": 16,
+          "radius": 0.45,
+          "petals": 6
+        }
+      },
+      "rear": {
+        "wallColor": "#d6d1bf",
+        "cross": false
+      }
+    },
+    {
+      "id": "cream-court",
+      "type": "church_forecourt",
+      "position": [
+        -23,
+        0,
+        23
+      ],
+      "size": [
+        21,
+        14
+      ],
+      "podium": {
+        "width": 17,
+        "depth": 3,
+        "height": 1.1
+      },
+      "stairs": {
+        "width": 17,
+        "steps": 7,
+        "depth": 3
+      },
+      "pattern": {
+        "spacing": 1,
+        "color": "#bca99b"
+      }
+    },
+    {
+      "id": "pink-chapel",
+      "type": "church_gabled",
+      "position": [
+        8,
+        0,
+        2
+      ],
+      "size": [
+        16,
+        28
+      ],
+      "eaveHeight": 6,
+      "ridgeHeight": 20,
+      "wallColor": "#caa49c",
+      "roofColor": "#7e7a70",
+      "roofEdgeColor": "#b18b7a",
+      "roofCourseColor": "#a29886",
+      "sideBands": [
+        {
+          "from": 0,
+          "to": 3,
+          "color": "#b1ae9c"
+        },
+        {
+          "from": 3,
+          "to": 6,
+          "color": "#caa49c"
+        }
+      ],
+      "sideWindows": {
+        "count": 6,
+        "y": 3.5,
+        "height": 2
+      },
+      "buttresses": {
+        "count": 6,
+        "height": 5.7,
+        "width": 0.7,
+        "projection": 1.2
+      },
+      "dormers": {
+        "count": 4,
+        "width": 1.9,
+        "height": 1.3,
+        "projection": 1.5
+      },
+      "facade": {
+        "wallColor": "#caa49c",
+        "bands": [
+          {
+            "from": 0,
+            "to": 6,
+            "color": "#ad7e73"
+          }
+        ],
+        "rose": {
+          "y": 15.8,
+          "radius": 1.1,
+          "petals": 10
+        },
+        "lancets": {
+          "centres": [
+            -5,
+            5
+          ],
+          "y": 6,
+          "count": 3,
+          "width": 0.4,
+          "height": 1.6,
+          "spacing": 0.7
+        },
+        "arches": [
+          {
+            "x": 0,
+            "y": 4.5,
+            "width": 3.5,
+            "height": 5,
+            "doorHeight": 2.4,
+            "leaded": false,
+            "glassColor": "#89766c"
+          }
+        ],
+        "balcony": {
+          "y": 4.5,
+          "width": 4,
+          "depth": 1.8,
+          "doorWidth": 1.2,
+          "doorHeight": 2.5,
+          "color": "#b38b81"
+        },
+        "cross": {
+          "height": 0.9,
+          "arm": 0.55
+        }
+      },
+      "interior": {
+        "kit": "church_nave",
+        "entry": [8, 1.7, 15.6],
+        "approach": [8, 1.7, 20],
+        "pews": {"rows": 9, "startZ": 8, "spacing": 1.3, "width": 5.3, "aisleWidth": 1.8},
+        "altar": {"z": -9, "width": 3, "crucifixX": 0},
+        "timber": {"trussSpacing": 2.5, "tieEvery": 3, "tieHeights": [8, 13], "boardSpacing": 0.24},
+        "sanctuary": {"width": 11, "height": 11.5, "z": -13.3, "color": "#ded5b8"},
+        "gallery": {"height": 4.5, "depth": 2.6, "color": "#e6ddc9"},
+        "lights": {"altar": [8, 4, -7], "fill": [8, 6, 9]}
+      }
+    },
+    {
+      "id": "pink-stair-left",
+      "type": "church_stairs",
+      "position": [
+        8,
+        0,
+        2
+      ],
+      "points": [
+        [
+          -9.6,
+          18
+        ],
+        [
+          -8.5,
+          15.1
+        ],
+        [
+          -2,
+          15.1
+        ]
+      ],
+      "width": 1.35,
+      "height": 4.5,
+      "steps": 28,
+      "railHeight": 0.8,
+      "color": "#ad7e6d",
+      "railColor": "#b18a7e",
+      "capColor": "#e6dfcf"
+    },
+    {
+      "id": "pink-stair-right",
+      "type": "church_stairs",
+      "position": [
+        8,
+        0,
+        2
+      ],
+      "points": [
+        [
+          9.6,
+          18
+        ],
+        [
+          8.5,
+          15.1
+        ],
+        [
+          2,
+          15.1
+        ]
+      ],
+      "width": 1.35,
+      "height": 4.5,
+      "steps": 28,
+      "color": "#ad7e6d",
+      "railColor": "#b18a7e"
+    },
+    {
+      "id": "parish-wing",
+      "type": "parish_arcade",
+      "position": [
+        -20,
+        0,
+        -33
+      ],
+      "rotation": 90,
+      "size": [
+        10,
+        42
+      ],
+      "storeys": 3,
+      "storeyHeight": 3.5,
+      "bays": 8,
+      "wallColor": "#dccaac",
+      "trimColor": "#e8e0cc",
+      "roofColor": "#a79987",
+      "roofRise": 2.8,
+      "roofGables": 8,
+      "gableRise": 2,
+      "externalStair": {
+        "side": -1,
+        "z": 17,
+        "width": 1.5,
+        "steps": 24
+      }
+    },
+    {
+      "id": "convent",
+      "type": "parish_arcade",
+      "position": [
+        26,
+        0,
+        -31
+      ],
+      "size": [
+        10,
+        32
+      ],
+      "storeys": 4,
+      "storeyHeight": 3,
+      "bays": 7,
+      "veranda": false,
+      "windowStyle": "rectangular",
+      "wallColor": "#c7a79b",
+      "shutterColor": "#777d70",
+      "roofColor": "#887c6d",
+      "roofRise": 3.4,
+      "dormers": {
+        "count": 7,
+        "width": 1.8,
+        "height": 1.3,
+        "projection": 1.7
+      },
+      "porch": {
+        "side": 1,
+        "width": 4,
+        "height": 3.7
+      }
+    },
+    {
+      "id": "standalone-gothic-front",
+      "type": "church_facade",
+      "position": [
+        41,
+        0,
+        0
+      ],
+      "rotation": -20,
+      "width": 10,
+      "eaveHeight": 5,
+      "ridgeHeight": 14,
+      "wallColor": "#d2cbbb",
+      "bands": [
+        {
+          "from": 0,
+          "to": 2,
+          "color": "#a6aa9c"
+        }
+      ],
+      "arches": [
+        {
+          "x": 0,
+          "y": 0.2,
+          "width": 2.8,
+          "height": 7,
+          "doorHeight": 2.6
+        }
+      ],
+      "rose": {
+        "y": 10.8,
+        "radius": 0.7
+      }
+    },
+    {
+      "id": "ring-shrine",
+      "type": "church_shrine",
+      "position": [
+        33,
+        0,
+        28
+      ],
+      "pavingRadius": 3.8,
+      "plinthHeight": 0.85,
+      "statueScale": 1.6,
+      "ring": {
+        "width": 3.5,
+        "height": 6.3,
+        "thickness": 0.24,
+        "depth": 0.22,
+        "bottom": 0.2,
+        "z": -0.45,
+        "lineColor": "#81938a"
+      }
+    },
+    {
+      "id": "circle-statue",
+      "type": "church_shrine",
+      "position": [
+        -2,
+        0,
+        32
+      ],
+      "pavingRadius": 3.5,
+      "plinthHeight": 1.3,
+      "statueScale": 1.7,
+      "pose": "open",
+      "halo": true,
+      "ring": false
+    },
+    {
+      "id": "grotto",
+      "type": "marian_grotto",
+      "position": [
+        45,
+        0,
+        30
+      ]
+    },
+    {
+      "id": "timber-color-sample",
+      "type": "church_aframe",
+      "position": [
+        -43,
+        0,
+        -5
+      ],
+      "size": [
+        9,
+        15
+      ],
+      "roofColor": "#a9aaa0",
+      "porchRoofColor": "#c6c1b1",
+      "gable": {
+        "openings": [],
+        "lattice": false
+      }
+    },
+    {
+      "id": "route-paving",
+      "type": "parish_walkway",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "followRoute": true,
+      "width": 3
+    },
+    {
+      "id": "ring-flowers",
+      "type": "parish_bed",
+      "position": [
+        33,
+        0,
+        34
+      ],
+      "size": [
+        9,
+        2.5
+      ],
+      "border": false,
+      "shrubs": true
+    }
+  ],
+  "hotspots": [
+    {
+      "id": "three-arches",
+      "title": "Ba vòm nhọn",
+      "caption": "Mái kem, kính trên cửa và sân hoa văn.",
+      "anchor": [
+        -23,
+        8,
+        16
+      ],
+      "camera": [
+        -32,
+        18,
+        50
+      ],
+      "target": [
+        -23,
+        8,
+        13
+      ],
+      "bounds": [
+        22,
+        22,
+        20
+      ],
+      "subjects": [
+        "cream-chapel",
+        "cream-court"
+      ],
+      "walk": [
+        -23,
+        32
+      ],
+      "photos": []
+    },
+    {
+      "id": "pink-front",
+      "cutaway": "pink-chapel",
+      "insideView": "pink-inside",
+      "title": "Đầu hồi hai màu",
+      "caption": "Ô hoa hồng, ban công và hai thang hẹp.",
+      "anchor": [
+        8,
+        10,
+        16
+      ],
+      "camera": [
+        24,
+        20,
+        54
+      ],
+      "target": [
+        8,
+        9,
+        14
+      ],
+      "bounds": [
+        24,
+        23,
+        20
+      ],
+      "subjects": [
+        "pink-chapel",
+        "pink-stair-left",
+        "pink-stair-right"
+      ],
+      "walk": [
+        8,
+        32
+      ],
+      "photos": []
+    },
+    {
+      "id": "pink-inside",
+      "title": "Trong nhà nguyện mẫu",
+      "caption": "Trần gỗ, hậu cung nhọn và gác cửa vào theo JSON minh họa.",
+      "interior": true,
+      "building": "pink-chapel",
+      "anchor": [8, 2, 15],
+      "camera": [8, 1.7, 14],
+      "target": [8, 3.5, -7],
+      "bounds": [16, 20, 28],
+      "photos": []
+    },
+    {
+      "id": "shrine",
+      "title": "Vòng oval đứng",
+      "caption": "Tượng trên bệ giữa sân lát tròn.",
+      "anchor": [
+        33,
+        3,
+        28
+      ],
+      "camera": [
+        35,
+        10,
+        43
+      ],
+      "target": [
+        33,
+        3,
+        28
+      ],
+      "bounds": [
+        9,
+        8,
+        9
+      ],
+      "subjects": [
+        "ring-shrine"
+      ],
+      "walk": [
+        33,
+        36
+      ],
+      "photos": []
+    }
+  ],
+  "route": [
+    [
+      [
+        -23,
+        32
+      ],
+      [
+        -12,
+        36
+      ],
+      [
+        8,
+        32
+      ]
+    ],
+    [
+      [
+        8,
+        32
+      ],
+      [
+        20,
+        37
+      ],
+      [
+        33,
+        36
+      ]
+    ]
+  ]
+}

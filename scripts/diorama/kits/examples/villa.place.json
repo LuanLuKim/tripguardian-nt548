@@ -1,0 +1,64 @@
+{
+  "name": "Mẫu kit villa mở rộng",
+  "tourTitle": "Một vòng bộ mẫu villa",
+  "tourCaption": "Ví dụ tham số; không đại diện địa điểm thật.",
+  "location": "Ví dụ",
+  "kits": ["villa"],
+  "site": {
+    "width": 112, "depth": 110, "centerZ": 0, "frameFill": 0.82,
+    "overviewAzimuth": 25, "overviewPolar": 72,
+    "overviewSubjects": ["hotel", "cluster", "lake", "pool", "court"],
+    "hill": {"profile": [[60,4],[40,4],[10,0.15],[-60,0.15]], "undulation": 0}
+  },
+  "objects": [
+    {
+      "id": "hotel", "type": "villa_hotel", "role": "main", "position": [-22,0,-17], "rotation": 0,
+      "size": [28,15.2,14], "footprint": [28,14], "storeys": 4, "storeyHeight": 3.8,
+      "outline": [[-14,-7],[14,-7],[14,7],[-14,7]],
+      "wallColor": "#e9e6da", "trimColor": "#f0ecdf", "railColor": "#657065",
+      "facade": {"frontEdges": [2], "bayWidth": 3.5, "windowWidth": 1.8, "windowHeight": 2.45, "pilasters": true, "balconies": true, "awnings": true, "awningColor": "#a46960"},
+      "roof": {"kind": "mansard", "rise": 3.6, "inset": 1.7, "color": "#68716c", "seamSpacing": 0.7, "seamColor": "#92998e", "capSeams": true, "capSeamSpacing": 1.1, "capSeamColor": "#81897f", "dormerEdges": [0,2], "dormerSpacing": 4.7, "dormerCount": 5, "dormerWidth": 1.55, "dormerHeight": 1.8},
+      "porch": {"edge": 2, "at": 0.5, "width": 7, "depth": 3.7, "height": 3.6, "text": "VILLA"},
+      "cutaway": {"lift": 8},
+      "interior": {
+        "kit": "villa_hotel_lounge", "size": [12,3.8,12], "offset": [0,0,1], "rotation": 0,
+        "doorWidth": 2.8, "doorHeight": 3, "floorY": 0.33,
+        "entry": [-22,1.93,-8.5], "approach": [-22,1.93,-5], "safeApproach": true,
+        "boundsCenter": [-22,0,-16], "boundsDepth": 12, "dimmingSize": [34,22],
+        "wallColor": "#e7e0d0", "timberColor": "#786b57", "trimColor": "#f0e8d7", "upholsteryColor": "#d9cfb8", "rugColor": "#b29a8b",
+        "windows": [-3.4,1.2],
+        "seating": [{"position": [-2.8,0,1], "chairs": 3, "angles": [0.4,2.4,4.4], "tableRadius": 0.6, "tableStyle": "shelf", "rug": [3.6,3.3], "rugPattern": true}, {"position": [2.8,0,1], "chairs": 3, "tableStyle": "pedestal", "rugPattern": false}],
+        "piano": {"position": [-3.8,0,-2.7], "rotation": 2.3, "color": "#41443f", "lidAngle": 0.58},
+        "bar": {"position": [1,0,-5.2], "width": 7.2},
+        "lights": {"altar": [-22,3.3,-20], "fill": [-22,3.3,-13]}
+      }
+    },
+    {
+      "id": "cluster", "type": "villa_cluster", "position": [18,0,25], "rotation": 0.06,
+      "count": 4, "seed": 17, "area": [34,28],
+      "ids": ["sample-01","sample-02","sample-03","sample-04"], "names": ["VILLA 01","VILLA 02","VILLA 03","VILLA 04"],
+      "cottage": {"footprint": [7.5,10], "wallHeight": 2.7, "wallColor": "#ece9de", "trimColor": "#e4e0d1", "stoneColor": "#939084", "roof": {"kind": "aframe", "rise": 6.6, "color": "#6a716e", "overhang": 0.38, "courseSpacing": 0.42}, "chimney": {"height": 10, "x": 3.2, "z": -2, "width": 0.85, "depth": 1}, "stoneWall": {"side": 1, "color": "#939084"}},
+      "path": {"length": 5, "width": 1.15, "stepLength": 0.6, "gap": 0.25, "color": "#c5c2af"},
+      "sign": {"prefix": "VILLA", "x": 4.2, "z": 8, "rotation": -0.2}
+    },
+    {"id": "explicit", "type": "villa_cluster", "position": [-31,0,27], "positions": [[-7,0,0.05],[7,2,-0.1]], "cottage": {"footprint": [7,9], "roof": {"kind": "steep_gable", "height": 6.3}}, "path": {"start": [0,4.9], "end": [1,11]}, "sign": false},
+    {"id": "pitch-sample", "type": "villa_cottage", "position": [43,0,23], "footprint": [6,8], "wallHeight": 2.4, "roof": {"pitch": 62, "color": "#737c74"}, "chimney": false, "stoneWall": false, "sign": {"text": "MẪU"}},
+    {"id": "lake", "type": "villa_water", "position": [26,0.26,-29], "size": [42,26], "outline": [[-20,-10],[-8,-14],[14,-12],[21,-4],[17,12],[-10,11],[-21,4]], "level": 0, "color": "#a2b6ad", "shoreline": true, "shoreWidth": 0.22, "shoreColor": "#b5b5a0", "ripples": 32, "seed": 3, "rippleColor": "#c6d2c5"},
+    {"id": "terrace", "type": "villa_terrace", "position": [25,0.8,-11], "size": [18,10], "thickness": 0.24, "color": "#b4a28b", "plankWidth": 0.38, "tables": [[-6,0],[0,0],[6,0]], "chairs": 4, "furnitureColor": "#817967", "tableColor": "#d1c9b6", "umbrellas": true, "umbrellaRadius": 1.9, "umbrellaHeight": 2.8, "umbrellaColor": "#e7e2cf", "rails": true, "supports": true, "supportSpacing": 4, "supportColor": "#9f9d8d"},
+    {"id": "pool", "type": "villa_pool", "position": [4,0.8,-11], "size": [15,8], "deck": 2, "depth": 0.8, "color": "#9bbab6", "deckColor": "#b7a48c", "infinitySide": -1},
+    {"id": "court", "type": "villa_court", "position": [-23,0,6], "size": [23,12], "tileSize": 1.1, "color": "#cfcec3", "accentColor": "#aeb3aa", "tables": [[-7,0],[7,0]], "umbrellas": false, "chairs": 3, "bonsai": {"position": [0,0,0], "height": 3.8, "spread": 5, "potRadius": 1, "potColor": "#777e70"}},
+    {"id": "name-wall", "type": "villa_sign_wall", "position": [-22,0,-40], "rotation": 3.141592653589793, "width": 8, "height": 1.25, "curve": 0.85, "depth": 0.45, "color": "#d0cdbb", "crown": true, "lines": ["VILLA","BỘ MẪU"], "tabletColor": "#566257", "textColor": "#dbd5ba"},
+    {"id": "walk", "type": "villa_drive", "width": 2.3, "surface": "stone", "linear": false, "points": [[-43,0,-34],[-44,0,-16],[-40,0,1],[-22,0,14],[-4,0,11],[0,0,4],[22,0,2],[42,0,12]]},
+    {"id": "hydrangea", "type": "villa_garden", "position": [-22,0,-36], "size": [26,0,3], "shape": "organic", "hydrangeas": 50, "shrubs": 14},
+    {"id": "border", "type": "villa_garden", "position": [-49,0,4], "size": [3,0,70], "shape": "rectangle", "formal": true, "planting": {"layout": "drift", "spacing": 0.46}},
+    {"id": "pines", "type": "villa_grove", "position": [0,0,0], "understory": true, "trees": [[-46,-29,11],[-45,27,11],[43,44,12],[-8,43,10],[44,-42,10]]},
+    {"id": "furniture", "type": "villa_furniture", "position": [0,0,0], "benches": [[-43,0,1.57],[-4,7,0]], "lamps": [[-44,-10],[-32,12],[24,3]]}
+  ],
+  "hotspots": [
+    {"id": "hotel-front", "title": "Khách sạn Pháp", "caption": "Mansard, dormer, pilaster và ban công Pháp.", "anchor": [-22,8,-10], "camera": [5,26,30], "target": [-22,8,-17], "subjects": ["hotel"], "fill": 0.76},
+    {"id": "porch", "title": "Mở mái sảnh", "caption": "Ngoài mở mái, vào trong đóng lại.", "anchor": [-22,3,-8], "camera": [-28,10,6], "target": [-22,3,-10], "subjects": ["hotel-entrance"], "cutaway": "hotel", "insideView": "lounge"},
+    {"id": "lounge", "title": "Bên trong sảnh", "caption": "Piano, bar gương và bàn ghế tỷ lệ thật.", "interior": true, "building": "hotel", "anchor": [-22,1.93,-16], "camera": [-22,1.93,-12], "target": [-22,1.93,-20]},
+    {"id": "cottages", "title": "Cottage trên dốc", "caption": "Seed xác định, cao độ bám đồi.", "anchor": [18,6,25], "camera": [43,23,54], "target": [18,6,25], "subjects": ["cluster"], "fill": 0.75}
+  ],
+  "route": []
+}

@@ -3,16 +3,16 @@
 #   scripts/models_ctl.sh start [clef|gemma|gateway|all]   (default all)
 #   scripts/models_ctl.sh stop  [clef|gemma|gateway|all]
 #   scripts/models_ctl.sh status
-# clef = one nf4 replica per "gpu:port" in CLEF_REPLICAS (default "0:30011": the team sees GPUs 0 and 1 only, since the
-# 2026-11-06 renumbering). Clef takes GPU 0 and nothing else; GPU 1 is kept for the prod harness (HARNESS_GPU in run.sh,
-# about 2.4 GiB), which a 10 GiB nf4 replica would not leave room for. Gateway :30000 balances the replicas.
+# clef = one nf4 replica per "gpu:port" in CLEF_REPLICAS (default "1:30011": the team sees GPUs 0 and 1 only, since the
+# 2026-11-06 renumbering). Clef takes GPU 1 and nothing else; GPU 0 holds the prod and dev harnesses (HARNESS_GPU in run.sh,
+# about 2.4-3.5 GiB each), which a 10 GiB nf4 replica would not leave room for (owner 2026-11-09). Gateway :30000 balances the replicas.
 # gemma is off since 2026-10-29 (shared GPUs); "all" = clef + gateway. Logs: logs/clef, logs/gemma.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 export HF_HOME="$ROOT/.cache/hf" TMPDIR="$ROOT/.cache/tmp"
 mkdir -p logs/clef logs/gemma "$TMPDIR"
-CLEF_REPLICAS="${CLEF_REPLICAS:-0:30011}"
+CLEF_REPLICAS="${CLEF_REPLICAS:-1:30011}"
 
 pattern() {
   # bracket trick: the pattern does not match this script's own command line

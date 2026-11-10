@@ -20,6 +20,7 @@
 - Không thêm thư mục mới ở gốc repo khi một thư mục có sẵn đã đúng loại.
 - Không giữ bản sao lưu trong repo (`.env.bak*`, `*.bak*`, `.prod_src.bak*`, file ghi hình): chuyển sang `archive-<ngày>/` trên NAS (`docs/OPERATIONS.md` §3).
 - Thứ không phải code (venv, cache, trọng số model) nằm ngoài repo; trên gpu156 là `tripguardian-store/`, repo chỉ giữ symlink.
+- Symlink `.venv`, `.venv-vllm`, `.cache` dùng chung cho mọi phiên và prod: không xóa, không trỏ sang chỗ khác (kể cả `~/.cache`), không thay bằng thư mục thật. Thiếu thì tạo lại đúng đích `tripguardian-store/<venv|venv-vllm|cache>` (`docs/OPERATIONS.md` §2). Cần cache riêng cho một lệnh thì đặt biến môi trường (`PLAYWRIGHT_BROWSERS_PATH`, `HF_HOME`, …) cho lệnh đó, không đụng symlink. Browser của Playwright ở `tripguardian-store/cache/ms-playwright`.
 
 ## 0.2 Thiết kế giao diện
 - Không dùng skill `baoyu-design` cho thiết kế của dự án này. Khi cần skill thiết kế UI, chỉ dùng `ui-ux-pro-max`.

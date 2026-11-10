@@ -5,13 +5,15 @@ Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô t�
 ## 1. Deploy
 
 ```sh
-./run.sh prod       # backup + migrate db → thumbnail → build web (build:prod) → SearXNG → 9router → harness :8769 → web/server.mjs :28899 → worker thông báo → tunnel → smoke test
+./run.sh prod       # backup + migrate db → thumbnail → build web (build:prod) → SearXNG → 9router → harness :8769 → web/server.mjs :28899 → worker thông báo → chờ harness warm-up → tunnel → smoke test
 ./run.sh prod-stop  # dừng tất cả (tunnel gồm cả), không đụng cron
 ```
 
+- Tunnel chỉ mở sau khi harness warm xong (dòng `Journey warmup:` trong `logs/run/harness.log`, khoảng 2 phút), để khách đầu tiên không trả giá nạp lạnh; quá `WARMUP_WAIT` giây (mặc định 300) thì mở tunnel luôn.
 - `prod` dừng dịch vụ cũ trước khi bật bản mới: lệnh bị ngắt giữa chừng để prod tắt. Chạy tách khỏi terminal (`nohup ./run.sh prod > logs/run/deploy.log 2>&1 &`) và đọc dòng smoke ở cuối log.
-- Biến môi trường: `SKIP_CLEF=1` không bật Clef tự host (Judge fail-open, guard quy tắc tắt); `HARNESS_GPU` (mặc định `1`) là GPU harness nạp embedder; `PUBLIC_PORT` (28899); `TUNNEL_TOKEN_FILE` (mặc định `~/.cloudflared/tripguardian.token`, không có file thì không có tunnel). Danh sách đầy đủ: đầu `run.sh`.
+- Biến môi trường: `SKIP_CLEF=1` không bật Clef tự host (Judge fail-open, guard quy tắc tắt); `HARNESS_GPU` (mặc định `0` trong `run.sh`) là GPU harness nạp embedder. Từ 09/11/2026 Clef chưa host (không đủ GPU) nên prod chạy `HARNESS_GPU=1`, harness dev ở GPU 0; khi Clef trở lại GPU 1 thì đưa prod về GPU 0; `PUBLIC_PORT` (28899); `TUNNEL_TOKEN_FILE` (mặc định `~/.cloudflared/tripguardian.token`, không có file thì không có tunnel). Danh sách đầy đủ: đầu `run.sh`.
 - **Prod chạy từ bản đông cứng `.prod_src/`**, không phải `src/`: `prod` chép `src/` → `.prod_src.new/`, kiểm import, dừng dịch vụ cũ, đổi tên rồi khởi động harness + worker thông báo với `PYTHONPATH=.prod_src`. Bản chép nằm cùng độ sâu với `src/` vì code tìm gốc repo bằng `Path(__file__).parents[N]`. Sửa `src/` (người hay agent, kể cả worker quá tải `spawn` nạp lại `planning` mỗi lượt) không vào prod tới lần deploy sau. Không sửa tay `.prod_src/`; nằm ngoài git.
+- **Chỉ `src/` được đông cứng; `config/` và `data/` prod đọc thẳng từ repo.** Sửa một file `config/*.yaml` có hiệu lực ở lần nạp kế của prod (worker quá tải nạp lại mỗi lượt, các tiến trình khác lúc khởi động lại), không đợi deploy. Mọi loader đều từ chối khóa lạ (`Settings(**raw)`, pydantic `extra="forbid"`), nên một khóa YAML mà `.prod_src/` chưa biết làm prod lỗi khi nạp. Tham số mới: đặt default trong code, chỉ ghi vào YAML sau khi đã deploy bản code biết khóa đó. Kiểm trước khi sửa config: `PYTHONPATH=.prod_src .venv/bin/python -c "from planning import settings; settings.load(settings.PATH)"` (tương tự cho module khác).
 - `web/server.mjs` chỉ phục vụ phần public: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media` (jpg), thumbnail `/media/thumb` (WebP) và proxy `/api/harness/*`, `/api/auth/*` (keep-alive); `/admin`, analytics, mọi `/api` khác và video trả 404. Cần Postgres đang chạy (`./run.sh db`).
 - Route hostname → cổng nằm trong dashboard Cloudflare của tunnel; `prod` in ra các route nhận được để thấy ngay khi token sai.
 - Tiến trình chạy bằng `nohup`; tiến trình chết giữa chừng không tự lên lại. Sau khi máy khởi động lại, cron `@reboot` (§4) chạy lại `prod`.
@@ -47,7 +49,7 @@ Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô t�
 `crontab -e` của tài khoản chạy prod; giữ các job khác, mỗi job một nhãn để gỡ riêng:
 
 ```cron
-@reboot sleep 120; cd /data/work/luanhh/local/tripguardian && SKIP_CLEF=1 PATH=$HOME/node/bin:/usr/local/bin:/usr/bin:/bin ./run.sh prod >> logs/run/reboot.log 2>&1 # tripguardian-reboot
+@reboot sleep 120; cd /data/work/luanhh/local/tripguardian && SKIP_CLEF=1 HARNESS_GPU=1 PATH=$HOME/node/bin:/usr/local/bin:/usr/bin:/bin ./run.sh prod >> logs/run/reboot.log 2>&1 # tripguardian-reboot
 * * * * * /usr/bin/python3 /data/work/luanhh/local/tripguardian/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
 */10 * * * * /data/work/luanhh/local/tripguardian/scripts/disk_guard.sh # tripguardian-disk-guard
 30 2 * * * /data/work/luanhh/local/tripguardian/scripts/pg_backup_nas.sh # tripguardian-pg-backup
@@ -78,5 +80,6 @@ Mỗi request giới hạn 15 giây; khóa file tránh chạy chồng. Log ghi g
 | Dấu hiệu | Xem trước |
 |---|---|
 | `:5433` từ chối kết nối, harness báo `PoolTimeout` | `df -h /data/work/luanhh/local`, `docker logs --tail 30 tripguardian-pg`, `logs/disk_guard.log` |
+| Sau reboot, `docker start tripguardian-pg` báo `error evaluating symlinks from mount source "/home/.../docker/volumes/..."`; `reboot.log` dừng ở `migrate FAILED` | Container lưu đường dẫn mount cũ từ trước khi đổi data-root. Dữ liệu nằm trong volume `tripguardian-pgdata`: `docker rm tripguardian-pg` (không `-v`), rồi `./run.sh db` tạo lại trên cùng volume, rồi chạy lại `prod` |
 | Prod tắt sau một lần deploy | `prod` bị ngắt giữa chừng (§1): chạy lại tách khỏi terminal |
 | Web báo bản tin Nhịp chưa làm mới | `logs/pulse_daily.log`, dòng `tripguardian-pulse` trong `crontab -l` |

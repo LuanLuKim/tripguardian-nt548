@@ -14,9 +14,9 @@
 # Env overrides: PYTHON (default .venv python, else python on PATH), PUBLIC_PORT (28899),
 #   SKIP_CLEF=1 (prod: do not start the self-hosted Clef; the Judge fails open),
 #   TUNNEL_TOKEN_FILE (default ~/.cloudflared/tripguardian.token; no file = no tunnel),
-#   HARNESS_GPU (default 1: the GPU the harness embeds on, corpus.index, about 2.4 GiB. The team has GPUs 0 and 1 only (renumbered
-#   by the admin 2026-11-06); GPU 1 is reserved for the harness and Clef takes GPU 0, so the two never share a card).
-# prod also starts the self-hosted Clef (scripts/models_ctl.sh: nf4 on GPU 0 + gateway :30000) when
+#   HARNESS_GPU (default 0: the GPU the harness embeds on, corpus.index, about 2.4 GiB. The team has GPUs 0 and 1 only (renumbered
+#   by the admin 2026-11-06); GPU 0 holds the prod and dev harnesses and Clef takes GPU 1 alone (owner 2026-11-09)).
+# prod also starts the self-hosted Clef (scripts/models_ctl.sh: nf4 on GPU 1 + gateway :30000) when
 #   .env points CLEF_BASE_URL at it; prod-stop leaves Clef running (offline jobs use it too): models_ctl.sh stop.
 cd "$(dirname "$0")" || exit 1
 export PYTHONIOENCODING=utf-8
@@ -44,7 +44,7 @@ web|5173|node web/node_modules/vite/bin/vite.js web --port 5173 --strictPort"
 # Production: only what the internet may reach (web/server.mjs keeps /admin and the review API private).
 # The harness never inherits a dev APP_BASE_URL / TG_TEST_LOGIN from this shell (it reads the public one from .env:
 # a dev value 403s every POST, test login must stay off); it gets one shared GPU for corpus.index (Trip looks and photos).
-HARNESS_GPU=${HARNESS_GPU:-1}
+HARNESS_GPU=${HARNESS_GPU:-0}
 PROD_SERVICES="harness|8769|env -u APP_BASE_URL -u TG_TEST_LOGIN CUDA_VISIBLE_DEVICES=$HARNESS_GPU $PYTHON -m harness serve --port 8769
 public|$PUBLIC_PORT|node web/server.mjs $PUBLIC_PORT"
 
@@ -298,6 +298,21 @@ swap_frozen_src() {
   export PYTHONPATH="$PWD/$PROD_SRC"
 }
 
+# The harness warms corpus releases and recent journeys in the background after its port opens (about 2 minutes,
+# harness.log is rewritten on every start). Opening the tunnel before that makes the first visitors pay the cold
+# Planning base / Decision reader (6-9 s each), so wait for the last warmup line; give up after WARMUP_WAIT seconds.
+warmup_wait() {
+  i=0
+  until grep -q 'Journey warmup:' "$RUN_DIR/harness.log" 2>/dev/null; do
+    i=$((i + 1))
+    if [ $i -ge "${WARMUP_WAIT:-300}" ]; then
+      echo "[harness] warmup not finished after ${WARMUP_WAIT:-300}s: opening the tunnel anyway"; return 0
+    fi
+    sleep 1
+  done
+  echo "[harness] warm ($(grep 'Journey warmup:' "$RUN_DIR/harness.log" | tail -n 1 | sed 's/.*Journey warmup: //'))"
+}
+
 prod() {
   if [ ! -f .env ]; then
     echo "Missing .env (copy .env.example and fill in keys)."
@@ -335,6 +350,7 @@ prod() {
   done || exit 1
   worker_stop >/dev/null
   worker_start
+  warmup_wait
   tunnel_start
   smoke
   echo ""

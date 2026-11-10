@@ -2,16 +2,17 @@
 //   viewer.html + viewer-<hash>.js   one shared viewer: scene code + every kit + three, no CDN
 //   places/<slug>.json               the data of each place in web/space3d/places.json (the approved list)
 //   index.json                       place id -> slug, what the place sheet reads to show the tab
-// The scene code and kits are authored under DIORAMA_DIR (logs/splat/diorama, docs/plans/DIORAMA_BATCH_HANDOFF.md);
+// The scene code and kits are authored under DIORAMA_DIR (scripts/diorama); place data lives in DIORAMA_DATA.
 // the page chrome is web/space3d/. Each PATCH below fails the build if the scene code stops matching it.
 // usage: node web/scripts/build_space3d.mjs
 import { createHash } from 'node:crypto'
+import { CODE, DATA } from '../../scripts/diorama/paths.mjs'
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { rolldown } from 'rolldown'
 
 const WEB = resolve(import.meta.dirname, '..')
-const SOURCE = resolve(process.env.DIORAMA_DIR ?? join(WEB, '../logs/splat/diorama'))
+const SOURCE = resolve(process.env.DIORAMA_DIR ?? CODE)
 const CHROME = join(WEB, 'space3d')
 const OUT = join(WEB, 'public/space3d')
 const THREE = join(SOURCE, 'vendor/node_modules/three') // the version the approved models were rendered with
@@ -29,9 +30,9 @@ const PATCH = [
   ['y>=135&&y<=innerHeight-135', 'y>=24&&y<=innerHeight-(current?24:72)'],
   ['`${index+1} / ${place.hotspots.length} · ${current.title}`', 'current.title'],
   ['$("tour-next").textContent=index===place.hotspots.length-1 ? "Xem toàn cảnh" : "Tiếp →";', 'tourStop(index,place.hotspots.length);'],
-  // The wheel drives the flight between two stops (web/space3d/scroll.js); a click still flies on the clock.
+  // The wheel drives the flight (or the walk) between two stops (web/space3d/scroll.js); a click still moves on the clock.
   ['function animate(now) {', () => `${readFileSync(join(CHROME, 'scroll.js'), 'utf8')}\nfunction animate(now) {`],
-  ['  if (flight) {\n    const progress = Math.min((now - flight.start) / 1400, 1),', '  scrollStep(now);\n  if (flight) {\n    const progress = flight.scrub ? flight.q : Math.min((now - flight.start) / 1400, 1),'],
+  [/ {2}if \(flight\) \{\n {4}const progress = Math\.min\(\(now - flight\.start\) \/ (1400|flight\.ms), 1\),/, '  scrollStep(now);\n  if (flight) {\n    const progress = flight.scrub ? flight.q : Math.min((now - flight.start) / $1, 1),'],
   ['window.__ready = true;', `window.__lowQuality = () => { gtao.enabled = false; renderer.setPixelRatio(1); composer.setPixelRatio(1); };
 window.__ready = true;
 sceneReady();`],
@@ -76,7 +77,7 @@ writeFileSync(join(OUT, 'viewer.html'), readFileSync(join(CHROME, 'viewer.html')
 
 const index = {}
 for (const { slug, id, source } of places) {
-  const place = JSON.parse(readFileSync(join(SOURCE, source), 'utf8'))
+  const place = JSON.parse(readFileSync(join(DATA, source), 'utf8'))
   delete place.evidence // working notes of the author, the viewer never reads them
   for (const spot of place.hotspots) delete spot.photos
   // Photos a model hangs on its walls (kits load 'photos/' + name): one folder per place, the names stay unique.
@@ -84,7 +85,7 @@ for (const { slug, id, source } of places) {
     const interior = building.interior
     if (!interior?.photoAssets) continue
     mkdirSync(join(OUT, 'photos', slug), { recursive: true })
-    for (const file of interior.photoAssets) copyFileSync(join(SOURCE, dirname(source), 'photos', file), join(OUT, 'photos', slug, file))
+    for (const file of interior.photoAssets) copyFileSync(join(DATA, dirname(source), 'photos', file), join(OUT, 'photos', slug, file))
     interior.photoAssets = interior.photoAssets.map((file) => `${slug}/${file}`)
   }
   writeFileSync(join(OUT, 'places', `${slug}.json`), JSON.stringify(place))

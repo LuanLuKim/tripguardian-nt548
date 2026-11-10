@@ -10,6 +10,16 @@ addEventListener('error', failed)
 addEventListener('unhandledrejection', failed)
 if (poster) document.documentElement.classList.add('is-poster')
 
+// ?host=full: the page is the whole window (the app's "Khám phá 3D" dive), so it makes room for the app's Back button and
+// hands Esc back to the app when there is no stop left to leave (on a stop, Esc still goes to the overview first).
+const full = search.get('host') === 'full'
+if (full) {
+  document.documentElement.classList.add('is-full')
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.documentElement.classList.contains('is-touring')) tell('space3d:back')
+  }, true)
+}
+
 async function loadPlace() {
   const slug = search.get('place') ?? ''
   if (!/^[a-z0-9-]+$/.test(slug)) throw new Error('bad place')

@@ -70,10 +70,10 @@ class PgStore(Store):
 
     def append_feedback(self, record: dict) -> None:
         with self.pool.connection() as conn:
-            conn.execute("INSERT INTO feedback (journey_id, user_id, at, scores, more_search, note) "
-                         "VALUES (%s, %s, %s, %s, %s, %s)",
+            conn.execute("INSERT INTO feedback (journey_id, user_id, at, scores, more_search, more_search_for, note) "
+                         "VALUES (%s, %s, %s, %s, %s, %s, %s)",
                          (record["journey"], record.get("user_id"), record["at"], Jsonb(record["scores"]),
-                          record["more_search"], record["note"]))
+                          record["more_search"], list(record.get("more_search_for") or []), record["note"]))
 
     def list_for(self, owner: str, limit: int = 50) -> list[str]:
         with self.pool.connection() as conn:

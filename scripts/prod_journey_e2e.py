@@ -202,7 +202,7 @@ def trace_summary(value, key=""):
 class Api:
     def __init__(self, case_id: str):
         self.case_id = case_id
-        self.c = httpx.Client(base_url=BASE_URL, timeout=httpx.Timeout(240, connect=10), headers={"Origin": ORIGIN})
+        self.c = httpx.Client(base_url=BASE_URL, timeout=httpx.Timeout(240, connect=10), headers={"Origin": ORIGIN, "X-TG-Synthetic": "e2e"})  # its journeys stay out of the analytics funnel
         self.sid = None
         self.rev = 0
         self.calls: list[dict] = []     # every request: path, status, secs, note

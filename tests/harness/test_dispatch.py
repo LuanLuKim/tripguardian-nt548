@@ -357,7 +357,12 @@ def test_feedback_is_validated_and_appended_beside_the_sessions(tmp_path, store_
     assert h.feedback(v["id"], {"scores": {"fit": 4}, "more_search": False, "note": " ok "}) == {"stored": True}
     lines = (tmp_path / "feedback.jsonl").read_text(encoding="utf-8").splitlines()
     assert json.loads(lines[0])["scores"] == {"fit": 4} and json.loads(lines[0])["note"] == "ok"
-    for bad in ({"scores": {"fit": 6}}, {"scores": {"fit": True}}, {"other": 1}, {"note": "x" * 1001}):
+    h.feedback(v["id"], {"more_search": True, "more_search_for": ["prices", "food", "food"]})
+    h.feedback(v["id"], {"more_search": False, "more_search_for": ["food"]})     # a "no" carries no search list
+    lines = (tmp_path / "feedback.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["more_search_for"] for line in lines[1:]] == [["food", "prices"], []]
+    for bad in ({"scores": {"fit": 6}}, {"scores": {"fit": True}}, {"other": 1}, {"note": "x" * 1001},
+                {"more_search": True, "more_search_for": ["spa"]}, {"more_search_for": "food"}):
         with pytest.raises(ValueError):
             h.feedback(v["id"], bad)
     with pytest.raises(KeyError):

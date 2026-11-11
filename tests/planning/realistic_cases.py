@@ -94,7 +94,9 @@ CASES = [
     # rhythm and time
     case("couple_slow_dawn", ["Săn mây Panorama Cầu Đất", "Coffee Em và Trịnh", "Chùa Linh Sơn", "Công Viên Yersin"],
          pace="slow", companions=["partner"], mobility="motorbike"),
-    case("worker_meeting", CENTRE_SIGHTS[:3] + ["Bánh Căn Nhỏ"], days=2,
+    # Three days, not two: the substitute lodging is ~70 min from the centre, so a last morning ending at 12:00 cannot
+    # hold the breakfast place, a sight and lunch (a real overload). The case is about the meeting, not a tight frame.
+    case("worker_meeting", CENTRE_SIGHTS[:3] + ["Bánh Căn Nhỏ"],
          busy=[{"day": 1, "start": "15:00", "end": "16:00", "kind": "work", "label": "Họp online", "where": "lodging"}]),
     case("night_bus_5am", CENTRE_SIGHTS[:4] + ["Bánh Căn Nhỏ"], days=2, starts={0: "05:00"}, entry=BUS,
          arrive={"at": "2026-11-06T05:00", "how": "bus"}),
@@ -103,8 +105,9 @@ CASES = [
     case("day_trip", ["Ga Đà Lạt", "Chợ đà lạt", "Bánh Căn Nhỏ"], days=1, starts={0: "08:00"}, ends={0: "20:00"}),
     case("seven_days", CENTRE_SIGHTS + FOOD + FAR + SWEET[:1], days=7, pace="slow"),
     # companions
-    case("family_kid_nap", ["Vườn Thú ZooDoo", "Vườn dâu Chào Đà Lạt", "Thung lũng Tình Yêu", "Ga Đà Lạt",
-                            "Bánh Căn Nhỏ", "Lẩu gà lá é-gà nướng lu 668"], companions=["kids", "partner"], people=4,
+    # No Thung lũng Tình Yêu: its reviews now say 3-5 hours and it closes at 17:00, which no nap day and no last morning
+    # holds (a real overload). The case is about the daily nap.
+    case("family_kid_nap", ["Vườn Thú ZooDoo", "Vườn dâu Chào Đà Lạt", "Ga Đà Lạt", "Bánh Căn Nhỏ", "Lẩu gà lá é-gà nướng lu 668"], companions=["kids", "partner"], people=4,
          busy=[{"day": None, "start": "12:30", "end": "14:00", "kind": "nap", "label": "Bé ngủ trưa", "where": "lodging"}],
          meals={"skip": [], "breakfast_at_lodging": False, "snacks": False, "shift_min": -30}),
     case("elderly_parents", ["Chùa Linh Sơn", "Ga Đà Lạt", "Công Viên Yersin", "Bánh Căn Nhỏ"], pace="slow",
@@ -135,8 +138,10 @@ CASES = [
          companions=["kids", "partner"], people=4, expect={"overload": True}),
     case("twenty_in_2", CENTRE_SIGHTS + FOOD + FAR + SWEET + ["Thung lũng Tình Yêu", "Fresh Zoo"], days=2,
          expect={"overload": True}),
-    case("short_by_40", CENTRE_SIGHTS + ["Thung lũng Tình Yêu", "Đường Hầm Điêu Khắc"], days=1, starts={0: "09:00"},
-         ends={0: "19:00"}, expect={"overload": True, "extend": True}),
+    # The centre sights alone in 09:00-17:00: short by under extend_max_min. With Thung lũng Tình Yêu (3-5 hours in its
+    # reviews) and the ~70 min road to the substitute lodging the day was 3 hours short, past any extension.
+    case("short_by_40", CENTRE_SIGHTS, days=1, starts={0: "09:00"}, ends={0: "17:00"},
+         expect={"overload": True, "extend": True}),
     case("must_go_kept", FAR + CENTRE_SIGHTS, days=1, must=["Săn mây Panorama Cầu Đất"], expect={"overload": True}),
     # missing data and weather
     # 3 days, not 2: with 2 the four places fit by ~30 min, and a popular-times figure crossing crowd_busy_pct (the

@@ -976,7 +976,11 @@ class Engine:
                 if card["id"] != state.chosen_variant:
                     neutral.order_override = {}
                     protected = set(state.locked) | set(state.assignment) | set(state.restored)
-                    neutral.plan_dropped = sorted(set(base.trip.by_place) - set(card["kept"]) - protected)
+                    # The card's own drops only: a place it could not fit (left_over) stays unplaced on that card, it
+                    # was not removed by anyone ("Bạn đã bỏ khỏi lịch" would be untrue).
+                    dropped = ({d["place_id"] for d in card["dropped"]} if "dropped" in card
+                               else set(base.trip.by_place) - set(card["kept"]))
+                    neutral.plan_dropped = sorted(dropped - protected)
                 trial = s.model_copy(update={"states": s.states[:s.position] + [neutral]})
                 results, ctxs = self._card_layout(base, trial, card["_results"])
                 rendered = self._variant_dict(base, trial, results, ctxs)

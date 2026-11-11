@@ -7,19 +7,22 @@ import { Page, useTitle } from '../ui/Shell'
 import { GuestNotice } from './Guest'
 
 const QS: [string, string][] = [['fit', 'Gợi ý có đúng gu của bạn?'], ['clear', 'Lý do dễ hiểu?'], ['realistic', 'Lịch có thực tế?'], ['confident', 'Bạn tự tin hơn về chuyến đi?']]
+// Keys of harness.dispatch.FEEDBACK_SEARCH_FOR: what a user who still searched elsewhere was looking for.
+const SEARCH_FOR: [string, string][] = [['lodging', 'Chỗ ở'], ['food', 'Quán ăn'], ['sights', 'Nơi đi chơi'], ['transport', 'Đường đi, xe cộ'], ['prices', 'Giá cả'], ['hours', 'Giờ mở cửa'], ['weather', 'Thời tiết'], ['other', 'Khác']]
 
 export function Done() {
   useTitle('Phản hồi')
   const { trip } = useTrip()
   const [score, setScore] = useState<Record<string, number>>({})
   const [more, setMore] = useState<boolean | null>(null)
+  const [searchFor, setSearchFor] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [state, setState] = useState<'form' | 'sending' | 'sent' | 'error'>('form')
   const send = async () => {
     if (!trip.journeyId) return setState('sent')
     setState('sending')
     try {
-      await fetch(`/api/harness/sessions/${trip.journeyId}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: score, more_search: more, note }) }).then(json)
+      await fetch(`/api/harness/sessions/${trip.journeyId}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: score, more_search: more, more_search_for: more ? searchFor : [], note }) }).then(json)
       setState('sent')
     } catch {
       setState('error')
@@ -39,6 +42,7 @@ export function Done() {
                 </fieldset>
               ))}
               <fieldset><legend>Bạn còn phải tìm chỗ khác nữa không?</legend><div className="tg-basics__chips"><button type="button" className="tg-chip" aria-pressed={more === true} onClick={() => setMore(true)}>Có</button><button type="button" className="tg-chip" aria-pressed={more === false} onClick={() => setMore(false)}>Không</button></div></fieldset>
+              {more && <fieldset><legend>Bạn còn phải tìm gì? <span className="tg-faint">(chọn nhiều được)</span></legend><div className="tg-basics__chips">{SEARCH_FOR.map(([k, label]) => <button key={k} type="button" className="tg-chip" aria-pressed={searchFor.includes(k)} onClick={() => setSearchFor((a) => a.includes(k) ? a.filter((x) => x !== k) : [...a, k])}>{label}</button>)}</div></fieldset>}
               <label className="tg-done__note"><span>Góp ý thêm (không bắt buộc)</span><textarea className="tg-input" rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Điều gì mình làm chưa tốt?" /></label>
               {state === 'error' && <p className="tg-alert" role="alert"><Icon name="warn" size={15} /> Chưa gửi được, bạn thử lại nhé.</p>}
               <div className="tg-done__act"><button type="submit" className="tg-btn tg-btn--primary" disabled={state === 'sending'}>{state === 'sending' ? 'Đang gửi…' : 'Gửi'}</button><button type="button" className="tg-link tg-link--quiet" onClick={() => go('/trips')}>Bỏ qua</button></div>

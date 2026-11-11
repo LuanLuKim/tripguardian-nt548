@@ -133,7 +133,7 @@ Bind `127.0.0.1`; Vite proxy `/api/harness` và `/api/auth` đến cổng 8769 (
 | `GET /api/harness/sessions/<id>/planning/lodging/events` | SSE cập nhật view sau chờ chỗ ở, tối đa khoảng 10 giây |
 | `GET /api/harness/sessions/<id>/preview` | Chỉ ở stage `decision`: lịch ngầm cho lựa chọn hiện tại → `{revision, status, plan}`; `status` = `ready` / `failed` (không xếp được, kèm `back_to_decision`) / `blocked` (Decision chưa xác nhận được) / `empty` |
 | `GET /api/harness/trips` | Tóm tắt tối đa 50 hành trình của tài khoản, mới nhất trước: stage, ngày, số người, nơi đã chọn, đã chốt chưa, tên chat, `updated_at` (lần lưu cuối, ISO UTC) |
-| `POST /api/harness/sessions/<id>/feedback` | `{scores (≤10 tên → 1–5), more_search?, note? ≤1000}` → một dòng bảng `feedback` |
+| `POST /api/harness/sessions/<id>/feedback` | `{scores (≤10 tên → 1–5), more_search?, more_search_for? (khi more_search: các khóa trong `dispatch.FEEDBACK_SEARCH_FOR`: lodging, food, sights, transport, prices, hours, weather, other), note? ≤1000}` → một dòng bảng `feedback` |
 | `GET /api/harness/sessions/<id>/today?day=`, `…/companion/suggest?place=&similar=1`, `POST …/companion` | Chế độ Đang đi (`docs/COMPANION.md`) |
 | `/api/harness/calendar/{preview,apply,disconnect}` | Xuất Google Calendar có xác nhận (`docs/COMPANION.md`) |
 | `/api/harness/me…`, `/api/harness/avatars/<key>` | Tài khoản, hồ sơ, avatar, xóa tài khoản (`docs/ACCOUNTS.md`) |

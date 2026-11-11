@@ -49,6 +49,8 @@ Vite proxy `/api/analytics` → 8770 (`ANALYTICS_PORT`). `./run.sh start` chạy
 
 ## 3. Chỉ số
 
+Hành trình do client thử tạo (header `X-TG-Synthetic`, gửi bởi `scripts/prod_journey_e2e.py` và smoke của `run.sh`; harness ghi `synthetic` vào props của `journey.create`) bị loại khỏi phễu, danh sách phiên và các tab, trừ khi gọi với `synthetic=1`. Hành trình bot trước khi có header vẫn còn trong số liệu cũ.
+
 Bước phễu (mỗi hành trình đếm một lần): `journey.create` → `trip.turn` có `compiled` → `trip.advance` → `decision.act.select` → `preview.ready` → `decision.advance` → `planning.confirm` → `feedback.submit`. Event có `error` không tính.
 
 | Tab | Chỉ số |

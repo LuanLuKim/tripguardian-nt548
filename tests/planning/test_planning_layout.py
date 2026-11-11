@@ -279,3 +279,17 @@ def test_a_far_group_is_not_split_to_fill_an_empty_day():
     near = trip_of(recs, days=2)
     near = replace(near, cfg=replace(near.cfg, spread_extra_min=10_000))
     assert all(assign(near, near.ctxs, sorted(near.by_place))[0])          # the bound is what keeps them together
+
+
+def test_a_dawn_place_that_opens_late_pulls_the_day_only_to_its_opening():
+    # Sunrise 06:00 (fixed_sun): the cloud-hunting window opens 05:30, but the place lets nobody in before 06:45.
+    from plan_fixtures import all_days
+    recs = [spot("dawn", CENTRE, 0, hours=all_days("06:45", "17:00"), features={"cloud_hunting": "present"}),
+            spot("c1", CENTRE, 2)]
+    trip = trip_of(recs, days=2, dawn=True)
+    s = schedule_trip(trip)
+    k = next(i for i, day in enumerate(s.per_day) if "dawn" in day)
+    first = next(i for i in s.results[k].items if i.kind == "visit")
+    assert first.place_id == "dawn" and first.start == 6 * 60 + 45
+    assert s.ctxs[k].day.start >= 6 * 60 + 30                     # no hour of "free time" before it opens
+    assert not any(i.kind == "free" and i.end <= first.start for i in s.results[k].items)

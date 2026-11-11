@@ -133,10 +133,15 @@ def test_overload_calls_the_scheduler_a_bounded_number_of_times():
     assert out["overload"] and out["schedule_calls"] <= 40
 
 
-def test_an_hour_short_offers_a_longer_day_that_holds_everything():
+def test_an_hour_short_offers_a_longer_day_that_holds_everything(monkeypatch):
     from dataclasses import replace
+    from planning import overload
     recs = [spot(f"c{i}", CENTRE, i, visit=(50, 60, 70)) for i in range(10)]
     trip = trip_of(recs, days=2)
+    # What is offered, not how fast: the search tries every order of a 7-stop day (~10 s on a loaded machine), and the
+    # deadline itself is covered in test_planning_overload_parallel.
+    monkeypatch.setattr(overload, "_FORK_WAIT_S", 300)
+    trip = replace(trip, cfg=replace(trip.cfg, realistic={**trip.cfg.realistic, "overload_deadline_s": 300}))
     ext = plan_or_directions(trip)["overload"]["extend"]
     assert ext and ext["side"] in {"start", "end"} and 0 < ext["per_day_min"] <= 60
     m = ext["per_day_min"]

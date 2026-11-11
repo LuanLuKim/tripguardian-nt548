@@ -617,14 +617,17 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                     if body.get("start_with") not in (None, "nothing", "saved", "must", "itinerary"):
                         raise ValueError("bad start_with")
                     me = accounts.me(owner)
+                    # E2E / smoke clients say so (X-TG-Synthetic: e2e | smoke): their journeys stay out of the funnel.
+                    synthetic = self.headers.get("X-TG-Synthetic", "").strip().lower()[:20] or None
                     if user["guest"]:  # no profile prior, no long-term learning
                         return self._call(lambda: harness.create(body.get("experience"), body.get("start_with"), owner,
-                                                                 False, owner, {}))
+                                                                 False, owner, {}, synthetic=synthetic))
                     prior = {k: me.get(k) for k in ("usual_mobility", "usual_companions") if me.get(k)}
                     if home := booking_routes.home_point(me.get("home_city")):
                         prior["home"] = home
                     return self._call(lambda: harness.create(body.get("experience"), body.get("start_with"), owner,
-                                                             me["consents"].get("patterns") is True, owner, prior))
+                                                             me["consents"].get("patterns") is True, owner, prior,
+                                                             synthetic=synthetic))
                 if path == "/api/harness/me/consent":
                     def consent():
                         out = accounts.consent(owner, body.get("version"))

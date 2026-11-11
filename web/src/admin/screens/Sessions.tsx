@@ -54,7 +54,7 @@ function timeline(d: SessionDetail): Line[] {
     ...d.events.map((e) => ({ at: e.at, kind: e.source === 'client' ? 'web' : 'sự kiện', text: `${e.name} ${Object.entries(e.props).map(([k, v]) => `${k}=${v}`).join(' ')}`, bad: 'error' in e.props || e.props.path === 'fallback' })),
     ...d.decision_log.map((l) => ({ at: l.at ?? null, kind: 'Decision', text: JSON.stringify(l.action) })),
     ...d.planning_log.map((l) => ({ at: l.at ?? null, kind: 'Planning', text: JSON.stringify(l.action) })),
-    ...d.feedback.map((f) => ({ at: f.at, kind: 'phản hồi', text: `${JSON.stringify(f.scores)} ${f.note}` })),
+    ...d.feedback.map((f) => ({ at: f.at, kind: 'phản hồi', text: `${JSON.stringify(f.scores)}${f.more_search_for?.length ? ` còn tìm: ${f.more_search_for.join(', ')}` : ''} ${f.note}` })),
   ]
   return lines.sort((a, b) => (a.at ?? '9').localeCompare(b.at ?? '9'))
 }

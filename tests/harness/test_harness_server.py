@@ -431,7 +431,7 @@ def test_guest_journey_has_no_profile_prior_and_no_learning(client, server_parts
     harness, _, _ = server_parts
     seen = []
     real = harness.create
-    monkeypatch.setattr(harness, "create", lambda *args: seen.append(args) or real(*args))
+    monkeypatch.setattr(harness, "create", lambda *args, **kw: seen.append(args) or real(*args, **kw))
     call(client, "POST", "/api/harness/sessions", {}, token="tok-g")
     call(client, "POST", "/api/harness/sessions", {}, token="tok-a")
     guest_args, member_args = seen
@@ -571,3 +571,14 @@ def test_trip_pinned_to_a_pruned_snapshot_is_a_typed_409_not_a_500(client, serve
     events = [json.loads(line[6:]) for line in client.getresponse().read().decode().splitlines() if line.startswith("data: ")]
     assert events[-1]["event"] == "error" and events[-1]["data"]["status"] == 409
     assert events[-1]["data"]["error"] == "stale_data_version"
+
+
+def test_a_test_client_marks_its_journey_synthetic(client, server_parts, monkeypatch):
+    harness, _, _ = server_parts
+    seen = []
+    real = harness.create
+    monkeypatch.setattr(harness, "create", lambda *args, **kw: seen.append(kw) or real(*args, **kw))
+    call(client, "POST", "/api/harness/sessions", {}, token="tok-g")
+    client.request("POST", "/api/harness/sessions", "{}", {**headers("tok-g", ORIGIN), "X-TG-Synthetic": "E2E"})
+    assert client.getresponse().read() and True
+    assert [kw.get("synthetic") for kw in seen] == [None, "e2e"]

@@ -36,7 +36,7 @@ def pull_early(cx: DayCtx, day_ids, by_place: dict, travel) -> tuple[DayCtx, str
     of a laid-out day use this one rule, so a plan shown as valid passes the check at confirm."""
     if cx.day.start_by_user:
         return cx, None
-    early = [(lo, i) for i in day_ids if i in by_place and 0 < (lo := pin_window(by_place[i], cx)[0]) < cx.day.start]
+    early = [(lo, i) for i in day_ids if i in by_place and 0 < (lo := _first_entry(by_place[i], cx)) < cx.day.start]
     if not early:
         return cx, None
     lo, pid = min(early)
@@ -46,6 +46,15 @@ def pull_early(cx: DayCtx, day_ids, by_place: dict, travel) -> tuple[DayCtx, str
     if not any(b[2] in {"rest", "nap"} for b in busy):
         busy = busy + (DAWN_REST,)
     return replace(cx, day=replace(cx.day, start=start, busy=busy)), pid
+
+
+def _first_entry(place, cx: DayCtx) -> int:
+    """The earliest minute the place's time of day can start: its window's start, or its opening when that is later
+    (a viewpoint opening at 06:45 does not get the day up at 05:30 to wait). 0 when it has no window."""
+    lo, hi = pin_window(place, cx)
+    if lo <= 0:             # no time of day: nothing to get up early for (not its opening hour)
+        return lo
+    return min((max(lo, o) for o, c in intervals_for(place, cx) if max(lo, o) <= hi and max(lo, o) < c), default=lo)
 
 
 @dataclass

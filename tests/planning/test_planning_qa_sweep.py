@@ -4,12 +4,18 @@ import importlib.util
 import random
 from pathlib import Path
 
+import pytest
+
 from decision import DecisionOutput
 from plan_fixtures import CENTRE, spot
 
+# The sweep is an untracked QA tool next to the E2E evidence; it is gone from this checkout (never in git).
+SWEEP = Path(__file__).resolve().parents[2] / ".superpowers/sdd/2026-11-03-prod-e2e/plan-qa/sweep.py"
 
+
+@pytest.mark.skipif(not SWEEP.exists(), reason="QA sweep tool not present (untracked, plan-qa/sweep.py)")
 def test_sweep_uses_real_handoff_shape_and_valid_meal_wishes():
-    path = Path(__file__).resolve().parents[2] / ".superpowers/sdd/2026-11-03-prod-e2e/plan-qa/sweep.py"
+    path = SWEEP
     spec = importlib.util.spec_from_file_location("qa_sweep", path)
     sweep = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(sweep)

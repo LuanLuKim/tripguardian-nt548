@@ -7,6 +7,9 @@
 #                       precompressed) and copy it over web/dist only when it built, SearXNG, 9router, (re)start harness
 #                       and the public web server on :28899, notify worker, Cloudflare tunnel, then a smoke test
 #   ./run.sh prod-stop  stop the production stack (tunnel included)
+#   ./run.sh prod-restart   restart the production services on the frozen .prod_src as it is (no build, no freeze)
+#   ./run.sh prod-rollback  back to the frozen copy the last deploy replaced (.prod_src.prev), then restart
+#   ./run.sh prod-check     which release prod runs, and whether config/ still loads with its code (F004)
 #   ./run.sh prewarm    fill the coach / flight caches for the next weeks (cron, once a day; scripts/prewarm_transit.py)
 #   ./run.sh db         start the project Postgres (container tripguardian-pg, 127.0.0.1:5433), create roles, migrate
 #   ./run.sh db-backup  pg_dump into data/backup/pg/<date>.sql.gz, keep the newest 14
@@ -262,7 +265,7 @@ smoke() {
   cookie=$(curl -s -D - -o /dev/null -X POST -H "Origin: $base" "http://127.0.0.1:$PUBLIC_PORT/api/auth/guest" |
     tr -d '\r' | sed -n 's/^[Ss]et-[Cc]ookie: \(tg_session=[^;]*\).*/\1/p' | head -n 1)
   [ -n "$cookie" ] || { echo "[smoke] FAIL: POST /api/auth/guest gave no tg_session cookie"; return 1; }
-  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Origin: $base" -H "Cookie: $cookie" -H 'Content-Type: application/json' \
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Origin: $base" -H "Cookie: $cookie" -H 'Content-Type: application/json' -H 'X-TG-Synthetic: smoke' \
     -d '{"experience":"first","start_with":"nothing"}' "http://127.0.0.1:$PUBLIC_PORT/api/harness/sessions")
   [ "$code" = "200" ] || [ "$code" = "201" ] || { echo "[smoke] FAIL: guest POST /api/harness/sessions -> $code"; return 1; }
   echo "[smoke] ok: production env, no test login, guest can open a trip"
@@ -286,16 +289,70 @@ clef_start() {
 # Prod runs from a frozen copy of src (.prod_src/, same depth as src/ so Path(__file__).parents[N] still finds the repo
 # root): agents editing the shared tree, and overload spawn workers re-importing planning, never reach live users.
 PROD_SRC=.prod_src
+# Each frozen copy carries RELEASE: the commit it was taken from, whether the tree had uncommitted changes, when.
 freeze_src() {
   rm -rf "$PROD_SRC.new" && rsync -a --exclude __pycache__ src/ "$PROD_SRC.new/" || return 1
   PYTHONPATH="$PWD/$PROD_SRC.new" $PYTHON -c "import harness, planning.overload, trip, decision, notify" \
     || { echo "[src] frozen copy does not import: not deploying"; return 1; }
+  PYTHONPATH="$PWD/$PROD_SRC.new" $PYTHON scripts/config_check.py \
+    || { echo "[src] config/ does not load with the frozen copy: not deploying"; return 1; }
+  dirty=$(git status --porcelain -- src config 2>/dev/null | wc -l | tr -d ' ')
+  printf 'commit=%s\ndirty_files=%s\nfrozen_at=%s\n' "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+    "$dirty" "$(date -Iseconds)" > "$PROD_SRC.new/RELEASE"
+  echo "[src] release $(tr '\n' ' ' < "$PROD_SRC.new/RELEASE")"
 }
-# called once the old services are stopped, so nothing still imports from the copy being replaced
+# called once the old services are stopped, so nothing still imports from the copy being replaced; the copy it
+# replaces is kept as $PROD_SRC.prev for ./run.sh prod-rollback
 swap_frozen_src() {
-  rm -rf "$PROD_SRC.old"; [ -d "$PROD_SRC" ] && mv "$PROD_SRC" "$PROD_SRC.old"
-  mv "$PROD_SRC.new" "$PROD_SRC" && rm -rf "$PROD_SRC.old"
+  rm -rf "$PROD_SRC.prev"; [ -d "$PROD_SRC" ] && mv "$PROD_SRC" "$PROD_SRC.prev"
+  mv "$PROD_SRC.new" "$PROD_SRC"
   export PYTHONPATH="$PWD/$PROD_SRC"
+}
+
+# Stop and start the prod services on the frozen copy as it is: no build, no freeze, no db migrate.
+restart_services() {
+  export PYTHONPATH="$PWD/$PROD_SRC"
+  echo "$PROD_SERVICES" | while IFS='|' read -r name port cmd; do
+    stop_one "$name" "$port"
+  done
+  echo "$PROD_SERVICES" | while IFS='|' read -r name port cmd; do
+    start_one "$name" "$port" "$cmd"
+  done
+  echo "$PROD_SERVICES" | while IFS='|' read -r name port cmd; do
+    wait_one "$name" "$port" || exit 1
+  done || return 1
+  worker_stop >/dev/null
+  worker_start
+  warmup_wait
+  tunnel_start
+  smoke
+}
+
+prod_restart() {
+  [ -d "$PROD_SRC" ] || { echo "[src] no $PROD_SRC: run ./run.sh prod"; exit 1; }
+  PYTHONPATH="$PWD/$PROD_SRC" $PYTHON scripts/config_check.py || { echo "[restart] config/ does not load with prod's code"; exit 1; }
+  echo "[restart] release $(tr "\n" " " 2>/dev/null < "$PROD_SRC/RELEASE" || echo unknown)"
+  restart_services
+}
+
+# Back to the copy the last deploy replaced (code only: web/dist, config/ and the database stay as they are).
+prod_rollback() {
+  [ -d "$PROD_SRC.prev" ] || { echo "[rollback] no $PROD_SRC.prev to go back to"; exit 1; }
+  PYTHONPATH="$PWD/$PROD_SRC.prev" $PYTHON scripts/config_check.py \
+    || { echo "[rollback] config/ does not load with the previous release: not rolling back"; exit 1; }
+  echo "$PROD_SERVICES" | while IFS='|' read -r name port cmd; do
+    stop_one "$name" "$port"
+  done
+  rm -rf "$PROD_SRC.new" && mv "$PROD_SRC" "$PROD_SRC.new" && mv "$PROD_SRC.prev" "$PROD_SRC" && mv "$PROD_SRC.new" "$PROD_SRC.prev"
+  echo "[rollback] now on $(tr "\n" " " 2>/dev/null < "$PROD_SRC/RELEASE" || echo 'a release without RELEASE')"
+  restart_services
+}
+
+# Which release prod runs, and whether config/ (read live from the working tree) still loads with it.
+prod_check() {
+  echo "[release] $(tr "\n" " " 2>/dev/null < "$PROD_SRC/RELEASE" || echo 'unknown (deployed before RELEASE was written)')"
+  [ -d "$PROD_SRC.prev" ] && echo "[release] previous: $(tr "\n" " " 2>/dev/null < "$PROD_SRC.prev/RELEASE" || echo unknown)"
+  PYTHONPATH="$PWD/$PROD_SRC" $PYTHON scripts/config_check.py
 }
 
 # The harness warms corpus releases and recent journeys in the background after its port opens (about 2 minutes,
@@ -342,17 +399,7 @@ prod() {
     stop_one "$name" "$port"
   done
   swap_frozen_src
-  echo "$PROD_SERVICES" | while IFS='|' read -r name port cmd; do
-    start_one "$name" "$port" "$cmd"
-  done
-  echo "$PROD_SERVICES" | while IFS='|' read -r name port cmd; do
-    wait_one "$name" "$port" || exit 1
-  done || exit 1
-  worker_stop >/dev/null
-  worker_start
-  warmup_wait
-  tunnel_start
-  smoke
+  restart_services || exit 1
   echo ""
   echo "Local:    http://127.0.0.1:$PUBLIC_PORT/  (landing) · /app"
   echo "Dung:     ./run.sh prod-stop"
@@ -411,8 +458,11 @@ case "$1" in
   stop) stop ;;
   prod) prod ;;
   prod-stop) prod_stop ;;
+  prod-restart) prod_restart ;;
+  prod-rollback) prod_rollback ;;
+  prod-check) prod_check ;;
   prewarm) shift; exec $PYTHON -u scripts/prewarm_transit.py "$@" ;;
   db) db ;;
   db-backup) db_backup ;;
-  *) echo "usage: $0 {start|stop|prod|prod-stop|prewarm|db|db-backup}"; exit 2 ;;
+  *) echo "usage: $0 {start|stop|prod|prod-stop|prod-restart|prod-rollback|prod-check|prewarm|db|db-backup}"; exit 2 ;;
 esac

@@ -16,7 +16,8 @@ FUNNEL = (
     ("feedback", "Gửi phản hồi", "feedback.submit", None),
 )
 STAGES = ("trip", "decision", "planning")
-FILTERS = ("from", "to", "start_with", "app_version")
+FILTERS = ("from", "to", "start_with", "app_version", "synthetic")
+# Journeys an E2E or smoke client made (journey.create props.synthetic) are left out unless synthetic=1.
 
 
 def _range(params: dict) -> tuple[datetime, datetime]:
@@ -42,6 +43,8 @@ def _journeys(conn, params: dict) -> dict[str, datetime]:
     if params.get("app_version"):
         sql += " AND app_version = %s"
         args.append(params["app_version"])
+    if params.get("synthetic") != "1":
+        sql += " AND NOT props ? 'synthetic'"
     return {r["journey_id"]: r["at"] for r in conn.execute(sql + " GROUP BY journey_id", args)}
 
 
@@ -130,7 +133,7 @@ def decision(pool, params: dict) -> dict:
             "search_misses": misses, "acts_per_journey_median": statistics.median(per) if per else None}
 
 
-SESSION_FILTERS = {"reached", "abandoned", "low_feedback", "error"}
+SESSION_FILTERS = {"reached", "abandoned", "low_feedback", "error", "synthetic"}
 
 
 def sessions(pool, params: dict) -> list[dict]:
@@ -142,7 +145,8 @@ def sessions(pool, params: dict) -> list[dict]:
           (SELECT count(*) FROM events e WHERE e.journey_id = j.id AND (e.props ? 'error' OR e.props->>'path' = 'fallback')) AS errors,
           (SELECT min((v.value)::int) FROM feedback f, jsonb_each_text(f.scores) v WHERE f.journey_id = j.id) AS min_score,
           EXISTS (SELECT 1 FROM events e WHERE e.journey_id = j.id AND e.name = 'planning.confirm') AS confirmed,
-          (SELECT e.props->>'start_with' FROM events e WHERE e.journey_id = j.id AND e.name = 'journey.create' LIMIT 1) AS start_with
+          (SELECT e.props->>'start_with' FROM events e WHERE e.journey_id = j.id AND e.name = 'journey.create' LIMIT 1) AS start_with,
+          (SELECT e.props->>'synthetic' FROM events e WHERE e.journey_id = j.id AND e.name = 'journey.create' LIMIT 1) AS synthetic
         FROM journeys j LEFT JOIN users u ON u.id = j.user_id
         WHERE j.created_at >= %s AND j.created_at < %s"""
     args: list = [start, end]
@@ -163,6 +167,8 @@ def sessions(pool, params: dict) -> list[dict]:
         out = [r for r in out if r["errors"]]
     if params.get("start_with"):
         out = [r for r in out if r["start_with"] == params["start_with"]]
+    if params.get("synthetic") != "1":
+        out = [r for r in out if not r["synthetic"]]
     return out
 
 
@@ -175,7 +181,7 @@ def session(pool, jid: str) -> dict:
             raise KeyError(jid)
         events = [dict(r) for r in conn.execute(
             "SELECT at, source, name, props, app_version FROM events WHERE journey_id = %s ORDER BY at, id", (jid,))]
-        feedback = [dict(r) for r in conn.execute("SELECT at, scores, more_search, note FROM feedback "
+        feedback = [dict(r) for r in conn.execute("SELECT at, scores, more_search, more_search_for, note FROM feedback "
                                                   "WHERE journey_id = %s ORDER BY at", (jid,))]
     env = row["envelope"] or {}
     snaps = env.get("snapshots") or {}

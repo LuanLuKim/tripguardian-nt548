@@ -53,6 +53,8 @@ def _fingerprint(request: Request) -> str:
 
 
 CHAT_TITLE_MAX = 60
+# After-trip form: what a user who still searched elsewhere was looking for (web Done.tsx shows the same keys).
+FEEDBACK_SEARCH_FOR = ("lodging", "food", "sights", "transport", "prices", "hours", "weather", "other")
 
 
 def chat_title(transcript: list) -> str | None:
@@ -253,8 +255,10 @@ class Harness:
                 sessions=session.sessions, outputs=session.outputs,
                 result=result if result is not None else self._module(session, shown).load(session.sessions[shown])).model_dump(mode="json")
 
-    def create(self, experience=None, start_with=None, user_id=None, remember=False, owner=None, profile=None) -> dict:
-        """profile: the account's usual mobility / companions, a prior for Trip (never a fact of this trip)."""
+    def create(self, experience=None, start_with=None, user_id=None, remember=False, owner=None, profile=None,
+               synthetic: str | None = None) -> dict:
+        """profile: the account's usual mobility / companions, a prior for Trip (never a fact of this trip).
+        synthetic: the client is a test run (e2e, smoke): the create event says so and analytics leaves it out."""
         session = self.store.new()
         session.user_id = owner
         session.corpus_binding = self.corpus_binding
@@ -267,7 +271,7 @@ class Harness:
         self._save(session)
         self._loaded.add(session.id)
         self._event("journey.create", owner, session.id, start_with=start_with, experience=experience,
-                    profile_prior=bool(profile))
+                    profile_prior=bool(profile), **({"synthetic": synthetic} if synthetic else {}))
         return self._view(session, result)
 
     def state(self, jid: str, owner: str | None = None) -> dict:
@@ -527,9 +531,13 @@ class Harness:
 
     def feedback(self, jid: str, payload: dict, owner: str | None = None) -> dict:
         """After-trip answers (1-5 scales, yes/no, a short note), one JSON line per submission next to the sessions."""
-        if set(payload) - {"scores", "more_search", "note"}:
+        if set(payload) - {"scores", "more_search", "more_search_for", "note"}:
             raise ValueError("unknown feedback field")
         scores, more, note = payload.get("scores") or {}, payload.get("more_search"), payload.get("note") or ""
+        search_for = payload.get("more_search_for") or []
+        if not isinstance(search_for, list) or any(k not in FEEDBACK_SEARCH_FOR for k in search_for):
+            raise ValueError(f"more_search_for must list some of {', '.join(FEEDBACK_SEARCH_FOR)}")
+        search_for = [k for k in FEEDBACK_SEARCH_FOR if k in search_for] if more else []
         if not isinstance(scores, dict) or len(scores) > 10 or any(
                 not isinstance(k, str) or len(k) > 40 or not isinstance(v, int) or isinstance(v, bool) or not 1 <= v <= 5
                 for k, v in scores.items()):
@@ -544,11 +552,11 @@ class Harness:
             if owner is not None and session.user_id != owner:
                 raise KeyError(jid)
         record = {"journey": jid, "user_id": owner, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "scores": scores,
-                  "more_search": more, "note": note.strip()}
+                  "more_search": more, "more_search_for": search_for, "note": note.strip()}
         with _advance_span(None, 'feedback_write_ms'):
             self.store.append_feedback(record)
         self._event("feedback.submit", owner, jid, scores=",".join(f"{k}:{v}" for k, v in sorted(scores.items())),
-                    more_search=more, has_note=bool(record["note"]))
+                    more_search=more, more_search_for=",".join(search_for), has_note=bool(record["note"]))
         return {"stored": True}
 
     def report(self, payload: dict) -> dict:

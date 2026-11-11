@@ -21,7 +21,7 @@ export type SessionDetail = {
   decision_log: { action: Record<string, unknown>; at?: string }[]
   planning_log: { action: Record<string, unknown>; at?: string }[]
   receipts: { request_id: string; at: string | null; revision: number; stage: string; events: string[] }[]
-  outputs: string[]; events: Event[]; feedback: { at: string; scores: Record<string, number>; more_search: boolean | null; note: string }[]
+  outputs: string[]; events: Event[]; feedback: { at: string; scores: Record<string, number>; more_search: boolean | null; more_search_for?: string[]; note: string }[]
 }
 export type Today = { day: string; journeys: number; confirmed: number; feedback: number; errors: number; fallbacks: number; active_users: number; new_users: number }
 

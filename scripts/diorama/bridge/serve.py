@@ -20,6 +20,24 @@ DEFAULT_ORBITS = [[35, 55, None], [125, 50, None], [215, 60, None], [305, 45, No
 # swiftshader renders on the CPU; with the machine at ~50 load one view of a 300-600k triangle scene can take > 30 s
 # (Playwright's default), which failed whole places at `shoot`. Callers wait up to 15 min per request.
 SHOT_TIMEOUT_MS = 90000
+SWIFTSHADER = ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
+HARDWARE = ["--use-gl=angle", "--use-angle=gl-egl", "--enable-gpu"]
+RENDERER_JS = """() => { const gl = document.createElement('canvas').getContext('webgl2'); if (!gl) return '';
+  const e = gl.getExtension('WEBGL_debug_renderer_info');
+  return gl.getParameter(e ? e.UNMASKED_RENDERER_WEBGL : gl.RENDERER); }"""
+
+
+def gl_args(p):
+    """A real GPU when headless Chromium can reach one (DIORAMA_GL=swiftshader forces the CPU path)."""
+    if os.environ.get("DIORAMA_GL") != "swiftshader":
+        try:
+            b = p.chromium.launch(executable_path=EXE, args=HARDWARE + ["--ignore-gpu-blocklist", "--no-sandbox"])
+            pg = b.new_page(); pg.goto("about:blank"); renderer = pg.evaluate(RENDERER_JS); b.close()
+            if renderer and "swiftshader" not in renderer.lower():
+                return HARDWARE, renderer
+        except Exception:
+            pass
+    return SWIFTSHADER, "swiftshader"
 
 
 def local_name(src):
@@ -44,10 +62,10 @@ def localize(src="out", tag=""):
 def shoot(req, out):
     W, H = req.get("size", [1600, 900])
     with sync_playwright() as p:
-        b = p.chromium.launch(executable_path=EXE, args=["--use-gl=angle", "--use-angle=swiftshader",
-                              "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--no-sandbox"])
+        args, renderer = gl_args(p)
+        b = p.chromium.launch(executable_path=EXE, args=args + ["--ignore-gpu-blocklist", "--no-sandbox"])
         pg = b.new_page(viewport={"width": W, "height": H})
-        logs = []
+        logs = [f"renderer: {renderer}"]
         pg.on("console", lambda m: logs.append(f"{m.type}: {m.text}"))
         pg.on("pageerror", lambda e: logs.append(f"pageerror: {e}"))
         t = time.time()

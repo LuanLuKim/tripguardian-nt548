@@ -965,7 +965,13 @@ _không có_
 
 - file: `web/src/user/ui/Space3d.tsx`, `web/src/user/ui/PlaceSheet.tsx`, `web/src/user/ui/icons.tsx`, `web/src/user/css/app.css`, `web/space3d/`, `web/scripts/build_space3d.mjs`, `web/scripts/shots_space3d.mjs`, `web/scripts/test_space3d_scroll.mjs`
 - cách kiểm chứng: `node web/scripts/shots_space3d.mjs <base> check` (ảnh toàn cảnh + điểm dừng, thoát lỗi khi console có lỗi); `node web/scripts/test_space3d_scroll.mjs <base> <slug>` (lăn chuột đi đúng thứ tự, lăn nhẹ quay về, hai đầu tuyến giữ nguyên, toàn cảnh xoay và phóng được); `tsc -b`
-### Hiện tại (2026-11-04)
+### Hiện tại (2026-11-11)
+- hành vi: Deploy prod 11/11 (cùng đợt Planning b31552f). Vào màn 3D: poster phóng từ thẻ ra cửa sổ trên nền kem, mô hình crossfade khi khung đầu vẽ xong (bỏ vạch màu, loé sáng). Tour: hai điểm nối bằng chặng route thì camera đi bộ dọc chặng ở tầm mắt 1,7 m, qua cổng điểm trước, rồi nâng vào khung điểm sau; lùi đi ngược chặng; không có route thì bay như cũ. Điểm có nội thất: đi qua cửa vào thẳng trong nhà, mái và tường giữ nguyên (cutaway chỉ còn ở nơi không có nội thất); nhà chắn giữa hai điểm thì đi vòng góc nhà, chỉ vượt nóc khi không vòng được và lúc đó nhìn về điểm đích. Kiểm: `scripts/diorama/checks/walkshots.py <slug> a:b:q,…`.
+- dữ liệu: `web/space3d/places.json` từ 38 lên 100 nơi (đợt 11-11: 52 nơi hạng A/B + 10 nơi đặc biệt, đều đã chấm bằng ảnh).
+- độ trễ mở 3D: dựng trước (warm) theo ý định / khi đọc yên, giữ 90 s sau Quay lại, tải trước script + dữ liệu + ảnh chờ khi mở thẻ, cache `/space3d` ở `server.mjs`; tra độ cao lối đi bằng lưới 2 m (kết quả trùng raycast cũ, Linh Sơn dựng 5,2 → 3,9 s, Cam Ly 3,7 → 1,7 s trên máy chủ tải ~60); `compileAsync` trước khung đầu; bản web tắt `checkShaderErrors`; GPU yếu bắt đầu ở chất lượng nhẹ. Đo: đã warm thì bấm tab → mô hình hiện 0,6 s (trong lúc ảnh chờ phóng 0,76 s); lạnh 4–9 s tùy nơi trên máy chủ tải ~60. Mốc `performance.mark('space3d:script|place|built|shown')` trong viewer.
+- kiểm: `shots_space3d.mjs` và `test_space3d_scroll.mjs` nhận `SPACE3D_GL=gpu` (ANGLE gl-egl), poster bỏ qua CSP của trang; `shots_space3d.mjs` chờ `domcontentloaded`.
+
+### Trước đó (2026-11-04)
 - hành vi: một viewer chung tự host (three 0.170 + 8 kit + `station`, không CDN) nạp `places/<slug>.json` lúc chạy; 29 nơi trong `web/space3d/places.json`. Toàn cảnh: kéo xoay, lăn phóng, viên hướng dẫn kiểu đĩa xoay, nút "Bắt đầu tham quan". Sau khi bắt đầu, lăn chuột kéo camera theo tuyến (`web/space3d/scroll.js`), thứ tự điểm giữ nguyên, không có nút Tiếp / Trước; thẻ kính xếp dọc có đường tuyến chạy theo độ lăn, chấm bấm được. Máy chậm tự tắt GTAO.
 
 ## perf-quality-2026-11-04 — đọc nhanh, lịch không ngày trống, không chặn vì chưa rõ (`docs/PLANNING.md`, `docs/ARCHITECTURE.md`)

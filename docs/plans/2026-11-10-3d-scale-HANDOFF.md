@@ -2,7 +2,19 @@
 
 Đọc trước: [thiết kế](2026-11-09-3d-scale-design.md) (chủ dự án đã duyệt), [kế hoạch](2026-11-09-3d-scale-plan.md) (Task 1–9). File này nói **đã làm tới đâu, việc tiếp theo, bẫy đã gặp**. Các file bàn giao 3D ngày 11-04 vẫn còn (gộp ở Task 9).
 
-## TẠM DỪNG 2026-11-10 ~23:50 (đọc trước nhất)
+## Cập nhật 2026-11-11 sáng (đọc trước nhất)
+
+**Máy có GPU:** `bridge/serve.py` tự chụp bằng GPU (ANGLE gl-egl, RTX 2080 Ti, GPU 0; prod ở GPU 2 không bị đụng), swiftshader chỉ là dự phòng. 17 nơi dừng giữa chừng xong trong ~1 giờ, 14 nơi đặc biệt xong lúc 02:09; chuỗi `logs/diorama/resume_20261110n.sh` đã kết thúc, không còn job nền.
+
+**Đã chấm (ảnh, `opus_review.py`) và publish:** 52 nơi hạng A/B (`logs/diorama/publish_20261111.txt`) + 10 nơi đặc biệt (Nhớ Hoài, Dapa Hill, Đồi Thiên Phúc Đức, Làng Nấm, Nhà Bên Rừng, Rừng Thông Mơ, Thung Lũng Đèn, Bình Minh Ơi, Túi Mơ To, XQ Sử Quán). Sửa tay trước khi đạt: nước xám → `#4f8790` ở Gà Rừng, Lavender, Wonderland, Happy Hill, Reo Campsite (`place.before_water1111.json`); Săn Mây Cầu Gỗ `overviewPolar` 0,95 (radian) → 50.
+
+**Chưa lên web (7 nơi, cần người hoặc bỏ):** Thác Cam Ly, Cáp Treo, Tiệm nướng trong rừng, Thiên Đường Săn Mây (làm lại lần 2 vẫn thiếu vòng tròn xanh / hồ gương / sàn kính), Maze Bar (chủ yếu nội thất, mô hình chỉ là nhà hộp), Hồ Xuân Hương và Lời Của Gió (`failed:colour`, chạy lại `auto3d.py run <slug>` là đủ nếu muốn). 11 nơi `skip` là quán nướng / quán thường, không làm.
+
+**Bẫy mới:** `review_sheet.py` từng lấy nhầm ảnh của nơi có slug dài hơn (`caudat` lấy ảnh `doichecaudat`); đã sửa để tên nơi phải đứng sau chữ số. `shots_space3d.mjs poster` bị CSP của trang chặn `waitForFunction`; đã thêm `bypassCSP`.
+
+**Deploy prod:** 11/11, chủ dự án yêu cầu; 100 nơi trên web.
+
+## TẠM DỪNG 2026-11-10 ~23:50
 
 Chủ dự án yêu cầu dừng mọi process để admin cấp thêm GPU. Đã dừng: chuỗi `after_queue_tierAB_20261110.sh` (639063) và lượt `auto3d.py run` của nó, 3 worker `bridge/serve.py`, server tĩnh :8471 / :8472, harness dev :8779, analytics :8770, vite :5199 / :5173. Harness prod :8769, web :28899, notify, tunnel đã được dừng trước đó (không phải phiên này). 9router và `model_gateway` vẫn chạy (CPU).
 

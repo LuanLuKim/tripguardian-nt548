@@ -1,6 +1,7 @@
 /* "Khám phá 3D" (ui/Space3d.tsx): the tab of the place sheet (poster + one button) and the full-page dive it opens.
-   The dive is a Radix dialog, so focus, Esc and the sheet underneath behave like the clip viewer's. Layers, bottom to top:
-   veil (the sheet fades under cream) · world (the poster that grows) · frame (the live model) · say · chrome.
+   The model's frame lives in a fixed layer of its own (.tg-s3v), made before the dive to warm the model and kept after
+   it; the dive is a non-modal Radix dialog portalled into that layer (.tg-s3v__ui, display: contents). Layers, bottom to
+   top: veil (the sheet fades under cream) · world (the poster that grows) · frame (the live model) · say · chrome.
    The phases in data-phase are told in Space3d.tsx; the timings here (760 / 650 / 680 ms) match its constants. */
 
 /* The tab */
@@ -18,7 +19,16 @@
 
 /* The dive */
 .tg-s3v { --ease: cubic-bezier(0.65, 0, 0.2, 1); --cream: var(--tg-bg); position: fixed; z-index: 95; inset: 0; overflow: hidden; background: transparent; outline: none; color: var(--tg-ink); font-family: var(--tg-sans); }
-.tg-s3v > * { position: absolute; }
+.tg-s3v > *, .tg-s3v__ui > * { position: absolute; }
+.tg-s3v__ui { display: contents; }
+/* Warming or parked: built (or building) out of sight, nothing to click. While the dive is on, the layer takes the pointer
+   even though the sheet's modal dialog has switched pointer events off on <body>. */
+.tg-s3v[data-phase='warm'] { opacity: 0; pointer-events: none; }
+.tg-s3v:not([data-phase='warm']) { pointer-events: auto; }
+.tg-s3v__veil, .tg-s3v__world { z-index: 0; }
+.tg-s3v__frame { z-index: 1; }
+.tg-s3v__say, .tg-s3v__chrome { z-index: 2; }
+.tg-s3v[data-state='error'] .tg-s3v__frame { display: none; }
 
 /* the veil: the sheet behind fades under the model's cream, softly blurred */
 .tg-s3v__veil { inset: 0; background: color-mix(in srgb, var(--cream) 78%, transparent); backdrop-filter: blur(10px) saturate(0.9); opacity: 0; pointer-events: none; }

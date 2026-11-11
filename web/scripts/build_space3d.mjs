@@ -31,7 +31,18 @@ const PATCH = [
   ['`${index+1} / ${place.hotspots.length} · ${current.title}`', 'current.title'],
   ['$("tour-next").textContent=index===place.hotspots.length-1 ? "Xem toàn cảnh" : "Tiếp →";', 'tourStop(index,place.hotspots.length);'],
   // The wheel drives the flight (or the walk) between two stops (web/space3d/scroll.js); a click still moves on the clock.
-  ['function animate(now) {', () => `${readFileSync(join(CHROME, 'scroll.js'), 'utf8')}\nfunction animate(now) {`],
+  // A frame warmed ahead of the dive draws once, then waits paused until the app shows it (chrome.js).
+  ['function animate(now) {', () => `${readFileSync(join(CHROME, 'scroll.js'), 'utf8')}\nfunction animate(now) {\n  if (window.__paused) return void requestAnimationFrame(animate);`],
+  // Weak GPU (chrome.js weakGpu): start light, before anything compiles. Shader errors were caught at authoring time; the
+  // checks read program logs synchronously on every first use.
+  ['if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => undefined);', `renderer.debug.checkShaderErrors = false;
+if (weakGpu(renderer.getContext())) {
+  gtao.enabled = false;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
+  composer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
+  sun.shadow.mapSize.set(1024, 1024);
+}
+await renderer.compileAsync(scene, camera).catch(() => undefined);`],
   [/ {2}if \(flight\) \{\n {4}const progress = Math\.min\(\(now - flight\.start\) \/ (1400|flight\.ms), 1\),/, '  scrollStep(now);\n  if (flight) {\n    const progress = flight.scrub ? flight.q : Math.min((now - flight.start) / $1, 1),'],
   ['window.__ready = true;', `window.__lowQuality = () => { gtao.enabled = false; renderer.setPixelRatio(1); composer.setPixelRatio(1); };
 window.__ready = true;

@@ -19,7 +19,9 @@ WIDTH = 2280
 
 def latest_tag(slug: str) -> Path:
     out = DATA / "bridge/out"
-    tags = [p for p in out.iterdir() if slug in p.name and (p / "00_initial.png").exists()]
+    # tags are <prefix><digit><slug>: the slug must not be the tail of a longer slug (caudat vs doichecaudat)
+    named = lambda name: name == slug or (name.endswith(slug) and not name[-len(slug) - 1].isalpha())
+    tags = [p for p in out.iterdir() if named(p.name) and (p / "00_initial.png").exists()]
     if not tags:
         raise SystemExit(f"no render with 00_initial.png for {slug} under {out}")
     return max(tags, key=lambda p: (p / "00_initial.png").stat().st_mtime)

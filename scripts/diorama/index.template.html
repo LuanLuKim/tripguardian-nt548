@@ -2251,13 +2251,54 @@ const walkableMeshes=[walkableMesh,...scene.children.filter(m=>m.name==='approac
 walkableMesh.updateMatrixWorld(true);
 for(const geometry of walkableGeometries)geometry.dispose();
 for(const geometry of walkableBuffers)geometry.dispose();
-const routeGroundRay=new THREE.Raycaster(new THREE.Vector3(),new THREE.Vector3(0,-1,0));
+// The paved ground under a point: a straight-down ray from y = 80, the highest hit. Thousands of route samples ask it,
+// so the walkable triangles sit in a 2 m grid on x/z and a query tests only the triangles of its cell (the same
+// THREE.Ray.intersectTriangle test as a Raycaster, with the material's side honoured; a triangle whose x/z box misses
+// the point cannot be hit by a vertical ray, so the answer is the one a full raycast gives).
+const routeGround=(()=>{
+  const CELL=2,corners=[],sides=[];
+  for(const mesh of walkableMeshes) {
+    mesh.updateMatrixWorld(true);
+    const position=mesh.geometry.attributes.position,index=mesh.geometry.index;
+    if(!position)continue;
+    const count=index?index.count:position.count,side=Array.isArray(mesh.material)?THREE.DoubleSide:mesh.material.side;
+    for(let i=0;i+2<count;i+=3) {
+      for(let k=0;k<3;k++)corners.push(new THREE.Vector3().fromBufferAttribute(position,index?index.getX(i+k):i+k).applyMatrix4(mesh.matrixWorld));
+      sides.push(side);
+    }
+  }
+  let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+  for(const p of corners){minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minZ=Math.min(minZ,p.z);maxZ=Math.max(maxZ,p.z);}
+  const columns=Math.max(1,Math.ceil((maxX-minX)/CELL)+1),rows=Math.max(1,Math.ceil((maxZ-minZ)/CELL)+1),cells=new Map();
+  for(let t=0;t<sides.length;t++) {
+    const a=corners[t*3],b=corners[t*3+1],c=corners[t*3+2],e=1e-6;
+    const x0=Math.floor((Math.min(a.x,b.x,c.x)-e-minX)/CELL),x1=Math.floor((Math.max(a.x,b.x,c.x)+e-minX)/CELL);
+    const z0=Math.floor((Math.min(a.z,b.z,c.z)-e-minZ)/CELL),z1=Math.floor((Math.max(a.z,b.z,c.z)+e-minZ)/CELL);
+    for(let gx=Math.max(0,x0);gx<=Math.min(columns-1,x1);gx++)for(let gz=Math.max(0,z0);gz<=Math.min(rows-1,z1);gz++) {
+      const key=gx*rows+gz;
+      if(!cells.has(key))cells.set(key,[]);
+      cells.get(key).push(t);
+    }
+  }
+  const ray=new THREE.Ray(new THREE.Vector3(),new THREE.Vector3(0,-1,0)),hit=new THREE.Vector3();
+  return (x,z)=>{
+    const gx=Math.floor((x-minX)/CELL),gz=Math.floor((z-minZ)/CELL);
+    if(gx<0||gz<0||gx>=columns||gz>=rows)return null;
+    ray.origin.set(x,80,z);
+    let best=null;
+    for(const t of cells.get(gx*rows+gz)||[]) {
+      const a=corners[t*3],b=corners[t*3+1],c=corners[t*3+2],side=sides[t];
+      const found=side===THREE.BackSide?ray.intersectTriangle(c,b,a,true,hit):ray.intersectTriangle(a,b,c,side===THREE.FrontSide,hit);
+      if(found&&(best===null||hit.y>best))best=hit.y;
+    }
+    return best;
+  };
+})();
 function routeHeight(x,z) {
   x=Math.fround(x);z=Math.fround(z);
-  routeGroundRay.ray.origin.set(x,80,z);
-  const hits=routeGroundRay.intersectObjects(walkableMeshes,false);
-  if(!hits.length)throw new Error(`Walking route has no paved ground at ${x},${z}`);
-  return hits[0].point.y+.045;
+  const y=routeGround(x,z);
+  if(y===null)throw new Error(`Walking route has no paved ground at ${x},${z}`);
+  return y+.045;
 }
 function roundWalkingPath(leg) {
   const points=leg.map(p=>new THREE.Vector2(...p)),result=[points[0]];
@@ -2462,6 +2503,15 @@ function walkPlan(from,to) {
     points.push(...leg);
   }
   else if(!from.interior&&!to.interior)return null;
+  else {
+    // Into or out of the hall from its own stop: when that stop stands away from the door (beside or behind the
+    // hall), walk between the two on the ground, round the hall if need be, rather than drop from the air to the door.
+    const door=walkDoor(from.interior?from:to),standing=a.walk&&walkEye(a.walk,door?.inside.y??0);
+    if(door&&standing) {
+      const front=doorway(door)[0],flat=(p,q)=>Math.hypot(p.x-q.x,p.z-q.z);
+      if(flat(standing,door.inside)>flat(front,door.inside)+2)points.push(standing);
+    }
+  }
   if(to.interior) {const door=walkDoor(to);if(!door)return null;points.push(...doorway(door));}
   if(points.length<2)return null;
   points.door=doorPoints;
@@ -2469,41 +2519,64 @@ function walkPlan(from,to) {
 }
 // The hall with an inside view as an obstacle: its footprint (with margin) up to above its ridge.
 const hallTop=mainHall?mainHall.position[1]+(mainHall.interior?.ridgeHeight??mainHall.roof?.ridgeHeight??(mainHall.size.length>2?mainHall.size[1]:12))+2.5:0;
-function hallBlocks(a,b) {
-  if(!mainHall)return false;
-  const c=Math.cos(interiorAngle),s=Math.sin(interiorAngle);
-  for(let k=1;k<24;k++) {
-    const p=a.clone().lerp(b,k/24),dx=p.x-interiorRegion.x,dz=p.z-interiorRegion.z;
-    if(p.y<hallTop&&Math.abs(c*dx+s*dz)<interiorRegion.w&&Math.abs(-s*dx+c*dz)<interiorRegion.d)return true;
-  }
+function inHall(p,pad=0) {
+  const c=Math.cos(interiorAngle),s=Math.sin(interiorAngle),dx=p.x-interiorRegion.x,dz=p.z-interiorRegion.z;
+  return p.y<hallTop&&Math.abs(c*dx+s*dz)<interiorRegion.w-pad&&Math.abs(-s*dx+c*dz)<interiorRegion.d-pad;
+}
+function hallBlocks(a,b,pad=0) {
+  // Both ends inside: a step within the hall (past the door to the inside view), not a way through its walls.
+  if(!mainHall||inHall(a)&&inHall(b))return false;
+  for(let k=1;k<24;k++)if(inHall(a.clone().lerp(b,k/24),pad))return true;
   return false;
+}
+// On foot around the hall instead of through it: the shortest way from p to q past one, two or three of its corners
+// (2 m out from its footprint), or null when no such way is clear.
+function hallDetour(p,q) {
+  const c=Math.cos(interiorAngle),s=Math.sin(interiorAngle),w=interiorRegion.w+.8,d=interiorRegion.d+.8;
+  const corners=[[w,d],[-w,d],[-w,-d],[w,-d]].map(([x,z])=>
+    walkEye([interiorRegion.x+c*x-s*z,interiorRegion.z+s*x+c*z],(p.y+q.y)/2));
+  let best=null,bestLength=Infinity;
+  for(let i=0;i<4;i++)for(const step of [1,3])for(let n=1;n<=3;n++) {
+    const way=[p,...Array.from({length:n},(_,k)=>corners[(i+k*step)%4]),q];
+    if(way.some((a,k)=>k&&hallBlocks(way[k-1],a,1.2)))continue;
+    const length=way.reduce((sum,a,k)=>k?sum+a.distanceTo(way[k-1]):0,0);
+    if(length<bestLength){bestLength=length;best=way.slice(1,-1);}
+  }
+  return best;
 }
 // Where a joint of the walk (the way down from the stop's view, the way up into the next one, door to leg) would cut
 // through that hall, go over its roof instead: up above one end, across, down to the other.
+// Between two points on the ground the walk goes round the hall's corners when it can. Points above the ground are
+// marked `air`: the camera looks at the stop it flies to there, and covers them at the faster pace of a flight.
 function hopOver(points,start,end) {
-  const over=p=>new THREE.Vector3(p.x,Math.max(p.y,hallTop),p.z),out=[];
+  const over=p=>Object.assign(new THREE.Vector3(p.x,Math.max(p.y,hallTop),p.z),{air:true}),out=[];
   if(hallBlocks(start,points[0]))out.push(over(start).lerp(over(points[0]),.5),over(points[0]));
   points.forEach((p,i)=>{
     const q=points[i+1];
     out.push(p);
-    if(q&&!(points.door?.has(p)&&points.door?.has(q))&&p.distanceTo(q)>2&&hallBlocks(p,q))out.push(over(p),over(q));
+    if(q&&!(points.door?.has(p)&&points.door?.has(q))&&p.distanceTo(q)>2&&hallBlocks(p,q)) {
+      const around=hallDetour(p,q);
+      out.push(...(around||[over(p),over(q)]));
+    }
   });
   if(hallBlocks(points.at(-1),end))out.push(over(points.at(-1)),over(points.at(-1)).lerp(over(end),.5));
   return out;
 }
 // Even steps along the ground; heights smoothed over a few metres so stairs read as a climb, not a judder.
 function walkResample(points) {
-  const out=[points[0].clone()];let need=WALK_STEP;
+  const copy=(p,air=p.air)=>Object.assign(p.clone(),{air:Boolean(air)});
+  const out=[copy(points[0])];let need=WALK_STEP;
   for(let i=1;i<points.length;i++) {
     const a=points[i-1],b=points[i],run=Math.hypot(b.x-a.x,b.z-a.z);
-    if(run<1e-6){if(Math.abs(b.y-a.y)>.3)out.push(b.clone());continue;} // straight up or down (a hop over a roof)
+    if(run<1e-6){if(Math.abs(b.y-a.y)>.3)out.push(copy(b));continue;} // straight up or down (a hop over a roof)
     let at=0;
-    while(run-at>=need){at+=need;out.push(a.clone().lerp(b,at/run));need=WALK_STEP;}
+    while(run-at>=need){at+=need;out.push(copy(a.clone().lerp(b,at/run),a.air&&b.air));need=WALK_STEP;}
     need-=run-at;
   }
-  if(Math.hypot(out.at(-1).x-points.at(-1).x,out.at(-1).z-points.at(-1).z)>.05)out.push(points.at(-1).clone());
+  if(Math.hypot(out.at(-1).x-points.at(-1).x,out.at(-1).z-points.at(-1).z)>.05)out.push(copy(points.at(-1)));
   const ys=out.map(p=>p.y);
-  out.forEach((p,i)=>{let sum=0,n=0;for(let k=Math.max(0,i-2);k<=Math.min(out.length-1,i+2);k++){sum+=ys[k];n++;}p.y=sum/n;});
+  // heights smoothed on the ground only: a hop must stay above the roof it clears
+  out.forEach((p,i)=>{if(p.air)return;let sum=0,n=0;for(let k=Math.max(0,i-2);k<=Math.min(out.length-1,i+2);k++)if(!out[k].air){sum+=ys[k];n++;}p.y=sum/n;});
   return out;
 }
 function buildWalk(fromPosition,fromTarget,toPosition,toTarget,points) {
@@ -2518,12 +2591,16 @@ function buildWalk(fromPosition,fromTarget,toPosition,toTarget,points) {
     return eye[i-1].clone().lerp(eye[i],(d-run[i-1])/Math.max(run[i]-run[i-1],1e-6));
   };
   // Look along the way, at most ~15 degrees down or up (stairs ahead must not tip the view to the ground).
-  const looks=eye.map((p,i)=>{const q=ahead(run[i]+WALK_LOOK);q.y=THREE.MathUtils.clamp(q.y-.3,p.y-2,p.y+2);return q;});
+  const looks=eye.map((p,i)=>{if(p.air)return null;const q=ahead(run[i]+WALK_LOOK);q.y=THREE.MathUtils.clamp(q.y-.3,p.y-2,p.y+2);return q;});
+  // In the air: look where the walk goes on next, or at the stop once the walking is over.
+  for(let i=looks.length-1,next=toTarget;i>=0;i--)looks[i]?next=looks[i]:looks[i]=next.clone();
   const position=new THREE.CatmullRomCurve3([fromPosition.clone(),...eye,toPosition.clone()],false,'centripetal');
   const target=new THREE.CatmullRomCurve3([fromTarget.clone(),...looks,toTarget.clone()],false,'centripetal');
   position.arcLengthDivisions=Math.max(200,eye.length*10);
   const lengths=position.getLengths(),length=lengths.at(-1),at=k=>lengths[Math.round(k/(eye.length+1)*(lengths.length-1))]/length;
-  const enter=at(1),leave=at(eye.length);
+  // The hops above the ground before the first step and after the last go with the descent and the rise.
+  const first=Math.max(0,eye.findIndex(p=>!p.air)),last=Math.max(first,eye.findLastIndex(p=>!p.air));
+  const enter=at(first+1),leave=at(last+1);
   // Time: the walk itself at an even pace; the descent into it and the rise out of it go 2.5x faster per metre.
   const walked=(leave-enter)*length,flown=(1-leave+enter)*length/2.5,total=walked+flown;
   const time=[enter*length/2.5/total,(enter*length/2.5+walked)/total];
@@ -2655,7 +2732,8 @@ function moveTo(position, target, instant = false, viewTo = null, fromInterior =
   }
   const plan=stops&&walkPlan(stops.from,stops.to);
   if(plan) {
-    const walk=buildWalk(camera.position,controls.target,position,target,hopOver(plan,camera.position,position));
+    const raw=hopOver(plan,camera.position,position),walk=buildWalk(camera.position,controls.target,position,target,raw);
+    walk.raw=raw;
     walk.indoor=Boolean(stops.from.interior||stops.to.interior);
     flight={start:performance.now(),ms:walk.ms,walk,viewFrom,viewTo,fovFrom:stops.fovFrom,fovTo:camera.fov,
       from:camera.position.clone(),targetFrom:controls.target.clone(),to:position.clone(),targetTo:target.clone()};
@@ -2956,7 +3034,7 @@ window.__walk = (from, to, q) => {
   goTour(from,true);goTour(to);
   if(!flight)return null;
   const ms=flight.ms;flight.ms=1e12;flight.start=performance.now()-q*1e12; // frozen at q
-  return {walk:Boolean(flight.walk),ms,length:flight.walk?.length??null};
+  return {walk:Boolean(flight.walk),ms,length:flight.walk?.length??null,raw:flight.walk?.raw.map(p=>p.toArray().map(v=>Math.round(v*10)/10))};
 };
 window.__orbit = (azimuth, polar, distance) => {
   if(current?.interior){window.__orbitSubject(azimuth,polar,distance);return;}
@@ -3022,6 +3100,9 @@ window.__inspect = () => ({
   for (const mat of mats.values()) if (!seen.has(mat)) swap(mat.color);
 })(place.colorMap);
 updateTour();
+// Shaders compile in parallel off the main thread (KHR_parallel_shader_compile) before the first frame, instead of
+// blocking it program by program; the first frame then only draws.
+if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => undefined);
 requestAnimationFrame(animate);
 window.__ready = true;
 

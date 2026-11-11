@@ -7,7 +7,10 @@ import { chromium } from 'playwright-core'
 const [BASE, SLUG = 'conga', SHOTS] = process.argv.slice(2)
 const browser = await chromium.launch({
   executablePath: resolve(import.meta.dirname, '../../.cache/ms-playwright/chromium-1169/chrome-linux/chrome'),
-  args: ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  // SPACE3D_GL=gpu renders on the machine's GPU; on the CPU renderer a loaded machine can time the walk out.
+  args: process.env.SPACE3D_GL === 'gpu'
+    ? ['--use-angle=gl-egl', '--use-gl=angle', '--enable-gpu', '--ignore-gpu-blocklist']
+    : ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 })
 const page = await browser.newPage({ viewport: { width: 880, height: 540 }, bypassCSP: true })
 const errors = []

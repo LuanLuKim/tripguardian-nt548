@@ -16,7 +16,7 @@ import { openAssistant, toggleCmp, toggleSaved, useUi } from '../store'
 import { useTrip } from '../trip'
 import { go, Photo, Trust, Unconfirmed, warmPhoto } from './common'
 import { HeartFill, Icon } from './icons'
-import { diveFrom, Space3d, useSpace3d } from './Space3d'
+import { diveFrom, Space3d, useSpace3d, useWarmWhenIdle, warmOnIntent } from './Space3d'
 import { askAssistant } from './askAssistant'
 import { DetailsOverview, KnownFor } from './PlaceDetails'
 import { PhoneLink, SiteLink, phoneText, siteOf } from './contact'
@@ -171,6 +171,8 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
   const album = useAllPhotos(id) // every photo the person-free rule lets through, for the Hình ảnh tab; the header keeps the best few
   const detailed = useDetail(id) // its evidence loads first; the basics are on screen already
   const model = useSpace3d(id)
+  useWarmWhenIdle(tab === 'space3d' ? null : model) // the dive itself starts the model when the 3D tab is the one open
+  const modelIntent = useMemo(() => warmOnIntent(model), [model])
   useEffect(() => { setG(0); setTab('overview'); setViewing(null) }, [id])
   const Title = onClose ? Dialog.Title : 'h1'
   if (!p || !snap)
@@ -277,7 +279,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
       </header>
 
       <div className="tg-ps__tabs" role="tablist" aria-label="Thông tin về nơi này" ref={tabsRef}>
-        {TABS.filter(([k]) => (k !== 'space3d' || model) && (k !== 'video' || p.videos.length > 0)).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={(e) => pick(k, e.currentTarget)}>{l}</button>)}
+        {TABS.filter(([k]) => (k !== 'space3d' || model) && (k !== 'video' || p.videos.length > 0)).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} {...(k === 'space3d' ? modelIntent : {})} onClick={(e) => pick(k, e.currentTarget)}>{l}</button>)}
       </div>
 
       <section className="tg-ps__pane" role="tabpanel">

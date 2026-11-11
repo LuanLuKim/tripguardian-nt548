@@ -31,6 +31,13 @@ const MEDIA_TYPES = new Set(['.jpg', '.jpeg', '.webp', '.png'])
 const CLIP = /^\/media\/tiktok\/\d+\/video\.mp4$/
 // Data files change only on a deploy: browsers and Cloudflare may reuse them briefly, then revalidate (ETag).
 const DATA_CACHE = 'public, max-age=300, stale-while-revalidate=86400'
+// The 3D viewer: its script is named by content hash (immutable); place data, posters and the index change only on a
+// rebuild, so a short cache with background revalidation lets a dive start without a round trip over the tunnel.
+const cacheFor = (path) =>
+  path.startsWith('/assets/') || /^\/space3d\/viewer-[0-9a-f]+\.js$/.test(path) ? 'public, max-age=31536000, immutable'
+    : path.startsWith('/data/') || /^\/space3d\/(index\.json|places\/|posters\/)/.test(path) ? DATA_CACHE
+      : path.startsWith('/img/') || path.startsWith('/world/') ? 'public, max-age=86400'
+        : 'no-cache'
 
 function notFound(res) {
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
@@ -160,7 +167,7 @@ const server = createServer((req, res) => {
     return file ? sendFile(req, res, file, 'public, max-age=604800, stale-while-revalidate=86400') : notFound(res)
   }
   const file = inside(DIST, path)
-  if (file && TYPES[extname(path).toLowerCase()]) return sendFile(req, res, file, path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : path.startsWith('/data/') ? DATA_CACHE : path.startsWith('/img/') || path.startsWith('/world/') ? 'public, max-age=86400' : 'no-cache')
+  if (file && TYPES[extname(path).toLowerCase()]) return sendFile(req, res, file, cacheFor(path))
   if (extname(path)) return notFound(res)
   // SPA routes (/, /app/...): the shell page
   sendFile(req, res, resolve(DIST, 'index.html'), 'no-cache')

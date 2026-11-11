@@ -1,5 +1,7 @@
 // Runs first in the viewer bundle: loads the place, talks to the app (web/src/user/ui/Space3d.tsx), and owns the
 // page chrome around the 3D scene (reveal, caption change, slow-machine fallback). The scene code knows none of this.
+// Timing marks (Performance panel / checks): script start, place data in, scene built, first frame shown.
+performance.mark('space3d:script')
 const search = new URLSearchParams(location.search)
 const poster = search.has('poster')
 const tell = (type) => { if (parent !== window) parent.postMessage({ type }, location.origin) }
@@ -25,12 +27,51 @@ async function loadPlace() {
   if (!/^[a-z0-9-]+$/.test(slug)) throw new Error('bad place')
   const response = await fetch(`places/${slug}.json`)
   if (!response.ok) throw new Error(`place ${response.status}`)
-  return response.json()
+  const place = await response.json()
+  performance.mark('space3d:place')
+  return place
+}
+
+// ?warm: the app built this frame ahead of the dive (web/src/user/ui/Space3d.tsx). After its first frame the scene stops
+// drawing until the app shows it ('space3d:show'), and goes back to the overview and stops again when the app parks it
+// after Back ('space3d:hide'). window.__paused is read at the top of the scene's animate().
+const warm = search.has('warm')
+let shown = !warm
+window.__paused = false
+addEventListener('message', (e) => {
+  if (e.origin !== location.origin || e.source !== parent) return
+  if (e.data?.type === 'space3d:show') {
+    shown = true
+    window.__paused = false
+    if (ready) watchSpeed()
+  }
+  if (e.data?.type === 'space3d:hide') {
+    shown = false
+    window.__close?.()
+    window.__paused = true
+  }
+})
+
+// A weak GPU (integrated in an office laptop, a phone, a software renderer) starts without the ambient occlusion pass, at
+// a capped pixel ratio and with a smaller shadow map: less to compile before the first frame, and a steady frame rate.
+function weakGpu(gl) {
+  if (poster) return false // the posters are stills at full quality, whatever renders them
+  try {
+    const info = gl.getExtension('WEBGL_debug_renderer_info')
+    const name = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER))
+    if (/swiftshader|llvmpipe|software|basic render/i.test(name)) return true
+    if (/nvidia|geforce|quadro|rtx|radeon (rx|pro)|apple m\d|apple gpu/i.test(name)) return false
+    return /intel|uhd|iris|hd graphics|radeon(\(tm\))? graphics|vega|mali|adreno|powervr|apple/i.test(name) || navigator.hardwareConcurrency <= 4
+  } catch {
+    return false
+  }
 }
 
 // Half the frames slower than ~25 fps on a warmed-up scene: drop the ambient occlusion pass, keep the model.
+let watching = false
 function watchSpeed() {
-  if (poster) return
+  if (poster || watching) return
+  watching = true
   const gaps = []
   let last = 0
   const step = (now) => {
@@ -89,10 +130,13 @@ function tourEdge() {
 
 function sceneReady() {
   ready = true
+  performance.mark('space3d:built')
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.documentElement.classList.add('is-ready')
+    performance.mark('space3d:shown')
+    if (!shown) window.__paused = true // warmed ahead: the first frame is drawn, the rest waits for the dive
     tell('space3d:ready')
-    watchSpeed()
+    if (shown) watchSpeed()
   }))
   const copy = document.querySelector('.tour-copy')
   new MutationObserver(() => {

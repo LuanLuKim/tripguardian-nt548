@@ -188,5 +188,315 @@
     "slug": "tiemcaphesenda",
     "id": "0x31711389de9199a7:0xd170d6bf617e5e57",
     "source": "places/tiemcaphesenda/place.json"
+  },
+  {
+    "slug": "antuyenlam",
+    "id": "0x31711530fba11667:0x23bdc675b8224e9c",
+    "source": "places/antuyenlam/place.json"
+  },
+  {
+    "slug": "caphenhatnguye",
+    "id": "0x3171132ff2749d2b:0x32271519bd7a27f5",
+    "source": "places/caphenhatnguye/place.json"
+  },
+  {
+    "slug": "caudat",
+    "id": "0x3171174abf405701:0x4056ac32d7fdab2f",
+    "source": "places/caudat/place.json"
+  },
+  {
+    "slug": "chodalat",
+    "id": "0x3171130043681211:0x469130bf3ec1f647",
+    "source": "places/chodalat/place.json"
+  },
+  {
+    "slug": "chodemdalat",
+    "id": "0x317113ff4e41e7c3:0x21cff9ad21a7243c",
+    "source": "places/chodemdalat/place.json"
+  },
+  {
+    "slug": "chuyencuanang",
+    "id": "0x3171130038105017:0xe611899a3e21b839",
+    "source": "places/chuyencuanang/place.json"
+  },
+  {
+    "slug": "cloud9glamping",
+    "id": "0x317117471d997221:0x8ef41ac357dcd525",
+    "source": "places/cloud9glamping/place.json"
+  },
+  {
+    "slug": "congvienanhsan",
+    "id": "0x3171132fd1555555:0x70e89477345a4a56",
+    "source": "places/congvienanhsan/place.json"
+  },
+  {
+    "slug": "dalatedenseela",
+    "id": "0x317114aee92a8cad:0x19268f2b3bc7cec9",
+    "source": "places/dalatedenseela/place.json"
+  },
+  {
+    "slug": "dicungmua",
+    "id": "0x317113057787aac9:0x152cfd7d8b278ec0",
+    "source": "places/dicungmua/place.json"
+  },
+  {
+    "slug": "docnhabo",
+    "id": "0x3171133161515b23:0x8bb9c6d85634c7df",
+    "source": "places/docnhabo/place.json"
+  },
+  {
+    "slug": "doichecaudat",
+    "id": "0x317116dda7eb76c3:0x653f7aed2c2bff4e",
+    "source": "places/doichecaudat/place.json"
+  },
+  {
+    "slug": "doimongmodalat",
+    "id": "0x317112bcf31cf46b:0x237bdec53ed852e3",
+    "source": "places/doimongmodalat/place.json"
+  },
+  {
+    "slug": "duonghamdieukh",
+    "id": "0x31716b38c34667bf:0x3d987ff049b1b859",
+    "source": "places/duonghamdieukh/place.json"
+  },
+  {
+    "slug": "garungquananca",
+    "id": "0x317112e3565eabc7:0xc94bde08bfcf2dfa",
+    "source": "places/garungquananca/place.json"
+  },
+  {
+    "slug": "happyhillcoffe",
+    "id": "0x31716b0074562f7d:0xeed520b173287962",
+    "source": "places/happyhillcoffe/place.json"
+  },
+  {
+    "slug": "horizoncoffeed",
+    "id": "0x317113c342e671ff:0x5d6d9fd0c9af533",
+    "source": "places/horizoncoffeed/place.json"
+  },
+  {
+    "slug": "hotuyenlam",
+    "id": "0x31716b4c43ac569b:0x815f9db8b832aadc",
+    "source": "places/hotuyenlam/place.json"
+  },
+  {
+    "slug": "kdlsinhthaicao",
+    "id": "0x31716dcb980c42cb:0x1e8cb534cf573814",
+    "source": "places/kdlsinhthaicao/place.json"
+  },
+  {
+    "slug": "khudulichfresh",
+    "id": "0x31716db652927bcd:0x38358a6532ba2a30",
+    "source": "places/khudulichfresh/place.json"
+  },
+  {
+    "slug": "khudulichlangb",
+    "id": "0x317174a555555555:0x4016eec1a4dddcf",
+    "source": "places/khudulichlangb/place.json"
+  },
+  {
+    "slug": "khudulichlapho",
+    "id": "0x3171133e5090ba29:0x2be50419c9e40550",
+    "source": "places/khudulichlapho/place.json"
+  },
+  {
+    "slug": "khudulichsinht",
+    "id": "0x31716c5efa3906b7:0x26557f5783a2ee46",
+    "source": "places/khudulichsinht/place.json"
+  },
+  {
+    "slug": "khudulichthacd",
+    "id": "0x317114a1a4b93341:0xf8ce8eb72915c065",
+    "source": "places/khudulichthacd/place.json"
+  },
+  {
+    "slug": "khudulichthuyt",
+    "id": "0x31716d49ddce1969:0x2af06d578efe785d",
+    "source": "places/khudulichthuyt/place.json"
+  },
+  {
+    "slug": "khuvuichoidala",
+    "id": "0x31716b9be860e547:0x2c8e1db9a32e2663",
+    "source": "places/khuvuichoidala/place.json"
+  },
+  {
+    "slug": "kyucdalat",
+    "id": "0x3171137580baffd5:0x39ff2d28df21dd3",
+    "source": "places/kyucdalat/place.json"
+  },
+  {
+    "slug": "langbianglandk",
+    "id": "0x31710d6744fd66e3:0x76b1f8d0601f2eba",
+    "source": "places/langbianglandk/place.json"
+  },
+  {
+    "slug": "langfarmcenter",
+    "id": "0x31716dfd71ac9451:0x5f0050e63fe2e31e",
+    "source": "places/langfarmcenter/place.json"
+  },
+  {
+    "slug": "lavenderdalat",
+    "id": "0x31716b51d8f23c7d:0x3c9e81a25a00580",
+    "source": "places/lavenderdalat/place.json"
+  },
+  {
+    "slug": "melinhcoffeega",
+    "id": "0x31716bee35487829:0x97524ba0f6289519",
+    "source": "places/melinhcoffeega/place.json"
+  },
+  {
+    "slug": "mongolanddalat",
+    "id": "0x31716d80e5a43fe5:0x48cd4f38741b7ca2",
+    "source": "places/mongolanddalat/place.json"
+  },
+  {
+    "slug": "nongtraicunpup",
+    "id": "0x31716d1206bcfad3:0xf5246419c256d26d",
+    "source": "places/nongtraicunpup/place.json"
+  },
+  {
+    "slug": "nongtraihoatin",
+    "id": "0x31711778b14f0617:0xaa9890a6ef2f877f",
+    "source": "places/nongtraihoatin/place.json"
+  },
+  {
+    "slug": "novadreamsroya",
+    "id": "0x3171177a47a66645:0xc06b84b649be05f4",
+    "source": "places/novadreamsroya/place.json"
+  },
+  {
+    "slug": "quangtruonglam",
+    "id": "0x31711324a3fe0629:0x66eb8ed37afe5989",
+    "source": "places/quangtruonglam/place.json"
+  },
+  {
+    "slug": "quegarden",
+    "id": "0x31716deb7f8221dd:0x934ece4e4b6e1725",
+    "source": "places/quegarden/place.json"
+  },
+  {
+    "slug": "reocampsitedal",
+    "id": "0x31716b78bac0ae59:0x27a39667f190d060",
+    "source": "places/reocampsitedal/place.json"
+  },
+  {
+    "slug": "sanmaycaugobin",
+    "id": "0x317117e0677e747f:0xa8e2ca2a21104374",
+    "source": "places/sanmaycaugobin/place.json"
+  },
+  {
+    "slug": "suoibinhyen",
+    "id": "0x317115002624cdcb:0xc6b44de6c105ae7d",
+    "source": "places/suoibinhyen/place.json"
+  },
+  {
+    "slug": "swissbelresort",
+    "id": "0x3171149554dcf44f:0xe83e1508f92bd940",
+    "source": "places/swissbelresort/place.json"
+  },
+  {
+    "slug": "terracottahote",
+    "id": "0x317114afe21806c7:0xba202784d3707db7",
+    "source": "places/terracottahote/place.json"
+  },
+  {
+    "slug": "thefloresthoat",
+    "id": "0x317113b05d1d5711:0xb329dc5d86cc91ad",
+    "source": "places/thefloresthoat/place.json"
+  },
+  {
+    "slug": "thon13intanung",
+    "id": "0x31716dc17202857b:0xeb6c2e6579d81f30",
+    "source": "places/thon13intanung/place.json"
+  },
+  {
+    "slug": "thunglungtinhy",
+    "id": "0x317112bd43e6a173:0xb9470f91635c71f6",
+    "source": "places/thunglungtinhy/place.json"
+  },
+  {
+    "slug": "thunglungvang",
+    "id": "0x317172878fef3c51:0xff90c1491f70c37b",
+    "source": "places/thunglungvang/place.json"
+  },
+  {
+    "slug": "tiemcaphevungn",
+    "id": "0x317113003024db49:0xfe01de722531878e",
+    "source": "places/tiemcaphevungn/place.json"
+  },
+  {
+    "slug": "tiemlaunuongma",
+    "id": "0x317113f1f2c29ab7:0xd3e41202969dade4",
+    "source": "places/tiemlaunuongma/place.json"
+  },
+  {
+    "slug": "tramkyuc",
+    "id": "0x317113000ae00179:0x4fe68f81ea58fd86",
+    "source": "places/tramkyuc/place.json"
+  },
+  {
+    "slug": "vexetruotmoida",
+    "id": "0x317115cbf7acf219:0xb10a0fabd20ab2ce",
+    "source": "places/vexetruotmoida/place.json"
+  },
+  {
+    "slug": "vuondiadang",
+    "id": "0x31711555538aafa1:0x55db45643cea96c4",
+    "source": "places/vuondiadang/place.json"
+  },
+  {
+    "slug": "xuanhuonggarde",
+    "id": "0x31711321921ab1eb:0xed01f038d0123ec1",
+    "source": "places/xuanhuonggarde/place.json"
+  },
+  {
+    "slug": "caphenhohoaibo",
+    "id": "0x317113cab1eda681:0xc3ead54bd288cdad",
+    "source": "places/caphenhohoaibo/place.json"
+  },
+  {
+    "slug": "dapahilldalat",
+    "id": "0x31711310e1f0938f:0xd1fc8c4ad4ee6c1b",
+    "source": "places/dapahilldalat/place.json"
+  },
+  {
+    "slug": "doithienphucdu",
+    "id": "0x317112b0cde843c5:0xfcf00bd644ba7281",
+    "source": "places/doithienphucdu/place.json"
+  },
+  {
+    "slug": "langnamdalat",
+    "id": "0x31716deca1c796bb:0x7f27346736909b08",
+    "source": "places/langnamdalat/place.json"
+  },
+  {
+    "slug": "nhabenrung",
+    "id": "0x3171136f916e0e5b:0x3d6585d44cf56584",
+    "source": "places/nhabenrung/place.json"
+  },
+  {
+    "slug": "rungthongmofar",
+    "id": "0x31716b9e22020d63:0xd88257a70c577f15",
+    "source": "places/rungthongmofar/place.json"
+  },
+  {
+    "slug": "thunglungdenco",
+    "id": "0x31711368ea8177c5:0x168f7e3a4836b10c",
+    "source": "places/thunglungdenco/place.json"
+  },
+  {
+    "slug": "tiemcaphebinhm",
+    "id": "0x317113516992abd1:0x44cf319313eafc9f",
+    "source": "places/tiemcaphebinhm/place.json"
+  },
+  {
+    "slug": "tiemcaphetuimo",
+    "id": "0x3171137e0b663621:0xbd8adab3ed9921bd",
+    "source": "places/tiemcaphetuimo/place.json"
+  },
+  {
+    "slug": "xqdalatsuquan",
+    "id": "0x317112bc3652da5d:0xa20c32133205d72c",
+    "source": "places/xqdalatsuquan/place.json"
   }
 ]

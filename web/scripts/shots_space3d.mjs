@@ -14,15 +14,19 @@ mkdirSync(OUT, { recursive: true })
 
 const browser = await chromium.launch({
   executablePath: resolve(WEB, '../.cache/ms-playwright/chromium-1169/chrome-linux/chrome'),
-  args: ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  // SPACE3D_GL=gpu renders on the machine's GPU (much faster); the default CPU renderer works everywhere.
+  args: process.env.SPACE3D_GL === 'gpu'
+    ? ['--use-angle=gl-egl', '--use-gl=angle', '--enable-gpu', '--ignore-gpu-blocklist']
+    : ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 })
 let bad = 0
 for (const slug of places) {
-  const page = await browser.newPage({ viewport: { width: 880, height: 540 } })
+  const page = await browser.newPage({ viewport: { width: 880, height: 540 }, bypassCSP: true }) // poster mode's page CSP refuses eval
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.g|favicon/.test(m.text() + m.location().url)) errors.push(m.text()) })
-  await page.goto(`${BASE}/space3d/viewer.html?place=${slug}${MODE === 'poster' ? '&poster=1' : ''}`)
+  // not 'load': a slow web font must not fail the place; the scene's own ready flag is awaited below
+  await page.goto(`${BASE}/space3d/viewer.html?place=${slug}${MODE === 'poster' ? '&poster=1' : ''}`, { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 })
   await page.waitForTimeout(1500)
   if (MODE === 'poster') {

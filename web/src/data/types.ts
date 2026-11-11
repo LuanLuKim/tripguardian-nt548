@@ -118,7 +118,8 @@ export interface PlaceDetails {
 
 export interface Place {
   id: string
-  name: string
+  name: string // the tidy name the user web shows (data/placeName.ts)
+  fullName?: string // the name as the corpus has it, set only when it differs; search still reads it
   category: string | null
   group: Group
   lat: number

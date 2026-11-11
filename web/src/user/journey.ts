@@ -1,4 +1,5 @@
 import type { Readback } from './tu/types'
+import { tidyPlaceNames } from '../data/placeName'
 
 export type Stage = 'trip' | 'decision' | 'planning'
 export interface JourneyView { id: string; stage: Stage; revision: number; sessions: Partial<Record<Stage, string>>; outputs: Record<string, unknown>; result: unknown }
@@ -37,7 +38,7 @@ function persist(id: string, req?: Request) {
 }
 export async function json<T>(res: Response): Promise<T> {
   if (!res.ok) { const body = await res.json().catch(() => ({})); throw new JourneyError(res.status, body.error ?? '', body.missing, body.readback) }
-  return res.json()
+  return tidyPlaceNames(await res.json())
 }
 export const createJourney = (experience: string | null, start_with: string | null) => fetch(BASE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ experience, start_with }) }).then(json<JourneyView>)
 export const loadJourney = (id: string, stage?: Stage) => fetch(`${BASE}/${id}${stage ? `?stage=${stage}` : ''}`).then(json<JourneyView>).then(remember)
@@ -83,6 +84,7 @@ async function post(id: string, req: Request, handlers?: Record<string, ((data: 
           if (!data) continue
           const e = JSON.parse(data)
           if (e.request_id !== req.request_id || (e.stage !== req.stage && !(e.event === 'journey' && e.stage === e.data?.stage)) || e.revision < req.expected_revision || e.revision > req.expected_revision + 1) continue
+          tidyPlaceNames(e.data)
           if (e.event === 'journey') result = e.data
           else if (e.event === 'error') throw new JourneyError(e.data.status ?? 500, e.data.error ?? e.data.message, e.data.missing, e.data.readback)
           else if (active()) handlers[e.event]?.(e.data)

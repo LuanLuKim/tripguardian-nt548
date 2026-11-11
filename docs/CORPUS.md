@@ -425,6 +425,8 @@ Hai nguồn món bổ sung (bật ở `config/dishes.yaml` `sources`, cần prec
 
 ### 5. Aggregate (chỉ code)
 
+**Tên địa điểm.** `place_name` của intel là tên đã chuẩn hóa (`corpus.aggregate.naming.display_name`: viết hoa chữ đầu, bỏ phần quảng cáo sau gạch / dấu hai chấm / ngoặc, bỏ chữ ngoại ngữ, tối đa 44 ký tự cắt ở ranh giới từ; chỉ bỏ, đổi hoa thường, rút gọn, không thêm chữ). Tên gốc Google giữ ở `place_name_raw` (chỉ có khi khác) và trong observation. Mọi thứ sau intel (serving, snapshot, Trip, Decision, Planning, Web) đọc tên đã chuẩn hóa; `web/src/data/placeName.ts` là cùng hàm, áp thêm ở Web cho release cũ chưa chuẩn hóa.
+
 | Loại | Ví dụ | Rule |
 |---|---|---|
 | **Fact** | giờ, giá, đặt chỗ, quy định vào cửa | Ưu tiên: official verified > official probable > provider store. Đồng thuận → giá trị; bất đồng → `uncertain` + xung đột |

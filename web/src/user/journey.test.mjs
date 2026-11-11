@@ -3,7 +3,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { stripTypeScriptTypes } from 'node:module'
 
-const source = await readFile(new URL('./journey.ts', import.meta.url), 'utf8')
+// journey.ts is loaded alone as a data: module, so the one runtime import it has (the place-name tidier) is inlined.
+const placeName = await readFile(new URL('../data/placeName.ts', import.meta.url), 'utf8')
+const source = (await readFile(new URL('./journey.ts', import.meta.url), 'utf8')).replace(/^import \{ tidyPlaceNames \}.*$/m, () => placeName)
 const code = stripTypeScriptTypes(source, { mode: 'transform' })
 const journey = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`)
 const notifySource = (await readFile(new URL('./notify.ts', import.meta.url), 'utf8')).replace(/^import .*$/gm, '')

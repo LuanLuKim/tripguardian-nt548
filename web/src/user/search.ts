@@ -22,11 +22,12 @@ function tokens(s: string) {
 // Token overlap on distinctive words; never returns a "match" on generic words alone.
 export function score(q: string, p: Place) {
   const qt = tokens(q)
-  const nt = new Set(tokens(p.name))
+  const nt = new Set(tokens(p.fullName ?? p.name))
   if (!qt.length) return 0
   const fq = fold(q)
   const fn = fold(p.name)
-  if (fn === fq) return 1
+  const ff = p.fullName ? fold(p.fullName) : fn
+  if (fn === fq || ff === fq) return 1
   const hits = qt.filter((t) => nt.has(t))
   const strong = hits.filter((t) => !STOP.has(t))
   if (!strong.length) return 0

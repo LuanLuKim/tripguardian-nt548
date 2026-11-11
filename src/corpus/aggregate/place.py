@@ -43,6 +43,7 @@ from ..review import decisions, label_key, label_stats, label_verdicts
 from ..categories import group
 from .details import place_details
 from .estimates import enabled_bases, fact_bases, estimates
+from .naming import display_name
 
 AGREEMENT_MIN = 0.6
 TREND_MIN = 5  # authors on each side
@@ -375,10 +376,12 @@ def aggregate_place(files: list[dict], ont: Ontology, quality: dict | None = Non
         hours = {"hours": searched["hours"], "hours_source": ev.get("basis") or "web", "hours_conflict": None,
                  "hours_as_of": ev.get("dated") or ev.get("at"), "hours_evidence": ev,
                  "hours_fact": ev.get("basis") in fact_bases()}
+    raw_name = next((f["place_name"] for f in files if f.get("place_name")), None)
     return {
         "place_fid": files[0]["place_fid"],
         "merged": sorted({f["place_fid"] for f in files} - {files[0]["place_fid"]}),
-        "place_name": next((f["place_name"] for f in files if f.get("place_name")), None),
+        "place_name": display_name(raw_name) if raw_name else None,
+        **({"place_name_raw": raw_name} if raw_name and display_name(raw_name) != raw_name else {}),
         "as_of": as_of.isoformat(), "ontology_version": ont.version, "identity": identity, "voices": voices,
         "voices_targeted": voices_targeted,
         "features": features, "coverage": coverage(features, ont), "details": place_details(files, ont, verdicts, claims=poi_claims),

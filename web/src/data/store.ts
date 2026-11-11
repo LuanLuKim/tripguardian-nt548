@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { displayName, setNameSwaps } from './placeName'
 import type { DayKey, Place, PriceRange, Quote, Signal, Snapshot } from './types'
 
 let cache: Promise<Snapshot> | null = null
@@ -127,6 +128,8 @@ export function loadSnapshot() {
       )
   cache = read.then(async (s) => {
     await c
+    if (!admin) for (const p of s.places) { const n = displayName(p.name); if (n !== p.name) { p.fullName = p.name; p.name = n } }
+    if (!admin) setNameSwaps(s.places.flatMap((p) => (p.fullName ? [[p.fullName, p.name] as [string, string]] : [])))
     ready = s
     byId = new Map(s.places.map((p) => [p.id, p]))
     if (tiered) pump()

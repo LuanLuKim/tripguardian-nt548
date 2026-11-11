@@ -485,6 +485,7 @@ cabin/cart cách đều theo chiều dài và hai trạm. Không đăng ký rout
 | `height`, `towers` | number / cable `8`, coaster `1.2`; integer / `max(2,ceil(length/18)+1)` | Cao tuyến trên profile và số tháp/chân; tối thiểu hai tháp. Coaster cần nhiều chân hơn theo ảnh. |
 | `sag`, `gauge`, `lineRadius`, `postRadius` | number / `.8`, cable `1.8` / coaster `.7`, `.022` / `.035`, `.16` / `.07` | Võng dây (không áp dụng coaster), khoảng dây/rail và bán kính nét/tháp. Không cho sag lớn hơn khoảng hở địa hình. |
 | `vehicles` | integer / `7` | Cabin/cart phân bố đều, instanced; 0 bỏ xe. |
+| `vehicleScale` | number / `1` | Chỉ cáp: phóng cabin và thanh treo (cabin thật 1,2 × 1,35 m). Ở khu rộng ~100 m cabin thật chỉ vài điểm ảnh ở overview; 2–3 cho tuyến đọc được (Cáp Treo Đà Lạt g14/g17/g19). |
 | `stations` | boolean / `true` | Hai trạm hộp ở đầu, không tự tạo tour trong trạm. |
 | `stationSize`, `stationHeight` | `[w,h,d]` / `[5,h,4]`; number / cable `height+1`, coaster `3` | Kích thước trạm trên chân profile. Trạm cần đón được độ cao dây. |
 | `postColor`, `lineColor`, `frameColor` | colour / `#8b9283`, `#737d70`, `#899181` | Tháp, dây/rail và giằng. |

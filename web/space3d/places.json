@@ -498,5 +498,40 @@
     "slug": "xqdalatsuquan",
     "id": "0x317112bc3652da5d:0xa20c32133205d72c",
     "source": "places/xqdalatsuquan/place.json"
+  },
+  {
+    "slug": "thaccamly",
+    "id": "0x31716cdad637aa1b:0x339761c7860fcec9",
+    "source": "places/thaccamly/place.json"
+  },
+  {
+    "slug": "khudulichcaptr",
+    "id": "0x31711347082ec713:0xbc862021c38b4507",
+    "source": "places/khudulichcaptr/place.json"
+  },
+  {
+    "slug": "thienduongsanm",
+    "id": "0x317117b206cd49bb:0x8c54c53d4a078609",
+    "source": "places/thienduongsanm/place.json"
+  },
+  {
+    "slug": "tiemnuongtrong",
+    "id": "0x317113fb1789041b:0x1757103337663614",
+    "source": "places/tiemnuongtrong/place.json"
+  },
+  {
+    "slug": "mazebar",
+    "id": "0x31711328c6801db3:0xcbb0a680bb459d24",
+    "source": "places/mazebar/place.json"
+  },
+  {
+    "slug": "hoxuanhuong",
+    "id": "0x31711321284ed77f:0x7752634a02e162e9",
+    "source": "places/hoxuanhuong/place.json"
+  },
+  {
+    "slug": "loicuagio",
+    "id": "0x3171134b1043ac43:0xb1b5de3fea591de5",
+    "source": "places/loicuagio/place.json"
   }
 ]

@@ -70,6 +70,28 @@ def table():
     return "\n".join(lines), {k for k, _ in keep[:40]}
 
 
+WATER_TYPES = {"nature_lake", "nature_water", "nature_stream", "garden_water", "garden_koi_pond"}
+WATER_FIELDS = ("color", "shallowColor", "poolColor", "waterColor")
+
+
+def water_keys():
+    """Built colours of water surfaces: lake/pond/stream colours and cascade or rockery pools."""
+    keys = set()
+    for o in json.loads(src.read_text()).get("objects", []):
+        fields = WATER_FIELDS if o.get("type") in WATER_TYPES else ("poolColor", "waterColor")
+        keys |= {str(o[f]).lower() for f in fields if isinstance(o.get(f), str) and o[f].startswith("#")}
+    return keys
+
+
+def grey_water(hexcolour):
+    """Overcast photos show lakes grey and ponds olive; the final grade pulls olive to leaf green (hue ~.15-.37), so a
+    water fix must stay a clear teal/blue/green-teal: 2026-11-10/11 Lá Phong, TLTY, Hồ Tuyền Lâm, Hồ Xuân Hương, Cam Ly."""
+    import colorsys
+    r, g, b = (int(hexcolour[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    return s < .22 or not .38 <= h <= .62
+
+
 PROMPT = """You recolour an architectural scale model so its colours match the real place in the photos.
 Image 1 = contact sheet of real photos (numbered gNN). Image 2 = current render of the model (overview, orbit, stops).
 The cream base plinth stays cream. Keep the clean scale-model look; colours must be the real ones from the photos:
@@ -81,6 +103,8 @@ Find every surface in image 2 whose colour clearly differs from the photos (wron
 stand-in). For each, give the key and the colour as eyedropped from a SUNLIT spot in a photo of THIS place (ignore
 neighbouring buildings, people, sky). The script converts it for the renderer; do not pre-adjust.
 Greens and flowers were already set by rule: change them only if clearly wrong.
+Water (lakes, ponds, streams, pools) stays a clear teal, blue or green-teal even when overcast photos show it grey or
+olive; never make water grey, khaki or olive.
 Return ONLY JSON: {{"#key": {{"photo": "#rrggbb", "photos": "g03,g05", "why": "short"}}}}. Return {{}} if nothing is clearly wrong."""
 
 import time as _t
@@ -96,6 +120,9 @@ for r in range(1, rounds + 2):
     tab, keys = table()
     fixes, usage = ask(PROMPT.format(table=tab), [contact, sheet], model=model, effort=effort)
     fixes = {k.lower(): v for k, v in (fixes or {}).items() if k.lower() in keys and isinstance(v, dict) and str(v.get("photo", "")).startswith("#")}
+    water = water_keys()
+    for k in [k for k, v in fixes.items() if k in water and grey_water(v["photo"])]:
+        print(f"  {k} -> photo {fixes.pop(k)['photo']}: rejected, water would read grey/olive")
     log["rounds"].append({"tag": tag, "usage": usage, "fixes": fixes, "console": console})
     print(f"round {r}: {len(fixes)} fixes, {usage.get('total_tokens', usage.get('prompt_tokens'))} tokens, {usage['seconds']}s")
     for k, v in fixes.items():

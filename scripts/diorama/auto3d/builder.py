@@ -98,6 +98,9 @@ def apply_patch(place: dict, patch: dict) -> dict:
 
 
 def build_effort(place: Place) -> str:
+    # Hard places are rerun with a stronger agent: AUTO3D_BUILD_MODEL=cx/gpt-6-astra AUTO3D_BUILD_EFFORT=xhigh.
+    if os.environ.get("AUTO3D_BUILD_EFFORT"):
+        return os.environ["AUTO3D_BUILD_EFFORT"]
     large = (len(prompts.kits_for(place.s["notes"])) > 1 or place.s["notes"].get("interior")
              or len(prompts.example(place.s["notes"]["kit"]).get("objects", [])) >= 40)
     return config()["effort"]["build_large" if large else "build"]
@@ -143,7 +146,8 @@ class AgentBuilder:
         try:
             result = subprocess.run(
                 ["bash", "-c", 'echo $$ > "$1"; shift; exec "$@"', "auto3d", str(pid_file),
-                 str(CODE / "run_agent.sh"), "sol", str(brief), str(log), build_effort(place),
+                 str(CODE / "run_agent.sh"), os.environ.get("AUTO3D_BUILD_MODEL", "sol"), str(brief), str(log),
+                 build_effort(place),
                  *(str(p) for p in prompts.evidence_photos(place))],
                 cwd=DATA, env={**os.environ, "DIORAMA_DATA": str(DATA)},
                 capture_output=True, text=True, timeout=config()["agent_timeout_s"], start_new_session=True,

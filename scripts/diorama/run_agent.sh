@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_agent.sh <sol|terra> <brief.md> <run.log> <effort> [image ...]: Codex CLI subagent through 9router,
+# run_agent.sh <sol|terra|full model slug> <brief.md> <run.log> <effort> [image ...]: Codex CLI subagent through 9router,
 # service_tier priority (owner 2026-11-03), workspace-write sandbox. Extra args = images attached (visual review).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,7 +8,8 @@ DATA="${DIORAMA_DATA:-$REPO/../tripguardian-store/splat/diorama}"
 get() { grep -E "^$1=" "$REPO/.env" | tail -1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//'; }
 export JUDGE_API_KEY="$(get 9ROUTER_API_KEY)"
 BASE="$(get 9ROUTER_API_URL)"
-MODEL="cx/gpt-6.1-$1"; BRIEF="$2"; LOG="$3"; EFFORT="$4"; shift 4
+# A bare name (sol, terra) means cx/gpt-6.1-<name>; a full slug (cx/gpt-6-astra) is used as given.
+case "$1" in */*) MODEL="$1" ;; *) MODEL="cx/gpt-6.1-$1" ;; esac; BRIEF="$2"; LOG="$3"; EFFORT="$4"; shift 4
 IMGS=(); for i in "$@"; do IMGS+=(-i "$i"); done
 # Prefer the store itself: other sessions sometimes remove or re-point the repo's .cache symlink.
 CACHE="$REPO/../tripguardian-store/cache"; [ -d "$CACHE/codex" ] || CACHE="$REPO/.cache"

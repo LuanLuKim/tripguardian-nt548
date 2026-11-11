@@ -2,7 +2,21 @@
 
 Đọc trước: [thiết kế](2026-11-09-3d-scale-design.md) (chủ dự án đã duyệt), [kế hoạch](2026-11-09-3d-scale-plan.md) (Task 1–9). File này nói **đã làm tới đâu, việc tiếp theo, bẫy đã gặp**. Các file bàn giao 3D ngày 11-04 vẫn còn (gộp ở Task 9).
 
-## Cập nhật 2026-11-11 sáng (đọc trước nhất)
+## Cập nhật 2026-11-11 chiều: astra, 107 nơi (đọc trước nhất)
+
+**Chủ dự án yêu cầu:** 7 nơi chưa lên phải làm đẹp nhất; nơi chủ yếu nội thất (Maze Bar) vẫn hiện; các nơi "Đạt (tạm)" phải làm tốt hơn; không dựng tay mà dùng astra hoặc sol reasoning cao hơn.
+
+**Đã làm:**
+- Biến môi trường chọn model, mặc định vẫn là sol: `AUTO3D_BUILD_MODEL=cx/gpt-6-astra AUTO3D_BUILD_EFFORT=xhigh` cho bước build agent (`run_agent.sh` nhận slug đầy đủ; `models.json` có thêm astra); `ASK_MODEL_SLUG=cx/gpt-6-astra ASK_MODEL_EFFORT=high` cho NOTES / chấm checklist / colour (`batch/ask_model.py`).
+- Chạy `--redo --note` bằng astra cho 26 nơi: 7 nơi chưa lên + 19 nơi tạm. Ghi chú từng nơi ở `DATA/batch/astra_notes_20261111.json`; script `logs/diorama/astra_redo*_20261111.sh`. 5 nơi cần lượt astra thứ hai (Cáp Treo, Hồ Xuân Hương, Maze Bar, Thiên Đường Săn Mây, Tiệm nướng); note lượt hai bảo agent bắt đầu từ `place.astra1_20261111.json`.
+- **Chốt chặn nước trong bước colour** (`colour_by_model.py`: `water_keys`, `grey_water`): bản sửa màu cho nước (hồ, suối, hồ chân thác, hồ cảnh) bị loại nếu xám (S < 0,22) hoặc hue ngoài 0,38–0,62. Đây là nguyên nhân nước xám / ô-liu lặp lại (Cam Ly, Hồ Xuân Hương `#8b9994`, 5 nơi ngày 11-10): ảnh trời âm u cho thấy nước xám.
+- Kit `nature_line`: thêm `vehicleScale` (cabin cáp thật chỉ vài điểm ảnh ở khu ~100 m); Cáp Treo dùng 2,6. `test_nature_*` đạt.
+- Chấm bằng ảnh (`opus_review.py`) cả 26 nơi đạt; publish một lần (`logs/diorama/publish_astra_20261111.log`): **107 nơi** trong `web/space3d/places.json`, `web/public/space3d` đã build lại. **Chưa deploy prod** (phải hỏi chủ dự án).
+- Bản cũ của mỗi nơi: `places/<slug>/place.published_20261111.json` (trả về nếu muốn).
+
+**Còn chưa đẹp (lượt sau nếu muốn):** cỏ xanh chanh ở nhiều bản astra (quy tắc màu xanh tự động của `auto_colormap.py`); Maze Bar thiếu bàn nấm, đèn tím/xanh; Cam Ly vài phiến đá cam phẳng trên hồ, thiếu tượng voi; Lời Của Gió thiếu cây thông Noel lớn; Jala Rose luống oải hương chưa thành mảng tím; Hồ Xuân Hương thuyền thiên nga còn vuông.
+
+## Cập nhật 2026-11-11 sáng
 
 **Máy có GPU:** `bridge/serve.py` tự chụp bằng GPU (ANGLE gl-egl, RTX 2080 Ti, GPU 0; prod ở GPU 2 không bị đụng), swiftshader chỉ là dự phòng. 17 nơi dừng giữa chừng xong trong ~1 giờ, 14 nơi đặc biệt xong lúc 02:09; chuỗi `logs/diorama/resume_20261110n.sh` đã kết thúc, không còn job nền.
 

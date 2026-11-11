@@ -12,6 +12,7 @@ from paths import DATA, REPO
 import base64
 import io
 import json
+import os
 import re
 import ssl
 import time
@@ -65,8 +66,11 @@ def ask(prompt, images=(), model="sol", effort="low", want_json=True, side=1400,
         try:
             t = time.time()
             if model == "sol":
+                # Hard places: ASK_MODEL_SLUG=cx/gpt-6-astra ASK_MODEL_EFFORT=high reroute every sol-lane call.
+                slug = os.environ.get("ASK_MODEL_SLUG", "cx/gpt-6.1-sol")
+                effort = os.environ.get("ASK_MODEL_EFFORT", effort)
                 content = [{"type": "input_text", "text": prompt}] + [{"type": "input_image", "image_url": _image_url(p, side)} for p in images]
-                d = _post(ENV["9ROUTER_API_URL"] + "/responses", {"model": "cx/gpt-6.1-sol", "reasoning": {"effort": effort},
+                d = _post(ENV["9ROUTER_API_URL"] + "/responses", {"model": slug, "reasoning": {"effort": effort},
                           "service_tier": "priority", "input": [{"role": "user", "content": content}]}, ENV["9ROUTER_API_KEY"])
                 text = "".join(c.get("text", "") for o in d.get("output", []) for c in (o.get("content") or []) if isinstance(c, dict))
             else:

@@ -59,9 +59,16 @@ a.tg-steps__a:hover { background: var(--tg-pine-soft); }
 .tg-trust.is-lo i:first-child { background: var(--tg-danger); }
 .tg-trust svg { margin-left: 2px; color: var(--tg-ink-3); }
 .tg-unconf { display: inline-flex; align-items: center; gap: 4px; font: 600 0.74rem/1 var(--tg-sans); color: var(--tg-warn); background: var(--tg-warn-bg); padding: 4px 8px; border-radius: 999px; }
-.tg-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 56px 24px; max-width: 520px; margin: 0 auto; }
-.tg-empty p { max-width: 42ch; }
-.tg-empty .tg-btn { margin-top: 8px; }
+.tg-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 48px 24px; max-width: 560px; margin: 0 auto; }
+.tg-empty__art { margin-bottom: 4px; }
+.tg-bunny { position: relative; width: 220px; height: 220px; }
+.tg-bunny img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 14px 14px rgba(60, 40, 20, 0.14)); animation: tg-bunny-bob 3.4s ease-in-out infinite; }
+.tg-bunny__say { position: absolute; top: 6px; left: calc(100% - 44px); padding: 7px 14px; border: 1px solid #e6e1db; border-radius: 18px 18px 18px 4px; background: #fff; box-shadow: 0 6px 16px -8px rgba(40, 28, 10, 0.3); font: 600 1rem/1.2 var(--tg-display); color: var(--tg-ink); white-space: nowrap; animation: tg-pop 360ms var(--tg-ease) 200ms backwards; }
+@keyframes tg-bunny-bob { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-6px) rotate(1deg); } }
+@media (prefers-reduced-motion: reduce) { .tg-bunny img, .tg-bunny__say { animation: none; } }
+.tg-empty h3 { margin: 0; font: 600 1.5rem/1.25 var(--tg-display); letter-spacing: -0.01em; color: var(--tg-ink); text-wrap: balance; }
+.tg-empty p { max-width: 40ch; margin: 0; font-size: 1rem; line-height: 1.55; color: var(--tg-ink-3); text-wrap: pretty; }
+.tg-empty .tg-btn { margin-top: 12px; }
 .tg-toast { position: fixed; z-index: 70; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 12px 18px; background: var(--tg-night); color: #fff; border-radius: 999px; box-shadow: var(--tg-sh-2); font-weight: 500; animation: tg-pop 200ms var(--tg-ease); }
 .tg-seg { display: inline-flex; padding: 4px; gap: 2px; background: #ececec; border-radius: 999px; }
 .tg-seg button { min-height: 36px; padding: 0 16px; border-radius: 999px; font-weight: 600; font-size: 0.88rem; color: var(--tg-ink-2); transition: all 150ms; }

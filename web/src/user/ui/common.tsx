@@ -140,20 +140,15 @@ export function Toast() {
   return <div className="tg-toast" role="status"><Icon name="heart" size={16} />{note}</div>
 }
 
-// Hand-drawn line art for empty / error states (thin strokes, pine tint)
-export const ArtHills = () => (
-  <svg viewBox="0 0 200 120" width="200" height="120" fill="none" stroke="#111111" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 100c28-22 44-44 70-44s34 16 52 16 38-26 66-26" opacity=".55" /><path d="M6 112c34-18 58-30 84-30s46 14 70 14 28-8 34-12" />
-    <circle cx="150" cy="30" r="12" stroke="#525252" /><path d="M60 62l10-22 10 22M64 54h12M52 78l8-16 8 16" />
-  </svg>
-)
-export const ArtRoute = () => (
-  <svg viewBox="0 0 200 120" width="200" height="120" fill="none" stroke="#111111" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 96c30-8 18-44 50-46s30 28 62 18 30-36 48-30" strokeDasharray="5 6" /><circle cx="20" cy="96" r="6" /><circle cx="180" cy="38" r="6" stroke="#525252" /><path d="M96 40c0-8 6-12 12-12s12 4 12 12c0 9-12 20-12 20s-12-11-12-20Z" />
-  </svg>
-)
-export const ArtCup = () => (
-  <svg viewBox="0 0 200 120" width="200" height="120" fill="none" stroke="#111111" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M62 52h62v28c0 14-12 24-26 24h-10c-14 0-26-10-26-24V52ZM124 58h10a12 12 0 0 1 0 24h-10M80 30c-6 8 6 10 0 18M100 30c-6 8 6 10 0 18" /><path d="M48 108h92" opacity=".55" />
-  </svg>
-)
+// The bunny reacts for empty / error states: it apologises when something went wrong, wonders when there is nothing yet.
+function Bunny({ mood, say }: { mood: 'sad' | 'curious' | 'wait'; say: string }) {
+  return (
+    <div className="tg-bunny">
+      <img src={`/img/bunny/${mood}.webp`} alt="" width={220} height={220} />
+      <span className="tg-bunny__say">{say}</span>
+    </div>
+  )
+}
+export const ArtHills = () => <Bunny mood="sad" say="Xin lỗi bạn nhé!" />
+export const ArtRoute = () => <Bunny mood="wait" say="Chờ chút…" />
+export const ArtCup = () => <Bunny mood="curious" say="Hmm…" />

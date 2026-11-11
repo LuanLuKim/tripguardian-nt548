@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import type { Card, ChatPlaces, Deck, DeckAnswers, DeckIssue, ResultBlock, Step, WebSource } from '../../tu/types'
+import { tidyText } from '../../../data/placeName'
 import { Icon } from '../../ui/icons'
 import { AskCard, PhotoStage } from './Ask'
 import { CardView, type Answer } from './Cards'
@@ -92,7 +93,7 @@ export function Turn({ m, busy, onAnswer, onDeck, onText, onPhoto, onLike, last 
         {waiting && <p className="tg-cx__say is-wait" role="status"><span className="tg-dots" aria-hidden="true"><i /><i /><i /></span><span className="tg-sr">Đang đọc</span></p>}
         {(m.say || tab) && (
           <div className="tg-cx__say">
-            {m.say && <p>{m.say}</p>}
+            {m.say && <p>{tidyText(m.say)}</p>}
             {tab && <p className="tg-cx__say-ask">{tab.question}</p>}
           </div>
         )}

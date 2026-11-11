@@ -89,6 +89,9 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   const drain = useRef<() => void>(() => {})
   const [handing, setHanding] = useState(false)
   const [offline, setOffline] = useState(false)
+  // The chat history can be folded to a strip of icons; the choice is kept in this browser.
+  const [folded, setFolded] = useState(() => { try { return localStorage.getItem('tg.history.folded') === '1' } catch { return false } })
+  const fold = () => setFolded(f => { try { localStorage.setItem('tg.history.folded', f ? '0' : '1') } catch { /* lasts until the page closes */ } return !f })
   const [notice, setNotice] = useState<string | null>(null)
   const [full, setFull] = useState(false)
   const [focus, setFocus] = useState<string | null>(null)
@@ -340,9 +343,9 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   const name = account?.guest ? '' : account?.name?.trim()
 
   return (
-    <div className="tg-home tg-workspace">
+    <div className={`tg-home tg-workspace ${folded ? 'is-mini' : ''}`}>
       <Sidebar path="/understand" />
-      <History active={sid} busy={busy || handing || (!sid && !offline)} onNew={newTrip} onOpen={selectTrip} />
+      <History active={sid} busy={busy || handing || (!sid && !offline)} collapsed={folded} onToggle={fold} onNew={newTrip} onOpen={selectTrip} />
       <div className="tg-cx-root tg-workspace__content">
         <LongTripWarning days={Number(u?.trip.find((row) => row.target === 'days')?.value ?? 0)} />
         <div className="tg-cx__body">

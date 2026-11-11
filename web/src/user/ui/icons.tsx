@@ -64,6 +64,7 @@ const P: Record<string, string> = {
   thumbtack: 'M9 4h6l-1 6 3 3H7l3-3-1-6ZM12 13v7',
   trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6',
   edit: 'M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4',
+  sidebar: 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM9.5 4v16',
   refresh: 'M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5',
   moon: 'M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z',
   bed: 'M3 18V6M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5M7.5 11.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z',

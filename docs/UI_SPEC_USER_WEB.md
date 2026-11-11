@@ -120,7 +120,7 @@ Trạng thái: chưa nối được máy chủ (`Thử lại`) · đang chuyển
 
 ### Chọn nơi (`/app/explore`)
 
-Tiêu đề: *"Gợi ý cho chuyến của bạn"*, dưới là *"N nơi hợp với chuyến của bạn, xếp từ hợp nhất. Chat để thu hẹp"*; số này đổi sau một lượt chat thì hiện "−12 nơi" / "+5 nơi" ngay cạnh.
+Tiêu đề: *"Gợi ý cho chuyến của bạn"*, dưới là *"N nơi hợp với chuyến của bạn, xếp từ hợp nhất."*; số này đổi sau một lượt chat thì hiện "−12 nơi" / "+5 nơi" ngay cạnh.
 
 Mục bắt buộc:
 1. **Nơi bắt buộc đến** (nhóm `anchors` của Decision) lên trên cùng.

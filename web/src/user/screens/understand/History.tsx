@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import * as Popover from '@radix-ui/react-popover'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { tripTitle } from '../../home/dialogs'
 import { deleteTrip, tripSummaries } from '../../pd/api'
 import type { TripSummary } from '../../pd/types'
@@ -38,13 +38,12 @@ const GROUPS = [
   { key: 'older', label: 'Cũ hơn', has: (age: number) => age >= 7 },
 ] as const
 
-export function History({ active, busy, onNew, onOpen }: { active: string | null; busy: boolean; onNew: () => void; onOpen: (trip: TripSummary) => void }) {
+export function History({ active, busy, collapsed, onToggle, onNew, onOpen }: { active: string | null; busy: boolean; collapsed: boolean; onToggle: () => void; onNew: () => void; onOpen: (trip: TripSummary) => void }) {
   const [list, setList] = useState<TripSummary[] | null>(null)
   const [error, setError] = useState(false)
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
-  const searchButton = useRef<HTMLButtonElement>(null)
-  const closeSearch = () => { setQuery(''); setSearching(false); requestAnimationFrame(() => searchButton.current?.focus()) }
+  const closeSearch = () => { setQuery(''); setSearching(false) }
   const [retry, setRetry] = useState(0)
   const [pins, setPins] = useState(readPins)
   const [menu, setMenu] = useState<string | null>(null)
@@ -72,7 +71,9 @@ export function History({ active, busy, onNew, onOpen }: { active: string | null
   }, [active, busy, retry])
   const q = query.trim().toLocaleLowerCase('vi-VN')
   const now = useMemo(() => new Date(), [list])
-  const shown = list?.filter(t => (t.id === active || !isBlank(t)) && chatName(t).toLocaleLowerCase('vi-VN').includes(q)) ?? []
+  const kept = list?.filter(t => t.id === active || !isBlank(t)) ?? []
+  const shown = kept
+  const found = q ? kept.filter(t => chatName(t).toLocaleLowerCase('vi-VN').includes(q)) : kept
   // Time groups when the harness sent times; one plain group otherwise. The list keeps the harness order (newest first).
   const timed = shown.some(t => ageInDays(t.updated_at, now) !== null)
   const pinned = pins.map(id => shown.find(t => t.id === id)).filter((t): t is TripSummary => !!t)
@@ -80,24 +81,56 @@ export function History({ active, busy, onNew, onOpen }: { active: string | null
   const groups = [...(pinned.length ? [{ key: 'pinned', label: 'Đã ghim', items: pinned }] : []), ...(timed
     ? GROUPS.map(g => ({ key: g.key, label: g.label, items: unpinned.filter(t => { const age = ageInDays(t.updated_at, now); return age !== null && g.has(age) }) })).filter(g => g.items.length)
     : unpinned.length ? [{ key: 'all', label: 'Chuyến của bạn', items: unpinned }] : [])]
-  const open = (t: TripSummary) => { setQuery(''); onOpen(t) }
+  const open = (t: TripSummary) => { closeSearch(); onOpen(t) }
+  // Search is a centred palette over the page (like the assistant apps): new chat first, then recent chats, filtered as you type.
+  const palette = (
+    <Dialog.Root open={searching} onOpenChange={o => { if (!o) closeSearch() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="tg-history__veil" />
+        <Dialog.Content className="tg tg-find" aria-describedby={undefined}>
+          <Dialog.Title className="tg-sr">Tìm trong lịch sử</Dialog.Title>
+          <div className="tg-find__top">
+            <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm kiếm…" aria-label="Tìm trong lịch sử" />
+            <Dialog.Close className="tg-find__x" aria-label="Đóng"><Icon name="x" size={20} /></Dialog.Close>
+          </div>
+          <div className="tg-find__list">
+            {!q && <button type="button" className="tg-find__row" disabled={busy} onClick={() => { closeSearch(); onNew() }}><Icon name="edit" size={20} /><span>Cuộc trò chuyện mới</span></button>}
+            <h3 className="tg-find__label">{q ? 'Kết quả' : 'Trò chuyện gần đây'}</h3>
+            {!list && !error ? <p className="tg-find__none">Đang tải…</p>
+              : error ? <p className="tg-find__none">Chưa tải được lịch sử.</p>
+              : found.length === 0 ? <p className="tg-find__none">{q ? `Không có chuyến nào khớp “${query.trim()}”.` : 'Những chuyến bạn bắt đầu sẽ nằm ở đây.'}</p>
+              : found.map(t => <button key={t.id} type="button" className={`tg-find__row ${t.id === active ? 'is-active' : ''}`} disabled={busy} onClick={() => open(t)}><Icon name="chat" size={20} /><span>{chatName(t)}</span>{t.confirmed && <small>Đã chốt</small>}</button>)}
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+  // Folded: the column is gone; three small icons float at the top-left of the chat (open, new chat, search).
+  if (collapsed) return (
+    <>
+      <div className="tg-history__float" role="toolbar" aria-label="Lịch sử chat">
+        <button type="button" className="tg-history__ic" aria-label="Mở thanh bên" title="Mở thanh bên" onClick={onToggle}><Icon name="sidebar" size={19} /></button>
+        <button type="button" className="tg-history__ic" aria-label="Cuộc trò chuyện mới" title="Cuộc trò chuyện mới" disabled={busy} onClick={onNew}><Icon name="edit" size={19} /></button>
+        <button type="button" className="tg-history__ic" aria-label="Tìm kiếm" title="Tìm kiếm" onClick={() => setSearching(true)}><Icon name="search" size={19} /></button>
+      </div>
+      {palette}
+    </>
+  )
   return (
     <aside className="tg-history" aria-label="Lịch sử chat">
       <header className="tg-history__head">
-        <h2 className="tg-sr">Lịch sử chat</h2>
-        <button type="button" className="tg-history__new" disabled={busy} onClick={onNew}><Icon name="plus" size={18} />Cuộc trò chuyện mới</button>
+        <h2 className="tg-history__brand">Trò chuyện</h2>
+        <div className="tg-history__tools">
+          <button type="button" className="tg-history__ic" aria-label="Tìm kiếm" title="Tìm kiếm" onClick={() => setSearching(true)}><Icon name="search" size={19} /></button>
+          <button type="button" className="tg-history__ic" aria-label="Đóng thanh bên" title="Đóng thanh bên" onClick={onToggle}><Icon name="sidebar" size={19} /></button>
+        </div>
       </header>
-      {searching ? <label className="tg-history__search">
-        <Icon name="search" size={17} />
-        <input autoFocus value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') closeSearch() }} placeholder="Tìm trong lịch sử" aria-label="Tìm trong lịch sử" />
-        {query && <button type="button" className="tg-history__clear" aria-label="Xóa ô tìm" onClick={() => setQuery('')}><Icon name="x" size={14} /></button>}
-      </label> : <button ref={searchButton} type="button" className="tg-history__new" onClick={() => setSearching(true)}><Icon name="search" size={17} />Tìm kiếm</button>}
+      <button type="button" className="tg-history__new" disabled={busy} onClick={onNew}><Icon name="edit" size={18} />Cuộc trò chuyện mới</button>
+      {palette}
       <div className="tg-history__list">
         {error ? <div className="tg-history__empty" role="status"><Icon name="warn" size={20} /><p>Chưa tải được lịch sử.</p><button type="button" className="tg-link" onClick={() => setRetry(n => n + 1)}>Thử lại</button></div>
           : !list ? <div className="tg-history__skeleton" role="status" aria-label="Đang tải lịch sử">{[0, 1, 2, 3, 4].map(i => <span key={i} aria-hidden="true"><i /></span>)}</div>
-          : shown.length === 0 ? (q
-            ? <div className="tg-history__empty" role="status"><Icon name="search" size={20} /><p>Không có chuyến nào khớp “{query.trim()}”.</p><button type="button" className="tg-link" onClick={() => setQuery('')}>Xóa ô tìm</button></div>
-            : <div className="tg-history__empty"><Icon name="compass" size={20} /><p>Những chuyến bạn bắt đầu sẽ nằm ở đây.</p></div>)
+          : shown.length === 0 ? <div className="tg-history__empty"><Icon name="compass" size={20} /><p>Những chuyến bạn bắt đầu sẽ nằm ở đây.</p></div>
           : groups.map(g => (
             <section key={g.key} className="tg-history__group" aria-label={g.label}>
               <h3 className="tg-history__label">{g.label}</h3>

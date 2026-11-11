@@ -1,5 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
+import { tidyText } from '../../data/placeName'
 import { info } from '../lib'
 import { whyNot } from '../pd/api'
 import { useDecision } from '../pd/decision'
@@ -27,11 +28,11 @@ const tag = (id: number, stage: AssistantStage) => { editMsg(id, { stage }); ret
 function Orb({ size = 36 }: { size?: number }) {
   return <span className="tg-orb" style={{ '--orb': `${size}px` } as CSSProperties} aria-hidden="true"><i /></span>
 }
-const HELLO: Record<AssistantStage, string> = { decision: 'Bạn muốn lọc thế nào?', planning: 'Bạn muốn đổi gì trong lịch?' }
-const SUB: Record<AssistantStage, string> = { decision: 'Lọc nơi theo ý bạn', planning: 'Hỏi hoặc sửa lịch theo ý bạn' }
+const HELLO: Record<AssistantStage, string> = { decision: 'Bạn muốn làm gì tiếp?', planning: 'Bạn muốn sửa gì trong lịch?' }
 
-const PLAN_CHIPS = ['Dời một chỗ sang ngày khác', 'Thêm một chỗ ăn trưa', 'Vì sao xếp ngày 1 như vậy?', 'Ngày nào đi lại nhiều nhất?']
-const CHIPS = ['Yên tĩnh hơn', 'Ít di chuyển hơn', 'Thêm một chỗ ăn trưa', 'Vì sao không gợi ý Langbiang?']
+const SUB: Record<AssistantStage, string> = { decision: 'Tìm thêm, gợi ý, lọc bớt', planning: 'Hỏi, đổi chỗ, thêm nơi' }
+const PLAN_CHIPS = ['Dời sang ngày khác', 'Thêm chỗ ăn trưa', 'Vì sao xếp như vậy?']
+const CHIPS = ['Yên tĩnh hơn', 'Tìm thêm quán cà phê', 'Vì sao không có Langbiang?']
 // "vì sao không gợi ý X" is answered from the data (why-not), not by the agent.
 const WHY_NOT = /(?:vì sao|tại sao|sao)\s+(?:không|chưa)\s+(?:gợi ý|thấy|có)\s+(.+?)\s*\??$/i
 
@@ -181,24 +182,24 @@ export function Body({ stage, pinned, inDialog = false, busy: stageBusy, send, c
   return (
     <>
       <header className="tg-asst__head">
-        <Orb size={36} />
+        <Orb size={34} />
         <div className="tg-asst__who">{inDialog ? <Dialog.Title>Hỏi TripGuardian</Dialog.Title> : <h2>Hỏi TripGuardian</h2>}<small>{SUB[stage]}</small></div>
         <div className="tg-asst__ops">
-          <button type="button" className="tg-link" disabled={busy || resetting || !msgs.length} onClick={() => { void newChat() }}>Cuộc trò chuyện mới</button>
-          {canPin && <button type="button" className="tg-link" onClick={() => pinAssistant(!pinned)} aria-pressed={pinned}>{pinned ? 'Bỏ ghim' : 'Ghim'}</button>}
-          <button type="button" className="tg-icon-btn" onClick={() => openAssistant(false)} aria-label="Thu lại"><Icon name="x" size={18} /></button>
+          <button type="button" className="tg-asst__ic" disabled={busy || resetting || !msgs.length} onClick={() => { void newChat() }} aria-label="Cuộc trò chuyện mới" title="Cuộc trò chuyện mới"><Icon name="edit" size={18} /></button>
+          {canPin && <button type="button" className="tg-asst__ic" onClick={() => pinAssistant(!pinned)} aria-pressed={pinned} aria-label={pinned ? 'Bỏ ghim' : 'Ghim cạnh danh sách'} title={pinned ? 'Bỏ ghim' : 'Ghim cạnh danh sách'}><Icon name="thumbtack" size={18} /></button>}
+          <button type="button" className="tg-asst__ic" onClick={() => openAssistant(false)} aria-label="Thu lại" title="Thu lại"><Icon name="x" size={18} /></button>
         </div>
       </header>
       <div className="tg-asst__log" role="log" aria-live="polite">
         {msgs.length === 0 && <div className="tg-asst__hello">
-          <Orb size={68} />
+          <Orb size={76} />
           <h3>{HELLO[stage]}</h3>
-          <p className="tg-asst__intro">{intro}</p>
+          {intro && <p className="tg-asst__intro">{intro}</p>}
           <div className="tg-asst__quick" role="group" aria-label="Gợi ý câu hỏi">{chips.map((c) => <button key={c} type="button" className="tg-qchip" disabled={busy} onClick={() => submit(c)}>{c}</button>)}</div>
         </div>}
         {msgs.map((m) => (
           <div key={m.id} className={`tg-msg is-${m.role}`}>
-            <p>{m.text || (m.role === 'bot' ? <span className="tg-typing" role="status" aria-label="Đang trả lời"><i /><i /><i /></span> : '')}</p>
+            <p>{(m.text && tidyText(m.text)) || (m.role === 'bot' ? <span className="tg-typing" role="status" aria-label="Đang trả lời"><i /><i /><i /></span> : '')}</p>
             {cards.get(m.id) && <PlaceStage row={cards.get(m.id)!} busy={busy} autoOpen={stage === 'decision'} onLike={(id) => onLike(id)} />}
             {daysOf.get(m.id) && onOpenDay && (
               <ul className="tg-msg__days" aria-label="Các ngày đã đổi">
@@ -231,7 +232,7 @@ function DecisionBody({ pinned, inDialog }: { pinned: boolean; inDialog?: boolea
   const { busy } = useDecision()
   const send = useDecisionSend()
   return <Body stage="decision" pinned={pinned} inDialog={inDialog} busy={busy} send={send} chips={CHIPS} onLike={send.like} canPin onAsk={send.askWhyNot}
-    intro='Nói điều bạn muốn đổi trong danh sách, ví dụ "bỏ mấy chỗ đông đi" hay "thêm một quán ăn tối gần hồ". Mọi thay đổi hiện ngay trên lưới và hoàn tác được.'
+    intro=''
     placeholder="Ví dụ: yên tĩnh hơn đi" />
 }
 
@@ -239,7 +240,7 @@ function DecisionBody({ pinned, inDialog }: { pinned: boolean; inDialog?: boolea
 function PlanningBody({ inDialog, onOpenDay }: { inDialog?: boolean; onOpenDay?: (day: number) => void }) {
   const send = usePlanningSend()
   return <Body stage="planning" pinned={false} inDialog={inDialog} busy={send.busy} send={send} chips={PLAN_CHIPS} canPin={false} onLike={(id) => { void toggleSaved(id) }} onOpenDay={onOpenDay}
-    intro='Hỏi về lịch này hoặc nói điều bạn muốn đổi, ví dụ "dời chỗ này sang ngày 2" hay "vì sao ghé hồ trước?". Một lượt đổi lịch hoàn tác được bằng một lần bấm.'
+    intro=''
     placeholder="Ví dụ: thêm một quán cà phê chiều" />
 }
 
@@ -248,8 +249,8 @@ export function AssistantPinned() {
 }
 
 const FAB = {
-  decision: { label: 'Hỏi TripGuardian · lọc nơi theo ý bạn', aria: 'Hỏi TripGuardian: lọc địa điểm theo ý bạn' },
-  planning: { label: 'Hỏi TripGuardian · sửa lịch theo ý bạn', aria: 'Hỏi TripGuardian: hỏi hoặc sửa lịch trình theo ý bạn' },
+  decision: { label: 'Hỏi TripGuardian · tìm, gợi ý, lọc nơi', aria: 'Hỏi TripGuardian: tìm thêm, gợi ý hoặc lọc bớt địa điểm' },
+  planning: { label: 'Hỏi TripGuardian · hỏi, sửa lịch', aria: 'Hỏi TripGuardian: hỏi, sửa hoặc thêm nơi vào lịch trình' },
 } as const
 
 // Lựa chọn pins the chat beside the grid; Lịch trình has no side column, so there it always floats.

@@ -4,7 +4,7 @@ import { useDecision } from '../pd/decision'
 import type { Card, Group, SearchResult } from '../pd/types'
 import { searchList } from '../pd/api'
 import { requestStageEntry } from '../journey'
-import { openAssistant, setUi, toggleCmp, useUi } from '../store'
+import { setUi, toggleCmp, useUi } from '../store'
 import { WaitLine } from '../ui/SlowHint'
 import '../css/fixes.css'
 import { useTrip } from '../trip'
@@ -154,7 +154,7 @@ export function Explore() {
             <header className="tg-xhead">
               <div>
                 <h1>Gợi ý cho chuyến của bạn</h1>
-                <p>{total - anchors.length} nơi hợp với chuyến của bạn{listMove && <span key={listMove.key} className={`tg-xhead__delta tg-mono ${listMove.delta < 0 ? 'is-down' : 'is-up'}`}>{placesDelta(listMove.delta)}</span>}, xếp từ hợp nhất. <button type="button" className="tg-link" onClick={() => openAssistant(true)}>Chat để thu hẹp</button></p>
+                <p>{total - anchors.length} nơi hợp với chuyến của bạn{listMove && <span key={listMove.key} className={`tg-xhead__delta tg-mono ${listMove.delta < 0 ? 'is-down' : 'is-up'}`}>{placesDelta(listMove.delta)}</span>}, xếp từ hợp nhất.</p>
               </div>
               <div className="tg-xhead__ops">
                 <div className="tg-seg" role="group" aria-label="Cách xem"><button type="button" aria-pressed={mode === 'grid'} onClick={() => setMode('grid')}><Icon name="grid" size={15} /> Lưới</button><button type="button" aria-pressed={mode === 'disc'} disabled={!groups.length} onClick={() => setMode('disc')}><Icon name="compass" size={15} /> Đĩa xoay</button></div>

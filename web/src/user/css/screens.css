@@ -156,13 +156,24 @@
 .tg-trip__body .tg-prog { width: 100%; }
 .tg-trip__act { display: flex; align-items: center; gap: 16px; margin-top: 6px; }
 .tg-saved { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
-.tg-sv { position: relative; background: var(--tg-surface); border: 1px solid var(--tg-line); border-radius: 20px; overflow: hidden; transition: transform 240ms var(--tg-ease), box-shadow 240ms; }
+.tg-sv { position: relative; display: flex; flex-direction: column; background: var(--tg-surface); border: 1px solid var(--tg-line); border-radius: 22px; overflow: hidden; transition: transform 240ms var(--tg-ease), box-shadow 240ms; }
 .tg-sv:hover { transform: translateY(-3px); box-shadow: var(--tg-sh-2); }
-.tg-sv__ph { display: block; aspect-ratio: 4 / 3; }
-.tg-sv__ph .tg-photo { height: 100%; }
-.tg-sv .tg-pc__save { position: absolute; right: 10px; top: 10px; }
-.tg-sv__b { display: grid; gap: 6px; padding: 16px 18px 18px; justify-items: start; }
-.tg-sv__b h3 { font-size: 1.12rem; }
+.tg-sv__ph { position: relative; display: block; aspect-ratio: 4 / 3; overflow: hidden; }
+.tg-sv__ph > a { display: block; height: 100%; }
+.tg-sv__ph .tg-photo { height: 100%; margin: 0; }
+.tg-sv__ph .tg-photo img { transition: transform 600ms var(--tg-ease); }
+.tg-sv:hover .tg-sv__ph .tg-photo img { transform: scale(1.04); }
+.tg-sv__cat { position: absolute; left: 12px; top: 12px; }
+.tg-sv__b { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 16px 18px 14px; }
+.tg-sv__b h3 { font-size: 1.1rem; line-height: 1.3; }
+.tg-sv__meta { margin: -2px 0 0; font-size: 0.86rem; color: var(--tg-ink-3); }
+.tg-sv__tags { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; }
+.tg-sv__tags li { padding: 4px 10px; border-radius: 999px; background: #f3efe6; color: #5a4d36; font-size: 0.78rem; font-weight: 500; }
+.tg-sv__act { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--tg-line); }
+.tg-sv__del { position: absolute; z-index: 2; right: 10px; top: 10px; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.94); color: var(--tg-ink-2); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); opacity: 0; transform: scale(0.9); transition: opacity 150ms, transform 150ms, background 150ms, color 150ms; }
+.tg-sv:hover .tg-sv__del, .tg-sv:focus-within .tg-sv__del { opacity: 1; transform: none; }
+.tg-sv__del:hover, .tg-sv__del:focus-visible { background: var(--tg-danger-bg); color: var(--tg-danger); }
+@media (hover: none) { .tg-sv__del { opacity: 1; transform: none; } }
 .tg-saved__n { margin-top: 24px; font-size: 0.82rem; }
 .tg-who { display: flex; align-items: center; gap: 16px; padding: 16px 20px; margin-bottom: 20px; border-radius: 18px; background: var(--tg-surface); border: 1px solid var(--tg-line); }
 .tg-who > div { flex: 1; display: grid; }
@@ -250,20 +261,32 @@
 .tg-trip__del:hover, .tg-trip__del:focus-visible { background: var(--tg-pine-soft); color: var(--tg-pine); }
 .tg-trip__ask { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--tg-ink-2); }
 
-/* profile: who you are with a few numbers, what friends see, your usual way of travelling */
-.tg-me { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px 24px; padding: 20px 24px; margin-bottom: 20px; }
-.tg-me .tg-who__av { width: 76px; height: 76px; font-size: 1.8rem; }
-.tg-me__id { display: grid; gap: 2px; min-width: 0; }
-.tg-me__id b { font: 700 1.25rem var(--tg-display); color: var(--tg-pine-d); overflow-wrap: anywhere; }
-.tg-me__stats { display: flex; gap: 6px; margin: 0; }
-.tg-me__stats > div { display: grid; gap: 2px; min-width: 76px; padding: 8px 14px; border-radius: 14px; background: var(--tg-pine-soft); text-align: center; }
-.tg-me__stats dt { font-size: 0.72rem; color: var(--tg-ink-3); }
-.tg-me__stats dd { margin: 0; font: 700 1.2rem var(--tg-mono); color: var(--tg-pine-d); }
+/* profile: a cover and who you are, four numbers, then what friends see and your usual way of travelling */
+.tg-me { position: relative; display: grid; gap: 0; padding: 0; margin-bottom: 20px; overflow: hidden; border-radius: 24px; }
+.tg-me__cover { height: 112px; background: radial-gradient(120% 140% at 12% 0%, #f2dcc2 0%, transparent 60%), radial-gradient(90% 120% at 100% 100%, #d9e4d3 0%, transparent 62%), linear-gradient(120deg, #f4efe3, #efe6d3); }
+.tg-me__row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 12px 22px; padding: 0 28px; }
+.tg-me__row > .tg-avpick { margin-top: -48px; }
+.tg-me .tg-who__av { width: 96px; height: 96px; font-size: 2.2rem; border: 4px solid var(--tg-surface); box-shadow: var(--tg-sh-1); }
+.tg-me__id { display: grid; gap: 3px; min-width: 0; padding-top: 16px; }
+.tg-me__id b { font: 700 1.5rem/1.2 var(--tg-display); color: var(--tg-ink); overflow-wrap: anywhere; }
+.tg-me__sub { font-size: 0.88rem; color: var(--tg-ink-3); overflow-wrap: anywhere; }
+.tg-me__bio { margin: 4px 0 0; font-size: 0.95rem; color: var(--tg-ink-2); }
+.tg-me__act { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; padding-top: 16px; }
+.tg-me__stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 22px 28px 26px; }
+.tg-me__stats > div { display: grid; grid-template-columns: auto 1fr; grid-template-areas: 'ic n' 'ic l'; align-items: center; column-gap: 12px; padding: 14px 16px; border-radius: 16px; background: #f7f5f0; }
+.tg-me__stats svg { grid-area: ic; box-sizing: content-box; padding: 10px; border-radius: 50%; background: #fff; color: var(--tg-brown); }
+.tg-me__stats dd { grid-area: n; margin: 0; font: 700 1.4rem/1.1 var(--tg-sans); letter-spacing: -0.02em; color: var(--tg-ink); }
 .tg-me__stats dd a { color: inherit; }
+.tg-me__stats dt { grid-area: l; font-size: 0.8rem; color: var(--tg-ink-3); }
+.tg-prof__c > .tg-btn { justify-self: start; }
+.tg-prof__c h2, .tg-mem__link h2, .tg-del h2 { display: flex; align-items: center; gap: 10px; }
+.tg-prof__c h2 i, .tg-mem__link h2 i, .tg-del h2 i { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 10px; background: #f3efe6; color: var(--tg-brown); }
+.tg-npref { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; }
+.tg-npref label { border-bottom: 1px solid var(--tg-line); }
 .tg-prof.is-one { grid-template-columns: 1fr; }
 .tg-taste { display: grid; gap: 18px; }
 .tg-taste__row { display: grid; gap: 8px; }
 .tg-taste__row > label, .tg-taste__row > span { font-weight: 600; font-size: 0.92rem; }
 .tg-taste__line { display: flex; gap: 8px; }
 .tg-taste__line .tg-input { flex: 1; min-width: 0; }
-@media (max-width: 1000px) { .tg-me { grid-template-columns: auto minmax(0, 1fr); } .tg-me__stats { grid-column: 1 / -1; } }
+@media (max-width: 1000px) { .tg-me__row { grid-template-columns: auto minmax(0, 1fr); } .tg-me__act { grid-column: 1 / -1; justify-content: flex-start; } .tg-me__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tg-npref { grid-template-columns: 1fr; } }

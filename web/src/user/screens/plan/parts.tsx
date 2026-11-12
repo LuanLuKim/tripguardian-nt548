@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { fmtMin, fmtVnd, info } from '../../lib'
 import { usePlanning } from '../../planning/planning'
 import type { Backups, CrowdTip, DayConditions, ItineraryDay, TimeRecommendation, TimeSuitabilityDay, Variant } from '../../planning/types'
@@ -8,7 +8,7 @@ import { useTrip } from '../../trip'
 import { PlacePhoto } from '../../ui/common'
 import { CountUp } from '../../ui/CountUp'
 import { Icon } from '../../ui/icons'
-import { BLOCK, costText, visits } from './shared'
+import { BLOCK, costText, openPlace, visits } from './shared'
 
 // Side cards, notices and dialogs of the itinerary screens (screens/Plan.tsx, screens/plan/*).
 
@@ -156,6 +156,50 @@ export function NoHotel({ onHotel }: { onHotel: () => void }) {
                 <button type="button" className="tg-btn tg-btn--primary tg-btn--sm" disabled={busy} onClick={() => { void act({ type: 'pick_lodging', id: c.id }) }}>Chọn</button>
               </li>
             ))}
+          </ul>
+        )}
+    </section>
+  )
+}
+
+// The same hand of ghost cards a day's empty slot shows (GhostSlot), for the one slot of the whole trip: where to sleep.
+// Up to three of the stays Planning ranked for it; the round "+" on the card in front picks it (pick_lodging). It is a
+// suggestion, not a choice: nothing changes until the user picks, and not picking is fine.
+export function LodgingGhost({ onHotel }: { onHotel: () => void }) {
+  const { view, act, busy } = usePlanning()
+  const [top, setTop] = useState(0)
+  const lod = view?.lodging
+  const picks = lod?.candidates.slice(0, 3) ?? []
+  const n = picks.length
+  return (
+    <section className="tg-ghost tg-ghost--stay" aria-label="Gợi ý chỗ nghỉ">
+      <header>
+        <Icon name="sparkle" size={14} />
+        <b>Gợi ý · Chỗ nghỉ</b>
+        <small>chưa chọn</small>
+        <button type="button" className="tg-link" onClick={onHotel}>Xem tất cả</button>
+      </header>
+      {lod?.status === 'pending' ? <p className="tg-faint" role="status">Đang tìm chỗ nghỉ hợp với chuyến…</p>
+        : n === 0 ? <p className="tg-faint">Chưa có gợi ý. Bạn tìm chỗ nghỉ trong "Xem tất cả".</p>
+        : (
+          <ul className={`tg-ghost__fan ${n === 1 ? 'is-one' : ''}`} style={{ '--n': n, '--cw': n === 1 ? '100%' : n === 2 ? '58%' : '46%' } as CSSProperties}>
+            {picks.map((c, i) => {
+              const chosen = i === top
+              return (
+                <li key={c.id} className={chosen ? 'is-front' : ''} style={{ '--i': i, '--d': Math.abs(i - top), '--side': Math.sign(i - top) } as CSSProperties} onMouseEnter={() => setTop(i)}>
+                  <span className="tg-ghost__bg" aria-hidden="true"><PlacePhoto id={c.id} name="" sizes="160px" /></span>
+                  <span className="tg-ghost__thumb">
+                    <PlacePhoto id={c.id} name="" sizes="240px" />
+                    <button type="button" className="tg-ghost__add" disabled={busy || !chosen} aria-label={`Chọn ${c.name}`} title="Chọn chỗ nghỉ này" onClick={() => { void act({ type: 'pick_lodging', id: c.id }) }}><Icon name="plus" size={16} /></button>
+                  </span>
+                  <button type="button" className="tg-ghost__open" aria-label={`Xem chi tiết ${c.name}`} onFocus={() => setTop(i)} onClick={() => (chosen ? openPlace(c.id) : setTop(i))} />
+                  <span className="tg-ghost__txt">
+                    <strong>{c.name}</strong>
+                    <small>{[c.rating ? `★ ${c.rating.toFixed(1)}` : null, c.price_vnd ? `${fmtVnd(c.price_vnd)}/đêm` : 'Chưa có giá', c.avg_min != null ? `≈ ${fmtMin(c.avg_min)} tới các nơi` : null].filter(Boolean).join(' · ')}</small>
+                  </span>
+                </li>
+              )
+            })}
           </ul>
         )}
     </section>

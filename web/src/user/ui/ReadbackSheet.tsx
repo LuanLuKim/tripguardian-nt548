@@ -2,10 +2,24 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { useRef, useState } from 'react'
 import { enterStage, requestStageEntry, JourneyError, mutateJourney, readJourney } from '../journey'
 import type { View as DecisionView } from '../pd/types'
-import type { Deck, DeckIssue, Readback, TurnInput } from '../tu/types'
+import type { Deck, DeckIssue, Readback, ReadbackLine, TurnInput } from '../tu/types'
 import { go } from './common'
 import { GateAsk } from './Gate'
 import { Icon } from './icons'
+
+const MARKERS: Record<ReadbackLine['kind'], string> = { said: 'Bạn nói', guess: 'Mình đoán', default: 'Mặc định', check: 'Cần xem lại' }
+const ORDER: ReadbackLine['kind'][] = ['check', 'said', 'guess', 'default']
+// a line without the kind its chip already shows ("Mặc định: …"), first letter up
+const tidy = (text: string) => { const t = text.replace(/^(Mặc định|Tự kiểm|Mình đoán|Bạn nói)\s*:\s*/i, ''); return t.charAt(0).toUpperCase() + t.slice(1) }
+
+// The trip as TripGuardian has understood it, one row per thing written down, what needs a second look first.
+function TripSummary({ lines }: { lines: ReadbackLine[] }) {
+  const sorted = [...lines].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind))
+  return <section className="tg-gt__sum" aria-label="Tóm tắt chuyến đi">
+    <p className="tg-gt__sum-n"><b>{lines.length}</b> điều đã ghi nhận cho chuyến này</p>
+    <ul>{sorted.map((line, i) => <li key={i} className={`is-${line.kind}`}><small>{MARKERS[line.kind]}</small><span>{tidy(line.text)}</span></li>)}</ul>
+  </section>
+}
 
 export function ReadbackSheet({ id, initial, missing: initialMissing, onClose, onAdvance, onView }: {
   id: string; initial: Readback; missing: string[]
@@ -13,12 +27,14 @@ export function ReadbackSheet({ id, initial, missing: initialMissing, onClose, o
 }) {
   const [missing, setMissing] = useState(initial.missing ?? initialMissing)
   const [deck, setDeck] = useState<Deck | null>(initial.deck ?? null)
+  const [lines, setLines] = useState<ReadbackLine[]>(initial.lines ?? [])
   const [issues, setIssues] = useState<DeckIssue[]>([])
   const [busy, setBusy] = useState(false)
   const working = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const replace = (next: Readback, needed = next.missing ?? []) => {
     setMissing(needed)
+    setLines(next.lines ?? [])
     setDeck(needed.length ? next.deck ?? null : null)
     return needed
   }
@@ -60,8 +76,9 @@ export function ReadbackSheet({ id, initial, missing: initialMissing, onClose, o
         {deck?.tabs.length ? <GateAsk key={JSON.stringify(deck)} deck={deck} busy={busy} issues={issues} error={error}
           onAnswer={answers => update({ kind: 'deck', answers })} onOther={edit} />
           : <div className="tg-gt__page tg-gt__fan">
-            <Dialog.Title className="tg-gt__heading">{missing.length ? 'Cần thêm thông tin chuyến đi' : 'Tiếp tục đến lịch trình'}</Dialog.Title>
+            <Dialog.Title className="tg-gt__heading">{missing.length ? 'Cần thêm thông tin chuyến đi' : lines.length ? 'Mình sẽ xếp lịch theo những điều này' : 'Tiếp tục đến lịch trình'}</Dialog.Title>
             <Dialog.Description id="gate-description" className="tg-gt__sub">{missing.length ? 'Bạn mở Tìm hiểu để bổ sung ngày đi hoặc lưu ý sức khỏe, ăn uống nhé.' : 'Mình đã có đủ thông tin cần thiết để xếp lịch.'}</Dialog.Description>
+            {!missing.length && lines.length > 0 && <TripSummary lines={lines} />}
             {error && <p className="tg-gt__err" role="alert">{error}</p>}
             <footer className="tg-gt__foot">
               <button type="button" className="tg-gt__link" disabled={busy} onClick={edit}><Icon name="edit" size={16} />Sửa trong Tìm hiểu</button>

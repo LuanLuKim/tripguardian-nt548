@@ -24,8 +24,8 @@ function Row({ icon, title, sub, children }: { icon: IconName; title: string; su
   )
 }
 
-export function Overview({ fill, days, variant, robustness, travelMin, visitMin, droppedCount, lodgingName, hasHotel, arriveHow, leaveHow, wayIn, wayOut, stayOffer, notices, after, delta, sameAs, busy, footer, onDay, onChangeVariant, onHotel, onDropped, onStory, onReoptimize, onOpen }: {
-  fill?: ReactNode; days: ItineraryDay[]; variant: Variant | null; robustness?: Robustness; travelMin: number; visitMin: number; droppedCount: number
+export function Overview({ fill, arrivalFill, lodgingGhost, days, variant, robustness, travelMin, visitMin, droppedCount, lodgingName, hasHotel, arriveHow, leaveHow, wayIn, wayOut, stayOffer, notices, after, delta, sameAs, busy, footer, onDay, onChangeVariant, onHotel, onDropped, onStory, onReoptimize, onOpen }: {
+  fill?: ReactNode; arrivalFill?: ReactNode; lodgingGhost?: ReactNode; days: ItineraryDay[]; variant: Variant | null; robustness?: Robustness; travelMin: number; visitMin: number; droppedCount: number
   lodgingName: string | null; hasHotel: boolean; arriveHow?: string | null; leaveHow?: string | null; wayIn?: ReactNode; wayOut?: ReactNode; stayOffer?: ReactNode; notices: ReactNode; after: ReactNode; delta: string | null; sameAs: string | null; busy: boolean; footer: ReactNode
   onDay: (i: number) => void; onChangeVariant: () => void; onHotel: () => void; onDropped: () => void; onStory: () => void; onReoptimize: () => void; onOpen: (id: string) => void
 }) {
@@ -65,11 +65,13 @@ export function Overview({ fill, days, variant, robustness, travelMin, visitMin,
           </div>
         </Row>
         <Row icon={wayIcon(arriveHow)} title="Đến Đà Lạt" sub={shortDate(first?.date, 1)}>
+          {arrivalFill}
           <div className="tg-it-transit"><span><Icon name={wayIcon(arriveHow)} size={16} /><b>Di chuyển đến Đà Lạt</b></span><span>{first ? `Lịch ngày đầu bắt đầu lúc ${first.window[0]}` : 'Chưa có thông tin chuyến đến'}</span></div>
           {wayIn}
         </Row>
         <Row icon="bed" title="Chỗ nghỉ" sub={days.length > 1 ? `${days.length - 1} đêm` : 'Không nghỉ đêm'}>
           <div className="tg-it-transit"><span><Icon name="bed" size={16} /><b>{hasHotel && lodgingName ? lodgingName : 'Chưa chọn chỗ nghỉ'}</b></span><button type="button" className="tg-it-textbtn" onClick={onHotel}>{hasHotel ? 'Đổi chỗ nghỉ' : 'Chọn chỗ nghỉ'} <Icon name="chevronRight" size={14} /></button></div>
+          {!hasHotel && lodgingGhost}
           {stayOffer}
         </Row>
         {fill && <Row icon="sliders" title="Thông tin chuyến" sub="Thêm để lịch hợp hơn">{fill}</Row>}

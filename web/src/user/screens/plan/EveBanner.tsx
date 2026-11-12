@@ -3,7 +3,7 @@ import { useAccount } from '../../account'
 import { json } from '../../journey'
 import { PlacePhoto } from '../../ui/common'
 import { Icon } from '../../ui/icons'
-import { TimeInput } from '../../ui/TimeInput'
+import { TimePick } from '../../ui/TimePick'
 
 // D.3 evening check (docs/PLANNING.md §Đổi lịch tối trước ngày đi): what tomorrow may need to change on the confirmed
 // plan. The server only fills it while eve_replan is on; otherwise GET answers an empty state.
@@ -60,35 +60,37 @@ function changes(o: EveOption) {
 
 const headline = (p: EvePending) => (p.cause.factor === 'window' ? `Ngày mai: ${p.cause.text}` : `Ngày mai ở ${p.name}: ${p.cause.text}`)
 
-type Props = { state: EveState; busy: boolean; error: string | null; send: ReturnType<typeof useEve>['send']; arrive?: string | null; leave?: string | null }
+type Props = { state: EveState; busy: boolean; error: string | null; send: ReturnType<typeof useEve>['send']; times?: Times | null }
 
-// Arrive / leave time of the confirmed trip (eve `times`): only the first day's start and the last day's end move; the plan
-// stays confirmed and the next evening check offers the options if something no longer fits.
-export function EveTimes({ arrive, leave, busy, send }: { arrive: string; leave: string; busy: boolean; send: Props['send'] }) {
-  const [a, setA] = useState(arrive)
-  const [l, setL] = useState(leave)
+// The times of the confirmed trip (eve `times`): when it arrives, when each day goes out and stops for rest, when it leaves.
+// Only the windows move; the plan stays confirmed and the next evening check offers the options if something no longer fits.
+// `start` / `end` are the daily outing hours and only make sense on a trip of more than one day.
+type Times = { arrive: string; start?: string | null; end?: string | null; leave: string }
+const MOMENTS = [
+  { key: 'arrive', icon: 'plane', label: 'Đến', note: 'Ngày đầu bắt đầu từ giờ này' },
+  { key: 'start', icon: 'sun', label: 'Đi chơi', note: 'Mỗi ngày ra ngoài từ giờ này' },
+  { key: 'end', icon: 'moon', label: 'Về nghỉ', note: 'Mỗi ngày xong trước giờ này' },
+  { key: 'leave', icon: 'home', label: 'Rời đi', note: 'Ngày cuối xong trước giờ này' },
+] as const
+
+export function EveTimes({ times, busy, send }: { times: Times; busy: boolean; send: Props['send'] }) {
+  const [v, setV] = useState<Record<string, string>>({})
   const [saved, setSaved] = useState(false)
-  const changed = a !== arrive || l !== leave
-  const save = async () => {
-    const body: Record<string, string> = {}
-    if (a !== arrive) body.arrive = a
-    if (l !== leave) body.leave = l
-    setSaved(await send('times', body))
-  }
-  const moments = [
-    { key: 'arrive', icon: 'plane' as const, label: 'Đến nơi lúc', note: 'Ngày đầu tiên bắt đầu từ giờ này', value: a, set: (v: string) => { setA(v); setSaved(false) } },
-    { key: 'leave', icon: 'home' as const, label: 'Rời đi lúc', note: 'Ngày cuối cùng kết thúc trước giờ này', value: l, set: (v: string) => { setL(v); setSaved(false) } },
-  ]
+  const shown = MOMENTS.filter((m) => times[m.key] != null)
+  const at = (k: (typeof MOMENTS)[number]['key']) => v[k] ?? times[k] ?? ''
+  const edited = (k: (typeof MOMENTS)[number]['key']) => v[k] !== undefined && v[k] !== times[k]
+  const changed = shown.some((m) => edited(m.key))
+  const save = async () => setSaved(await send('times', Object.fromEntries(shown.filter((m) => edited(m.key)).map((m) => [m.key, v[m.key]]))))
   return (
-    <section className="tg-eve__times" aria-label="Giờ đến và giờ về">
-      <header><Icon name="clock" size={18} /><h3>Giờ đến và giờ về</h3></header>
+    <section className="tg-eve__times" aria-label="Giờ trong chuyến">
+      <header><Icon name="clock" size={18} /><h3>Giờ trong chuyến</h3></header>
       <div className="tg-eve__moments">
-        {moments.map((m) => (
-          <div key={m.key} className={`tg-eve__moment ${m.key === 'arrive' ? (a !== arrive ? 'is-edited' : '') : l !== leave ? 'is-edited' : ''}`}>
+        {shown.map((m) => (
+          <div key={m.key} className={`tg-eve__moment ${edited(m.key) ? 'is-edited' : ''}`}>
             <span className="tg-eve__moment-ico" aria-hidden="true"><Icon name={m.icon} size={18} /></span>
             <div>
               <span className="tg-eve__moment-label">{m.label}</span>
-              <TimeInput label={m.label} value={m.value} disabled={busy} onChange={m.set} />
+              <TimePick label={m.label} value={at(m.key)} disabled={busy} onChange={(x) => { setV((o) => ({ ...o, [m.key]: x })); setSaved(false) }} />
               <small>{m.note}</small>
             </div>
           </div>
@@ -96,17 +98,16 @@ export function EveTimes({ arrive, leave, busy, send }: { arrive: string; leave:
       </div>
       <footer>
         <p className="tg-faint" role="status">{changed ? 'Giờ mới chưa lưu. Lịch vẫn giữ nguyên, không tự xếp lại.' : saved ? <><Icon name="check" size={14} /> Đã lưu. Tối trước ngày đi, TripGuardian kiểm tra lại và hỏi bạn nếu có điểm không còn vừa.</> : 'Đổi giờ sau khi đã chốt không tự xếp lại lịch.'}</p>
-        {changed && <button type="button" className="tg-btn tg-btn--primary tg-btn--sm tg-eve__save" disabled={busy || !a || !l} onClick={save}>Lưu giờ</button>}
+        {changed && <button type="button" className="tg-btn tg-btn--primary tg-btn--sm tg-eve__save" disabled={busy || shown.some((m) => !at(m.key))} onClick={save}>Lưu giờ</button>}
       </footer>
     </section>
   )
 }
 
-export function EveBanner({ state, busy, error, send, arrive, leave }: Props) {
+export function EveBanner({ state, busy, error, send, times }: Props) {
   const [pick, setPick] = useState<Record<string, string>>({})
   const [leaving, setLeaving] = useState<string | null>(null)
   const notes = (state.notes ?? []).slice(0, 4) // what the check saw but does not ask about: nothing to choose, just good to know
-  const times = !!arrive && !!leave
   if (!state.pending.length && !state.undo && !notes.length && !times) return null
   const apply = async (p: EvePending, o: EveOption, key: string) => {
     setLeaving(key)
@@ -144,7 +145,7 @@ export function EveBanner({ state, busy, error, send, arrive, leave }: Props) {
         )
       })}
       {notes.map((n, i) => <div key={`${i}:${n.date}${n.place_id}${n.factor}`} className="tg-it-note" role="status"><Icon name="info" size={18} /><span><b>{n.name} · ngày {n.date.slice(8)}/{n.date.slice(5, 7)}:</b> {n.text}</span></div>)}
-      {times && <EveTimes key={`${arrive}${leave}`} arrive={arrive!} leave={leave!} busy={busy} send={send} />}
+      {times && <EveTimes key={JSON.stringify(times)} times={times} busy={busy} send={send} />}
       {state.undo && <button type="button" className="tg-btn tg-btn--ghost tg-btn--sm" disabled={busy} onClick={() => send('undo')}><Icon name="return" size={15} /> Hoàn tác thay đổi vừa chọn</button>}
       {error && <p className="tg-it-diff is-bad" role="alert"><Icon name="warn" size={15} />{error}</p>}
     </>

@@ -52,6 +52,7 @@ function useUnfinishedTrip() {
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/', label: 'Dành cho bạn', icon: 'home' },
   { to: '/trips', label: 'Chuyến của tôi', icon: 'map' },
+  { to: '/posts', label: 'Bài viết', icon: 'article' },
   { to: '/saved', label: 'Đã lưu', icon: 'heart' },
   { to: '/recent', label: 'Đã xem gần đây', icon: 'clock' },
 ]

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { openCreate, openTheme, setFamiliar, useFamiliar } from '../home/dialogs'
 import { MiniCalendar } from '../home/MiniCalendar'
 import { Pulse, usePulse } from '../home/Pulse'
 import { Who } from '../home/Who'
+import { PostSearch } from '../community/Search'
 import { useSnapshot } from '../../data/store'
 import { HOME_THEMES, matches, THEMES } from '../home/themes'
 import { toast } from '../store'
@@ -22,15 +23,6 @@ export function Discover() {
   const familiar = useFamiliar()
   const [q, setQ] = useState('')
   const [allThemes, setAllThemes] = useState(false)
-  const input = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      const el = document.activeElement
-      if (e.key === '/' && !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && !document.querySelector('[role="dialog"]')) { e.preventDefault(); input.current?.focus() }
-    }
-    addEventListener('keydown', key)
-    return () => removeEventListener('keydown', key)
-  }, [])
   const shown = THEMES.filter((t) => matches(t, q))
   const folded = !allThemes && !q.trim() && shown.length > HOME_THEMES // a search shows every match; otherwise "Xem thêm" opens the rest
   const listed = folded ? shown.slice(0, HOME_THEMES) : shown
@@ -41,12 +33,7 @@ export function Discover() {
     <div className="tg-hm">
       <div className="tg-hm__center">
         <header className="tg-hm__bar">
-          <form className="tg-hm__search" data-tour="search" role="search" onSubmit={(e) => { e.preventDefault(); openCreate(q.trim()) }}>
-            <Icon name="search" size={15} />
-            <label className="tg-sr" htmlFor="tg-hm-q">Bạn muốn đi đâu, làm gì?</label>
-            <input id="tg-hm-q" ref={input} value={q} maxLength={200} placeholder="Bạn muốn đi đâu, làm gì?" autoComplete="off" onChange={(e) => setQ(e.target.value)} />
-            <kbd aria-hidden="true">/</kbd>
-          </form>
+          <PostSearch className="is-home" tour="search" value={q} onType={setQ} onEnter={(v) => openCreate(v.trim())} placeholder="Bạn muốn đi đâu, làm gì?" />
         </header>
 
         <section className="tg-hm__hero" data-tour="hero" aria-label="Gợi ý khám phá Đà Lạt">

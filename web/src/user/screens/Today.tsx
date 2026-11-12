@@ -274,7 +274,7 @@ function TripSide({ view, journey, eve }: { view: TodayView; journey: string; ev
   const leave = view.days[view.days.length - 1]?.window?.[1]
   return (
     <>
-      {eve.state && arrive && leave && view.trip.status !== 'done' && <EveTimes key={`${arrive}${leave}`} arrive={arrive} leave={leave} busy={eve.busy} send={eve.send} />}
+      {eve.state && arrive && leave && view.trip.status !== 'done' && <EveTimes key={`${arrive}${leave}`} times={{ arrive, leave }} busy={eve.busy} send={eve.send} />}
       {eve.error && <p className="tg-it-diff is-bad" role="alert"><Icon name="warn" size={15} />{eve.error}</p>}
       <CalendarCard journey={journey} state={view.calendar} />
       {view.warnings.length > 0 && <section className="tg-card tg-td__warn"><h2>Cần để ý</h2><ul>{view.warnings.map((w) => <li key={w.code + w.text}>{w.text}</li>)}</ul></section>}

@@ -20,6 +20,9 @@ import { Landing } from './screens/Landing'
 import { PlaceDetail } from './screens/PlaceDetail'
 import { Plan } from './screens/Plan'
 import { Inbox } from './screens/Inbox'
+import { Compose } from './community/Compose'
+import { Posts } from './community/Posts'
+import { PostPage } from './community/Reader'
 import { Today } from './screens/Today'
 import { Understand } from './screens/Understand'
 import { TripProvider, useTrip } from './trip'
@@ -141,6 +144,9 @@ function Shell({ p, sheet }: { p: string; sheet: string | null }) {
   else if ((m = match(p, '/explore/compare/:ids'))) { screen = <Compare ids={m.ids.split(',')} key={m.ids} />; rail = false; side = true }
   else if (p === '/plan') { screen = <Plan />; rail = false; side = true }
   else if (p === '/done') { screen = <Done />; rail = false; side = true }
+  else if (p === '/posts') screen = <Posts />
+  else if (p === '/posts/new') screen = <Compose />
+  else if ((m = match(p, '/posts/:id'))) screen = <PostPage id={m.id} key={m.id} />
   else if (p === '/today') screen = guest ? <GuestGate what="Hôm nay" /> : <Today />
   else if (p === '/saved') screen = <Saved />
   else if (p === '/recent') screen = <Recent />

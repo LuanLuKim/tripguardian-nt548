@@ -40,7 +40,7 @@ const items = (b: Bulletin, kind: string) => b.sections.find((s) => s.kind === k
 
 // The server ranks (`trend`: one score over every signal). An older harness without that section: "đang hot" and
 // "nhiều nguồn cùng nhắc" take turns, a place in both appearing once.
-function ranked(b: Bulletin): Item[] {
+export function ranked(b: Bulletin): Item[] {
   const trend = items(b, 'trend')
   if (trend.length) return trend
   const top = items(b, 'top')
@@ -54,7 +54,7 @@ function ranked(b: Bulletin): Item[] {
 
 // One word for why a place is rising, never a count ("8 clip" says nothing to someone choosing where to go).
 const WHY: Record<string, string> = { tiktok: 'Hot trên TikTok', reviews: 'Khách đang đổ về', rising: 'Điểm đang lên', web: 'Nhiều trang nhắc' }
-const whyOf = (it: Item) => (it.kind === 'trend' ? it.signal : WHY[it.signal_kind ?? '']) || 'Đang được nhắc nhiều'
+export const whyOf = (it: Item) => (it.kind === 'trend' ? it.signal : WHY[it.signal_kind ?? '']) || 'Đang được nhắc nhiều'
 
 const daysTo = (iso: string, day: string | null) => Math.round((Date.parse(iso) - Date.parse(day ?? new Date().toISOString().slice(0, 10))) / 86_400_000)
 

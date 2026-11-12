@@ -12,9 +12,10 @@ import { useFriends } from '../social'
 import type { TripSummary } from '../pd/types'
 import { toast, toggleSaved, useUi } from '../store'
 import { useTrip } from '../trip'
-import { ArtCup, ArtHills, ArtRoute, Busy, Empty, go, Link, placeHref, PlacePhoto } from '../ui/common'
+import { ArtCup, ArtHills, ArtRoute, Busy, Empty, go, Link, PlacePhoto } from '../ui/common'
 import { Icon, type IconName } from '../ui/icons'
 import { Page, useTitle } from '../ui/Shell'
+import { openPlace } from '../ui/PlaceSheet'
 import { openShare } from '../home/dialogs'
 import { GuestNotice } from './Guest'
 import { TourButton } from '../tour'
@@ -136,28 +137,30 @@ export function Saved() {
         {GROUPS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={f === k} className="tg-tab" onClick={() => setF(k)}>{l}<b>{count(k)}</b></button>)}
       </div>
       {items.length === 0 ? <Empty art={<ArtCup />} title="Chưa lưu nơi nào" body="Bấm trái tim trên thẻ địa điểm để lưu lại, rồi thêm vào chuyến khi cần." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go(view ? '/explore' : '/')}>{view ? 'Xem gợi ý' : 'Về Khám phá'}</button>} /> : (
-        <div className="tg-saved">
+        <ul className="tg-rc-grid tg-rc-grid--saved">
           {items.map((id) => {
             const p = info(id)
             const c = cards.get(id)
-            const tags = tagsOf(id)
             return (
-              <article key={id} className="tg-sv">
-                <div className="tg-sv__ph">
-                  <Link to={placeHref(id)} aria-label={p?.name}><PlacePhoto id={id} /></Link>
-                  {p?.category && <span className="tg-tag tg-tag--dark tg-sv__cat">{p.category}</span>}
-                  <button type="button" className="tg-sv__del" onClick={() => unsave(id, p?.name)} aria-label={`Xóa khỏi yêu thích: ${p?.name ?? ''}`} title="Xóa khỏi yêu thích"><Icon name="trash" size={16} /></button>
-                </div>
-                <div className="tg-sv__b">
-                  <h3>{p?.name ?? 'Nơi không còn trong dữ liệu'}</h3>
-                  <p className="tg-sv__meta">{[p?.area, p?.rating ? `★ ${p.rating.toFixed(1)}` : null].filter(Boolean).join(' · ')}</p>
-                  {tags.length > 0 && <ul className="tg-sv__tags" aria-label="Điểm nổi bật">{tags.map((t) => <li key={t}>{t}</li>)}</ul>}
-                  {c && <div className="tg-sv__act"><button type="button" className={`tg-btn tg-btn--sm ${c.chosen ? 'tg-btn--soft' : 'tg-btn--ghost'}`} disabled={busy || c.chosen} onClick={() => act({ type: 'select', place_id: id })}>{c.chosen ? <><Icon name="check" size={15} /> Trong chuyến</> : <><Icon name="plus" size={15} /> Thêm vào chuyến</>}</button></div>}
-                </div>
-              </article>
+              <li key={id} className="tg-rc-wrap">
+                <button type="button" className="tg-rc" onClick={(e) => openPlace(id, e.currentTarget.querySelector('figure'))}>
+                  <PlacePhoto id={id} name={p?.name} />
+                  <span className="tg-rc__shade" aria-hidden="true" />
+                  {p?.category && <span className="tg-rc__time">{p.category}</span>}
+                  <span className="tg-rc__b">
+                    <b>{p?.name ?? 'Nơi không còn trong dữ liệu'}</b>
+                    <small>{[p?.area, tagsOf(id)[0]].filter(Boolean).join(' · ')}</small>
+                  </span>
+                  {p?.rating ? <span className="tg-rc__star">★ {p.rating.toFixed(1)}</span> : null}
+                </button>
+                <span className="tg-rc__act">
+                  {c && <button type="button" className="tg-rc__btn" disabled={busy || c.chosen} onClick={() => act({ type: 'select', place_id: id })} aria-label={c.chosen ? 'Đã trong chuyến' : `Thêm vào chuyến: ${p?.name ?? ''}`} title={c.chosen ? 'Đã trong chuyến' : 'Thêm vào chuyến'}><Icon name={c.chosen ? 'check' : 'plus'} size={16} /></button>}
+                  <button type="button" className="tg-rc__btn" onClick={() => unsave(id, p?.name)} aria-label={`Xóa khỏi yêu thích: ${p?.name ?? ''}`} title="Xóa khỏi yêu thích"><Icon name="trash" size={16} /></button>
+                </span>
+              </li>
             )
           })}
-        </div>
+        </ul>
       )}
     </Page>
   )

@@ -26,10 +26,11 @@ export function useFill(id: string | null, plan: string | null) {
   return { deck, open, setOpen }
 }
 
-export function FillRows({ deck, onOpen }: { deck: Deck; onOpen: (qid: string) => void }) {
-  return <>{deck.tabs.map(t => <div className="tg-it-transit" key={t.qid}>
+// `only` / `except`: the way to the city is asked in its own row (Đến Đà Lạt), the rest under Thông tin chuyến.
+export function FillRows({ deck, onOpen, only, except }: { deck: Deck; onOpen: (qid: string) => void; only?: string; except?: string }) {
+  return <>{deck.tabs.filter(t => (!only || t.qid === only) && t.qid !== except).map(t => <div className="tg-it-transit" key={t.qid}>
     <span><Icon name={TAB_ICON[t.qid] ?? 'info'} size={16} /><b>{t.header}</b></span>
-    <button type="button" className="tg-it-textbtn" onClick={() => onOpen(t.qid)}>Thêm</button>
+    <button type="button" className="tg-it-textbtn" onClick={() => onOpen(t.qid)}>{t.qid === 'arrival' ? 'Chọn' : 'Thêm'}</button>
   </div>)}</>
 }
 

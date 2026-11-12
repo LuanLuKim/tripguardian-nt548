@@ -222,7 +222,7 @@ export function DecisionProvider({ children, active = true }: { children: ReactN
             if (rb.missing?.length && origin === location.pathname + location.search) { setGate({ readback: rb, missing: rb.missing, key: Date.now() }); setError(null); opened = true }
           } catch { /* fall through to the message */ }
         }
-        if (!opened) setError(e.status === 409 && /\s/.test(e.detail.trim()) ? e.detail : 'Chưa xếp lịch được lúc này. Bạn thử lại sau ít giây nhé.')
+        if (!opened) setError(e.status === 409 && /[^\x00-\x7f]/.test(e.detail) ? e.detail : 'Chưa xếp lịch được lúc này. Bạn thử lại sau ít giây nhé.')
       } else setError(explainError(e, OFFLINE))
       return false
     } finally {

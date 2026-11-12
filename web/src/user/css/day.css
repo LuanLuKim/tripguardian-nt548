@@ -171,3 +171,5 @@
 .tg .tg-it-add:focus-visible { outline: 2px solid var(--tg-pine); outline-offset: 2px; }
 .tg .tg-it-add:disabled { opacity: 0.5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .tg .tg-it-add, .tg .tg-it-add__ic, .tg .tg-it-add > svg { transition: none; } }
+
+.tg .tg-ghost--stay > header .tg-link { margin-left: 4px; font-size: 0.8rem; }

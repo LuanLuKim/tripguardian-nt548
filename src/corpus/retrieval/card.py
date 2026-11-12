@@ -77,6 +77,7 @@ def card(record: dict) -> dict:
         out["visit_src"] = visit.get("source")
     out["f"] = _features(record, ("VERIFIED", "OUTDATED"))
     out["f?"] = _features(record, ("UNCERTAIN",))
+    out["about"] = " ".join(x["text"] for x in ((det.get("intro") or {}).get("summary") or []))
     known = det.get("known_for") or {}
     out["known"] = _texts([known.get("headline"), *(known.get("more") or [])])
     for kind in LISTS:  # an UNCERTAIN item goes under "<kind>?", like the f / f? split of features

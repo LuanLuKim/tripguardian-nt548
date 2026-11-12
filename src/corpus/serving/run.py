@@ -6,6 +6,7 @@ from datetime import date
 
 import yaml
 
+from ..aggregate.naming import distinct_names
 from ..crawl.common.files import ROOT, data_dir, now, write_json
 from ..judge import place_verdicts
 from ..review import label_stats
@@ -13,6 +14,17 @@ from .groups import areas, km, near_duplicate_groups
 from . import dishes, reputation
 from .details import finish
 from .record import SERVED, build, config
+
+
+def attach_intro(records: list[dict], city: str, root) -> int:
+    """details.intro {kind, summary, story} from the last `intro build` (docs/CORPUS.md, Giới thiệu địa điểm): only
+    sentences that passed the gate and the Judge, each with its sources. None when the place has none."""
+    from ..intro import load  # inside the function: intro reads data/serving/places.json
+    intros = load(city, root)
+    for rec in records:
+        got = intros.get(rec["id"])
+        rec["details"]["intro"] = {k: got[k] for k in ("kind", "summary", "story")} if got else None
+    return sum(bool(r["details"]["intro"]) for r in records)
 
 
 def stay_outside(rec: dict, cities: dict) -> bool:
@@ -48,6 +60,11 @@ def run(city: str, *, root=None, source_root=None, publish=True) -> dict:
             excluded.append({"id": rec["id"], "reason": reason})
             continue
         records.append(rec)
+    names = distinct_names({r["id"]: r["identity"].get("name_raw") or r["identity"]["name"]
+                            for r in records if r["identity"].get("name")})
+    for rec in records:  # one tidy name per place, branches kept apart (docs/CORPUS.md, Tên địa điểm)
+        if rec["id"] in names:
+            rec["identity"]["name"] = names[rec["id"]]
     area = areas(records)
     for rec in records:
         rec["identity"]["area"] = area.get(rec["id"])
@@ -56,6 +73,7 @@ def run(city: str, *, root=None, source_root=None, publish=True) -> dict:
     for rec in records:
         rec["near_duplicate_group"] = of.get(rec["id"])
     finish(records, config()["details"])
+    with_intro = attach_intro(records, city, source_root)
     with_menu = dishes.attach(records, source_root)
     with_reputation = reputation.attach(records, source_root)
     status = collections.Counter(f["status"] for r in records for g in ("experience", "environment", "service",
@@ -65,7 +83,7 @@ def run(city: str, *, root=None, source_root=None, publish=True) -> dict:
                "uncertain_places": sum(r["status"] == "UNCERTAIN" for r in records), "areas": len(set(area.values())),
                "near_duplicate_groups": len(groups), "in_groups": len(of), "feature_status": dict(status),
                "usable_as": dict(collections.Counter(u for r in records for u in r["usable_as"])),
-               "menu": with_menu, "reputation": with_reputation, "details": {"known_for": sum(bool(r["details"]["known_for"]["headline"]) for r in records),
+               "menu": with_menu, "reputation": with_reputation, "intro": with_intro, "details": {"known_for": sum(bool(r["details"]["known_for"]["headline"]) for r in records),
                            "cost_total": sum(bool((r["details"]["cost"] or {}).get("total_vnd")) for r in records),
                            "best_time": sum(bool(r["details"]["timing"]["best_time"]["items"]) for r in records),
                            "fit": sum(bool(r["details"]["fit"]) for r in records)}}

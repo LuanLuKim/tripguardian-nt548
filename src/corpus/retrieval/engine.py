@@ -196,7 +196,7 @@ class RetrievalEngine:
         for pid in self._region.ids:
             record = self._region.record(pid) or {}
             identity = record.get("identity", record)
-            records.append(NameRecord(pid, identity.get("name", ""), identity.get("category_group")))
+            records.append(NameRecord(pid, identity.get("name", ""), identity.get("category_group"), identity.get("name_raw")))
         return search_names(q, records, within=self._scope(within),
                             release_id=self.release_id, limit=max(0, limit))
 

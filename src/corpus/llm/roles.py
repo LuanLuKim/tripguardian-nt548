@@ -151,6 +151,14 @@ NAVIGATOR = Role(
     reasoning_env="NAVIGATOR_REASONING_EFFORT", fallback=AGENT, default_parallel=1,
 )
 
+WRITER = Role(
+    name="writer",
+    purpose="offline Vietnamese copy from given evidence only (corpus.intro: a place's introduction); the Agent route unless WRITER_* says otherwise",
+    key_env="WRITER_API_KEY", base_url_env="WRITER_BASE_URL", model_env="WRITER_MODEL",
+    reasoning_env="WRITER_REASONING_EFFORT", fallback=AGENT, default_parallel=4,
+    guided=False,  # 9router does not enforce strict schemas: the schema goes in the prompt
+)
+
 USER_SIM = Role(
     name="user_sim",
     purpose="benchmark only: plays a traveller from a hidden trip (python -m bench, --live / --briefs)",

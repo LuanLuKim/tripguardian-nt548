@@ -20,7 +20,8 @@ def _slim(node, quotes):
     if not isinstance(node, dict):
         return node
     return {("quotes" if k == "evidence" else k):
-            ([quotes[i] for i in v if i in quotes][:2] if k == "evidence" else _slim(v, quotes))
+            (v if k == "intro"  # a short text with its own sources: shown whole (corpus intro)
+             else [quotes[i] for i in v if i in quotes][:2] if k == "evidence" else _slim(v, quotes))
             for k, v in node.items()}
 
 

@@ -10,6 +10,7 @@ Code gọi model theo **vai trò**, không gọi thẳng một model cố địn
 | Judge | `corpus` (`judge audit / status / dedup`, kiểm địa điểm của `qc`); `trip profile-audit` (`PROFILE_AUDIT`, kiểm mục hồ sơ, `docs/TRIP_UNDERSTANDING.md` §17) | Gemma 4 trên UIT API, 38 call đồng thời cho corpus | Mạng UIT |
 | Judge mạnh | giá trị cho phép, quyết định đóng cửa / gộp nơi | như Judge | Mạng UIT |
 | Agent | `trip` (vòng tool, function calling gốc), `decision` (lượt chữ), `planning` (proposal nội bộ) | `cx/gpt-6.1-terra` qua 9router (từ 29/10/2026; trước đó `cx/gpt-6.1-sol`), reasoning `low` (`AGENT_REASONING_EFFORT`); Trip cần model có `tools: true` trong `GET /v1/models` | Local 9router (`127.0.0.1:20128`) |
+| Writer | `corpus intro build` (giới thiệu mỗi nơi, chỉ từ bằng chứng; Judge Gemma kiểm từng câu) | `cx/gpt-6.1-sol` qua 9router, reasoning `medium`, 6 call song song (`config/intro.yaml` `writer`; key / endpoint `WRITER_*`, trống thì của Agent); schema đặt trong prompt vì 9router không ép schema | Local 9router (`127.0.0.1:20128`) |
 | Navigator | `corpus navigate plan` (một call mỗi thành phố: bản đồ khai thác + kiến thức chung, từ tên thành phố + `area`, không xem kho) | cùng đường với Agent (`cx/gpt-6.1-sol`, reasoning `low`) trừ khi `NAVIGATOR_*` đặt khác | Local 9router (`127.0.0.1:20128`) |
 
 Judge khác họ model với Extractor (GPT / Claude / Gemini so với Gemma) nên lỗi hai bên độc lập.

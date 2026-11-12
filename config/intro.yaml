@@ -1,0 +1,39 @@
+# A place's introduction (docs/CORPUS.md, Giới thiệu địa điểm; src/corpus/intro). Offline only: online reads the result
+# through serving `details.intro`.
+writer:
+  model: cx/gpt-6.1-sol        # through the Agent route (9router), docs/LLM_PROVIDER.md
+  reasoning_effort: medium
+  parallel: 12
+judge:
+  parallel: 38           # INTRO_CHECK on the UIT key (40 calls, shared with other runs)
+  busy_wait_s: [15, 30, 60, 120, 240]   # waits after HTTP 429 before the place is left for the next run
+evidence:
+  passage_chars: 600     # one article paragraph around the place's name
+  per_domain: 2          # paragraphs from one site
+  web_items: 12
+  search_items: 6        # snippets of the place's own Google query
+  official_chars: 1500   # text of one page of the place's own site
+  review_min_chars: 60
+  review_chars: 400
+  review_items: 10
+  min_items: 3           # fewer evidence items: no introduction is written
+gate:
+  summary_max_chars: 320
+  min_review_authors: 2  # a sentence resting on reviews alone needs this many
+  hype:                  # words a sentence may use only when a cited item says them too
+    - nổi tiếng nhất
+    - đẹp nhất
+    - lớn nhất
+    - cao nhất
+    - lâu đời nhất
+    - cổ nhất
+    - duy nhất
+    - độc nhất
+    - bậc nhất
+    - số 1
+    - số một
+    - đầu tiên
+posts:                   # editorial posts about the places with a 3D model (corpus intro posts)
+  parallel: 6
+  evidence:
+    review_items: 16

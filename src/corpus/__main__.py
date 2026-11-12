@@ -160,6 +160,11 @@ def main() -> None:
     lcp.add_argument("--parallel", type=int, help="extract / verify: concurrent Extractor calls (default: extract 4, verify config/local.yaml verify.parallel)")
     lcp.add_argument("--map", type=pathlib.Path, help="group: a mining map file for sol's general claims (default: the latest)")
     lcp.add_argument("--out", type=pathlib.Path, help="verify / group: keep verified.jsonl / write the claim files here instead of data/<city>/local/ (a scratch run)")
+    inp = sub.add_parser("intro", help="each serving place's introduction: evidence (code) -> Writer -> gate (code) -> Judge -> data/<city>/intro/")
+    inp.add_argument("phase", choices=["build", "posts"], help="build: every place's introduction; posts: editorial posts about the 3D places")
+    inp.add_argument("--city", default="dalat")
+    inp.add_argument("--only", nargs="*", help="place ids (fid); the other places keep their last introduction")
+    inp.add_argument("--limit", type=int, help="only the first N serving places")
     gp = sub.add_parser("gsearch", help="Google web search through the browser -> data/gsearch/<city>/")
     gp.add_argument("phase", choices=["run", "places", "observe"])
     gp.add_argument("--kind", choices=["panel", "fee", "hours"], default="panel", help="places: which query of each place")
@@ -278,6 +283,12 @@ def main() -> None:
                 if not queries:
                     ap.error("gsearch run needs --query or --from-file")
                 gsearch.run(args.city, queries, args.pages, args.headed, args.profile)
+        elif args.cmd == "intro":
+            from . import intro
+            if args.phase == "posts":
+                asyncio.run(intro.build_posts(args.city, only=args.only))
+            else:
+                asyncio.run(intro.build(args.city, only=args.only, limit=args.limit))
         elif args.cmd == "local":
             from . import local
             if args.phase == "extract":

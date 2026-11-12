@@ -119,7 +119,7 @@ def _resolver(city: str):
         lat, lng = ident.get("lat"), ident.get("lng")
         inside = not area or lat is None or lng is None or (area[0] <= lat <= area[2] and area[1] <= lng <= area[3])
         if inside and ident.get("name"):
-            records.append(NameRecord(r["id"], ident["name"]))
+            records.append(NameRecord(r["id"], ident["name"], raw=ident.get("name_raw")))
     within = {r.place_id for r in records}
 
     def resolve_name(name: str) -> str | None:

@@ -63,6 +63,7 @@ Spec ràng buộc **vai trò**, không ràng buộc model. Mỗi vai trò là m�
 | **Extractor** | Mọi việc model khối lượng lớn: `visible_text` + `visual_summary` của keyframe, mention, observation có span, độ liên quan / đối tượng / stance của comment, nhận định từ trang official, `LocalClaim` từ Document web (§Tri thức bản địa), kiểm tra span, đề xuất hành động trong vòng lặp tự động (§Vòng lặp tự động) | Nhận ảnh, output có cấu trúc, throughput cao, chi phí thấp hoặc bằng 0; mỗi call vừa một đơn vị tự nhiên (một video, một lô comment, một đoạn trang) |
 | **Embedder** | Ảnh hoặc chữ → vector (§Chỉ mục ngữ nghĩa): offline cho ảnh và span của corpus, online cho câu / ảnh của user | Tất định với cùng model, chạy GPU local; vector chỉ để xếp hạng và gom cụm, không bao giờ là bằng chứng |
 | **Judge** | Thay người duyệt (§6): gán nhãn từng nhận định của Extractor, phán nơi bị báo đóng cửa, phán hai mục Maps có phải một nơi; kiểm cấp địa điểm của `qc`. **Judge mạnh** cho giá trị cho phép và mọi quyết định đóng cửa / gộp nơi | Khả năng suy luận mạnh nhất có được, **khác họ model với Extractor** (GPT / Claude / Gemini so với Gemma, `docs/LLM_PROVIDER.md`) |
+| **Writer** | Viết phần giới thiệu một nơi (§Giới thiệu địa điểm) bằng giọng hướng dẫn viên, **chỉ** từ bằng chứng đánh số, mỗi câu ghi id bằng chứng | Văn tiếng Việt tốt; mặc định sol qua 9router (`config/intro.yaml`), khác họ model với Judge kiểm lại nó |
 | **Navigator** | Một call mỗi thành phố: sol đề xuất cần khai thác gì (`aspect`, query, nơi đề cử, kiến thức chung) chỉ từ tên thành phố + `area`, **không** xem kho (§sol dẫn đường) | Suy luận mạnh, kiến thức chung rộng; mặc định cùng đường 9router với Agent, đổi bằng `NAVIGATOR_*` |
 
 Model đang đảm nhận từng vai trò và cách kết nối: `docs/LLM_PROVIDER.md`.
@@ -122,6 +123,7 @@ python -m corpus views <climate|calendar|restricted|all> [--city dalat]      # v
 python -m corpus gmaps resolve [--city dalat] [--limit N]   # nominee sol đề cử → Maps (§sol dẫn đường)
 python -m corpus navigate <plan|compare|seed> [--city dalat] [--map FILE] [--no-latest]   # plan/compare: sol dẫn đường; seed: danh sách tên chủ dự án duyệt trong config/navigate.yaml seed → resolve_queue.jsonl, rồi gmaps resolve quyết (§sol dẫn đường)
 python -m corpus local <extract|verify|group> [--city dalat] [--limit N] [--docs FILE] [--parallel N] [--map FILE] [--out DIR]   # Document web → LocalClaim (§Tri thức bản địa), data/<city>/local/; `--out` ghi ra thư mục khác (chạy thử, không đụng file đang phục vụ)
+python -m corpus intro <build|posts> [--city dalat] [--only FID ...] [--limit N]   # build: giới thiệu mỗi nơi serving; posts: bài biên tập cho nơi có 3D (§Giới thiệu địa điểm) → data/<city>/intro/; chạy lại chỉ hỏi model phần đã đổi; `corpus serving` gắn giới thiệu vào details.intro, `web/scripts/export_posts.py` đưa bài lên web
 python -m corpus gtravel price [--city dalat] [--limit N] [--headed]   # giá theo ngày từ Google Travel (data/gtravel/), §Giá phòng theo ngày
 python -m corpus tripcom price [--city dalat] [--limit N]              # đối chiếu Trip.com, HTTP không trình duyệt (data/tripcom/)
 python -m corpus stay_prices [--city dalat]                            # quan sát mới nhất → data/serving/stay_prices/<city>.json
@@ -425,7 +427,7 @@ Hai nguồn món bổ sung (bật ở `config/dishes.yaml` `sources`, cần prec
 
 ### 5. Aggregate (chỉ code)
 
-**Tên địa điểm.** `place_name` của intel là tên đã chuẩn hóa (`corpus.aggregate.naming.display_name`: viết hoa chữ đầu, bỏ phần quảng cáo sau gạch / dấu hai chấm / ngoặc, bỏ chữ ngoại ngữ, tối đa 44 ký tự cắt ở ranh giới từ; chỉ bỏ, đổi hoa thường, rút gọn, không thêm chữ). Tên gốc Google giữ ở `place_name_raw` (chỉ có khi khác) và trong observation. Mọi thứ sau intel (serving, snapshot, Trip, Decision, Planning, Web) đọc tên đã chuẩn hóa; `web/src/data/placeName.ts` là cùng hàm, áp thêm ở Web cho release cũ chưa chuẩn hóa.
+**Tên địa điểm.** `place_name` của intel là tên đã chuẩn hóa (`corpus.aggregate.naming.display_name`, public `corpus.display_name`: viết hoa chữ đầu (cả sau dấu ngoặc kép), viết tắt không nguyên âm như `NVN`, `BBQ`, `KDL` giữ hoa; bỏ phần quảng cáo sau gạch / dấu hai chấm / ngoặc, nhưng giữ số chi nhánh ngay sau dấu gạch (`Chi nhánh 2`, `CS2`) và lấy phần sau dấu gạch khi phần trước chỉ toàn chữ chỉ loại nơi (`MASSAGE TRỊ LIỆU ĐÀ LẠT - LALITA SPA` → `Lalita Spa`, danh sách `GENERIC`); bỏ chữ ngoại ngữ, tối đa 44 ký tự cắt ở ranh giới từ; chỉ bỏ, đổi hoa thường, rút gọn, không thêm chữ). Tên gốc Google giữ ở `place_name_raw` (chỉ có khi khác) và trong observation. **Serving** (`serving/record.py`, `serving/run.py`) tự áp lại hàm này lên tên gốc nên không phụ thuộc intel dựng trước hay sau khi có luật, rồi `distinct_names` tách các nơi khác tên gốc mà trùng tên gọn (chi nhánh "Nature Hotel - Phan Bội Châu" / "- Lê Đại Hành" → "Nature Hotel Phan Bội Châu"…, dạng không dấu phân cách nên `display_name` giữ nguyên). Bản ghi serving: `identity.name` (tên gọn, duy nhất khi tên gốc khác nhau) và `identity.name_raw` (tên Google, chỉ khi khác). Mọi thứ sau serving (snapshot, card của Agent, Trip, Decision, Planning, Web, phần giới thiệu) đọc `identity.name`; tìm theo tên (`retrieval.search_names`, `NameRecord.raw`; `trip.domain.resolve`; resolve POI của §Tri thức bản địa) khớp cả tên gọn lẫn tên gốc. Catalog Trip dựng thẳng từ intel cũng dùng `corpus.distinct_names`. `web/src/data/placeName.ts` là cùng hàm `display_name` (cùng bảng test), áp thêm ở Web cho release cũ chưa chuẩn hóa; hai bản phải khớp trên toàn bộ tên corpus.
 
 | Loại | Ví dụ | Rule |
 |---|---|---|
@@ -685,7 +687,8 @@ Chỉ đọc, không model, trả bản ghi nơi gọn cho Agent của Trip và 
 
 | Khóa | Nội dung |
 |---|---|
-| `id` `n` `cat` `g` `addr` | id, tên, category Maps, nhóm, địa chỉ |
+| `id` `n` `cat` `g` `addr` | id, tên (tên đã chuẩn hóa, §Tên địa điểm), category Maps, nhóm, địa chỉ |
+| `about` | phần tóm tắt của `details.intro` (§Giới thiệu địa điểm): câu đã qua gate và Judge, mỗi câu có nguồn ở serving |
 | `h` (+ `h_status`) | giờ gộp theo ca: `{"06:30-21:30": "mon,tue"}`; `h_status` chỉ khi giờ không `VERIFIED`; ngày thiếu = không biết |
 | `fee` | `min typ max src kind`; `conflict: true` khi vé `UNCERTAIN` vì `conflicts_entry_fee_estimate` |
 | `price` `night` | khoảng giá / người, giá / đêm |
@@ -851,6 +854,37 @@ flowchart LR
 - **Công bố**: `compile_snapshot` (lệnh `snapshot`, cuối `serving`, và `releases.rebuild`) đọc `data/<city>/local/local_claims.json` vào bảng `local_claims` của region trùng tên thành phố (bỏ `poi_unresolved`; `fact` = `kept` hoặc `confirmed`). Release ghi file này vào `inputs` (hash). Snapshot cũ không có bảng → `Region.local_claims = []` (chưa biết, không phải "không có").
 - **Đọc**: `corpus.retrieval.local_knowledge(region.local_claims, subject?, kind?, month?, facts_only=False)` — không bao giờ trả `contradicted`; claim không ghi tháng là cả năm; `fact` trước, rồi nhiều nguồn, độ tin cao. Mỗi dòng có `label`: `fact` (`kept`, `confirmed`), `reference` (`unverified`: chat nói là "tham khảo", số chỉ dạng khoảng), `disputed` (`conflict`). Không có đường nào biến claim của sol thành chi tiết một nơi (giờ, giá, có/không đặc điểm).
 - **Cho trợ lý**: `RetrievalEngine.local_claims(subject?, kind?, month?, facts_only=False)` bọc `local_knowledge` trên LocalClaim của snapshot đang mở (rỗng nếu snapshot không có); tool `local_tips` của Trip gọi qua đây, không đọc file. Cùng quy tắc nhãn: `fact` / `reference` / `disputed`, không bao giờ `contradicted`.
+
+## Giới thiệu địa điểm
+
+`src/corpus/intro/` (public `__init__.py`, offline) viết phần giới thiệu ngắn của mỗi nơi serving: **tóm tắt** 2–3 câu (≤ 320 ký tự, khung giới thiệu đầu trang nơi, card của Agent) và **thuyết minh** 3–6 câu (lịch sử, kiến trúc, điểm đáng xem với di tích / thiên nhiên; không gian, món hay gọi, hợp với ai, giờ đẹp với quán; bối cảnh, điều khách khen với chỗ ở). Giọng hướng dẫn viên địa phương: ấm, cụ thể, không quảng cáo quá lời, không văn bách khoa. Chủ dự án yêu cầu 12/11/2026.
+
+```mermaid
+flowchart LR
+  E[bằng chứng · code] --> W[Writer · INTRO_WRITE]
+  W --> G{gate · code}
+  G -->|trượt| D[dropped + lý do]
+  G --> J{Judge · INTRO_CHECK}
+  J -->|partly / unsupported / other_place| D
+  J --> O[(data/city/intro/intros.json)] --> S[serving: details.intro] --> C[card.about · Web]
+```
+
+- **Bằng chứng** (`evidence.py`, mỗi nơi ≤ ~40 mục đánh số `e1…`): snippet kết quả Google của chính câu tìm nơi đó (`data/gsearch/<city>/results.jsonl`, câu `panel`; bỏ mạng xã hội), đoạn bài web đã crawl có nhắc tên nơi (`data/web/<city>/documents/`, ưu tiên đoạn có lịch sử / kiến trúc, ≤ 2 đoạn mỗi site, ≤ 12 đoạn; tên tìm gồm tên Maps, tên gọn và tên mà §Tri thức bản địa đã resolve về nơi đó), trang chính thức (`data/official/pages/`), mô tả của Google Maps, cụm `details` đang phục vụ (kèm `n` tác giả), ≤ 10 review Maps (một tác giả mỗi review). `authority` = Wikipedia, `.gov.vn`, trang chính thức của nơi. Dưới `min_items` mục (`config/intro.yaml`) thì không viết (`thin`).
+- **Writer** (`INTRO_WRITE`, vai trò Writer: model, `reasoning_effort`, số call song song ở `config/intro.yaml`, key / endpoint `WRITER_*` hoặc của Agent): chỉ viết điều bằng chứng nói; mỗi câu ghi id. Năm, tên người, "đầu tiên / lớn nhất" chỉ khi có nguồn `authority` hoặc hai site khác nhau. Điều từ review cần ≥ 2 review (hoặc `n` ≥ 2); mô tả quan sát được (không gian, món, đường vào) kể thẳng, đánh giá (ngon, thân thiện) kể là lời khách. Không giờ mở cửa, giá vé, địa chỉ (trang nơi đã có, kèm nguồn riêng). Danh sách từ sáo bị cấm nằm trong prompt.
+- **Gate** (`gate.py`, code, từng câu): id mà chữ Writer chép vào câu được tách ra (`tidy`), chữ ngoài hệ Latin bị bỏ; câu không có bằng chứng → `no_evidence`; có giá tiền → `price`; số không có trong bằng chứng được trích (trừ số trong chính tên nơi) → `number_not_in_evidence`; năm chỉ một site không `authority` → `year_one_source`; từ quá lời (`gate.hype`) mà bằng chứng không nói → `hype`; câu chỉ dựa review với < `min_review_authors` tác giả → `one_review`. Tóm tắt dài quá `summary_max_chars` thì bỏ câu cuối.
+- **Judge** (`INTRO_CHECK`, Gemma trên UIT, khác họ model với Writer): đọc từng câu cùng đoạn bằng chứng nó trích, chỉ xét sự kiện (năm, số, tên, vật, món, so sánh, hợp với ai), không xét giọng: `supported` / `partly` / `unsupported` / `other_place`. Chỉ `supported` được phục vụ; không có verdict = không phục vụ (fail closed). Gặp HTTP 429 (key UIT dùng chung) thì chờ theo `judge.busy_wait_s` rồi mới bỏ nơi đó cho lần chạy sau.
+- **Cache**: câu trả lời Writer ở `written/<fid>.json`, verdict Judge ở `checked/<fid>.json`, khóa băm theo bằng chứng + prompt + model; chạy lại chỉ hỏi phần đã đổi. Call lỗi ghi `errors.json`, giữ bản giới thiệu cũ của nơi đó.
+- **Output** `data/<city>/intro/intros.json`: `{stats, intros: {fid: {kind, name, summary: [{text, sources}], story: [...], dropped: [{part, text, reason}], model, built_at}}}`. `sources` mỗi câu: một dòng mỗi site (`source`, `domain`, `url`, `title`) và một dòng review gộp `n`.
+- **Phục vụ**: `corpus serving` gắn `details.intro = {kind, summary, story}` (null khi không có: chưa biết, không phải "không có gì hay"); `card` thêm `about` (câu tóm tắt); `web/scripts/export_snapshot.py` chép nguyên khối; Web (`Summary` của màn Bài viết, `PlaceDetails`) ưu tiên `intro`, rồi mới tới `About`.
+
+### Bài biên tập
+
+`python -m corpus intro posts` (`posts.py`) viết 2 bài cho mỗi nơi có mô hình 3D (`web/space3d/places.json`) không phải chỗ ở và đã có giới thiệu (loại nơi của giới thiệu chọn hai góc, `ANGLES`: di tích = câu chuyện / một buổi ghé cho trọn; quán = một buổi ngồi / gọi gì, ngồi đâu, giờ nào…). Chủ dự án 12/11/2026: giọng như bài PR du lịch, đứng tên hệ thống.
+
+- Cùng bằng chứng với giới thiệu (thêm review: `posts.evidence` trong `config/intro.yaml`), mỗi call `INTRO_POSTS` (Writer) viết **một** bài (bài đôi trong một JSON hay bị cắt giữa chừng). Khối: `p` đoạn 2–4 câu có id bằng chứng, `h` tiêu đề phụ, `q` nguyên văn một review (một id).
+- Kiểm: tiêu đề và mọi `p` qua cùng gate với câu giới thiệu; `q` phải là chuỗi con của đúng review nó trích (`quote_not_verbatim`); mọi `p` qua Judge (`INTRO_CHECK`). Khối trượt bị bỏ và ghi `dropped`; bài còn dưới 3 đoạn bị bỏ (`too_little_left`). Không có "tôi", không cảnh, người, lời thoại, lượt thích hay bình luận bịa.
+- Code chèn ảnh `cover:<n>` (ảnh đã duyệt không có người, `photo_allow.json`) sau đoạn 1 và 3, không chú thích, và câu cuối mời xem tab Khám phá 3D.
+- Output `data/<city>/intro/posts.json` (`posts`: `id` = `tg-<slug>-<n>`, `placeId`, `title`, `tags`, `blocks`, `sources` theo site, `review_count`, `author` = "TripGuardian", `kind` = `editorial`; `dropped`); cache mỗi nơi ở `posts/<fid>.json`. `web/scripts/export_posts.py` → `web/public/data/posts.json`; màn Bài viết hiện với nhãn "TripGuardian biên tập" và dòng nguồn cuối bài.
 
 ## View toàn cầu
 

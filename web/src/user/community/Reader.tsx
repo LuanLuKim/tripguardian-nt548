@@ -9,7 +9,7 @@ import { useTitle } from '../ui/Shell'
 import {
   comment, FACT_LABELS, photosOf, postById, postsOf, reactionTotal, reactTo, readMinutes, REACTS, srcOf, togglePostSaved, topReacts, useStore, when, type Block, type Post, type ReactKey,
 } from './data'
-import { Avatar, Demo, hubHref, Pic, postHref, ReactIcon, Visibility, writeHref } from './parts'
+import { Avatar, Demo, Editorial, hubHref, Pic, postHref, ReactIcon, Visibility, writeHref } from './parts'
 import '../css/posts.css'
 
 // **bold** and *italic* are the only marks the composer writes.
@@ -70,7 +70,7 @@ function Article({ post, saved }: { post: Post; saved: boolean }) {
 
       <div className="tg-pr__col">
         <header className="tg-pr__head">
-          <p className="tg-pr__kick"><button type="button" onClick={() => go(hubHref({ place: post.placeId }))}>{place.name}</button>{post.tags[0] && <><i>·</i>{post.tags[0]}</>}{post.demo && <Demo />}</p>
+          <p className="tg-pr__kick"><button type="button" onClick={() => go(hubHref({ place: post.placeId }))}>{place.name}</button>{post.tags[0] && <><i>·</i>{post.tags[0]}</>}{post.demo && <Demo />}{post.editorial && <Editorial />}</p>
           <h1>{post.title}</h1>
           <div className="tg-pr__by">
             <Avatar name={post.author} size={44} me={post.mine} />
@@ -90,6 +90,11 @@ function Article({ post, saved }: { post: Post; saved: boolean }) {
         <div className="tg-pr__body">
           {body.map((b, i) => <BlockView key={i} b={b} post={post} lead={i === firstP} onOpen={open} />)}
         </div>
+        {post.editorial && ((post.sources?.length ?? 0) > 0 || post.reviewCount) && (
+          <p className="tg-pr__src">Nguồn: {(post.sources ?? []).map((x, i) => (
+            <span key={x.domain}>{i > 0 && ' · '}{x.url ? <a href={x.url} target="_blank" rel="noreferrer noopener">{x.domain}</a> : x.domain}</span>
+          ))}{post.reviewCount ? <span>{(post.sources?.length ?? 0) > 0 && ' · '}{post.reviewCount} đánh giá Google</span> : null}</p>
+        )}
         {post.tags.length > 0 && <ul className="tg-pr__tags">{post.tags.map((t) => <li key={t}><button type="button" onClick={() => go(hubHref({ q: t }))}>#{t.replace(/\s+/g, '')}</button></li>)}</ul>}
       </div>
 

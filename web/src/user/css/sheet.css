@@ -138,6 +138,11 @@
 .tg-ps__details { display: grid; gap: 22px; margin-top: 26px; }
 .tg-ps__sec h4 { margin-bottom: 4px; }
 .tg-ps__about { max-width: 70ch; font-size: 1.02rem; line-height: 1.65; color: var(--tg-ink-2); }
+.tg-ps__intro { display: grid; gap: 8px; max-width: 70ch; }
+.tg-ps__intro p { margin: 0; font-size: 1.02rem; line-height: 1.7; color: var(--tg-ink-2); }
+.tg-ps__intro .tg-ps__intro-sum { color: var(--tg-ink); }
+.tg-ps__intro-src { font-size: 0.76rem; color: var(--tg-ink-3); }
+.tg-ps__intro-src a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .tg-ps__amen { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .tg-ps__amen li { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--tg-pine-line); background: var(--tg-pine-soft); color: var(--tg-pine-d); font-size: 0.86rem; }
 .tg-ps__amen li.is-no { background: transparent; border-color: var(--tg-line-2); color: var(--tg-ink-3); }

@@ -24,6 +24,9 @@
 .tg-bp-av.is-me { background: #2b2720; }
 .tg-bp-nopic { display: grid; place-items: center; width: 100%; height: 100%; background: var(--ps-soft); color: var(--tg-ink-3); }
 .tg-bp-demo { display: inline-flex; align-items: center; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--ps-amber); color: var(--ps-amber-ink); font: 600 0.7rem var(--tg-sans); letter-spacing: 0.02em; text-transform: none; white-space: nowrap; }
+.tg-bp-demo.is-ed { background: var(--tg-ink); color: #fff; }
+.tg-pr__src { margin: 18px 0 0; font-size: 0.78rem; color: var(--tg-ink-3); }
+.tg-pr__src a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .tg-bp-rate { display: inline-flex; align-items: center; gap: 3px; color: var(--tg-ink-2); font-weight: 600; }
 .tg-bp-rate svg { color: #e0a100; }
 .tg-bp-vis { display: inline-flex; align-items: center; gap: 5px; }
@@ -388,6 +391,7 @@
 .tg-bp-sum .tg-ps__known { font-size: 0.9rem; }
 .tg-bp-sum__tx p { margin: 0; max-width: none; font-size: 0.92rem; line-height: 1.65; color: var(--tg-ink-2); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .tg-bp-sum__tx.is-open p { display: block; }
+.tg-bp-sum__intro .tg-ps__intro p { font-size: 0.92rem; line-height: 1.65; }
 .tg-bp-sum__more { justify-self: start; padding: 0; border: 0; background: none; font: 600 0.82rem var(--tg-sans); color: var(--tg-ink); text-decoration: underline; cursor: pointer; }
 .tg-bp-sum blockquote { margin: 4px 0 0; padding: 10px 14px; border-radius: 12px; background: var(--ps-soft); font: italic 0.92rem/1.6 var(--ps-serif); color: #333; display: grid; gap: 4px; }
 .tg-bp-sum blockquote small { font: 500 0.72rem var(--tg-sans); font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tg-ink-3); }

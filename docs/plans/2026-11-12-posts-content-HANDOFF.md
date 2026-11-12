@@ -2,7 +2,19 @@
 
 Giao diện Bài viết (`/app/posts`) đã lên production 12/11/2026 (chỉ dựng lại `web/dist`, không đụng `src/` và dịch vụ). Màn này đang chạy bằng dữ liệu tạm; hai việc dưới đây là phần nội dung còn thiếu, giao cho phiên khác.
 
-## 0. Hiện trạng
+## Cập nhật 12/11/2026 (tối): Việc A và B đã làm
+
+Chủ dự án chốt 12/11: phần giới thiệu viết giọng **hướng dẫn viên** (có lịch sử, điểm nổi bật; tóm tắt ngắn mà hấp dẫn, không quá "AI", không quá đời thường), làm cho **mọi nơi trong corpus**; bài PR đứng tên **hệ thống (TripGuardian)**, viết bằng sol; viết bằng sol, kiểm bằng Gemma UIT (khác họ model). Câu hỏi 1–2 ở §3 coi như đã trả lời: nguồn lịch sử dùng các trang đã crawl (Wikipedia, báo, trang du lịch; năm tháng cần nguồn chính thống hoặc 2 site), không crawl thêm.
+
+| Việc | Ở đâu | Trạng thái |
+|---|---|---|
+| A. Giới thiệu mọi nơi | `src/corpus/intro/` (`evidence.py`, `gate.py`, `run.py`), `config/intro.yaml`, task `INTRO_WRITE` / `INTRO_CHECK`, vai trò `WRITER`; `python -m corpus intro build` → `data/dalat/intro/intros.json`; `corpus serving` gắn `details.intro`, card Agent có `about`; web `Intro` (`user/ui/PlaceDetails.tsx`) trong `Summary` của Bài viết và `PlaceSheet` | xong code + dữ liệu; mô tả đầy đủ `docs/CORPUS.md` §Giới thiệu địa điểm |
+| B. Bài PR cho nơi có 3D | `src/corpus/intro/posts.py`, task `INTRO_POSTS`; `python -m corpus intro posts` → `data/dalat/intro/posts.json`; `web/scripts/export_posts.py` → `web/public/data/posts.json`; web: nhãn "TripGuardian biên tập", dòng nguồn cuối bài | xong code + dữ liệu |
+| Tên địa điểm chuẩn hóa | `corpus.aggregate.naming` (`display_name` thêm luật, `distinct_names` tách chi nhánh), serving `identity.name` + `name_raw`, tìm theo tên khớp cả tên gốc (`retrieval.search_names`, Trip resolve, local resolve), `web/src/data/placeName.ts` cùng luật | xong code; vào dữ liệu prod khi dựng release mới |
+
+**Chưa làm / cần chủ dự án:** dựng release mới (`python -m corpus normalize --rebuild`, không `--publish`) rồi publish và deploy web: phải chủ dự án cho phép (đổi dữ liệu prod đang đọc). Route harness cho bài người dùng (§2 "Chỗ đặt bài") vẫn chưa có; bài biên tập là file tĩnh.
+
+## 0. Hiện trạng (lúc bàn giao, trước khi làm)
 
 | Phần | Ở đâu | Ghi chú |
 |---|---|---|

@@ -140,7 +140,9 @@ def slim_details(node, quotes: dict):
         return node
     out = {}
     for k, v in node.items():
-        if k == "evidence":
+        if k == "intro":  # a short text with its own sources: shown whole (corpus intro)
+            out[k] = v
+        elif k == "evidence":
             out["quotes"] = [quotes[i] for i in v if i in quotes and quotes[i]["text"]][:DETAIL_QUOTES]
         else:
             out[k] = slim_details(v, quotes)
@@ -150,7 +152,7 @@ def slim_details(node, quotes: dict):
 def has_details(d: dict) -> bool:
     """Anything to show: a headline, a list, a cost, a time, a verdict, a look-alike or a walk."""
     t = d.get("timing") or {}
-    return bool((d.get("known_for") or {}).get("headline") or d.get("cost") or d.get("fit")
+    return bool((d.get("known_for") or {}).get("headline") or d.get("cost") or d.get("fit") or d.get("intro")
                 or any(d.get(k) for k in ("order", "avoid", "activity", "photo_spot", "access", "booking", "bring", "situation"))
                 or any(t.get(k) for k in ("best_months", "avoid_months", "schedule", "last_entry"))
                 or any((t.get(w) or {}).get("items") for w in ("best_time", "avoid_time"))

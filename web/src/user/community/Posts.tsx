@@ -9,8 +9,8 @@ import { HeartFill, Icon } from '../ui/icons'
 import { openPlace } from '../ui/PlaceSheet'
 import { useTitle } from '../ui/Shell'
 import { excerptOf, photosOf, postById, popularTags, posts, postsOf, reactionTotal, searchPlaces, useStore, when, type PlaceHit, type Post } from './data'
-import { KnownFor, About } from '../ui/PlaceDetails'
-import { Avatar, Demo, hubHref, PlacePic, postHref, Pic, Rating, writeHref } from './parts'
+import { KnownFor, About, Intro, hasIntro } from '../ui/PlaceDetails'
+import { Avatar, Demo, Editorial, hubHref, PlacePic, postHref, Pic, Rating, writeHref } from './parts'
 import { PostMap, type Pin } from './PostMap'
 import { PostSearch } from './Search'
 import { Lightbox } from './Reader'
@@ -206,7 +206,7 @@ function PostRow({ post, place = false }: { post: Post; place?: boolean }) {
       <span className="tg-bp-row__tx">
         {place && <small className="tg-bp-row__pl"><Icon name="pin" size={12} />{info(post.placeId)?.name}</small>}
         <b>{post.title}</b>
-        <small><Avatar name={post.author} size={18} />{post.author} · {when(post.at)}{post.demo && <Demo />}</small>
+        <small><Avatar name={post.author} size={18} />{post.author} · {when(post.at)}{post.demo && <Demo />}{post.editorial && <Editorial />}</small>
         <small className="tg-bp-row__st"><Icon name="heart" size={12} />{reactionTotal(post, store)}<Icon name="chat" size={12} />{post.comments.length}</small>
       </span>
     </a>
@@ -223,7 +223,7 @@ function PostTile({ post, onHover }: { post: Post; onHover: (on: boolean) => voi
       <span className="tg-bp-tile__tx">
         <b>{post.title}</b>
         <span>{excerptOf(post, 120)}</span>
-        <small><Avatar name={post.author} size={20} />{post.author} · {when(post.at)}{post.demo && <Demo />}<span className="tg-bp-tile__st"><Icon name="heart" size={12} />{reactionTotal(post, store)}<Icon name="chat" size={12} />{post.comments.length}</span></small>
+        <small><Avatar name={post.author} size={20} />{post.author} · {when(post.at)}{post.demo && <Demo />}{post.editorial && <Editorial />}<span className="tg-bp-tile__st"><Icon name="heart" size={12} />{reactionTotal(post, store)}<Icon name="chat" size={12} />{post.comments.length}</span></small>
       </span>
     </a>
   )
@@ -240,8 +240,14 @@ function Summary({ id }: { id: string }) {
   return (
     <section className="tg-bp-sum" aria-label="Giới thiệu nơi này">
       <KnownFor p={p} />
-      <div className={`tg-bp-sum__tx ${more ? 'is-open' : ''}`}><About p={p} area={info(id)?.area} /></div>
-      <button type="button" className="tg-bp-sum__more" aria-expanded={more} onClick={() => setMore((v) => !v)}>{more ? 'Thu gọn' : 'Đọc thêm'}</button>
+      {hasIntro(p) ? (
+        <div className="tg-bp-sum__intro"><Intro p={p} open={more} /></div>
+      ) : (
+        <div className={`tg-bp-sum__tx ${more ? 'is-open' : ''}`}><About p={p} area={info(id)?.area} /></div>
+      )}
+      {(!hasIntro(p) || (p.details?.intro?.story.length ?? 0) > 0) && (
+        <button type="button" className="tg-bp-sum__more" aria-expanded={more} onClick={() => setMore((v) => !v)}>{more ? 'Thu gọn' : 'Đọc thêm'}</button>
+      )}
       {quote && <blockquote>“{quote.text}”<small>Người đã đến</small></blockquote>}
     </section>
   )

@@ -34,6 +34,7 @@ export const Visibility = ({ vis }: { vis: Post['vis'] }) => (
   <span className="tg-bp-vis"><Icon name={vis === 'public' ? 'link' : vis === 'friends' ? 'users' : 'lock'} size={13} />{VIS[vis]}</span>
 )
 
+export const Editorial = () => <span className="tg-bp-demo is-ed" title="Bài TripGuardian viết từ dữ liệu đã kiểm chứng: thông tin trong bài đều có nguồn">TripGuardian biên tập</span>
 export const Demo = () => <span className="tg-bp-demo" title="Bài viết mẫu để xem giao diện, chưa phải của người dùng thật">Bài mẫu</span>
 
 // The six reactions, drawn (no emoji font needed).

@@ -1,6 +1,7 @@
 // Posts about places ("Bài viết"): the store behind the search, the results page, the reader and the composer.
 // There is no harness route for posts yet, so this keeps them in this browser (localStorage) next to a few sample posts
-// (`demo: true`, shown with a "Bài mẫu" tag). A post always points at a place that exists in the snapshot: a sample whose place
+// (`demo: true`, shown with a "Bài mẫu" tag) and the editorial posts TripGuardian wrote from the corpus
+// (/data/posts.json, `editorial: true`, web/scripts/export_posts.py). A post always points at a place that exists in the snapshot: a sample whose place
 // is missing from it is not shown, and the composer only offers places the snapshot has.
 import { useSyncExternalStore } from 'react'
 import { placeById } from '../../data/store'
@@ -34,6 +35,9 @@ export interface Post {
   reacts: Partial<Record<ReactKey, number>>
   comments: Comment[]
   demo?: boolean
+  editorial?: boolean // written by TripGuardian from the corpus' evidence (corpus intro posts); never a person
+  sources?: { domain: string; url?: string; title?: string }[]
+  reviewCount?: number
   consent?: boolean // the author lets TripGuardian learn from this public post (kept for the harness to honour once posts live there)
 }
 export interface Draft { placeId: string | null; title: string; blocks: Block[]; tags: string[]; vis: Vis; facts: Partial<Facts>; consent: boolean; at: number }
@@ -220,11 +224,30 @@ export const useStore = () => useSyncExternalStore(subscribe, () => state)
 
 // ---------- selectors ----------
 
+// Editorial posts: read once; until they land (or when the file is missing) the screen shows the others.
+interface EditorialRow { id: string; placeId: string; title: string; tags: string[]; blocks: Block[]; sources?: Post['sources']; review_count?: number; author: string; at: string }
+let editorial: Post[] = []
+if (typeof fetch !== 'undefined') {
+  fetch('/data/posts.json')
+    .then((r) => (r.ok ? r.json() : { posts: [] }))
+    .then((d: { posts?: EditorialRow[] }) => {
+      editorial = (d.posts ?? []).map((p) => ({
+        id: p.id, placeId: p.placeId, title: p.title, tags: p.tags, blocks: p.blocks, author: p.author || 'TripGuardian',
+        at: Date.parse(p.at) || Date.now(), vis: 'public' as const, facts: {}, reacts: {}, comments: [], editorial: true,
+        sources: p.sources, reviewCount: p.review_count,
+      }))
+      state = { ...state } // a new snapshot, so useStore readers render the new posts
+      cache = null
+      subs.forEach((f) => f())
+    })
+    .catch(() => {})
+}
+
 let cache: { state: State; posts: Post[] } | null = null
 // Every post the viewer can read: the samples whose place is in the snapshot, then their own, newest first.
 export function posts(s: State = state): Post[] {
   if (cache && cache.state === s) return cache.posts
-  const seeds = SEED.filter((p) => placeById(p.placeId))
+  const seeds = [...SEED, ...editorial].filter((p) => placeById(p.placeId))
   const all = [...seeds, ...s.mine.filter((p) => placeById(p.placeId))].map((p) => ({ ...p, comments: [...p.comments, ...(s.comments[p.id] ?? [])] }))
   all.sort((a, b) => b.at - a.at)
   cache = { state: s, posts: all }

@@ -85,7 +85,29 @@ export interface Fit {
   quotes?: DetailQuote[]
 }
 
+// A place's introduction (src/corpus/intro, docs/CORPUS.md §Giới thiệu địa điểm): sentences told from the corpus' own
+// evidence, each with where it comes from. Only sentences that passed the code gate and the Judge are here.
+export interface IntroSource {
+  source: 'web' | 'search' | 'official' | 'maps' | 'review'
+  domain: string | null
+  url: string | null
+  title?: string | null
+  n?: number // reviews behind the sentence (source = review)
+}
+
+export interface IntroLine {
+  text: string
+  sources: IntroSource[]
+}
+
+export interface PlaceIntro {
+  kind: 'heritage' | 'nature' | 'cafe_food' | 'stay' | 'activity' | 'other'
+  summary: IntroLine[]
+  story: IntroLine[]
+}
+
 export interface PlaceDetails {
+  intro?: PlaceIntro | null
   known_for?: { headline: DetailItem | null; more: DetailItem[] }
   order?: DetailItem[]
   avoid?: DetailItem[]

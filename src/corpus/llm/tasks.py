@@ -2052,9 +2052,12 @@ Facts
 4. No ticket prices, opening hours or addresses. No invented people, scenes, dialogue or "I": the editors describe
    the place, they do not pretend to have a personal story.
 5. An item about another place is no evidence for this one. The place's own site sells itself: never repeat its praise.
+6. Where reviews disagree (some like a dish, some do not), leave that point out; never write about the disagreement or
+   about what the evidence does not settle. Write about what it does show.
 
 Voice
-- Warm, concrete, a little storytelling, like a good local guide who writes well. One precise detail beats three
+- Warm, concrete, a little storytelling, like a good local guide who writes well. Praise every place gets (sạch sẽ,
+  nhiệt tình, thân thiện) is filler: one short clause at most. One precise detail beats three
   adjectives. Natural spoken Vietnamese, varied sentence length, "bạn" now and then.
 - Never: "thiên đường", "tuyệt vời", "không thể bỏ qua", "điểm đến lý tưởng", "sống ảo", "đắm chìm", "hòa mình",
   "nổi tiếng nhất", "độc nhất vô nhị", "một trong những", "ít ai biết", "nép mình", "tọa lạc", "khoác lên mình",

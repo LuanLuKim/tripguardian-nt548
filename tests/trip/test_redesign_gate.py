@@ -174,12 +174,29 @@ def test_plan_page_fill_asks_only_empty_optional_groups_and_writes_them(engine):
     e.turn(sid, TurnInput(kind="deck", at="gate", answers={"care": ["none"]}), skip)
     s = e.store.get(sid)
     fill = e._readback(s.state)["fill"]
-    assert {t["qid"] for t in fill["tabs"]} == set(readiness.PLAN_FILL)
+    # the way to the city comes first; the way around it is asked only once a plane or coach makes it worth asking
+    assert [t["qid"] for t in fill["tabs"]] == ["companions", "arrival", "pace", "budget"]
+    e.turn(sid, TurnInput(kind="deck", at="plan", answers={"arrival": ["plane"]}), skip)
+    s = e.store.get(sid)
+    assert s.state.arrival_mode.value == "plane"
+    assert {t["qid"] for t in e._readback(s.state)["fill"]["tabs"]} == set(readiness.PLAN_FILL)
     e.turn(sid, TurnInput(kind="deck", at="plan", answers={"mobility": ["motorbike"]}), skip)
     s = e.store.get(sid)
     assert s.state.mobility.known and s.state.mobility.source == "user"
     assert "mobility" not in {t["qid"] for t in e._readback(s.state)["fill"]["tabs"]}
     assert e._readback(s.state)["missing"] == [] and chat.calls == 0
+
+
+def test_plan_page_driving_in_names_the_vehicle_and_skips_the_way_around(engine):
+    e, _ = engine
+    sid = e.create("first", "nothing")["id"]
+    skip = lambda *_: None
+    e.turn(sid, TurnInput(kind="deck", at="gate", answers={"trip.dates": "2026-11-20..2026-11-22"}), skip)
+    e.turn(sid, TurnInput(kind="deck", at="gate", answers={"care": ["none"]}), skip)
+    e.turn(sid, TurnInput(kind="deck", at="plan", answers={"arrival": ["self_motorbike"]}), skip)
+    s = e.store.get(sid)
+    assert s.state.arrival_mode.value == "self" and s.state.mobility.value == "motorbike" and s.state.mobility.source == "user"
+    assert [t["qid"] for t in e._readback(s.state)["fill"]["tabs"]] == ["companions", "pace", "budget"]
 
 
 def test_gate_cannot_skip_dates_or_care(engine):

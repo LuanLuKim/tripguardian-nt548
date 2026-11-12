@@ -244,3 +244,30 @@ def tabs(state: TripState, cfg, *, gate: bool = False) -> tuple[Tab, ...]:
         out.append(Tab(qid=key, kind="required", header=header, question=question, why=why, multi=multi,
                        inputs=inputs, options=options + (exits()[:1] if gate else exits())))
     return tuple(out)
+
+
+def arrival_tab(state: TripState) -> Tab | None:
+    """How the trip reaches the city, asked on the Lịch trình page before the way around it (owner 2026-11-11): a plane or a
+    coach leaves the way around the city open (the mobility tab follows), driving in says the vehicle at once. None once
+    the user has answered it."""
+    current = state.arrival_mode
+    if current.known and current.source == "user":
+        return None
+
+    def option(id, label, mode, description, writes=()):
+        guessed = current.known and current.value == mode and (mode != "self" or state.mobility.value == dict(writes_vehicle).get(id))
+        return Option(id=id, label=label, description=description, prefilled=bool(guessed),
+                      because="theo thông tin dự kiến" if guessed else "",
+                      writes=(Draft(field="arrival_mode", value=mode), *writes))
+
+    writes_vehicle = {"self_motorbike": "motorbike", "self_car": "car"}
+    return Tab(qid="arrival", kind="required", header="Đường tới Đà Lạt", question="Bạn tới Đà Lạt bằng gì?",
+               why="Đi máy bay hay xe khách thì ở Đà Lạt cần thuê hoặc gọi xe; tự đi thì dùng luôn xe của bạn.",
+               options=(
+                   option("plane", "Máy bay", "plane", "Mình tính giờ ra sân bay và hỏi tiếp bạn đi lại trong thành phố bằng gì."),
+                   option("bus", "Xe khách", "bus", "Mình tính giờ xuống bến và hỏi tiếp bạn đi lại trong thành phố bằng gì."),
+                   option("self_motorbike", "Tự đi, xe máy", "self", "Mình dùng luôn xe máy của bạn cho cả chuyến.",
+                          (Draft(field="mobility", value="motorbike"), Draft(field="driver", value=None))),
+                   option("self_car", "Tự đi, ô tô", "self", "Mình dùng luôn ô tô của bạn cho cả chuyến.",
+                          (Draft(field="mobility", value="car"), Draft(field="driver", value="self"))),
+               ))

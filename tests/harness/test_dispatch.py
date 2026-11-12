@@ -462,6 +462,23 @@ def test_one_journey_that_cannot_be_restored_never_empties_the_history_list():
     assert {t["id"] for t in h.trips(U1)} == ids  # still listed: title and places come from the saved copy
 
 
+def test_a_journey_that_cannot_be_restored_can_still_be_removed_by_its_owner():
+    h, tools = make()
+    v = h.create(owner=U1)
+
+    def old_snapshot(_snapshot):  # saved by an older build, its fields no longer valid
+        raise ValueError("old snapshot")
+    h._loaded.clear()
+    for tool in tools.values():
+        tool.restore = old_snapshot
+    with pytest.raises(KeyError):
+        h.discard(v["id"], U2)
+    h.discard(v["id"], U1)
+    assert {t["id"] for t in h.trips(U1)} == set()
+    with pytest.raises(KeyError):
+        h.discard(v["id"], U1)  # already gone from the account
+
+
 def test_planning_turn_is_routed_and_gets_the_journeys_trip_session_but_never_a_client_one():
     from harness import Request
     h, tools = make()

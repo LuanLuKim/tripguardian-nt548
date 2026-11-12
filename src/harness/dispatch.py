@@ -488,12 +488,14 @@ class Harness:
         again; like a deleted account's trips, the usage numbers stay without a user. A schedule already on
         Đang đi goes with it."""
         with self.store.lock(jid):
-            session = self._get(jid, owner)
-            session.user_id = None
-            self._save(session)
+            # The journey is released as stored, not restored: one saved by an older build may no longer load, and the
+            # account must still be able to remove it.
+            if not self.store.release(jid, owner):
+                raise KeyError(jid)
+            self._loaded.discard(jid)
         if self.companion is not None:
             self.companion.forget(jid)
-        self._event("journey.discard", owner, jid, stage=session.stage)
+        self._event("journey.discard", owner, jid)
 
     def owns(self, jid: str, owner: str) -> bool:
         try:
@@ -885,14 +887,16 @@ class Harness:
         return self.eve(jid, owner)
 
     def trip_times(self, jid: str, payload: dict, owner: str | None = None) -> dict:
-        """Trip -> Planning event: the trip's arrival (first day starts) and / or departure (last day ends) changed
-        after the confirm. Each becomes a Planning set_day_window on that day; the confirmed plan stays confirmed (no
-        replan, no confirm), the Planning session now holds the new window, and the next evening check (D.3, `window`
-        factor) offers the user the options. {"arrive": "HH:MM"?, "leave": "HH:MM"?}"""
+        """Trip -> Planning event: the times of a confirmed trip changed after the confirm. {"arrive": "HH:MM"?,
+        "leave": "HH:MM"?, "start": "HH:MM"?, "end": "HH:MM"?}: arrive is when the first day begins, leave when the last
+        day ends, start is when each day's outing begins and end when it stops for rest (a day cannot begin before
+        the arrival nor end after the departure). Each changed day becomes a Planning set_day_window; the confirmed
+        plan stays confirmed (no replan, no confirm), the Planning session now holds the new windows, and the next
+        evening check (D.3, `window` factor) offers the user the options."""
         from planning.settings import to_min
-        times = {k: payload.get(k) for k in ("arrive", "leave") if payload.get(k) is not None}
+        times = {k: payload.get(k) for k in ("arrive", "leave", "start", "end") if payload.get(k) is not None}
         if not times:
-            raise ValueError("send arrive and / or leave as HH:MM")
+            raise ValueError("send arrive, leave, start and / or end as HH:MM")
         for value in times.values():
             try:
                 ok = 0 <= to_min(value) < 24 * 60
@@ -904,17 +908,29 @@ class Harness:
             session = self._get(jid, owner)
             plan = session.outputs.get("planning")
             if plan is None or "planning" not in session.sessions:
-                raise RouteError("the arrival / departure of a confirmed plan can only change on a confirmed plan")
+                raise RouteError("the times of a confirmed plan can only change on a confirmed plan")
             per_day = (plan.get("time_budget") or {}).get("per_day") or []
             if not per_day:
                 raise Conflict("the confirmed plan has no day windows")
             last = len(per_day) - 1
             acts = []
-            if "arrive" in times:
-                acts.append({"type": "set_day_window", "day": 0, "start": times["arrive"], "end": per_day[0]["to"]})
-            if "leave" in times:
-                start = times["arrive"] if last == 0 and "arrive" in times else per_day[last]["from"]
-                acts.append({"type": "set_day_window", "day": last, "start": start, "end": times["leave"]})
+            for i, day in enumerate(per_day):
+                begin, stop = day["from"], day["to"]
+                if i == 0 and "arrive" in times:
+                    begin = times["arrive"]
+                elif "start" in times:
+                    begin = times["start"] if i else max(begin, times["start"], key=to_min)
+                if i == last and "leave" in times:
+                    stop = times["leave"]
+                if "end" in times:
+                    stop = times["end"] if i < last else min(stop, times["end"], key=to_min)
+                if (begin, stop) == (day["from"], day["to"]):
+                    continue
+                if to_min(begin) >= to_min(stop):
+                    raise ValueError(f"day {i + 1} would start at {begin} and end at {stop}")
+                acts.append({"type": "set_day_window", "day": i, "start": begin, "end": stop})
+            if not acts:
+                return self.eve(jid, owner)
             before = session.model_copy(deep=True)
             planning = self._module(session, "planning")
             try:
@@ -927,7 +943,7 @@ class Harness:
                 self._runtime_tokens[jid] = object()
                 planning.restore(before.snapshots["planning"])
                 raise
-        self._event("trip.times", session.user_id, jid, arrive=times.get("arrive"), leave=times.get("leave"))
+        self._event("trip.times", session.user_id, jid, **{k: v for k, v in times.items()})
         return self.eve(jid, owner)
 
     def _request(self, jid: str, request: Request, emit: Emit | None, owner: str | None, trace: dict) -> dict:

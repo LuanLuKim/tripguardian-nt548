@@ -2255,7 +2255,7 @@ for(const geometry of walkableBuffers)geometry.dispose();
 // so the walkable triangles sit in a 2 m grid on x/z and a query tests only the triangles of its cell (the same
 // THREE.Ray.intersectTriangle test as a Raycaster, with the material's side honoured; a triangle whose x/z box misses
 // the point cannot be hit by a vertical ray, so the answer is the one a full raycast gives).
-const routeGround=(()=>{
+let routeGround=(()=>{
   const CELL=2,corners=[],sides=[];
   for(const mesh of walkableMeshes) {
     mesh.updateMatrixWorld(true);
@@ -2294,6 +2294,153 @@ const routeGround=(()=>{
     return best;
   };
 })();
+// === Guide path for a place with no paved route (owner 2026-11-11) ===
+// The owner wants arrows between the stops and the walk at eye height ("like a point of view") instead of a flight that
+// swings the camera round. A place without an authored route gets both: the ground is read off the model itself (one
+// top-down pass for heights with everything above the walking level cut away, one for colours to tell water), each leg is
+// the cheapest way over that ground (water, walls and steps cost a lot, a bridge deck does not), and the result is
+// written into `place.route` and the stops' `walk`, so the arrows, the wheel scrub and the walk work as for any route.
+function buildGuide() {
+  const stops=place.hotspots.filter(s=>!s.interior&&!s.insideView&&s.anchor);
+  if(stops.length<2)return;
+  const centerZ=place.site.centerZ||0;
+  let x0=-sw/2,x1=sw/2,z0=centerZ-sd/2,z1=centerZ+sd/2;
+  for(const s of stops){x0=Math.min(x0,s.anchor[0]-4);x1=Math.max(x1,s.anchor[0]+4);z0=Math.min(z0,s.anchor[2]-4);z1=Math.max(z1,s.anchor[2]+4);}
+  const S=Math.max(.5,Math.max(x1-x0,z1-z0)/800),W=Math.ceil((x1-x0)/S),H=Math.ceil((z1-z0)/S);
+  const TOP=300,NEAR=1,FAR=480,clipY=Math.max(...stops.map(s=>s.anchor[1]))+2.4;
+  const top=new THREE.OrthographicCamera(-(x1-x0)/2,(x1-x0)/2,(z1-z0)/2,-(z1-z0)/2,NEAR,FAR);
+  top.up.set(0,0,-1);top.position.set((x0+x1)/2,TOP,(z0+z1)/2);top.lookAt((x0+x1)/2,0,(z0+z1)/2);top.updateMatrixWorld(true);
+  const target=new THREE.WebGLRenderTarget(W,H,{type:THREE.UnsignedByteType,minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
+  const saved={background:scene.background,fog:scene.fog,clip:renderer.clippingPlanes,color:renderer.getClearColor(new THREE.Color()).clone(),
+    alpha:renderer.getClearAlpha(),auto:renderer.shadowMap.autoUpdate,need:renderer.shadowMap.needsUpdate};
+  const hidden=[];
+  scene.traverse(o=>{if(o.userData.contact&&o.visible){o.visible=false;hidden.push(o);}});
+  scene.background=null;scene.fog=null;
+  renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=false;
+  renderer.clippingPlanes=[new THREE.Plane(new THREE.Vector3(0,-1,0),clipY)];
+  const read=()=>{const out=new Uint8Array(W*H*4);renderer.setRenderTarget(target);renderer.render(scene,top);renderer.readRenderTargetPixels(target,0,0,W,H,out);return out;};
+  let depth,colour;
+  try {
+    scene.overrideMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking});
+    renderer.setClearColor(0xffffff,1);depth=read();
+    scene.overrideMaterial.dispose();scene.overrideMaterial=null;
+    renderer.setClearColor(0x000000,0);colour=read();
+  } finally {
+    scene.overrideMaterial=null;renderer.setRenderTarget(null);renderer.clippingPlanes=saved.clip;
+    renderer.setClearColor(saved.color,saved.alpha);scene.background=saved.background;scene.fog=saved.fog;
+    renderer.shadowMap.autoUpdate=saved.auto;renderer.shadowMap.needsUpdate=saved.need;
+    for(const o of hidden)o.visible=true;target.dispose();
+  }
+  // Row j of the grid is z0 + j*S; the pixel rows come bottom-up.
+  const N=W*H,ground=new Float32Array(N).fill(NaN),water=new Uint8Array(N),tall=new Uint8Array(N);
+  for(let j=0;j<H;j++)for(let i=0;i<W;i++) {
+    const p=((H-1-j)*W+i)*4,c=j*W+i;
+    const d=255/256*(depth[p]/255+depth[p+1]/255/256+depth[p+2]/255/65536+depth[p+3]/255/16777216); // RGBA depth packing: red holds the high part
+    if(d>.9999)continue;
+    const y=TOP-NEAR-d*(FAR-NEAR);
+    ground[c]=y;tall[c]=y>=clipY-.06?1:0;
+    const r=colour[p]/255,g=colour[p+1]/255,b=colour[p+2]/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?(mx-mn)/mx:0;
+    if(sat>.16&&mx>.12) {
+      const hue=(mx===r?((g-b)/(mx-mn)+6)%6:mx===g?(b-r)/(mx-mn)+2:(r-g)/(mx-mn)+4)/6;
+      if(hue>.44&&hue<.64)water[c]=1;
+    }
+  }
+  // Heights for the eye: the highest surface within a cell's reach (paving slabs and kerbs stand proud of the grass, an
+  // arrow under them would be buried), holes filled from the nearest known cell.
+  const known=c=>!Number.isNaN(ground[c]);
+  const smooth=new Float32Array(N);
+  for(let j=0;j<H;j++)for(let i=0;i<W;i++) {
+    let sum=0,n=0;
+    for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++) {
+      const a=i+di,b=j+dj;
+      if(a<0||b<0||a>=W||b>=H)continue;
+      const c=b*W+a;
+      if(known(c)&&!tall[c]){sum=n?Math.max(sum,ground[c]):ground[c];n++;}
+    }
+    smooth[j*W+i]=n?sum:NaN;
+  }
+  const cellOf=(x,z)=>[Math.min(W-1,Math.max(0,Math.floor((x-x0)/S))),Math.min(H-1,Math.max(0,Math.floor((z-z0)/S)))];
+  const lookup=(i,j)=>{
+    for(let r=0;r<=40;r++)for(let dj=-r;dj<=r;dj++)for(let di=-r;di<=r;di++) {
+      if(Math.max(Math.abs(di),Math.abs(dj))!==r)continue;
+      const a=i+di,b=j+dj;
+      if(a>=0&&b>=0&&a<W&&b<H&&!Number.isNaN(smooth[b*W+a]))return smooth[b*W+a];
+    }
+    return 0;
+  };
+  const sample=(i,j)=>{i=Math.min(W-1,Math.max(0,i));j=Math.min(H-1,Math.max(0,j));const v=smooth[j*W+i];return Number.isNaN(v)?lookup(i,j):v;};
+  routeGround=(x,z)=>{
+    const u=(x-x0)/S-.5,v=(z-z0)/S-.5,i=Math.floor(u),j=Math.floor(v),fu=u-i,fv=v-j;
+    const a=sample(i,j),b=sample(i+1,j),c=sample(i,j+1),d=sample(i+1,j+1);
+    return (a*(1-fu)+b*fu)*(1-fv)+(c*(1-fu)+d*fu)*fv;
+  };
+  // Cost of standing in a cell, and of the step between two.
+  const cost=new Float32Array(N);
+  for(let c=0;c<N;c++)cost[c]=1+(water[c]?14:0)+(tall[c]?8:0)+(known(c)?0:40);
+  const step=(a,b,w)=>{const dh=known(a)&&known(b)?Math.abs(ground[a]-ground[b]):0;return (cost[a]+cost[b])/2*w+(dh>.45?8:0);};
+  const DIRS=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
+  function astar(a,b) {
+    const [si,sj]=cellOf(a[0],a[1]),[ti,tj]=cellOf(b[0],b[1]),dist=new Float32Array(N).fill(Infinity),from=new Int32Array(N).fill(-1);
+    const heap=[],push=(f,n)=>{heap.push([f,n]);let k=heap.length-1;while(k){const q=(k-1)>>1;if(heap[q][0]<=heap[k][0])break;[heap[q],heap[k]]=[heap[k],heap[q]];k=q;}};
+    const pop=()=>{const first=heap[0],last=heap.pop();if(heap.length){heap[0]=last;let k=0;for(;;){const l=2*k+1,r=l+1;let m=k;if(l<heap.length&&heap[l][0]<heap[m][0])m=l;if(r<heap.length&&heap[r][0]<heap[m][0])m=r;if(m===k)break;[heap[m],heap[k]]=[heap[k],heap[m]];k=m;}}return first;};
+    const start=sj*W+si;dist[start]=0;push(0,start);
+    while(heap.length) {
+      const [,n]=pop(),i=n%W,j=(n/W)|0;
+      if(i===ti&&j===tj) {
+        const cells=[];for(let c=n;c!==-1;c=from[c])cells.push(c);cells.reverse();
+        return {cells,dist};
+      }
+      for(const [di,dj,w] of DIRS) {
+        const ni=i+di,nj=j+dj;
+        if(ni<0||nj<0||ni>=W||nj>=H)continue;
+        const m=nj*W+ni,c=dist[n]+step(n,m,w);
+        if(c<dist[m]){dist[m]=c;from[m]=n;push(c+Math.hypot(ti-ni,tj-nj),m);}
+      }
+    }
+    return null;
+  }
+  const centre=c=>[x0+((c%W)+.5)*S,z0+(((c/W)|0)+.5)*S];
+  // The straight run between two cells costs what the cells under it cost; a shortcut is taken when it is no dearer.
+  function straight(a,b) {
+    const [ax,az]=centre(a),[bx,bz]=centre(b),n=Math.max(1,Math.ceil(Math.hypot(bx-ax,bz-az)/(S/2)));
+    let sum=0,last=a;
+    for(let k=1;k<=n;k++){
+      const [i,j]=cellOf(ax+(bx-ax)*k/n,az+(bz-az)*k/n),c=j*W+i;
+      if(c!==last){sum+=step(last,c,Math.hypot((c%W)-(last%W),((c/W)|0)-((last/W)|0)));last=c;}
+    }
+    return sum;
+  }
+  function leg(a,b) {
+    const found=astar(a,b);
+    if(!found)return [a,b];
+    const {cells,dist}=found,pts=[0];
+    let k=0;
+    while(k<cells.length-1) {
+      let far=k+1;
+      for(let m=Math.min(cells.length-1,k+160);m>k+1;m--)
+        if(straight(cells[k],cells[m])<=dist[cells[m]]-dist[cells[k]]+.5){far=m;break;}
+      pts.push(far);k=far;
+    }
+    const out=pts.map(m=>centre(cells[m]).map(v=>Math.round(v*10)/10));
+    out[0]=[a[0],a[1]];out[out.length-1]=[b[0],b[1]];
+    return out;
+  }
+  const points=stops.map(s=>[s.anchor[0],s.anchor[2]]);
+  place.route=points.slice(1).map((b,k)=>leg(points[k],b));
+  stops.forEach((s,k)=>{s.walk=points[k];s.frameRoute=false;});
+  place.guided=true;
+  console.info("guide-route",JSON.stringify({stops:stops.length,cells:N,water:water.reduce((a,b)=>a+b,0),
+    legs:place.route.map(l=>l.length)}));
+}
+if(!place.hotspots.some(s=>s.walk)) {
+  const legs=place.route||[];
+  if(legs.length&&legs.length===place.hotspots.length-1&&!place.hotspots.some(s=>s.interior||s.insideView)) {
+    // An authored route whose stops lack `walk`: each stop stands where its leg begins, the last one where the last ends.
+    place.hotspots.forEach((s,k)=>{s.walk=k<legs.length?legs[k][0]:legs[k-1].at(-1);});
+  } else if(!legs.length) {
+    try{buildGuide();}catch(error){console.warn("guide-route failed",error);place.route=[];place.hotspots.forEach(s=>{delete s.walk;});}
+  }
+}
 function routeHeight(x,z) {
   x=Math.fround(x);z=Math.fround(z);
   const y=routeGround(x,z);
@@ -2358,7 +2505,7 @@ const routeSegments=(place.route||[]).map((leg,index)=>{
     const side=new THREE.Vector3(-tangent.z,0,tangent.x);
     return [-1,1].some(sign=>{
       const q=sample.point.clone().addScaledVector(side,.7*sign);
-      try{return Math.abs(routeHeight(q.x,q.z)-sample.point.y)>.01;}catch{return true;}
+      try{return Math.abs(routeHeight(q.x,q.z)-sample.point.y)>(place.guided?.15:.01);}catch{return true;}
     });
   })?.4:.7;
   const vertices=[],uvs=[],lifts=[],hitVertices=[];
@@ -2380,7 +2527,7 @@ const routeSegments=(place.route||[]).map((leg,index)=>{
     quad(hitVertices,edge(a,.85),edge(b,.85),edge(b,-.85),edge(a,-.85));
   }
   const geometry=(data)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(data,3));return g;};
-  const routeMaterial=new THREE.MeshBasicMaterial({color:'#a45e3e',transparent:true,opacity:.68,depthTest:true,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
+  const routeMaterial=new THREE.MeshBasicMaterial({color:'#a45e3e',transparent:true,opacity:.68,depthTest:true,depthWrite:false,side:THREE.DoubleSide,toneMapped:false,polygonOffset:Boolean(place.guided),polygonOffsetFactor:-4,polygonOffsetUnits:-4});
   routeMaterial.onBeforeCompile=(shader)=>{
     shader.uniforms.routeFlow=segment.flowUniform;
     shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec2 routeUv; varying vec2 vRouteUv;')

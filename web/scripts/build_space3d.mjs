@@ -44,6 +44,7 @@ if (weakGpu(renderer.getContext())) {
 }
 await renderer.compileAsync(scene, camera).catch(() => undefined);`],
   [/ {2}if \(flight\) \{\n {4}const progress = Math\.min\(\(now - flight\.start\) \/ (1400|flight\.ms), 1\),/, '  scrollStep(now);\n  if (flight) {\n    const progress = flight.scrub ? flight.q : Math.min((now - flight.start) / $1, 1),'],
+  ['if(flight) {camera.lookAt(controls.target);camera.updateMatrixWorld();} else controls.update();', 'if(flight) {camera.lookAt(controls.target);camera.updateMatrixWorld();} else controls.update();\n  freeLook(now);'],
   ['window.__ready = true;', `window.__lowQuality = () => { gtao.enabled = false; renderer.setPixelRatio(1); composer.setPixelRatio(1); };
 window.__ready = true;
 sceneReady();`],

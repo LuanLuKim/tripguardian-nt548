@@ -12,7 +12,9 @@ Chủ dự án chốt 12/11: phần giới thiệu viết giọng **hướng d�
 | B. Bài PR cho nơi có 3D | `src/corpus/intro/posts.py`, task `INTRO_POSTS`; `python -m corpus intro posts` → `data/dalat/intro/posts.json`; `web/scripts/export_posts.py` → `web/public/data/posts.json`; web: nhãn "TripGuardian biên tập", dòng nguồn cuối bài | xong code + dữ liệu |
 | Tên địa điểm chuẩn hóa | `corpus.aggregate.naming` (`display_name` thêm luật, `distinct_names` tách chi nhánh), serving `identity.name` + `name_raw`, tìm theo tên khớp cả tên gốc (`retrieval.search_names`, Trip resolve, local resolve), `web/src/data/placeName.ts` cùng luật | xong code; vào dữ liệu prod khi dựng release mới |
 
-**Chưa làm / cần chủ dự án:** dựng release mới (`python -m corpus normalize --rebuild`, không `--publish`) rồi publish và deploy web: phải chủ dự án cho phép (đổi dữ liệu prod đang đọc). Route harness cho bài người dùng (§2 "Chỗ đặt bài") vẫn chưa có; bài biên tập là file tĩnh.
+**Đã lên production 13/11/2026 01:55** (chủ dự án cho phép): release `r-9167d395761dbdad3e97c4b7-7317d6f8` (3.168 nơi như bản trước; khác bản cũ ở `details` và 808 tên), publish, rồi `HARNESS_GPU=0 SKIP_CLEF=1 ./run.sh prod` ở commit `f80e802f` (chủ dự án: chỉ còn GPU 0). Smoke ok; card Agent có `about`, tìm "massage trị liệu đà lạt lalita" ra "Lalita Spa"; web phục vụ `/data/posts.json` (169 bài, 96 nơi) và `details.intro` (3.094 nơi).
+
+**Còn mở:** route harness cho bài người dùng (§2 "Chỗ đặt bài") vẫn chưa có; bài biên tập là file tĩnh (chạy lại `corpus intro posts` rồi `web/scripts/export_posts.py`, deploy web). Nơi mới vào corpus cần `corpus intro build` trước lần dựng release kế tiếp.
 
 ## 0. Hiện trạng (lúc bàn giao, trước khi làm)
 

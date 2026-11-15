@@ -23,7 +23,7 @@ from .page import CaptchaBlocked, ensure_login, text_only
 from .revisit import served_groups
 
 REFRESH_MONTHS = 1      # "một tháng trước" and newer: the Nhịp window is 30 days
-REFRESH_REVIEWS = 120   # at most, on a place that gets many a day
+REFRESH_REVIEWS = 60    # at most: Nhịp counts 10–15 authors in 30 days; 120 took ~2 min a place on a busy one
 PER_RUN = 300           # places a run, when config gmaps.refresh_per_run is not set
 LAST = ("stay",)        # lodging after every other group: Nhịp's hot and trend lists are places to go
 ROW_KEYS = ("review_id", "author_hash", "rating", "published_text", "text")

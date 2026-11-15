@@ -5,7 +5,8 @@ place (corpus.llm.REVIEW_OBSERVE) and through the gate (gate.py). Reviews the qc
 or not a review are left out entirely. Place attributes become observations of one authoritative source and
 popular times / price / hours / closure go to place_facts and name / category / location to place (place_rules.py).
 Reviews are reviews.json plus the "most relevant" ones of reviews_relevant.json not already there (any age; their
-date stays in published_text). `voices` = authors whose review details or text were read: the denominator of a feature's mention rate. Review observations of features with `check: span` are read
+date stays in published_text), and the newer ones `gmaps refresh` read (data/gmaps/reviews_recent/, dated from that
+read); reviews an older file already sent to the model are not asked again. `voices` = authors whose review details or text were read: the denominator of a feature's mention rate. Review observations of features with `check: span` are read
 again one by one (corpus.llm.REVIEW_VERIFY); only "supports" is kept.
 A place is done again only when its reviews, qc flags, the prompts, the ontology or the rules change; a
 place that fails gets no file (retried next run; an older file is removed) and one line in
@@ -34,6 +35,7 @@ from .prep import batches, clean_text, is_junk, keep_for_llm, observed_at, stars
 
 DETAILS_EXTRACTOR = "details_rule@v2"
 RELEVANT_FILE = "reviews_relevant.json"  # written by corpus.crawl.gmaps.relevant
+RECENT_DIR = "reviews_recent"  # data/gmaps/reviews_recent/<fid_dir>.json, written by corpus.crawl.gmaps.refresh
 EXTREMES_FILE = "reviews_extremes.json"  # written by corpus.crawl.gmaps.extremes
 KEYWORDS_FILE = "reviews_keywords.json"  # written by corpus.crawl.gmaps.keywords
 VISIT_FILE = "visit.json"  # written by corpus.crawl.gmaps.visit
@@ -211,6 +213,11 @@ def load_samples(place_dir: Path) -> tuple[list[dict], dict[str, str]]:
     """reviews.json (newest) + reviews_relevant.json (Maps' most relevant, any age) + the targeted files (lowest /
     highest rated, keyword hits; any age) not already in them; and review_id -> sample for the targeted ones."""
     reviews = json.loads((place_dir / "reviews.json").read_text(encoding="utf-8"))
+    recent = _recent(place_dir)
+    if recent:  # posted since the crawl: newest first, each dated from the refresh that read it
+        seen = {r["review_id"] for r in reviews}
+        reviews = [{**r, "fetched_at": recent["at"]} for r in recent.get("reviews") or () if r.get("review_id")
+                   and r["review_id"] not in seen] + reviews
     extra = place_dir / RELEVANT_FILE
     if extra.exists():
         seen = {r["review_id"] for r in reviews}
@@ -223,6 +230,18 @@ def load_samples(place_dir: Path) -> tuple[list[dict], dict[str, str]]:
             reviews += more
             samples |= {r["review_id"]: sample for r in more}
     return reviews, samples
+
+
+def _recent_file(place_dir: Path) -> Path:
+    return place_dir.parent.parent / RECENT_DIR / f"{place_dir.name}.json"
+
+
+def _recent(place_dir: Path) -> dict | None:
+    f = _recent_file(place_dir)
+    try:
+        return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    except ValueError:
+        return None
 
 
 def load_reviews(place_dir: Path) -> list[dict]:
@@ -272,6 +291,8 @@ def input_hash(place_dir: Path, bad_ids: set[str]) -> str:
     for _, name, _ in TARGETED_FILES:
         if (place_dir / name).exists():
             h.update((place_dir / name).read_bytes())
+    if _recent_file(place_dir).exists():  # gmaps refresh read newer reviews: only those go to the model (read_before)
+        h.update(_recent_file(place_dir).read_bytes())
     if (place_dir / VISIT_FILE).exists():  # REVISIT_FILE is not hashed: it only feeds rule_facts, refreshed without the model
         h.update((place_dir / VISIT_FILE).read_bytes())
     h.update(json.loads((place_dir / "place.json").read_text(encoding="utf-8"))["fetched_at"].encode())
@@ -421,7 +442,7 @@ async def observe_place(slots: Slots, place_dir: Path, ont: Ontology, city: str,
         obs.append(observation(
             id=f"gmaps:{rid}:{seq[rid]}", place_fid=fid, feature=feature, value=value, context=context,
             source_type="gmaps_review" if field == "text" else "gmaps_details", source_id=rid,
-            author=r.get("author_hash"), observed_at=observed_at(r.get("published_text"), fetched), quote=quote,
+            author=r.get("author_hash"), observed_at=observed_at(r.get("published_text"), r.get("fetched_at") or fetched), quote=quote,
             field=field, extractor=extractor, ontology_version=ont.version))
         seq[rid] += 1
 
@@ -430,7 +451,7 @@ async def observe_place(slots: Slots, place_dir: Path, ont: Ontology, city: str,
         details.append(observation(
             id=f"gmaps:{rid}:d{dseq[rid]}", place_fid=fid, feature=f"detail.{d['kind']}", value=d["text"],
             context=context, source_type="gmaps_review", source_id=rid, author=r.get("author_hash"),
-            observed_at=observed_at(r.get("published_text"), fetched), quote=d["quote"], field="text",
+            observed_at=observed_at(r.get("published_text"), r.get("fetched_at") or fetched), quote=d["quote"], field="text",
             extractor=extractor, ontology_version=ont.version, detail=d["detail"]))
         dseq[rid] += 1
 
@@ -446,7 +467,7 @@ async def observe_place(slots: Slots, place_dir: Path, ont: Ontology, city: str,
             continue
         s = stars(r.get("rating"))
         if s:
-            ratings.append({"author": r.get("author_hash"), "observed_at": observed_at(r.get("published_text"), fetched),
+            ratings.append({"author": r.get("author_hash"), "observed_at": observed_at(r.get("published_text"), r.get("fetched_at") or fetched),
                             "stars": s})
         ctx = {"time_of_day": UNKNOWN, "day_type": day_type(r), "weather": UNKNOWN}
         if r.get("details"):

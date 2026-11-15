@@ -49,7 +49,7 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 - cách kiểm chứng: `.venv/bin/python -m pytest -q tests/pulse tests/crawl/gmaps/test_gmaps_refresh.py`; chạy thật `CORPUS_ATTACH_URL=http://127.0.0.1:9530 CORPUS_PROFILE_STATE=1 … -m corpus gmaps refresh --city dalat --limit 5` (5/5, 120 đánh giá mỗi nơi).
 
 ### Hiện tại (15/11/2026)
-- `gmaps refresh` lấy đánh giá Maps mới (tới "một tháng trước", tối đa 120) của nơi đang phục vụ, chỗ ở sau cùng, nơi lâu chưa làm mới trước; ghi `data/gmaps/reviews_recent/`. Nhịp gộp vào `maps_reviews` (mỗi người một dòng) và lấy số đánh giá / trạng thái đóng cửa mới nhất. Chạy trong cửa sổ đăng nhập cổng 9530; job đêm bỏ qua khi cửa sổ đóng.
+- `gmaps refresh` lấy đánh giá Maps mới (tới "một tháng trước", tối đa 60; 120 mất ~2 phút một nơi đông) của nơi đang phục vụ, chỗ ở sau cùng, nơi lâu chưa làm mới trước; ghi `data/gmaps/reviews_recent/`. Nhịp gộp vào `maps_reviews` (mỗi người một dòng) và lấy số đánh giá / trạng thái đóng cửa mới nhất. Chạy trong cửa sổ đăng nhập cổng 9530; job đêm bỏ qua khi cửa sổ đóng. `gmaps observe` đọc thêm `reviews_recent` (ngày tính từ lần làm mới, `input_hash` gồm file này) và chỉ gửi model đánh giá chưa đọc; job đêm chạy nó sau `refresh`.
 - Extractor chạy trên Gemma UIT (`EXTRACTOR_PARALLEL=36`) vì host LAN không phản hồi; prod đã `prod-restart`.
 
 ### Trước đó (_không có_)

@@ -24,6 +24,7 @@ step tiktok poi_refresh --city "$city"
 login=http://127.0.0.1:${GMAPS_LOGIN_PORT:-9530}
 if curl -s -m 3 "$login/json/version" > /dev/null; then
   CORPUS_ATTACH_URL=$login CORPUS_PROFILE_STATE=1 step gmaps refresh --city "$city"
+  step gmaps observe --city "$city"   # the new reviews' words only (a review read before is not asked again)
 else
   echo "$(date -u +%FT%TZ) skip gmaps refresh: no login window at $login" >> "$log"
 fi

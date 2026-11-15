@@ -206,6 +206,8 @@ ADMIN
 ├── Labels (gán nhãn đo chất lượng) /admin/labels
 ├── Places (danh sách + chi tiết)  /admin/places
 ├── Evidence (theo dõi + xung đột) /admin/evidence
+├── Người dùng (danh sách + chi tiết) /admin/users
+├── Xu hướng tiêu dùng            /admin/trends
 ├── Trip Sessions                 /admin/sessions
 ├── Analytics                     /admin/analytics
 └── System Monitor                /admin/system
@@ -264,6 +266,24 @@ Chỉ số chất lượng quan trọng hơn lượt xem hay click CTA. Ngưỡn
 - **Thành phần:** Corpus build (lần chạy gần nhất, ngân sách đã dùng) · Discovery · Resolution · Evidence pipeline · Recommendation · Feasibility · Routing · LLM. Trạng thái: Healthy / Warning / Unavailable.
 - **Lỗi gần đây:** thời gian · sự kiện · địa điểm hoặc chuyến đi liên quan ("20:14 thiếu giờ mở cửa — Place #128").
 
+### 3.9 Người dùng
+
+Để vận hành và định hướng sản phẩm theo **người**: ai dùng, đi tới đâu, dừng ở đâu, quay lại không, tính năng nào chưa ai chạm tới. Chỉ đọc; không khóa, sửa hay xóa tài khoản (§5). Định nghĩa số: `docs/ANALYTICS.md` §5.
+
+- **Tổng quan:** chọn 7 / 30 / 90 ngày / từ đầu, tùy chọn gồm tài khoản thử. Sáu KPI so với kỳ trước; biểu đồ theo ngày (hành trình tạo, lượt chốt, tài khoản hoạt động, phiên khách; rê chuột hoặc phím ← → đọc từng ngày; xem dạng bảng); mỗi người đi tới đâu (bước rơi nhiều nhất tô vàng); giữ chân theo tuần đăng ký (ô in số); tính năng được dùng theo luồng sản phẩm; cách đăng nhập và hồ sơ đã điền.
+- **Tín hiệu cần chú ý:** danh sách sự thật đếm được, không ngưỡng; bấm một mục lọc bảng dưới đúng nhóm người đó.
+- **Danh sách:** tìm theo tên / email / nickname / id; lọc loại (tài khoản, khách) và nhóm (mới, hoạt động, chưa tạo hành trình, chưa chốt, chỉ 1 ngày, có lỗi, chấm ≤ 2); sắp theo mọi cột; tiến độ là 7 ô của các bước.
+- **Một người** (`/admin/users/<id>`): hồ sơ, đồng ý, lịch hoạt động 26 tuần, các bước đã tới, tính năng đã dùng, hành trình (bấm để phát lại ở §3.6), phản hồi, sự kiện gần nhất.
+
+### 3.10 Xu hướng tiêu dùng
+
+Nửa thứ hai của bảng điều khiển người dùng (công tắc *Người dùng · Xu hướng tiêu dùng* ở đầu cả hai màn): khách thích nơi nào, lập lịch ra sao, muốn gì, để định hướng sản phẩm, nội dung và Trending. Cùng bộ chọn kỳ. Định nghĩa số: `docs/ANALYTICS.md` §6.
+
+- **Đang lên 7 ngày qua:** 5 nơi được quan tâm tăng nhiều nhất so với tuần trước.
+- **Nơi được quan tâm:** xếp theo được chọn / vào lịch đã chốt / xem chi tiết / thích và lưu / đang lên / bị bỏ, lọc theo nhóm; tỉ trọng lượt chọn theo nhóm; mỗi hàng đủ các cột và tỉ lệ chọn; bấm để mở trang Địa điểm (§3.3).
+- **Lịch nhiều người lập:** độ dài chuyến, nơi mỗi ngày, chốt trước bao lâu, giờ tới nơi, cặp nơi hay xếp cùng chuyến và hay đi liền nhau.
+- **Khi nào khách đi**, **khách muốn gì** (đi cùng ai, số người, số ngày, phương tiện, ngân sách, mục đích, sở thích, loại nơi, món, cảm hứng), **chủ đề và từ khóa**, **vì sao khách bỏ một nơi**.
+
 ---
 
 ## 4. Ưu tiên MVP
@@ -304,7 +324,7 @@ Tên địa điểm hiển thị cho người dùng luôn qua `data/placeName.ts
 | Hôm nay (§2.13; không có trong điều hướng, mở từ thông báo / link), Hộp thông báo | `user/screens/Today.tsx`, `user/today.ts`, `user/screens/Inbox.tsx`, `user/notify.ts`, giờ đến / giờ về sau chốt (`EveTimes` từ `plan/EveBanner.tsx`) và Trending (`plan/TripPulse.tsx`) ở cột bên, `public/sw.js`, `public/manifest.webmanifest`; event web: `user/events.ts` | `harness` — `today`, `companion`, `calendar`, `push`, `notifications`, `events` |
 | Hướng dẫn có linh vật (§2.14) | `user/tour/` (`steps.ts` điểm dừng trỏ `data-tour="<id>"`, `place.ts` chỗ đứng của linh vật, `TourProvider.tsx` bọc `Shell` trong `UserApp.tsx`), `user/css/tour.css`, ảnh `public/img/tour/`; kiểm chỗ đứng: `node web/scripts/test_tour_place.mjs` | — (chỉ phía web) |
 | Admin, mọi màn (§3) | `admin/AdminApp.tsx`, `admin/screens/`, `admin/api.ts` | `review` :8765 — `/api/queue`, `/api/labels{,/next,/stats,/photo,/frame}`, `/api/decision{,s}` |
-| Admin: Hôm nay, Phiên, Phân tích, Insights, Nhu cầu của một nơi (§3.5–3.7) | `admin/analytics.ts`, `admin/screens/{Dashboard,Sessions,Analytics,AnalyticsTabs,Insights,Places}.tsx` | `analytics` :8770 (private, chỉ đọc) |
+| Admin: Hôm nay, Phiên, Phân tích, Insights, Nhu cầu của một nơi, Người dùng, Xu hướng tiêu dùng (§3.5–3.7, §3.9–3.10) | `admin/analytics.ts`, `admin/screens/{Dashboard,Sessions,Analytics,AnalyticsTabs,Insights,Places,Users,UserDetail,Trends}.tsx` | `analytics` :8770 (private, chỉ đọc) |
 
 Client hành trình chung: `user/journey.ts`. Contract `/api/harness`, router, handoff và retry ở `docs/AGENT_HARNESS.md`.
 

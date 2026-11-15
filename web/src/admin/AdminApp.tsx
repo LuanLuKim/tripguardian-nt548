@@ -13,6 +13,8 @@ import { Review } from './screens/Review'
 import { Insights } from './screens/Insights'
 import { Sessions } from './screens/Sessions'
 import { System } from './screens/System'
+import { Trends } from './screens/Trends'
+import { Users } from './screens/Users'
 import './admin.css'
 
 const NAV = [
@@ -21,6 +23,8 @@ const NAV = [
   { path: '/admin/labels', label: 'Gán nhãn', icon: 'check', key: 'l', group: 'Công việc' },
   { path: '/admin/places', label: 'Địa điểm', icon: 'pin', key: 'p', group: 'Dữ liệu' },
   { path: '/admin/evidence', label: 'Bằng chứng', icon: 'layers', key: 'e', group: 'Dữ liệu' },
+  { path: '/admin/users', label: 'Người dùng', icon: 'user', key: 'u', group: 'Vận hành' },
+  { path: '/admin/trends', label: 'Xu hướng tiêu dùng', icon: 'pulse', key: 't', group: 'Vận hành' },
   { path: '/admin/sessions', label: 'Phiên chuyến đi', icon: 'route', key: 's', group: 'Vận hành' },
   { path: '/admin/analytics', label: 'Phân tích', icon: 'chart', key: 'a', group: 'Vận hành' },
   { path: '/admin/insights', label: 'Insights', icon: 'spark', key: 'i', group: 'Vận hành' },
@@ -111,6 +115,8 @@ export default function AdminApp() {
   else if ((m = match(path, '/admin/places/:id'))) screen = <Places snap={snap} openId={m.id} />
   else if (base === '/admin/places') screen = <Places snap={snap} />
   else if (base === '/admin/evidence') screen = <Evidence snap={snap} />
+  else if (base === '/admin/users') screen = <Users />
+  else if (base === '/admin/trends') screen = <Trends snap={snap} />
   else if (base === '/admin/sessions') screen = <Sessions />
   else if (base === '/admin/analytics') screen = <Analytics />
   else if (base === '/admin/insights') screen = <Insights />
@@ -221,7 +227,7 @@ function Palette({ snap, onClose }: { snap: NonNullable<ReturnType<typeof useSna
 
 function Help({ onClose }: { onClose: () => void }) {
   const rows = [
-    ['g rồi d / r / l / p / e / s / a / m', 'Đi tới trang'],
+    ['g rồi d / r / l / p / e / u / t / s / a / i / m', 'Đi tới trang'],
     ['Ctrl K', 'Tìm nhanh'],
     ['j / k', 'Mục kế / mục trước (hàng đợi duyệt)'],
     ['a', 'Chấp nhận'],

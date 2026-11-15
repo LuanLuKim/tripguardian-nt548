@@ -29,6 +29,20 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 
 ## Các mục
 
+## admin-users-2026-11-15 — Admin: bảng điều khiển Người dùng + Xu hướng tiêu dùng, dọn khách kiểu cũ
+
+- file: `src/analytics/users.py` (`overview`, `people`, `person`), `src/analytics/trends.py` (`trends`, cache `_ASKS`), route `users`, `users/list`, `users/<uuid hex>`, `trends` ở `server.py`; `web/src/admin/screens/{Users,UserDetail,Trends}.tsx`, `admin/analytics.ts`, `admin/AdminApp.tsx` (`g u`, `g t`), `admin/admin.css` (`.u-*`, `.t-*`); `migrations/009_legacy_guests.sql`; test `tests/analytics/test_{users,trends}.py`, `tests/db/test_migrate.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/analytics tests/db` (cần `TEST_DATABASE_URL`); `cd web && npx tsc --noEmit -p .`; `python -m analytics serve` + Vite dev rồi mở `/admin/users`, `/admin/trends`; ảnh `frontend_images/admin-users/`. Trên DB thật (role chỉ đọc): Người dùng 0,23 s, danh sách 0,1 s, Xu hướng 0,2 s (lần đầu sau khởi động ~5 s, đọc nền).
+
+### Hiện tại (15/11/2026)
+- Màn Người dùng đếm theo người (`docs/ANALYTICS.md` §5, `docs/Role_Web_Functional_Design.md` §3.9): KPI so với kỳ trước, biểu đồ theo ngày, các bước mỗi người đã tới, giữ chân theo tuần đăng ký, tính năng được dùng, hồ sơ, tín hiệu cần chú ý (không ngưỡng), bảng mọi dòng `users`, trang một người.
+- Màn Xu hướng tiêu dùng (§6, §3.10): nơi đang lên, nơi được chọn / xem / thích / lưu / vào lịch / bị bỏ và tỉ lệ chọn sau khi thấy thẻ, lịch nhiều người lập (độ dài, giờ, cặp nơi), khi nào đi, khách muốn gì, chủ đề và từ khóa.
+- Event gán cho chủ hành trình trước `events.user_id`; tài khoản `@test.local` / `@example.com` và hành trình `synthetic` bị loại trừ khi bật "Gồm tài khoản thử".
+- `009_legacy_guests`: 27 dòng `kind = user, role = guest` (khách từ trước cột `kind`, constraint `role` ở prod đã bị nới tay) thành `kind = guest`, constraint `role` về `('user', 'admin')` như `001_init.sql`; đã áp lên prod sau `./run.sh db-backup` (`data/backup/pg/2026-11-15_1149.sql.gz`) rồi `purge_guests()` xóa 27 khách đó, 1.005 hành trình giữ nguyên với `user_id = NULL` (chủ dự án 15/11/2026).
+
+### Trước đó
+- _không có_
+
 ## overload-most-2026-11-15 — Hướng thứ tư "Giữ nhiều nơi bạn chọn nhất", confirm chưa chọn hướng
 
 - file: `src/planning/overload.py` (`DIRECTIONS`, `LABEL` / `GAIN` / `TRADEOFF`, `_next` nhánh `most`), `src/planning/engine.py` (`confirm`); `web/src/user/screens/plan/{Choose.tsx,shared.ts}`, `planning/types.ts`; test `tests/planning/test_planning_{overload,overload_edits,composer,engine,lodging_golden,variants}.py`, `realistic_checks.py`

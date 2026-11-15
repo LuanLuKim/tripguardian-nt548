@@ -1,5 +1,5 @@
 """One main plan; when the trip's days cannot hold every pick, three plans that each drop places by one criterion
-the user understands (spec section 7): Giữ nơi hợp gu nhất, Ít đi lại, Tiết kiệm. A direction is a drop ORDER: drop the
+the user understands (spec section 7): Giữ nơi hợp gu nhất, Di chuyển thuận lợi nhất, Tiết kiệm nhất. A direction is a drop ORDER: drop the
 next place until everything fits, then give back any dropped place that still fits. Must-go places never drop. Budget
 never enters a place's score: prices only order the `cost` direction, and a place with no known price is never dropped
 by it."""
@@ -25,7 +25,7 @@ from .timefit import describe as time_description
 from .traits import visit_minutes
 
 DIRECTIONS = ("fit", "travel", "cost")
-LABEL = {"main": "Lịch của bạn", "fit": "Giữ nơi hợp gu nhất", "travel": "Ít đi lại", "cost": "Tiết kiệm",
+LABEL = {"main": "Lịch của bạn", "fit": "Giữ nơi hợp gu nhất", "travel": "Di chuyển thuận lợi nhất", "cost": "Tiết kiệm nhất",
          "kept": "Giữ các nơi đã xếp vừa"}
 TRADEOFF = {"fit": "có thể phải đi xa hơn và tốn hơn để giữ nơi hợp gu",
             "travel": "có thể bỏ nơi bạn thích nhưng nằm xa các nơi còn lại",
@@ -439,8 +439,7 @@ def plan_or_directions(trip, *, protected=()) -> dict:
         kept, dropped, sched, why = searched.get(direction) or (set(trip.by_place), [], main, "timeout")
         key = frozenset(kept)
         if key in seen:
-            seen[key].setdefault("merged", []).append(direction)
-            seen[key]["label"] += " · " + LABEL[direction]
+            seen[key].setdefault("merged", []).append(direction)  # one card, under the first direction's name (chủ dự án 13/11/2026)
         else:
             seen[key] = render_variant(trip, sched, direction, dropped, not _over(sched), why)
             out.append(seen[key])

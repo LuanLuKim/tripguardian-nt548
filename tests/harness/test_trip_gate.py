@@ -116,6 +116,15 @@ def test_h4_only_read_back_answers_reach_the_trip_from_the_decision_stage():
     assert v["stage"] == "decision"
 
 
+def test_h4b_a_field_edit_from_the_summary_or_lich_trinh_reaches_the_trip():
+    h, tools = make()
+    v = decision(h)
+    gated(tools, [])
+    origin = '{"text": "Thành phố Hồ Chí Minh", "lat": 10.77, "lng": 106.7, "province": null}'
+    v = run(h, v, "trip", "origin", {"kind": "edit", "target": "origin", "value": origin})
+    assert v["stage"] == "decision" and "planning" not in v["sessions"]
+
+
 def test_partial_gate_answers_are_saved_while_a_health_hint_cannot_compile():
     from trip import UnhandledSignal
     from harness import TripNotReady
@@ -171,3 +180,28 @@ def test_real_trip_adapter_saves_dates_until_the_pending_health_question_is_answ
     assert v["outputs"]["trip"]["readiness"] == {"missing": [], "readback_ok": False}
     assert all(not getattr(s.state, key).known for key in ("companions", "mobility", "pace", "budget_vnd", "lodging"))
     assert run(h, v, "advance", "plan")["stage"] == "planning"
+
+
+def test_real_trip_adapter_takes_the_origin_edited_from_lich_trinh(tmp_path, monkeypatch):
+    from datetime import date
+    import test_dispatch
+    from trip import Catalog, Engine, SessionStore, Settings, Tools
+    from trip.api import engine as trip_engine
+    from harness import Harness
+
+    monkeypatch.setattr(trip_engine, "TURN_LOG", tmp_path / "trip_turns.log")
+
+    def no_model(*_):
+        raise AssertionError("a field edit must not call a model")
+
+    trip = Tools(Engine(Catalog.from_records([], n_min=1), Settings(), SessionStore(None), no_model,
+                        today=lambda: date(2026, 11, 10)))
+    h = Harness(trip, test_dispatch.Tools("decision"), test_dispatch.Tools("planning"), test_dispatch.STORE(tmp_path))
+    v = run(h, h.create(), "turn", "compile", {"kind": "show"})
+    v = run(h, v, "advance", "choose")
+    v = run(h, v, "trip", "care", {"kind": "deck", "answers": {"care": ["none"]}})
+    origin = '{"text": "Thành phố Hồ Chí Minh", "lat": 10.77, "lng": 106.7, "province": null}'
+    v = run(h, v, "trip", "origin", {"kind": "edit", "target": "origin", "value": origin})
+    s = trip.engine.store.get(v["sessions"]["trip"])
+    assert v["stage"] == "decision" and s.state.origin.value.text == "Thành phố Hồ Chí Minh"
+    assert v["outputs"]["trip"]["context"]["origin"]["text"] == "Thành phố Hồ Chí Minh"

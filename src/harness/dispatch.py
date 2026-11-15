@@ -999,8 +999,9 @@ class Harness:
                     result = self._advance(session, spans)
                 elif request.operation == "trip":
                     inp = TurnInput.model_validate(request.payload)
-                    if inp.kind not in {"deck", "drop", "readback_ok"}:
-                        raise ValueError("decision.trip accepts only deck, drop or readback_ok")
+                    # read-back answers only: a gate card, a dropped line, the summary's own field edit (origin, dates, ...)
+                    if inp.kind not in {"deck", "drop", "readback_ok", "edit"}:
+                        raise ValueError("decision.trip accepts only deck, drop, edit or readback_ok")
                     trip = self._module(session, "trip")
                     payload = {**request.payload, "at": "plan" if request.payload.get("at") == "plan" else "gate"} if inp.kind == "deck" else request.payload
                     trip.apply(session.sessions["trip"], "turn", payload, capture)

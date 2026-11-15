@@ -16,7 +16,9 @@ import yaml
 from ..crawl.common.files import ROOT, data_dir, load_config, now, write_json
 from ..crawl.web import Web
 from ..llm import EVENT_EXTRACT
-from .gate import kept, merge, why_not
+from ..pulse import load as pulse_load
+from .gate import fold, kept, merge, why_not
+from .picture import pick
 
 
 def events_dir(city: str, root: Path | None = None) -> Path:
@@ -94,6 +96,49 @@ async def extract(todo: list[dict], cache: Path, city_name: str, today: date, as
     return found, stats
 
 
+def _query(name: str, city_name: str) -> str:
+    return name if fold(city_name) in fold(name) else f"{name} {city_name}"
+
+
+def pictures(web, events: list[dict], seasons: list[str], city_name: str, social: tuple[str, ...]) -> tuple[dict, Counter]:
+    """A picture for every event and every season name from an image search (corpus.events.picture rules). An event
+    keeps its page's own picture (og:image) only when the search finds none: a page picture is often the site's banner
+    or last year's poster. -> ({folded season name: {name, image, image_from}}, counts). A failed search is skipped."""
+    stats: Counter = Counter()
+    taken: set[str] = set()
+
+    def find(name: str, year: int | None) -> dict | None:
+        try:
+            results = web.images(_query(name, city_name)[:200])
+        except Exception as e:  # a blocked engine: the row keeps what it has, tomorrow asks again
+            print(f"events: image search failed {name!r}: {type(e).__name__}", flush=True)
+            stats["failed"] += 1
+            return None
+        got = pick(results, name, year, social, taken)
+        stats["found" if got else "none"] += 1
+        if got:
+            taken.add(got["image"])
+        return got
+
+    for e in events:
+        if got := find(e["name"], int(e["start"][:4])):
+            e["image"], e["image_from"] = got["image"], {"url": got["page"], "domain": got["domain"]}
+        elif e.get("image"):
+            taken.add(e["image"])
+    out = {}
+    for name in seasons:
+        if got := find(name, None):
+            out[fold(name)] = {"name": name, "image": got["image"], "image_from": {"url": got["page"], "domain": got["domain"]}}
+    return out, stats
+
+
+def season_names(city: str, root: Path | None = None) -> list[str]:
+    """The seasons of the newest Nhịp snapshot (built the night before), without one named only by its months."""
+    snap = pulse_load(city, root) or {}
+    return [i["subject"]["name"] for i in snap.get("items", []) if i["kind"] == "season"
+            and not fold(i["subject"]["name"]).startswith("thang")]
+
+
 def write(city: str, snapshot: dict, keep: int, root: Path | None = None) -> Path:
     d = events_dir(city, root)
     d.mkdir(parents=True, exist_ok=True)
@@ -131,11 +176,14 @@ def run(city: str, today: date | None = None, web=None, ask=None) -> dict:
         else:
             passed.append(kept(item, page, today))
     events = merge(passed, tuple(cfg["social"]))
+    seasons, shots = pictures(web, events, season_names(city), city_name, tuple(cfg["social"]))
     snapshot = {"city": city, "day": today.isoformat(), "built_at": now(), "queries": qs,
                 "pages": {"read": sum(p["read"] == "page" for p in todo), "snippets": sum(p["read"] == "snippet" for p in todo)},
-                "extract": dict(stats), "found": len(found), "dropped": dict(reasons), "events": events}
+                "extract": dict(stats), "found": len(found), "dropped": dict(reasons), "pictures": dict(shots),
+                "events": events, "seasons": seasons}
     path = write(city, snapshot, cfg["keep_snapshots"])
-    print(f"events {city}: {len(events)} events from {len(found)} found {dict(reasons)} {snapshot['pages']} -> {path}", flush=True)
+    print(f"events {city}: {len(events)} events from {len(found)} found {dict(reasons)} {snapshot['pages']} "
+          f"pictures {dict(shots)} -> {path}", flush=True)
     return snapshot
 
 

@@ -329,6 +329,38 @@ class Web:
         self._store("search", key, [hit.model_dump() for hit in hits])
         return hits
 
+    def images(self, query: str, k: int = 30) -> list[dict]:
+        """The first `k` image results of one SearXNG query (`categories=images`), each {img_src, url, title, resolution}
+        as the engines give them; the caller decides which picture stands (corpus.events.picture). An empty answer is
+        not cached, so the next run asks again."""
+        query = query.strip()
+        if not 1 <= len(query) <= 200:
+            raise ValueError("query must contain 1 to 200 characters")
+        key = json.dumps([query, k], ensure_ascii=False)
+        cached = self._cached("images", key)
+        if isinstance(cached, list):
+            return cached
+        self._spend()
+        try:
+            _, _, _, body = self._get(self.base_url + "/search", {
+                "q": query, "format": "json", "language": "vi-VN", "safesearch": 1, "categories": "images",
+            })
+        finally:
+            self._last_end = self._clock()
+        try:
+            payload = json.loads(body)
+        except ValueError as exc:
+            raise WebError("invalid search response") from exc
+        results = payload.get("results") if isinstance(payload, dict) else None
+        if not isinstance(results, list):
+            raise WebError("invalid search response")
+        rows = [{"img_src": str(r.get("img_src") or ""), "url": str(r.get("url") or ""),
+                 "title": _squash(str(r.get("title") or "")), "resolution": str(r.get("resolution") or "")}
+                for r in results if isinstance(r, dict) and r.get("img_src")][:max(0, k)]
+        if rows:
+            self._store("images", key, rows)
+        return rows
+
     def search_page(self, query: str) -> SearchPage:
         """Every result of one SearXNG query (no domain dedupe) with its engines. A blocked page (no result, some
         engine unresponsive) is not cached, so the next run asks again."""

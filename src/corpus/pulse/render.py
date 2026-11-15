@@ -15,8 +15,15 @@ def dm(iso: str) -> str:
 
 
 def months(ms: list[int]) -> str:
-    ms = sorted(ms)
-    return f"tháng {ms[0]}" if len(ms) == 1 else f"tháng {ms[0]}–{ms[-1]}" if ms == list(range(ms[0], ms[-1] + 1)) else "tháng " + ", ".join(map(str, ms))
+    """"tháng 11", "tháng 8–12", a run across the new year from its first month ("tháng 10–1"), else the list."""
+    ms = sorted(set(ms))
+    if len(ms) == 1:
+        return f"tháng {ms[0]}"
+    for k in range(len(ms)):        # the run that starts at ms[k] and wraps December -> January
+        run = ms[k:] + ms[:k]
+        if all(b == a % 12 + 1 for a, b in zip(run, run[1:])):
+            return f"tháng {run[0]}–{run[-1]}"
+    return "tháng " + ", ".join(map(str, ms))
 
 
 # One short phrase for the signal that lifted a place most (compute.trending `lead`); the numbers never reach the page.
@@ -141,6 +148,7 @@ def item(i: dict) -> dict:
                  "maps_rating_trend": "Xu hướng điểm Maps", "web_documents": "Trang web", "maps_status": "Google Maps",
                  "calendar": "Lịch ngày lễ"}.get(e["type"], e["type"])
         sources.append({k: v for k, v in {"type": e["type"], "label": label, "url": e.get("url"), "date": e.get("date") or e.get("to")}.items() if v})
-    extra = {k: i["signals"][k] for k in ("summary", "image") if i["kind"] == "event" and i["signals"].get(k)}
+    extra = {k: i["signals"][k] for k in ("summary", "image", "image_from", "see") if i["kind"] in ("event", "season")
+             and i["signals"].get(k)}
     return {"id": i["id"], "kind": i["kind"], "title": i["subject"]["name"], "text": TEMPLATES[i["kind"]](i), **_short(i), **extra,
             "place_id": i["subject"]["id"] if i["subject"]["type"] == "place" and i["kind"] != "closed" else None, "sources": sources}

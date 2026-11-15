@@ -260,7 +260,8 @@ def web_events(events: list[dict], now: date, end: date, room: int) -> list[dict
              # status / months: the fields a claim event carries, so a reader built before dated events (prod's frozen
              # corpus.pulse.render) still shows it, as "Diễn ra tháng 11 · 3 nguồn"
              "signals": {"source": "web", "time": e["time"], "venue": e["venue"], "summary": e["summary"],
-                         "image": e["image"], "sources": domains(e), "status": "confirmed",
+                         "image": e["image"], **({"image_from": e["image_from"]} if e.get("image_from") else {}),
+                         "sources": domains(e), "status": "confirmed",
                          "months": _months(_day(e["start"]), _day(e["end"]))},
              "dates": {"from": e["start"], "to": e["end"]},
              "evidence": [{"type": "web_document", "url": s["url"], "domain": s["domain"], "date": s["read"],
@@ -283,28 +284,134 @@ def _next_month_start(now: date, month: int) -> date:
     return now if month == now.month else date(year, month, 1)
 
 
+# words two pages put around the same season's name ("mùa hoa dã quỳ ở Đà Lạt" = "hoa dã quỳ" = "dã quỳ")
+SEASON_LOOSE = {"mua", "hoa", "o", "tai", "doi", "dalat", "nam", "nay", "va"}
+# what is left of a name that is only weather or a word ("Mùa khô", "Mùa thu", "hồng"): not a season to go and see
+SEASON_VAGUE = {"", "kho", "mua", "thu", "dong", "xuan", "he", "may", "hong", "thang", "lanh", "nang"}
+
+
+def season_key(subject: str) -> str:
+    words = f" {fold(subject)} ".replace(" da lat ", " ").split()    # the city as a phrase: "dã quỳ" keeps its "da"
+    return " ".join(w for w in words if w not in SEASON_LOOSE and not w.isdigit())
+
+
+# Where a season is seen (owner 2026-11-15: "mùa hoa gì" asks where to go and see it): places to visit, never a stay,
+# a meal or a shop
+SEE_GROUPS = {"attraction", "garden_farm", "nature", "camping", "other", "religious", "amusement"}
+SEE_WINDOW = 350        # characters on each side of the season's name in a page
+SEE_PAGES = 2           # pages that name the place near the season, at least
+SEE_LIFT = 1.2          # how much likelier a season page names it than any page of the corpus, at least
+SEE_COMMON = 0.15       # a name in more than this share of all pages is a common phrase ("Rừng thông"), not a place
+SEE_MAX = 3
+SEE_OWN = 2             # places named after the season ("Vườn dâu tây …") at most, so the pages' own picks still show
+
+
+def _words(text: str) -> str:
+    """Accent-folded words only: a name before a comma or a full stop is still a name."""
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", fold(text)).split())
+
+
+def _see_names(sig: dict) -> tuple[dict, dict, int]:
+    """({folded name: place id} of the places a season may be seen at, {folded name: pages naming it}, pages);
+    worked out once per build."""
+    if "_see" not in sig:
+        names = {}
+        for fid, p in sig["places"].items():
+            k = _words(p["name"])
+            if p.get("group") in SEE_GROUPS and len(k.split()) >= 2 and len(k) >= 7:
+                names.setdefault(k, fid)
+        pages = {did: f" {_words(t)} " for did, t in (sig.get("documents") or {}).items()}
+        df = {k: sum(f" {k} " in t for t in pages.values()) for k in names}
+        sig["_see"] = (names, df, pages)
+    return sig["_see"]
+
+
+def see_places(sig: dict, key: str, doc_ids: set[str]) -> list[str]:
+    """Up to SEE_MAX place ids to see the season `key` at: up to SEE_OWN places named after it ("Đồi Cỏ Hồng"), then the
+    places its own pages name within SEE_WINDOW of its name, in SEE_PAGES pages at least and SEE_LIFT times likelier
+    than in any page; a name in SEE_COMMON of all pages is left out. The most pages first. No model here."""
+    names, df, pages = _see_names(sig)
+    if not pages:
+        return []
+    own = [fid for k, fid in names.items() if len(key.split()) >= 2 and f" {key} " in f" {k} "]
+    word = re.compile(r"(?<= )" + re.escape(key) + r"(?= )")
+    near: dict[str, int] = {}
+    docs = [pages[d] for d in doc_ids if d in pages]
+    for t in docs:
+        spans = [(m.start() - SEE_WINDOW, m.end() + SEE_WINDOW) for m in word.finditer(t)]
+        if not spans:
+            continue
+        for k in names:
+            at = t.find(f" {k} ")
+            while at >= 0:
+                if any(a <= at <= b for a, b in spans):
+                    near[k] = near.get(k, 0) + 1
+                    break
+                at = t.find(f" {k} ", at + 1)
+    n = len(pages)
+    ranked = [names[k] for k, c in sorted(near.items(), key=lambda x: (-x[1], x[0]))
+              if c >= SEE_PAGES and df[k] <= SEE_COMMON * n and (c / len(docs)) / max(df[k] / n, 1e-9) >= SEE_LIFT]
+    own = sorted(own, key=lambda fid: (-near.get(_words(sig["places"][fid]["name"]), 0), sig["places"][fid]["name"]))
+    return list(dict.fromkeys(own[:SEE_OWN] + ranked))[:SEE_MAX]
+
+
 def seasons(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
+    """What is in season this month: the season and best-time claims about a thing to see (a flower, the clouds, the
+    persimmons; a place only when the page speaks of its season), one item per season however the pages name it,
+    the most sources first. A claim nobody checked yet still counts (marked "tham khảo"): "hoa dã quỳ" in 47 pages
+    is the season of November even before a check, and outranks a checked claim two pages make."""
     c = cfg["season"]
-    best = {}
+    groups: dict[str, list[dict]] = {}
     for cl in sig["claims"]:
         if (cl["kind"] not in ("season", "best_time") or cl["status"] not in STATUS_RANK or now.month not in cl["when"]["months"]
-                or cl["subject_kind"] in ("city", "area") or fold(cl["subject"]) == fold(city_name) or not cl.get("evidence")):
+                or not cl.get("evidence") or fold(cl["subject"]) == fold(city_name)):
             continue
-        key = fold(cl["subject"])
-        cur = best.get(key)
-        if cur is None or (STATUS_RANK[cl["status"]], -cl["sources"], -cl["confidence"]) < (STATUS_RANK[cur["status"]], -cur["sources"], -cur["confidence"]):
-            best[key] = cl
+        if cl["subject_kind"] != "phenomenon" and not (cl["kind"] == "season" and cl["subject_kind"] in ("poi", "poi_unresolved")):
+            continue    # a city's or a dish's season, or a place's best time to visit (the dry months): not a season to see
+        key = season_key(cl["subject"])
+        if key in SEASON_VAGUE or key.startswith("thang "):
+            continue
+        groups.setdefault(key, []).append(cl)
     out = []
-    for key, cl in best.items():
+    shots = (sig.get("events") or {}).get("seasons") or {}   # corpus.events: a picture per season name, found the night before
+    for key, cls in groups.items():
+        lead = min(cls, key=lambda x: (-x["sources"], STATUS_RANK[x["status"]], -x["confidence"], x["subject"]))
+        status = min((x["status"] for x in cls), key=STATUS_RANK.get)
+        domains = {e["domain"] for x in cls for e in x["evidence"] if e.get("domain")}
+        sources = max(max(x["sources"] for x in cls), len(domains))
         video = _latest_video(sig, key, now, c["video_window_days"])
-        evidence = _claim_evidence(cl) + ([{"type": "tiktok_video", **{k: video[k] for k in ("id", "url", "date")}}] if video else [])
+        # the group's quotes, those that name this month first: the row's sentence and the two pages shown under it
+        merged = {**lead, "evidence": sorted((e for x in cls for e in x["evidence"]),
+                                             key=lambda e: not _names_month(e.get("quote") or "", now.month))}
+        evidence = _claim_evidence(merged) + ([{"type": "tiktok_video", **{k: video[k] for k in ("id", "url", "date")}}] if video else [])
+        shot = shots.get(fold(lead["subject"])) or {}
+        see = see_places(sig, key, {e["doc_id"] for x in cls for e in x["evidence"] if e.get("doc_id")})
         out.append({"id": f"season:{key.replace(' ', '-')}", "kind": "season",
-                    "subject": {"type": "season", "id": None, "name": cl["subject"]},
-                    "signals": {"months": sorted(cl["when"]["months"]), "sources": cl["sources"], "status": cl["status"],
-                                "latest_video": {k: video[k] for k in ("id", "date", "url")} if video else None},
+                    "subject": {"type": "season", "id": None, "name": lead["subject"]},
+                    "signals": {"months": sorted(lead["when"]["months"]), "sources": sources, "status": status,
+                                "latest_video": {k: video[k] for k in ("id", "date", "url")} if video else None,
+                                **({"summary": s} if (s := season_summary([{"type": "web_document", "quote": e.get("quote")}
+                                                                           for e in merged["evidence"][:20]], now.month)) else {}),
+                                **({"image": shot["image"], "image_from": shot["image_from"]} if shot.get("image") else {}),
+                                **({"see": see} if see else {})},
                     "dates": {"month": now.month}, "evidence": evidence})
-    out.sort(key=lambda i: (STATUS_RANK[i["signals"]["status"]], -i["signals"]["sources"], i["id"]))
+    out.sort(key=lambda i: (-i["signals"]["sources"], STATUS_RANK[i["signals"]["status"]], i["id"]))
     return out[:c["max_items"]]
+
+
+def _names_month(quote: str, month: int) -> bool:
+    return bool(re.search(rf"(?<!\d)th[aá]ng\s*{month}(?!\d)", quote, re.I))
+
+
+SUMMARY_CHARS = (40, 240)   # a season's sentence: a page's own words, long enough to say something, short enough for a row
+
+
+def season_summary(evidence: list[dict], month: int) -> str | None:
+    """The season's sentence in the chat's trends block: one page's own quote, the one that names this month first
+    ("tháng 11"), else the first that fits; None when no quote is the right length. No model writes it."""
+    quotes = [q for e in evidence if e["type"] == "web_document"
+              and SUMMARY_CHARS[0] <= len(q := " ".join((e.get("quote") or "").split())) <= SUMMARY_CHARS[1]]
+    return next((q for q in quotes if _names_month(q, month)), quotes[0] if quotes else None)
 
 
 def _latest_video(sig: dict, key: str, now: date, window: int) -> dict | None:

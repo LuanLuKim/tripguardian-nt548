@@ -108,6 +108,18 @@ def holidays(city: str) -> list:
     return [{"date": d["date"], "name": d["holiday"]} for d in (calendar_days(city) or []) if d.get("holiday")]
 
 
+def web_documents(root: Path, city: str) -> dict:
+    """{doc_id: the page's text} of the web Documents the local claims were read from (data/web/<city>/documents/):
+    where a season is seen is in the page around its name, not in the claim's one-sentence quote."""
+    out = {}
+    for path in sorted((root / "web" / city / "documents").glob("*.json")):
+        d = _read(path) or {}
+        if d.get("doc_id"):
+            out[d["doc_id"]] = " ".join(f"{s.get('heading') or ''} {s.get('text') or ''}" for s in d.get("sections") or ()
+                                        if isinstance(s, dict))
+    return out
+
+
 def web_events(root: Path, city: str) -> dict | None:
     """The newest dated-events snapshot (data/<city>/events/latest.json, corpus.events), or None when never built."""
     return _read(root / city / "events" / "latest.json")
@@ -120,4 +132,5 @@ def load(city: str, tz_h: int, root: Path | None = None) -> dict:
     totals, status = maps_places(root, fids, tz_h)
     return {"places": places, "videos": tiktok_videos(root, fids, tz_h), "reviews": maps_reviews(root, fids),
             "review_totals": totals, "web": web_domains(root, city, fids), "status": status,
-            "claims": local_claims(root, city), "holidays": holidays(city), "events": web_events(root, city)}
+            "claims": local_claims(root, city), "holidays": holidays(city), "events": web_events(root, city),
+            "documents": web_documents(root, city)}

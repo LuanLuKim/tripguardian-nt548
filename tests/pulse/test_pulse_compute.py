@@ -124,8 +124,19 @@ def test_event_named_only_by_the_city_is_dropped():
 
 
 def test_short_season_subject_gets_no_video():
-    s = sig(claims=[claim("season", "hồng", [10])], videos={"p1": [video(1, "a", "2026-10-27", "màu hồng đẹp")]})
+    s = sig(claims=[claim("season", "cỏ", [10])], videos={"p1": [video(1, "a", "2026-10-27", "cỏ xanh đẹp")]})
     assert compute.seasons(s, CFG, NOW, city_name="Đà Lạt")[0]["signals"]["latest_video"] is None
+
+
+def test_one_season_however_pages_name_it_the_most_sources_first_and_no_weather_or_place_best_time():
+    s = sig(claims=[claim("season", "hoa dã quỳ", [10, 11], sources=47), claim("best_time", "Mùa hoa dã quỳ ở Đà Lạt", [10], sources=15),
+                    claim("season", "săn mây ở Đà Lạt", [10], status="kept", sources=2),
+                    claim("season", "Mùa khô", [10, 11], sources=10), claim("season", "hồng", [10], sources=9),
+                    claim("best_time", "Thác Datanla", [10], subject_kind="poi", sources=11),
+                    claim("season", "Làng hoa Vạn Thành", [10], subject_kind="poi", status="kept", sources=4)])
+    items = compute.seasons(s, CFG, NOW, city_name="Đà Lạt")
+    assert [i["subject"]["name"] for i in items] == ["hoa dã quỳ", "Làng hoa Vạn Thành", "săn mây ở Đà Lạt"]
+    assert items[0]["signals"]["sources"] == 47 and items[0]["signals"]["status"] == "unverified"
 
 
 # ---- trending: one 0-100 score over every signal ----
@@ -194,3 +205,36 @@ def test_dated_web_events_replace_the_month_only_claims():
     # the fields a claim event carries, so a reader built before dated events still renders it (prod's frozen render)
     assert items[0]["signals"]["status"] == "confirmed" and items[0]["signals"]["months"] == [11]
     assert items[0]["signals"]["sources"] == 2
+
+
+def test_a_season_reads_a_pages_own_sentence_and_the_picture_found_for_it():
+    long = "Nếu muốn ngắm hoa Mimosa đẹp nhất thì tháng 10 sẽ là một khoảng thời gian hợp lý cho bạn đấy."
+    c = claim("season", "hoa Mimosa", [10], status="kept", text="ngắn")
+    c["evidence"].append({**c["evidence"][0], "quote": long})
+    shot = {"name": "hoa Mimosa", "image": "https://mia.vn/m.jpg", "image_from": {"url": "https://mia.vn/m", "domain": "mia.vn"}}
+    s = sig(claims=[c], events={"day": "2026-10-29", "events": [], "seasons": {"hoa mimosa": shot}})
+    it = compute.seasons(s, CFG, NOW, city_name="Đà Lạt")[0]
+    assert it["signals"]["summary"] == long           # "ngắn" is too short to say anything
+    assert it["signals"]["image"] == "https://mia.vn/m.jpg" and it["signals"]["image_from"]["domain"] == "mia.vn"
+
+
+def test_a_season_without_a_fitting_quote_or_picture_has_neither():
+    it = compute.seasons(sig(claims=[claim("season", "Dã quỳ", [10], status="kept", text="ngắn")]), CFG, NOW)[0]
+    assert "summary" not in it["signals"] and "image" not in it["signals"]
+
+
+def test_months_read_as_a_run_even_across_the_new_year():
+    from corpus.pulse.render import months
+    assert [months(m) for m in ([11], [8, 9, 10, 11, 12], [1, 10, 11, 12], [3, 7])] == \
+        ["tháng 11", "tháng 8–12", "tháng 10–1", "tháng 3, 7"]
+
+
+def test_a_season_is_seen_at_the_places_its_pages_name_beside_it_not_at_common_names_or_cafes():
+    pad = " ".join(["chữ"] * 200)
+    pages = {f"d{i}": f"Mùa dã quỳ nở vàng trên Đèo Prenn và quanh Thung Lũng Vàng. {pad} Rừng thông" for i in range(3)}
+    pages |= {f"o{i}": f"Rừng thông ở khắp nơi. Quán Dã Quỳ Coffee rất đẹp. {pad}" for i in range(20)}
+    places = {"prenn": {"name": "Đèo Prenn", "group": "nature"}, "tlv": {"name": "Thung Lũng Vàng", "group": "attraction"},
+              "rung": {"name": "Rừng thông", "group": "attraction"}, "cafe": {"name": "Dã Quỳ Coffee", "group": "cafe"},
+              "doi": {"name": "Đồi Dã Quỳ Xanh", "group": "attraction"}}
+    s = sig(places=places, documents=pages)
+    assert compute.see_places(s, "da quy", {"d0", "d1", "d2"}) == ["doi", "prenn", "tlv"]

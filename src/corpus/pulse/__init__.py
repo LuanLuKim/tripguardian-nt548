@@ -100,7 +100,7 @@ def trends(city: str, kind: str | None = None, month: int | None = None, limit: 
             out.append({"kind": i["kind"], "name": r["title"], "place_id": r["place_id"], "text": text,
                         "sources": [s for s in r["sources"] if s.get("url")][:3],
                         # the chat's trends block shows these (a dated event's own words, picture and days)
-                        **{k: r[k] for k in ("summary", "image") if r.get(k)},
+                        **{k: r[k] for k in ("summary", "image", "image_from", "see") if r.get(k)},
                         **({"days": r["signal"], "on": r["on"]} if i["signals"].get("source") == "web" else {})})
     res = {"as_of": snap["day"], "stale": _age_days(snap, now) > config()["stale_after_days"], "items": out}
     if month is not None and month != int(snap["day"][5:7]):

@@ -19,7 +19,7 @@ step() {
 }
 step events --city "$city"
 step tiktok poi_refresh --city "$city"
-# Maps reviews since the last night, inside the signed-in login window (`corpus login gmaps --profile gmaps_e` with
+# Maps reviews since the last night, inside the signed-in login window (`CORPUS_LOGIN_KEEP=1 corpus login gmaps --profile gmaps_e` with
 # CORPUS_DEBUG_PORT=9530): Google ends a session whose cookies move to another browser, so no window = no refresh
 login=http://127.0.0.1:${GMAPS_LOGIN_PORT:-9530}
 if curl -s -m 3 "$login/json/version" > /dev/null; then

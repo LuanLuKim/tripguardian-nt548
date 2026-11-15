@@ -167,3 +167,30 @@ def test_trending_never_ranks_a_place_to_stay_or_a_place_without_evidence():
     assert compute.trending(sig(), CFG, NOW) == []
     for i in compute.trending(sig(places={"p1": place("Quán Một")}, videos={"p1": clips("p", 5)}), CFG, NOW):
         assert i["evidence"]  # an item without evidence is never made
+
+
+def test_dated_web_events_replace_the_month_only_claims():
+    from datetime import date
+    from corpus.pulse import compute
+    now = date(2026, 11, 13)
+    cfg = {"event": {"horizon_days": 45, "max_items": 2, "web_fresh_days": 3}}
+    web = {"day": "2026-11-13", "events": [
+        {"name": "Festival Âm nhạc quốc tế Lang Biang", "start": "2026-11-13", "end": "2026-11-15", "time": "19:00",
+         "venue": "Quảng trường Lâm Viên", "summary": "Đêm chính 14/11", "image": "",
+         "sources": [{"url": "https://a.vn", "domain": "a.vn", "quote": "q", "read": "2026-11-13"},
+                     {"url": "https://b.vn", "domain": "b.vn", "quote": "q", "read": "2026-11-13"}]},
+        {"name": "Acoustic dưới tán anh đào", "start": "2026-11-14", "end": "2026-11-14", "time": "", "venue": "", "summary": "",
+         "image": "", "sources": [{"url": "https://c.vn", "domain": "c.vn", "quote": "q", "read": "2026-11-13"}]},
+        {"name": "Giải chạy vì Đà Lạt xanh", "start": "2026-11-21", "end": "2026-11-21", "time": "", "venue": "",
+         "summary": "", "image": "", "sources": [{"url": "https://d.vn", "domain": "d.vn", "quote": "q", "read": "2026-11-13"}]},
+        {"name": "Hội chợ đã qua", "start": "2026-11-01", "end": "2026-11-03", "time": "", "venue": "", "summary": "",
+         "image": "", "sources": [{"url": "https://e.vn", "domain": "e.vn", "quote": "q", "read": "2026-11-13"}]}]}
+    claim = {"kind": "event", "status": "kept", "when": {"months": [11]}, "evidence": [{}], "subject": "phường Lang Biang",
+             "claim_id": "x", "sources": 1, "text": ""}
+    items = compute.events({"holidays": [], "claims": [claim], "events": web}, cfg, now, "Đà Lạt")
+    # the two-site festival and the race (a festive word) beat a one-site acoustic set; the claim and the past fair go
+    assert [i["subject"]["name"] for i in items] == ["Festival Âm nhạc quốc tế Lang Biang", "Giải chạy vì Đà Lạt xanh"]
+    assert all(i["signals"]["source"] == "web" for i in items) and items[0]["dates"] == {"from": "2026-11-13", "to": "2026-11-15"}
+    # the fields a claim event carries, so a reader built before dated events still renders it (prod's frozen render)
+    assert items[0]["signals"]["status"] == "confirmed" and items[0]["signals"]["months"] == [11]
+    assert items[0]["signals"]["sources"] == 2

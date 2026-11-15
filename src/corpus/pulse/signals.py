@@ -43,19 +43,22 @@ def tagged(root: Path) -> list:
 
 
 def tiktok_videos(root: Path, fids: set, tz_h: int) -> dict:
-    """{fid: [{id, url, author, date, text}]} from data/tiktok/poi_crawl (created_at = the video's own epoch)."""
+    """{fid: [{id, url, author, date, text}]} from data/tiktok/poi_crawl and the nightly re-listing poi_recent
+    (created_at = the video's own epoch); a video both list counts once."""
     tz = timezone(timedelta(hours=tz_h))
-    out = {}
-    for f in (root / "tiktok" / "poi_crawl").glob("*.json"):
-        d = _read(f)
-        if not d or d.get("fid") not in fids:
-            continue
-        rows = [{"id": str(v["video_id"]), "url": v.get("url") or "", "author": v.get("author_id") or "",
-                 "date": datetime.fromtimestamp(v["created_at"], UTC).astimezone(tz).date().isoformat(), "text": v.get("desc") or ""}
-                for v in d.get("videos", []) if v.get("video_id") and v.get("created_at") and v.get("author_id")]
-        if rows:
-            out[d["fid"]] = rows
-    return out
+    out: dict[str, dict] = {}
+    for sub in ("poi_crawl", "poi_recent"):
+        for f in (root / "tiktok" / sub).glob("*.json"):
+            d = _read(f)
+            if not d or d.get("fid") not in fids:
+                continue
+            for v in d.get("videos", []):
+                if v.get("video_id") and v.get("created_at") and v.get("author_id"):
+                    out.setdefault(d["fid"], {})[str(v["video_id"])] = {
+                        "id": str(v["video_id"]), "url": v.get("url") or "", "author": v.get("author_id") or "",
+                        "date": datetime.fromtimestamp(v["created_at"], UTC).astimezone(tz).date().isoformat(),
+                        "text": v.get("desc") or ""}
+    return {fid: list(rows.values()) for fid, rows in out.items()}
 
 
 def maps_reviews(root: Path, fids: set) -> dict:
@@ -105,6 +108,11 @@ def holidays(city: str) -> list:
     return [{"date": d["date"], "name": d["holiday"]} for d in (calendar_days(city) or []) if d.get("holiday")]
 
 
+def web_events(root: Path, city: str) -> dict | None:
+    """The newest dated-events snapshot (data/<city>/events/latest.json, corpus.events), or None when never built."""
+    return _read(root / city / "events" / "latest.json")
+
+
 def load(city: str, tz_h: int, root: Path | None = None) -> dict:
     root = root or data_root()
     places = served(root)
@@ -112,4 +120,4 @@ def load(city: str, tz_h: int, root: Path | None = None) -> dict:
     totals, status = maps_places(root, fids, tz_h)
     return {"places": places, "videos": tiktok_videos(root, fids, tz_h), "reviews": maps_reviews(root, fids),
             "review_totals": totals, "web": web_domains(root, city, fids), "status": status,
-            "claims": local_claims(root, city), "holidays": holidays(city)}
+            "claims": local_claims(root, city), "holidays": holidays(city), "events": web_events(root, city)}

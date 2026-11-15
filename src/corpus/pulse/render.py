@@ -49,8 +49,17 @@ def _top(i: dict) -> str:
     return " · ".join(parts)
 
 
+def days(start: str, end: str) -> str:
+    """'13–15/11', '30/11–02/12', '19/12'."""
+    if start == end:
+        return dm(start)
+    return f"{int(start[8:10]):02d}–{dm(end)}" if start[5:7] == end[5:7] else f"{dm(start)}–{dm(end)}"
+
+
 def _event(i: dict) -> str:
     s, d = i["signals"], i["dates"]
+    if s["source"] == "web":  # a dated event read from this month's pages (corpus.events)
+        return " · ".join(x for x in (days(d["from"], d["to"]) + (f", {s['time']}" if s["time"] else ""), s["venue"]) if x)
     if s["source"] == "calendar":
         return f"Ngày {dm(d['on'])}"
     tag = "" if s["status"] in ("kept", "confirmed") else " (tham khảo)"
@@ -105,7 +114,9 @@ def _short(i: dict) -> dict:
         d = i["dates"]
         out["window_days"] = (date.fromisoformat(d["to"]) - date.fromisoformat(d["from"])).days
     elif kind == "event":
-        if s["source"] == "calendar":
+        if s["source"] == "web":
+            out.update(signal=days(i["dates"]["from"], i["dates"]["to"]), signal_kind="date", on=i["dates"]["from"])
+        elif s["source"] == "calendar":
             out.update(signal=dm(i["dates"]["on"]), signal_kind="date", on=i["dates"]["on"])
         else:
             out["reference"] = s["status"] not in ("kept", "confirmed")
@@ -130,5 +141,6 @@ def item(i: dict) -> dict:
                  "maps_rating_trend": "Xu hướng điểm Maps", "web_documents": "Trang web", "maps_status": "Google Maps",
                  "calendar": "Lịch ngày lễ"}.get(e["type"], e["type"])
         sources.append({k: v for k, v in {"type": e["type"], "label": label, "url": e.get("url"), "date": e.get("date") or e.get("to")}.items() if v})
-    return {"id": i["id"], "kind": i["kind"], "title": i["subject"]["name"], "text": TEMPLATES[i["kind"]](i), **_short(i),
+    extra = {k: i["signals"][k] for k in ("summary", "image") if i["kind"] == "event" and i["signals"].get(k)}
+    return {"id": i["id"], "kind": i["kind"], "title": i["subject"]["name"], "text": TEMPLATES[i["kind"]](i), **_short(i), **extra,
             "place_id": i["subject"]["id"] if i["subject"]["type"] == "place" and i["kind"] != "closed" else None, "sources": sources}

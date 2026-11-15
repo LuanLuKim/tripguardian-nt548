@@ -1,4 +1,4 @@
-"""python -m corpus {login <source> | <source> <phase> | judge <phase> | navigate <plan|compare|seed> | local <extract|group> | review | aggregate | serving | snapshot | index | views <climate|calendar|restricted|all> | pulse} --city <key>
+"""python -m corpus {login <source> | <source> <phase> | judge <phase> | navigate <plan|compare|seed> | local <extract|group> | review | aggregate | serving | snapshot | index | views <climate|calendar|restricted|all> | events | pulse} --city <key>
 
 Phases per source, each reading only earlier phases' files: tiktok search -> list -> filter -> crawl, then per Maps
 place place_search -> place_filter -> place_crawl -> asr -> asr_check -> asr_alt -> (asr_check again) -> place_verify
@@ -38,7 +38,7 @@ from .crawl.tiktok import (asr as tiktok_asr, asr_alt as tiktok_asr_alt, asr_che
                            comments_crawl as tiktok_comments_crawl, crawl as tiktok_crawl,
                            filter as tiktok_filter, listing as tiktok_list, place_verify as tiktok_place_verify,
                            place_crawl as tiktok_place_crawl, place_filter as tiktok_place_filter, place_poi as tiktok_place_poi,
-                           poi_crawl as tiktok_poi_crawl, clips as tiktok_clips, web_videos as tiktok_web_videos, place_web as tiktok_place_web,
+                           poi_crawl as tiktok_poi_crawl, poi_refresh as tiktok_poi_refresh, clips as tiktok_clips, web_videos as tiktok_web_videos, place_web as tiktok_place_web,
                            place_search as tiktok_place_search, search as tiktok_search)
 
 PHASES = {  # source -> phase -> (run, needs a browser)
@@ -48,7 +48,7 @@ PHASES = {  # source -> phase -> (run, needs a browser)
                "asr": (tiktok_asr.run, False), "asr_check": (tiktok_asr_check.run, False),
                "asr_alt": (tiktok_asr_alt.run, False),
                "place_verify": (tiktok_place_verify.run, False), "place_poi": (tiktok_place_poi.run, False),
-               "poi_crawl": (tiktok_poi_crawl.run, True), "web_videos": (tiktok_web_videos.run, True),
+               "poi_crawl": (tiktok_poi_crawl.run, True), "poi_refresh": (tiktok_poi_refresh.run, True), "web_videos": (tiktok_web_videos.run, True),
                "place_web": (tiktok_place_web.run, False),
                "clips": (tiktok_clips.run, False),
                "comments_crawl": (tiktok_comments_crawl.run, True),
@@ -80,7 +80,7 @@ def run(source: str, phase: str, city: str, headed: bool, limit: int | None = No
         fn, browser_phase = PHASES[source][p]
         if browser_phase and source == "tiktok":
             out = fn(city, headed, profile_name=profile, **({"shard": shard} if p in SHARDABLE else {}),
-                     **({"limit": limit} if p in ("place_crawl", "poi_crawl", "web_videos") else {}))
+                     **({"limit": limit} if p in ("place_crawl", "poi_crawl", "poi_refresh", "web_videos") else {}))
         elif source == "gmaps" and p in ("crawl", "relevant", "extremes", "keywords", "photos", "menu", "visit", "revisit", "svc_search", "svc_place"):
             out = fn(city, headed, **({"limit": limit} if p in ("extremes", "keywords", "photos", "menu", "visit", "revisit", "svc_search", "svc_place") else {}),
                      shard=shard, profile_name=profile)
@@ -129,6 +129,7 @@ def main() -> None:
     vp = sub.add_parser("views", help="global views for a city: climate (Open-Meteo), calendar (holidays + lunar), restricted (Overpass) -> data/<city>/views/")
     vp.add_argument("view", choices=[*views.VIEWS, "all"])
     vp.add_argument("--city", default="dalat")
+    sub.add_parser("events", help="this month's and next month's events from the web, with their days -> data/<city>/events/ (every night, before pulse)").add_argument("--city", default="dalat")
     sub.add_parser("pulse", help="Nhịp Đà Lạt: dated signals of the crawled data -> data/<city>/pulse/ (run every 24 h)").add_argument("--city", default="dalat")
     sub.add_parser("aggregate", help="every source's observations -> data/intel/places/").add_argument("--city", default="dalat")
     sub.add_parser("serving", help="intel -> data/serving/places.json for Place Decision").add_argument("--city", default="dalat")
@@ -234,6 +235,9 @@ def main() -> None:
             review_server.run(args.city, args.port)
         elif args.cmd == "views":
             views.run(args.view, args.city)
+        elif args.cmd == "events":
+            from . import events
+            events.run(args.city)
         elif args.cmd == "pulse":
             pulse.run(args.city)
         elif args.cmd == "aggregate":

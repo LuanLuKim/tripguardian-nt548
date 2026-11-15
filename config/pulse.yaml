@@ -39,6 +39,7 @@ closed:
 event:
   horizon_days: 45      # spec says 30; 45 reaches the first day of next month from any day in this month's last third
   max_items: 6
+  web_fresh_days: 3     # a dated-events snapshot (corpus.events) younger than this replaces the month-only claim events
 season:
   video_window_days: 60 # newest video naming the season's subject
   max_items: 6

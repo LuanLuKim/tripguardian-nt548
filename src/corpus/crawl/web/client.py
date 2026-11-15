@@ -31,6 +31,7 @@ class WebHit(_Frozen):
     title: str
     domain: str
     snippet: str
+    image: str = ""  # the result's thumbnail when the search engine gives one (https only)
 
 
 class WebPage(_Frozen):
@@ -38,6 +39,7 @@ class WebPage(_Frozen):
     title: str
     domain: str
     text: str
+    image: str = ""  # the page's own picture (og:image) when it declares one (https only)
 
 
 class SearchResult(_Frozen):
@@ -284,11 +286,13 @@ class Web:
                 raise WebError("web request failed") from exc
         raise WebError("too many redirects")
 
-    def search(self, query: str, k: int = 5) -> list[WebHit]:
+    def search(self, query: str, k: int = 5, per_domain: int = 1) -> list[WebHit]:
+        """The first `k` results, at most `per_domain` from one site (a news roundup and a social post of the same site
+        can both carry what is asked)."""
         query = query.strip()
         if not 1 <= len(query) <= 200:
             raise ValueError("query must contain 1 to 200 characters")
-        key = json.dumps([query, k], ensure_ascii=False)
+        key = json.dumps([query, k] if per_domain == 1 else [query, k, per_domain], ensure_ascii=False)
         cached = self._cached("search", key)
         if cached is not None:
             try:
@@ -305,7 +309,7 @@ class Web:
         results = payload.get("results") if isinstance(payload, dict) else None
         if not isinstance(results, list):
             raise WebError("invalid search response")
-        hits, seen_urls, seen_domains = [], set(), set()
+        hits, seen_urls, seen_domains = [], set(), {}
         for result in results:
             if not isinstance(result, dict):
                 continue
@@ -313,12 +317,13 @@ class Web:
             if not isinstance(url, str) or urlsplit(url).scheme.lower() not in ("http", "https") or not urlsplit(url).hostname:
                 continue
             domain = _domain(url)
-            if url in seen_urls or domain in seen_domains:
+            if url in seen_urls or seen_domains.get(domain, 0) >= per_domain:
                 continue
             seen_urls.add(url)
-            seen_domains.add(domain)
+            seen_domains[domain] = seen_domains.get(domain, 0) + 1
             hits.append(WebHit(url=url, title=_squash(str(result.get("title") or "")), domain=domain,
-                               snippet=_squash(str(result.get("content") or result.get("snippet") or ""))[:300]))
+                               snippet=_squash(str(result.get("content") or result.get("snippet") or ""))[:300],
+                               image=_https(result.get("thumbnail") or result.get("img_src"))))
             if len(hits) >= max(0, k):
                 break
         self._store("search", key, [hit.model_dump() for hit in hits])
@@ -478,16 +483,17 @@ class Web:
             except (ValidationError, TypeError):
                 pass
         final, media_type, content = self._fetch_page(url)
-        title = ""
+        title, image = "", ""
         if media_type == "text/html":
             extracted = trafilatura.extract(content, include_comments=False, include_tables=False)
             title = _page_title(content)
+            image = _https(getattr(trafilatura.extract_metadata(content), "image", None))
             text = _squash(extracted or "")
         else:
             text = _squash(content)
         if not text:
             raise WebError("empty page")
-        page = WebPage(url=final, title=title, domain=_domain(final), text=text[:max_chars])
+        page = WebPage(url=final, title=title, domain=_domain(final), text=text[:max_chars], image=image)
         self._store("read", key, page.model_dump())
         return page
 
@@ -538,6 +544,12 @@ def _merge(first: tuple[SearchResult, ...], second: tuple[SearchResult, ...]) ->
         else:
             rows[r.url] = r
     return tuple(rows.values())
+
+
+def _https(url) -> str:
+    """An absolute https picture URL, else "" (a page served over https may not show an http picture)."""
+    url = str(url or "").strip()
+    return url if url.lower().startswith("https://") and urlsplit(url).hostname and len(url) <= 2000 else ""
 
 
 def _page_title(content: str) -> str:

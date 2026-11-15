@@ -219,6 +219,11 @@ def events(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
             out.append({"id": f"event:holiday:{h['date']}", "kind": "event", "subject": {"type": "event", "id": None, "name": h["name"]},
                         "signals": {"source": "calendar"}, "dates": {"on": h["date"]},
                         "evidence": [{"type": "calendar", "date": h["date"], "name": h["name"]}]})
+    web = sig.get("events")
+    if web and (now - _day(web["day"])).days <= c.get("web_fresh_days", 3):
+        # dated events read from this month's pages: they replace the claims, which know only a month
+        out += web_events(web["events"], now, end, c["max_items"] - len(out))
+        return sorted(out, key=lambda i: (i["dates"].get("on") or i["dates"]["from"], i["id"]))
     claims = {}
     for cl in sig["claims"]:
         if (cl["kind"] != "event" or cl["status"] not in STATUS_RANK or not cl["when"]["months"] or not cl.get("evidence")
@@ -238,6 +243,38 @@ def events(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
                     "dates": {"from": start.isoformat()}, "evidence": _claim_evidence(cl)})
     out.sort(key=lambda i: (i["dates"].get("on") or i["dates"]["from"], i["id"]))
     return out[:c["max_items"]]
+
+
+FESTIVE = ("festival", "le hoi", "hoi ", "trien lam", "expo", "giai chay", "marathon", "dem nhac", "hoa nhac", "chao nam moi")
+
+
+def web_events(events: list[dict], now: date, end: date, room: int) -> list[dict]:
+    """The `room` events most worth a visitor's while, among those not over and starting before `end`: more sites that
+    name it first, then a festival, fair, race or concert night, then the sooner one; shown in date order."""
+    def domains(e):
+        return len({s["domain"] for s in e["sources"]})
+    live = [e for e in events if _day(e["end"]) >= now and _day(e["start"]) <= end]
+    best = sorted(live, key=lambda e: (-domains(e), not any(w in f" {fold(e['name'])} " for w in FESTIVE), e["start"]))[:max(0, room)]
+    return [{"id": f"event:web:{e['start']}:{fold(e['name'])[:40].replace(' ', '-')}", "kind": "event",
+             "subject": {"type": "event", "id": None, "name": e["name"]},
+             # status / months: the fields a claim event carries, so a reader built before dated events (prod's frozen
+             # corpus.pulse.render) still shows it, as "Diễn ra tháng 11 · 3 nguồn"
+             "signals": {"source": "web", "time": e["time"], "venue": e["venue"], "summary": e["summary"],
+                         "image": e["image"], "sources": domains(e), "status": "confirmed",
+                         "months": _months(_day(e["start"]), _day(e["end"]))},
+             "dates": {"from": e["start"], "to": e["end"]},
+             "evidence": [{"type": "web_document", "url": s["url"], "domain": s["domain"], "date": s["read"],
+                           "quote": s["quote"]} for s in e["sources"]]}
+            for e in sorted(best, key=lambda e: (e["start"], e["name"]))]
+
+
+def _months(start: date, end: date) -> list[int]:
+    """The months an event runs through, in order (30/11–02/12 -> [11, 12])."""
+    out, d = [], date(start.year, start.month, 1)
+    while d <= end:
+        out.append(d.month)
+        d = date(d.year + (d.month == 12), d.month % 12 + 1, 1)
+    return out
 
 
 def _next_month_start(now: date, month: int) -> date:

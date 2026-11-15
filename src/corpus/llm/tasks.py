@@ -1651,6 +1651,46 @@ Text:
 
 # Local knowledge, second look (docs/CORPUS.md, Tri thức bản địa): a claim the gate and the grouping would keep is read
 # once more against each of its quotes in their page context; a quote that does not state it is dropped from its evidence.
+# Events of the coming weeks (docs/CORPUS.md §Sự kiện sắp tới): one web page -> the events it announces with their own
+# days. Code (corpus.events.gate) keeps an event only when its quote is in the page and holds its name and its first
+# day. Low volume (a dozen pages a night), so it runs on the Judge's endpoint; thinking off, else it thinks before the JSON.
+EVENT_EXTRACT = Task(
+    name="event_extract",
+    role=JUDGE,
+    max_tokens=3000,
+    parallel=4,
+    schema={
+        "type": "object",
+        "properties": {"events": {"type": "array", "items": {"type": "object", "properties": {
+            "name": _STR, "start": _STR, "end": _STR, "time": _STR, "venue": _STR, "summary": _STR, "quote": _STR},
+            "required": ["name", "start", "end", "time", "venue", "summary", "quote"],
+            "additionalProperties": False}}},
+        "required": ["events"],
+        "additionalProperties": False,
+    },
+    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    prompt="""You read one web page about {city}, Vietnam, read on {today}, and list the events it announces that a
+visitor can go to: festivals, concerts, shows, fairs, expos, sport or cultural events. Leave out talks, seminars,
+business or investor events, workshops for professionals, meetups and language exchanges. Only what the page says;
+never add what you know.
+
+Page: {title} ({url})
+Text:
+{text}
+
+For each event:
+- name: the event's own name as the page writes it ("Festival Âm nhạc quốc tế Lang Biang 2026"); never only a place,
+  a ward, a season or a month.
+- start, end: YYYY-MM-DD as the page states them; a day written without a year belongs to {year} unless the page says
+  otherwise; end = start for a one-day event; "" when the page gives no day (a month alone is not a day).
+- time: "HH:MM" of the main show or the opening when the page states it, else "".
+- venue: where it happens, as the page writes it, else "".
+- summary: one Vietnamese sentence, at most 200 characters, of what a visitor sees or does there, from the page.
+- quote: the shortest passage copied word for word from the text that holds the event's name and its first day.
+Leave out an event that ended before {today}. No event: {{"events": []}}.""",
+)
+
+
 LOCAL_VERIFY_PROBLEMS = ["none", "subject_not_in_passage", "other_place_or_topic", "nickname_or_slogan",
                          "different_thing", "number_mismatch", "not_stated", "too_vague"]
 LOCAL_VERIFY = Task(

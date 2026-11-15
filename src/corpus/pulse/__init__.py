@@ -96,8 +96,12 @@ def trends(city: str, kind: str | None = None, month: int | None = None, limit: 
         seen[i["kind"]] = seen.get(i["kind"], 0) + 1
         if seen[i["kind"]] <= limit:
             r = render.item(i)
-            out.append({"kind": i["kind"], "name": r["title"], "place_id": r["place_id"], "text": r["text"],
-                        "sources": [s for s in r["sources"] if s.get("url")][:3]})
+            text = f"{r['text']} · {r['summary']}" if r.get("summary") else r["text"]  # a dated event says what happens
+            out.append({"kind": i["kind"], "name": r["title"], "place_id": r["place_id"], "text": text,
+                        "sources": [s for s in r["sources"] if s.get("url")][:3],
+                        # the chat's trends block shows these (a dated event's own words, picture and days)
+                        **{k: r[k] for k in ("summary", "image") if r.get(k)},
+                        **({"days": r["signal"], "on": r["on"]} if i["signals"].get("source") == "web" else {})})
     res = {"as_of": snap["day"], "stale": _age_days(snap, now) > config()["stale_after_days"], "items": out}
     if month is not None and month != int(snap["day"][5:7]):
         res["note"] = f"Nhịp đo cho tháng {int(snap['day'][5:7])}; mùa và sự kiện được lọc theo tháng {month}, các mục còn lại là hiện tại."

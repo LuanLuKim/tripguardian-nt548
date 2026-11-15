@@ -6,7 +6,9 @@ sent (the reply says there is no data)."""
 
 from __future__ import annotations
 
+import re
 import time
+from urllib.parse import urlsplit
 from typing import Callable
 
 from corpus import tags as corpus_tags
@@ -171,3 +173,69 @@ def watch(tools, emit: Callable, cards_of: Callable) -> None:
             tools.timings.append(f"t_block name={name} seconds={time.monotonic() - started:.3f}")
 
     tools.model_called = called
+
+
+# What a trends question asks about, on the accent-folded message: only those sections are shown (an events question
+# gets the events, not the season and the hot places too)
+EVENT_ASK = re.compile(r"\b(su kien|le hoi|festival|show|concert|dem nhac|hoa nhac|trien lam|giai chay|marathon|expo)\b")
+SEASON_ASK = re.compile(r"\b(mua|san may|no hoa|hoa gi|co hong|da quy|thoi tiet)\b")
+SECTIONS = {"event": "Sự kiện sắp diễn ra", "season": "Đang vào mùa", "places": "Nơi đang được nhắc nhiều"}
+PLACE_KINDS = ("trend", "hot", "top")
+ROWS = {"event": 5, "season": 4, "places": 4}
+
+
+def trend_kinds(folded_text: str) -> tuple[str, ...]:
+    """The sections a trends question asks for, in the order shown."""
+    if EVENT_ASK.search(folded_text):
+        return ("event",)
+    if SEASON_ASK.search(folded_text):
+        return ("season", "event")
+    return ("event", "season", "places")
+
+
+def _source(it: dict) -> dict | None:
+    s = next((x for x in it.get("sources") or () if str(x.get("url") or "").startswith(("https://", "http://"))), None)
+    return {"url": s["url"], "title": s.get("label") or "", "domain": (urlsplit(s["url"]).hostname or "").removeprefix("www.")} if s else None
+
+
+def trends_block(rows: dict, sections: tuple[str, ...], cards_of: Callable) -> dict | None:
+    """The chat's trends block (web screens/understand/Trends.tsx): numbered sections of rows from the Nhịp items
+    (Knowledge.trend_rows), each row a picture, a title, one short line, a sentence and its page. No model writes it:
+    an event's line and sentence are the dated event's own (corpus.events), a place's sentence is its checked intro.
+    A season named only by its months ("Tháng 10 - 12") is left out. None when no section has a row."""
+    if not rows:
+        return None
+    out, seen = [], set()
+    for kind in sections:
+        want = PLACE_KINDS if kind == "places" else (kind,)
+        found = []
+        for it in rows["items"]:
+            if it["kind"] not in want or it["name"] in seen:
+                continue
+            if kind == "event" and not it.get("days"):
+                continue  # a month-only claim or a holiday: no day to show
+            if kind == "season" and (squash(it["name"]).startswith("thang") or it.get("place_id")):
+                continue
+            if kind == "places" and not it.get("place_id"):
+                continue
+            seen.add(it["name"])
+            row = {"title": it["name"][:1].upper() + it["name"][1:]}
+            if kind == "event":
+                row.update(meta=it["text"].split(" · " + it["summary"])[0] if it.get("summary") else it["text"],
+                           text=it.get("summary") or "", on=it["on"], **({"image": it["image"]} if it.get("image") else {}))
+            elif kind == "season":
+                months = re.search(r"\((tháng [^)]*)\)", it["text"])
+                row.update(meta=f"Đang vào mùa · {months[1]}" if months else "Đang vào mùa", text="")
+            else:
+                row.update(id=it["place_id"], text=it.get("intro") or "")
+            if src := _source(it):
+                row["source"] = src
+            found.append(row)
+            if len(found) >= ROWS[kind]:
+                break
+        if found:
+            out.append({"kind": kind, "heading": SECTIONS[kind], "rows": found})
+    if not out:
+        return None
+    ids = [r["id"] for s in out for r in s["rows"] if r.get("id")]
+    return {"kind": "trends", "as_of": rows["as_of"], "sections": out, "cards": cards_of(ids) if ids else []}

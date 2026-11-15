@@ -1347,6 +1347,16 @@ class Engine:
                     emit("block", block)
             except Exception as exc:  # noqa: BLE001 - a block is an extra: the reply must not fail for it
                 log.append(f"dish_block_failed {type(exc).__name__}")
+            if (data and "xu_huong" in data or any(x.split(" ")[0] == "trends" for x in log)) and self.knowledge is not None and not tools.cards_blocked:
+                # a trends question: the short reply, then what is on and in season laid out as rows (no model writes them)
+                try:
+                    rows = self.knowledge.trend_rows(tools.state, ("event", "season", "trend", "hot", "top"))
+                    if block := blocks.trends_block(rows, blocks.trend_kinds(fold(text)),
+                                                    lambda ids: self._cards(ids, tools.state, tools.scene_first)):
+                        tools.blocks.append(block)
+                        emit("block", block)
+                except Exception as exc:  # noqa: BLE001
+                    log.append(f"trends_block_failed {type(exc).__name__}")
         for shown in tools.card_lists:  # the assistant's cards (already on the screen) are kept with the reply
             s.transcript.append({"role": "agent", "text": "", "turn": turn, "kind": "places", **shown})
         for block in getattr(tools, "blocks", ()):  # dish / services results, kept with the reply like the cards

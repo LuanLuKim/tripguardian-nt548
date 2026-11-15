@@ -131,8 +131,31 @@ class Knowledge:
             # a reply may say (Meta.told_numbers), and the agent does not read links
             srcs = [{k: x[k] for k in ("label", "date") if x.get(k)} for x in it["sources"]]
             items.append({**({"id": pid} if pid is not None else {}),
-                          **{k: v for k, v in it.items() if k not in ("place_id", "sources")}, "sources": srcs})
+                          **{k: v for k, v in it.items() if k not in ("place_id", "sources", "image")}, "sources": srcs})
         return {**out, "items": items}
+
+    def trend_rows(self, state: TripState, kinds: tuple[str, ...], limit: int = 6) -> dict:
+        """The Nhịp items of `kinds` for the chat's trends block (api/blocks.trends_block), with what the agent does not
+        read: the sources' links and an event's picture. Places pass the trip's hard filters, as in `trends`.
+        {as_of, items[]} or {} when the job never ran."""
+        out, as_of = [], None
+        for kind in kinds:
+            got = self.pulse(kind=kind, limit=limit) if self.pulse else None
+            if not got:
+                continue
+            as_of = got["as_of"]
+            for it in got["items"]:
+                pid = it["place_id"]
+                if pid is not None and not self._admissible(pid, state):
+                    continue
+                out.append({**it, "intro": self._intro(pid) if pid else None})
+        return {"as_of": as_of, "items": out} if as_of else {}
+
+    def _intro(self, pid: str) -> str | None:
+        """The first sentence of the place's checked introduction (corpus.intro), None when it has none."""
+        intro = ((self.retrieval.get_place(pid) or {}).get("details") or {}).get("intro") or {}
+        first = next(iter(intro.get("summary") or ()), None)
+        return first.get("text") if isinstance(first, dict) else None
 
     def weather(self, day: date) -> dict:
         """Rain chance for `day` at the city centre; {"error": "weather unavailable"} when live gives nothing."""

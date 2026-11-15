@@ -2049,6 +2049,9 @@ class Engine:
             variant_id = s.state.chosen_variant or next((v["id"] for v in base.variants), None)
             if variant_id is None:
                 raise NotConfirmable("no plan option was built")  # nothing to confirm at all, not a rule
+            if s.state.chosen_variant is None:
+                # several directions of an overloaded trip: which places go is the user's choice, never the first card's
+                raise NotConfirmable("choose a plan option before confirming")
             results = self._schedules.get(sid, [None] * len(s.states))[s.position] if s.state.chosen_variant else None
             if results is None:
                 results = self._card_results(base, variant_id)

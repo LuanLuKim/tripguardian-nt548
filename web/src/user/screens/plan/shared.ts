@@ -39,5 +39,5 @@ export const MEAL_LABEL: Record<string, string> = { breakfast: 'Ăn sáng (tự 
 
 // The ways of an overloaded trip (src/planning/overload.py LABEL): the name a variant shows everywhere. A merged card keeps
 // the first direction's name; an older server joined them with " · ".
-export const WAY_NAME: Record<string, string> = { fit: 'Giữ nơi hợp gu nhất', travel: 'Di chuyển thuận lợi nhất', cost: 'Tiết kiệm nhất' }
+export const WAY_NAME: Record<string, string> = { fit: 'Giữ nơi hợp gu nhất', travel: 'Di chuyển thuận lợi nhất', cost: 'Tiết kiệm nhất', most: 'Giữ nhiều nơi bạn chọn nhất' }
 export const wayName = (v: { id: string; label: string } | null | undefined) => (v ? WAY_NAME[v.id] ?? v.label.split(' · ')[0] : '')

@@ -22,11 +22,11 @@ def test_a_trip_that_fits_has_one_main_plan_and_no_overload():
     assert [v["id"] for v in out["variants"]] == ["main"] and out["overload"] is None
 
 
-def test_overload_gives_three_directions_each_dropping_just_enough():
+def test_overload_gives_up_to_four_directions_each_dropping_just_enough():
     trip = trip_of(heavy(10), days=2)
     out = plan_or_directions(trip)
     ov = out["overload"]
-    assert ov and {d["id"] for d in ov["directions"]} <= {"fit", "travel", "cost"}
+    assert ov and {d["id"] for d in ov["directions"]} <= {"fit", "travel", "cost", "most"}
     for v in out["variants"]:
         kept = set(v["kept"])
         assert not schedule_trip(trip, kept=kept).leftover
@@ -130,7 +130,7 @@ def test_overload_calls_the_scheduler_a_bounded_number_of_times():
     recs = [spot(f"c{i}", CENTRE, i, visit=(60, 90, 120)) for i in range(10)] + \
            [spot(f"s{i}", SOUTH, i, visit=(45, 75, 100)) for i in range(9)]
     out = plan_or_directions(trip_of(recs, days=2))
-    assert out["overload"] and out["schedule_calls"] <= 40
+    assert out["overload"] and out["schedule_calls"] <= 52   # 40 with three directions; `most` adds about a third
 
 
 def test_an_hour_short_offers_a_longer_day_that_holds_everything(monkeypatch):
@@ -199,3 +199,19 @@ def test_travel_measures_from_the_lodging_on_an_arrival_day():
     travel = next(v for v in plan_or_directions(trip)["variants"] if v["id"] == "travel")
     first = travel["dropped"][0]
     assert first["place_id"] == "far" and first["reason"].endswith(", các nơi khác cách chỗ ở < 15′")
+
+
+def test_most_drops_the_longest_visit_first_and_keeps_the_most_places():
+    """One long visit (the best liked) against short ones: `most` drops the long one and keeps every short one, where
+    `fit` keeps the liked long one and drops the short ones (owner 2026-11-13: "Giữ nhiều nơi bạn chọn nhất")."""
+    recs = [spot(f"s{i}", CENTRE, i, visit=(45, 60, 75)) for i in range(3)] + \
+        [spot("long", CENTRE, 2, visit=(180, 240, 300))]
+    d = decision([r["id"] for r in recs], base={"place_id": None, "text": "home", "lat": CENTRE[0], "lng": CENTRE[1]},
+                 days=1)
+    for chosen in d["confirmed"]:
+        chosen["utility"] = 5.0 if chosen["id"] == "long" else 1.0
+    out = plan_or_directions(prepared(d, recs))
+    cards = {name: v for v in out["variants"] for name in [v["id"], *v.get("merged", [])]}
+    assert cards["most"]["available"] and [x["place_id"] for x in cards["most"]["dropped"]] == ["long"]
+    assert "long" in cards["fit"]["kept"]
+    assert all(len(cards["most"]["kept"]) >= len(v["kept"]) for v in out["variants"] if v["available"])

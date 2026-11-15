@@ -24,14 +24,16 @@ from .robustness import robustness
 from .timefit import describe as time_description
 from .traits import visit_minutes
 
-DIRECTIONS = ("fit", "travel", "cost")
+DIRECTIONS = ("fit", "travel", "cost", "most")
 LABEL = {"main": "Lịch của bạn", "fit": "Giữ nơi hợp gu nhất", "travel": "Di chuyển thuận lợi nhất", "cost": "Tiết kiệm nhất",
-         "kept": "Giữ các nơi đã xếp vừa"}
+         "most": "Giữ nhiều nơi bạn chọn nhất", "kept": "Giữ các nơi đã xếp vừa"}
 TRADEOFF = {"fit": "có thể phải đi xa hơn và tốn hơn để giữ nơi hợp gu",
             "travel": "có thể bỏ nơi bạn thích nhưng nằm xa các nơi còn lại",
             "cost": "có thể bỏ nơi bạn thích nhưng tốn tiền hơn",
+            "most": "có thể bỏ nơi bạn thích nhất nếu nơi đó chiếm nhiều thời gian",
             "kept": "bỏ các nơi không còn chỗ, mỗi nơi có lý do"}
 GAIN = {"fit": "giữ những nơi khớp gu bạn nhất", "travel": "ít ngồi xe nhất", "cost": "rẻ nhất",
+        "most": "ghé được nhiều nơi bạn chọn nhất",
         "kept": "chốt được ngay với lịch đã kiểm"}
 ORDINAL = {2: "thứ hai", 3: "thứ ba", 4: "thứ tư"}
 ALONE_MIN = 15              # spec section 7: "các nơi khác cách khách sạn < 15′", the dropped place off on its own
@@ -151,6 +153,14 @@ def _next(trip, sched, candidates, direction, values, ranks, gone):
         if _alone(trip, pid, set(trip.by_place) - gone - {pid}):
             reason += f", các nơi khác cách chỗ ở < {ALONE_MIN}′"
         return pid, s, reason
+    if direction == "most":
+        # the place that takes the most time goes first, so the fewest places go (owner 2026-11-13); a tie drops the
+        # one that fits the user's taste least
+        took = lambda p: trip.by_place[p].visit["short"] if p in sched.leftover else _freed(trip, sched, p, gone)  # noqa: E731
+        pid = max(candidates, key=lambda p: (took(p), -_utility(values, p), p))
+        m = took(pid)
+        return pid, m, f"cần ít nhất {_hm(m)}, lịch không còn chỗ" if pid in sched.leftover else \
+            f"chiếm {_hm(m)} của lịch, tính cả đường đi"
     priced = [p for p in candidates if trip.by_place[p].cost_vnd is not None]
     if not priced:
         return None
@@ -400,7 +410,7 @@ def _extend(trip, run: _Runs, main: Schedule) -> dict | None:
 
 def plan_or_directions(trip, *, protected=()) -> dict:
     """The plan output for one trip: a fitting trip has one `main` plan and no overload; an overloaded one has up to
-    three direction plans (two that keep the same places share one card, `merged`) and the overload card.
+    four direction plans (two that keep the same places share one card, `merged`) and the overload card.
     protected: places the session also keeps whatever happens (locked days), on top of composer.must_places."""
     deadline = time.monotonic() + max(0, trip.cfg.realistic.get("overload_deadline_s", _FORK_WAIT_S))
     run = _Runs(trip, SimpleNamespace(value=0) if _PROCESS_CONTEXT == 'spawn' else None)

@@ -350,7 +350,7 @@ def overload_explained(run):
         return ["no overload shown for a case expected to overload"]
     out = []
     dirs = ov.get("directions") or []
-    if not {x["id"] for x in dirs} <= {"fit", "travel", "cost"} or not dirs:
+    if not {x["id"] for x in dirs} <= {"fit", "travel", "cost", "most"} or not dirs:
         out.append(f"directions are {[x.get('id') for x in dirs]}")
     if ov.get("missing_min", 0) <= 0:
         out.append("overload does not name the missing minutes")

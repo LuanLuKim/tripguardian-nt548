@@ -49,7 +49,7 @@ def test_every_variant_carries_its_itinerary_measures_robustness_and_backups_and
     out = run(d, recs, weather={"2026-12-12": {"rain_prob": 0.9}, "2026-12-13": {"rain_prob": 0.9}})
     assert out["chosen"] is None and out["back_to_decision"] is None
     for i, v in enumerate(out["variants"]):
-        assert v["id"] in {"main", "fit", "travel", "cost"}
+        assert v["id"] in {"main", "fit", "travel", "cost", "most"}
         assert len(v["itinerary"]) == 2
         assert v["robustness"]["level"] in ("solid", "feasible", "fragile")
         assert {"places", "on_delay"} <= set(v["backups"])

@@ -48,7 +48,7 @@ def test_engine_overload_offers_directions_and_tracks_direction_specific_drops()
     created = e.create(d, None)
     sid, view = created["id"], created["view"]
     assert view["overload"]["level"] == "overloaded"
-    assert {d for v in view["variants"] for d in [v["id"], *v.get("merged", [])]} == {"fit", "travel", "cost"}
+    assert {d for v in view["variants"] for d in [v["id"], *v.get("merged", [])]} == {"fit", "travel", "cost", "most"}
     cheap = next(v for v in view["variants"] if "cost" in [v["id"], *v.get("merged", [])])
     assert cheap["status"] == "available" and "p7" not in cheap["kept"]
     e.act(sid, {"type": "pick_variant", "id": cheap["id"]})

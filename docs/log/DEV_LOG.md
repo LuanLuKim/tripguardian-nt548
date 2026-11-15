@@ -29,6 +29,35 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 
 ## Các mục
 
+## overload-most-2026-11-15 — Hướng thứ tư "Giữ nhiều nơi bạn chọn nhất", confirm chưa chọn hướng
+
+- file: `src/planning/overload.py` (`DIRECTIONS`, `LABEL` / `GAIN` / `TRADEOFF`, `_next` nhánh `most`), `src/planning/engine.py` (`confirm`); `web/src/user/screens/plan/{Choose.tsx,shared.ts}`, `planning/types.ts`; test `tests/planning/test_planning_{overload,overload_edits,composer,engine,lodging_golden,variants}.py`, `realistic_checks.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/planning -k "overload or composer or engine or lodging_golden or variants or realistic"`; `node --test web/src/user/screens/plan/notes.test.mjs` (từ gốc repo); `cd web && npx tsc -b`. Đo 19 nơi / 2 ngày: 3 hướng 1,7–2,0 s (27 lần `schedule_trip`), 4 hướng 2,7 s (41 lần), ra 3 thẻ khác nhau thay vì 2.
+
+### Hiện tại (15/11/2026)
+- Quá tải có bốn hướng: thêm `most` (chủ dự án 13/11/2026) bỏ trước nơi chiếm nhiều thời gian nhất (`visit["short"]` nếu chưa xếp, `_freed` nếu đã xếp), hòa thì bỏ nơi ít hợp gu; lý do "chiếm 2h30 của lịch, tính cả đường đi" / "cần ít nhất 1h30, lịch không còn chỗ". Trùng lịch vẫn gộp một thẻ (`merged`).
+- Web Chọn phương án: vẫn tối đa 3 thẻ (chủ dự án 15/11/2026), chọn trong bốn hướng theo dùng được → giữ nhiều nơi đã chọn nhất → hợp gu → ít đi lại; bảng tên có `most`.
+- `confirm` phiên quá tải chưa chọn hướng: `NotConfirmable` → 409 "choose a plan option before confirming" (trước: `AttributeError` trong `_variant_dict` → 500).
+- Giới hạn số lần gọi scheduler trong test 40 → 52.
+
+### Trước đó (13/11/2026)
+- hành vi: ba hướng `fit` / `travel` / `cost`, web tối đa 3 thẻ; `confirm` không chọn hướng → 500.
+
+## trends-pictures-seasons-2026-11-15 — Ảnh sự kiện / mùa, chọn mùa theo số nguồn, trợ lý không bỏ sót mùa
+
+- file: `src/corpus/events/{picture.py,run.py,__init__.py}` (`pictures`, `season_names`), `src/corpus/crawl/web/client.py` (`Web.images`), `src/corpus/pulse/{compute,render,__init__}.py` (`seasons`, `season_key`, `season_summary`, `image_from`), `config/pulse.yaml` (`season.max_items` 6 → 8); `src/trip/api/blocks.py` (`trend_kinds`, hàng mùa), `src/trip/infrastructure/knowledge.py` (`ONE_KIND_LIMIT`, `names_place`), `src/trip/agent/prompt.py` (mùa hoa là "mùa bây giờ"); `web/src/user/screens/understand/Trends.tsx`, `tu/types.ts`, `css/chat.css`; test `tests/events/test_events_picture.py`, `tests/pulse/test_pulse_compute.py`, `tests/trip/test_trends_block.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/events tests/pulse tests/trip/test_trends_block.py`; dựng lại `corpus pulse` → `corpus events` → `corpus pulse`, rồi `PYTHONPATH=.prod_src … pulse.bulletin / trends` (đọc được). Lượt chat thật (`bench.assistant.engine_for("live")`): "tháng 11 này Đà Lạt có mùa hoa gì" 4,4 s → "đang vào mùa hoa dã quỳ, mimosa và cải trắng; cũng đang vào mùa cỏ hồng"; "người mới… có gì đặc biệt" 4,0 s → sự kiện + mùa + hai nơi TikTok, không hỏi ngược.
+
+### Hiện tại (15/11/2026)
+- Ảnh: `corpus events` tìm ảnh cho mọi sự kiện và mọi mùa của bản Nhịp đêm trước qua SearXNG `categories=images`; luật code ở `picture.why_not` (tiêu đề chứa ≥ 75 % chữ của tên, không năm khác, ảnh sự kiện không đăng trước năm sự kiện − 1, https, cạnh ngắn ≥ 480 px, tỷ lệ 0,6–2,4, không mạng xã hội / logo / banner / ảnh đã dùng). Sự kiện ưu tiên ảnh tìm được, `og:image` là dự phòng. 15/11: 27 ảnh / 34 lượt.
+- Mùa (`compute.seasons`): gộp tên cùng một mùa (`season_key`), chỉ hiện tượng hoặc claim `season` về một nơi (bỏ "thời điểm đẹp" của nơi, thành phố, khu, món, tên chỉ là thời tiết), xếp theo số nguồn rồi trạng thái, 8 mục; `summary` = câu trích nêu đúng tháng; ảnh theo tên. Tháng 11: hoa dã quỳ (51 nguồn), đồi Cỏ Hồng, hồng treo gió, săn mây, hoa mimosa, hoa Cải Trắng, mùa hồng chín, dâu tây.
+- Nơi ngắm mùa (`compute.see_places`, offline): tối đa 2 nơi mang tên mùa rồi nơi các trang nguồn của mùa nhắc gần tên mùa (≥ 2 trang, độ nâng ≥ 1,2, bỏ tên quá phổ biến, chỉ nơi để ngắm). Tháng 11: dã quỳ → Đèo Prenn, Thung Lũng Vàng; cỏ hồng → Đồi Cỏ Hồng Đà Lạt / hồ Tuyền Lâm; săn mây → Thiên Đường Săn Mây Cầu Đất, Đồi Thiên Phúc Đức; mimosa → Đèo Prenn, Thung lũng Tình Yêu, Chùa Tàu; dâu tây → các vườn dâu. `render.months` viết mùa qua năm mới là "tháng 10–1".
+- Trợ lý: `trends` một loại trả tới 8 mục; mục mùa có `see_at`, sự kiện có `held_at`; mùa trùng tên nơi mang `names_place` (bộ gác không thay lời); prompt nói rõ "mùa hoa gì" chỉ trả từ Nhịp và nêu một hai nơi ngắm. Khối dưới lời theo nhu cầu câu hỏi (chủ dự án 15/11/2026): sự kiện → sự kiện + nơi đang được nhắc; mùa → mùa kèm nơi ngắm; câu chung → cả ba. Đo: "mùa hoa gì" 5,0 s → "…dã quỳ, mimosa và cải trắng. Bạn có thể ngắm dã quỳ ở Đèo Prenn…"; "tháng này có sự kiện gì" 4,6 s, khối 5 sự kiện (7 chip nơi diễn ra) + 4 nơi.
+- Web: hàng có ảnh từ site khác hiện tên site ở chân ảnh, ảnh không tải được thì hàng thành đoạn chữ; chip *Ngắm ở* / *Nơi diễn ra* (`SeeAt` trong `Trends.tsx`, `.tg-tr__see`). Ảnh: `frontend_images/2026-11-15/`.
+
+### Trước đó (13/11/2026)
+- hành vi: ảnh sự kiện chỉ là `og:image` của trang (hay là banner, có ảnh năm 2024); mùa xếp theo trạng thái trước (mùa dã quỳ 47 nguồn chưa kiểm bị loại, còn "săn mây", "đồi chè", "Tháng 10 - 12"), 6 mục, không ảnh, không câu; `trends` 3 mục mỗi loại nên câu "mùa hoa gì" không thấy mùa hoa nào và model trả bằng hiểu biết riêng ("Tham khảo: …dã quỳ, cải trắng, cúc họa mi").
+
 ## web-ui-feedback-round2-2026-11-13 — Chọn phương án, gợi ý khoảng trống, Thêm trải nghiệm, Hành trình
 
 - file: `src/planning/overload.py` (tên hướng, bỏ ghép tên khi trùng lịch); `web/src/user/screens/plan/{Choose,GhostSlot,Find,Journey,Overview,parts,fill,WayIn,DayView,shared}.ts(x)`, `screens/Plan.tsx`, `planning/{planning.tsx,types.ts}`, `data/store.ts` (`allPlaceIds`), `css/{day,plan,itinerary,journey}.css`; bỏ `PlaceSwapPicker`
@@ -1065,6 +1094,6 @@ _không có_
 ## trends-events-2026-11-13 — sự kiện có ngày từ web, TikTok liệt kê lại mỗi đêm, khối xu hướng trong chat (`docs/CORPUS.md` §Sự kiện sắp tới, §Nhịp)
 
 - file: `src/corpus/events/{__init__,gate,run}.py`, `config/web_events.yaml`, `src/corpus/llm/tasks.py` (`EVENT_EXTRACT`), `src/corpus/crawl/web/client.py` (`image`, `per_domain`), `src/corpus/crawl/tiktok/poi_refresh.py`, `src/corpus/pulse/{signals,compute,render,__init__}.py`, `config/{pulse,queries}.yaml`, `src/trip/api/{blocks,engine}.py` (`trends_block`), `src/trip/infrastructure/knowledge.py` (`trend_rows`, `_intro`, `allows`), `web/src/user/screens/understand/{Trends,Blocks,Turn,Sources}.tsx`, `web/src/user/tu/types.ts`, `scripts/trends_daily.sh`, `tests/events/`, `tests/trip/test_trends_block.py`, `tests/pulse/test_pulse_compute.py`
-- cách kiểm chứng: `pytest tests/events tests/pulse tests/trip`; `python -m corpus events --city dalat`, `python -m corpus pulse --city dalat`, rồi đọc bằng `.prod_src` (bàn giao `docs/plans/2026-11-13-chat-trends-HANDOFF.md`); lượt chat thật "tháng 11 có sự kiện gì".
+- cách kiểm chứng: `pytest tests/events tests/pulse tests/trip`; `python -m corpus events --city dalat`, `python -m corpus pulse --city dalat`, rồi đọc bằng `.prod_src` (bàn giao `git 69e19a59:docs/plans/2026-11-13-chat-trends-HANDOFF.md`); lượt chat thật "tháng 11 có sự kiện gì".
 ### Hiện tại (2026-11-13)
 - hành vi: Chưa deploy, cron chưa đổi. `corpus events`: 5 truy vấn có tháng / năm, 14 trang + 22 đoạn trích, 81 mục model trả, 23 sự kiện qua gate; Nhịp chọn 6 (Festival Âm nhạc quốc tế Lang Biang 13–15/11, K-Vietnam Wellness 20/11, giải chạy 21/11, Festival Hoa 19–31/12, …) thay các sự kiện chỉ có tháng. Mục sự kiện mới vẫn mang `status` / `months` để prod cũ đọc được. `poi_refresh` thử 5 nơi; lượt đầu 731 nơi và dòng cron chờ chủ dự án. Chat: câu xu hướng có lời ngắn + khối mục đánh số (chỉ phần được hỏi), hàng không ảnh hiện như đoạn bài viết; "tháng 11 có sự kiện gì" 6 s.

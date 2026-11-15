@@ -16,14 +16,16 @@ import { costText, placeName, visits, wayName } from './shared'
 // First visit: the ways sit blurred behind a postcard that says why there are several and what each one is for (gate.css
 // paper); "Xem N phương án" lifts the blur. Changing a way already chosen goes straight to the cards.
 
-// The three directions of an overloaded trip (src/planning/overload.py LABEL / GAIN / TRADEOFF), named the same on every card.
+// The four directions of an overloaded trip (src/planning/overload.py LABEL / GAIN / TRADEOFF), named the same on every card.
 const WAY: Record<string, { label: string; gain: string; tradeoff: string }> = {
   fit: { label: 'Giữ nơi hợp gu nhất', gain: 'Giữ những nơi khớp gu bạn nhất', tradeoff: 'Có thể phải đi xa hơn và tốn hơn để giữ nơi hợp gu' },
   travel: { label: 'Di chuyển thuận lợi nhất', gain: 'Ít ngồi xe nhất, các nơi nằm gần nhau', tradeoff: 'Có thể bỏ nơi bạn thích nhưng nằm xa các nơi còn lại' },
   cost: { label: 'Tiết kiệm nhất', gain: 'Chi phí địa điểm thấp nhất', tradeoff: 'Có thể bỏ nơi bạn thích nhưng tốn tiền hơn' },
+  most: { label: 'Giữ nhiều nơi bạn chọn nhất', gain: 'Ghé được nhiều nơi bạn chọn nhất', tradeoff: 'Có thể bỏ nơi bạn thích nhất nếu nơi đó chiếm nhiều thời gian' },
 }
 const cap = (s?: string | null) => (s ? s[0].toUpperCase() + s.slice(1) : '')
-// At most three ways, the best first (chủ dự án 13/11/2026): one that can be used before one that cannot, then the one that keeps
+// At most three ways of the four directions, the best first (chủ dự án 13/11 and 15/11/2026; the fourth direction, `most`, is
+// there so two directions that give the same schedule still leave three different ones): one that can be used before one that cannot, then the one that keeps
 // the most of what the user picked, then the better fit, then less time on the road. Two directions that give the same schedule
 // are one card already (the server merges them); it keeps the first direction's name, and its pros say what else it is best at.
 interface Way { key: string; way: string; v: Variant }

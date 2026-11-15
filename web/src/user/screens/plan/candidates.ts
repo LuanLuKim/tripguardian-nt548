@@ -13,6 +13,13 @@ export interface Candidate {
   warnings?: Warning[]
 }
 
+// Decision names why a backup was kept with a code (src/decision/output.py); the list says it in words, never the code.
+const backupWhy = (reason: string | null | undefined, forName: string): string => {
+  if (reason === 'same_kind') return `Cùng kiểu với ${forName}`
+  if (reason === 'next_best' || !reason || /^[a-z_]+(:[a-z_]+)?$/.test(reason)) return `Dự phòng cho ${forName}`
+  return reason
+}
+
 export function candidatesOf(view: View, variant: Variant | null, days: ItineraryDay[], replacing: string | null): Candidate[] {
   const inPlan = new Set(days.flatMap((d) => visits(d).map((it) => it.place_id!)))
   const out = new Map<string, Candidate>()
@@ -23,7 +30,7 @@ export function candidatesOf(view: View, variant: Variant | null, days: Itinerar
   for (const x of variant?.dropped_by_plan ?? []) if ((view.state.plan_dropped ?? []).includes(x.place_id)) add({ id: x.place_id, name: x.name, from: 'selection', why: x.text, forThis: false })
   for (const x of view.state.dropped) add({ id: x.place_id, name: x.place_id, from: 'selection', why: 'Bạn đã tạm bỏ nơi này', forThis: false })
   const backups = view.backups ?? variant?.backups
-  for (const b of backups?.places ?? []) for (const a of b.alternatives) add({ id: a.id, name: a.name, from: 'backup', why: a.reason ?? `Dự phòng cho ${b.name}`, forThis: !!replacing && b.place_id === replacing && a.for_this, warnings: a.warnings })
+  for (const b of backups?.places ?? []) for (const a of b.alternatives) add({ id: a.id, name: a.name, from: 'backup', why: backupWhy(a.reason, b.name), forThis: !!replacing && b.place_id === replacing && a.for_this, warnings: a.warnings })
   for (const r of view.recommendations ?? variant?.recommendations ?? []) for (const a of r.alternatives) add({ id: a.id, name: a.name, from: 'backup', why: r.text, forThis: false, warnings: a.warnings })
   return [...out.values()].sort((a, b) => Number(b.forThis) - Number(a.forThis) || (info(b.id)?.rating ?? 0) - (info(a.id)?.rating ?? 0))
 }

@@ -30,35 +30,23 @@ try {
   await page.route('**/api/**', r => r.fulfill({ status: 401, json: {} }))
   await page.route('**/data/**', r => new URL(r.request().url()).pathname.startsWith('/data/') ? r.fulfill({ json: {} }) : r.continue())
   let failures = 0
-  for (const state of ['notes', 'none', 'empty', 'ghost-only', 'busy', 'swap']) {
+  for (const state of ['notes', 'none', 'empty', 'busy']) {
     try {
       const response = await page.goto(`http://127.0.0.1:5495/fixture.html?case=${state}`)
       assert.equal(response.status(), 200, await response.text())
-      await page.locator(state === 'swap' ? '.tg-it-result' : '.tg-sidecard').first().waitFor({ timeout: 15000 })
-      if (state === 'swap') {
-        for (const card of await page.locator('.tg-it-result').all()) {
-          assert.equal(await card.getByText('chưa rõ có cho mang thú cưng không', { exact: true }).count(), 1)
-          assert.equal(await card.getByText('Giờ mở cửa <chưa xác minh> & cần kiểm tra', { exact: true }).count(), 1)
-        }
-        await page.getByRole('button', { name: 'Thêm vào lịch', exact: true }).first().click()
-        assert.ok(['backup', 'suggested'].includes((await page.evaluate(() => window.__action)).id))
-      } else {
+      await page.locator('.tg-ghost').first().waitFor({ timeout: 15000 })
+      {
         const hasNotes = !['none', 'empty'].includes(state)
-        const time = page.locator('.tg-sidecard').filter({ has: page.getByRole('heading', { name: 'Giờ ghé · Ngày 2', exact: true }) })
-        assert.equal(await time.getByText('chưa rõ có cho mang thú cưng không', { exact: true }).count(), hasNotes && state !== 'ghost-only' ? 1 : 0)
         assert.equal(await page.locator('.tg-ghost').getByText('chưa rõ có cho mang thú cưng không', { exact: true }).count(), hasNotes ? 1 : 0)
-        assert.equal(await time.getByText('Giờ mở cửa <chưa xác minh> & cần kiểm tra', { exact: true }).count(), hasNotes && state !== 'ghost-only' ? 1 : 0)
         const backup = page.locator('.tg-sidecard').filter({ has: page.getByRole('heading', { name: 'Phương án dự phòng · Ngày 2', exact: true }) })
         assert.equal(await backup.getByText('chưa rõ có cho mang thú cưng không', { exact: true }).count(), hasNotes ? 1 : 0)
         assert.equal(await backup.getByText('Giờ mở cửa <chưa xác minh> & cần kiểm tra', { exact: true }).count(), hasNotes ? 1 : 0)
         assert.equal(await page.getByText('Không được hiện ngày này', { exact: true }).count(), 0)
-        assert.equal(await page.getByRole('button', { name: 'Thêm Gợi ý bữa trưa mẫu', exact: true }).count(), 1)
+        const more = page.getByRole('button', { name: 'Xem thêm nơi cho ngày 2', exact: true })
+        assert.equal(await more.count(), 1)
         if (!hasNotes) assert.equal(await page.locator('small.tg-faint:empty').count(), 0)
-        const add = page.getByRole('button', { name: 'Thêm Gợi ý bữa trưa mẫu', exact: true })
-        assert.equal(await add.isEnabled(), state !== 'busy')
+        assert.equal(await more.isEnabled(), state !== 'busy')
         if (state !== 'busy') {
-          await add.click()
-          assert.deepEqual(await page.evaluate(() => window.__action), { id: 'ghost', day: 2 })
           const backupButton = page.getByRole('button', { name: 'Thay bằng Dự phòng mẫu (≈8′)', exact: true })
           await backupButton.click()
           assert.deepEqual(await page.evaluate(() => window.__action), { place: 'original', id: 'backup' })

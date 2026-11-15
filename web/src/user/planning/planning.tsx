@@ -174,17 +174,19 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
 
   const previewAct = useCallback(async (a: Action): Promise<ActPreview | null> => {
     if (!id || !view || pending.current) return null
-    const ticket = gate.current.previewTicket(view)
+    // A preview belongs to the plan it was asked for (`view.state`), not to one copy of the view: suggestions that arrive while
+    // it is read replace the view object but not the plan, and must not throw the preview away.
+    const ticket = gate.current.previewTicket(view.state)
     setPreview(null)
     try {
       const result = await api.previewAct(id, a)
       if (result.view.suggestions?.session_id !== view.suggestions?.session_id
-        || !api.acceptsRevision(id, result.revision) || !gate.current.acceptPreview(ticket, result.revision, currentView.current)) return null
+        || !api.acceptsRevision(id, result.revision) || !gate.current.acceptPreview(ticket, result.revision, currentView.current?.state)) return null
       setPreview({ result, ticket, revision: result.revision, view })
       setError(null)
       return result
     } catch (e) {
-      if (!gate.current.currentPreview(ticket, currentView.current)) return null
+      if (!gate.current.currentPreview(ticket, currentView.current?.state)) return null
       setError(explainError(e, OFFLINE, 'Chưa xem trước được'))
       return null
     }
@@ -210,7 +212,7 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={{ view, diff, lodgingProgress, error, busy, act, say, previewAct,
-      editPreview: preview && !busy && preview.view === view && gate.current.currentPreview(preview.ticket, view)
+      editPreview: preview && !busy && preview.view.state === view?.state && gate.current.currentPreview(preview.ticket, view?.state)
         && id && api.acceptsRevision(id, preview.revision) ? preview.result : null,
       dismissPreview: () => { gate.current.previewTicket(); setPreview(null) },
       confirm, optimize, reload: () => setTick((t) => t + 1) }}>

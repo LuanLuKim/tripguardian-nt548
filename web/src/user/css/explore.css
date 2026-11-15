@@ -179,3 +179,13 @@
 .tg-xfilter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 0.88rem; color: var(--tg-ink-2); }
 .tg-xfilter b { color: var(--tg-ink); font-weight: 600; }
 .tg-xfilter .tg-link { margin-left: 4px; font-weight: 500; }
+
+/* Stay search results (the stay tab's own search) */
+.tg-lodfound { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.tg-lodfound li { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px 14px 10px 10px; border: 1px solid var(--tg-line); border-radius: 18px; background: var(--tg-surface); }
+.tg-lodfound li.is-sel { border-color: var(--tg-ink); }
+.tg-lodfound__ph { width: 76px; height: 60px; border-radius: 12px; overflow: hidden; background: var(--tg-line); display: grid; place-items: center; color: var(--tg-ink-3); }
+.tg-lodfound__ph img, .tg-lodfound__ph figure { width: 100%; height: 100%; object-fit: cover; margin: 0; }
+.tg-lodfound b { display: block; font-size: 1rem; }
+.tg-lodfound small { display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-tab svg { vertical-align: -2px; margin-right: 2px; }

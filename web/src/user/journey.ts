@@ -13,6 +13,8 @@ const queues = new Map<string, Promise<unknown>>()
 const revisions = new Map<string, number>()
 const stageEntries = new Map<string, Stage>()
 export function requestStageEntry(id: string, stage: Stage) { stageEntries.set(id, stage) }
+// Read without clearing: a screen that mounts twice (React StrictMode, a quick remount) must see the request both times.
+export const peekStageEntry = (id: string) => stageEntries.get(id)
 export function consumeStageEntry(id: string) {
   const stage = stageEntries.get(id)
   stageEntries.delete(id)

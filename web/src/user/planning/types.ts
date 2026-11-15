@@ -121,6 +121,7 @@ export interface Variant {
   confirmable?: boolean
   unavailable_reason?: string | null
   same_as?: string[]
+  merged?: string[] // other directions that gave this very schedule (src/planning/overload.py); one card, not two
   kept?: string[]
   delta_vs_selection?: { places: number; travel_min: number | null; cost_vnd: number | null }
   dropped_by_plan?: { place_id: string; name: string; reason: string; text: string; saved_min: number | null;

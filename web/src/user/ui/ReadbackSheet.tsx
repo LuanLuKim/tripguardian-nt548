@@ -1,23 +1,36 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { enterStage, requestStageEntry, JourneyError, mutateJourney, readJourney } from '../journey'
 import type { View as DecisionView } from '../pd/types'
-import type { Deck, DeckIssue, Readback, ReadbackLine, TurnInput } from '../tu/types'
+import { getSession } from '../tu/api'
+import type { Deck, DeckIssue, Readback, ReadbackLine, TurnInput, Understanding } from '../tu/types'
 import { go } from './common'
 import { GateAsk } from './Gate'
 import { Icon } from './icons'
+import { ticketEditors } from './Ticket'
 
 const MARKERS: Record<ReadbackLine['kind'], string> = { said: 'Bạn nói', guess: 'Mình đoán', default: 'Mặc định', check: 'Cần xem lại' }
 const ORDER: ReadbackLine['kind'][] = ['check', 'said', 'guess', 'default']
 // a line without the kind its chip already shows ("Mặc định: …"), first letter up
 const tidy = (text: string) => { const t = text.replace(/^(Mặc định|Tự kiểm|Mình đoán|Bạn nói)\s*:\s*/i, ''); return t.charAt(0).toUpperCase() + t.slice(1) }
 
-// The trip as TripGuardian has understood it, one row per thing written down, what needs a second look first.
-function TripSummary({ lines }: { lines: ReadbackLine[] }) {
+// The trip as TripGuardian has understood it, one row per thing written down, what needs a second look first. Each row opens the
+// same editor the trip ticket has, so a line is changed right here.
+function TripSummary({ lines, u, busy, onEdit }: { lines: ReadbackLine[]; u: Understanding | null; busy: boolean; onEdit: (target: string, value: string | null) => void }) {
   const sorted = [...lines].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind))
+  const [open, setOpen] = useState<number | null>(null)
+  const editors = u ? ticketEditors(u, onEdit) : null
   return <section className="tg-gt__sum" aria-label="Tóm tắt chuyến đi">
     <p className="tg-gt__sum-n"><b>{lines.length}</b> điều đã ghi nhận cho chuyến này</p>
-    <ul>{sorted.map((line, i) => <li key={i} className={`is-${line.kind}`}><small>{MARKERS[line.kind]}</small><span>{tidy(line.text)}</span></li>)}</ul>
+    <ul>{sorted.map((line, i) => {
+      const editor = editors && line.tab !== 'care' && line.tab !== 'more' ? editors[line.tab] : null
+      return <li key={i} className={`is-${line.kind} ${open === i ? 'is-editing' : ''}`}>
+        <small>{MARKERS[line.kind]}</small>
+        <span>{tidy(line.text)}</span>
+        {editor && <button type="button" className="tg-gt__sum-edit" aria-expanded={open === i} disabled={busy} onClick={() => setOpen(open === i ? null : i)}>{open === i ? <><Icon name="check" size={14} />Xong</> : <><Icon name="edit" size={14} />Sửa</>}</button>}
+        {editor && open === i && <fieldset className="tg-gt__sum-editor" disabled={busy}>{editor}</fieldset>}
+      </li>
+    })}</ul>
   </section>
 }
 
@@ -32,6 +45,9 @@ export function ReadbackSheet({ id, initial, missing: initialMissing, onClose, o
   const [busy, setBusy] = useState(false)
   const working = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  const [u, setU] = useState<Understanding | null>(null)
+  const loadU = () => { getSession(id).then(v => setU(v.understanding), () => {}) }
+  useEffect(() => { loadU() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
   const replace = (next: Readback, needed = next.missing ?? []) => {
     setMissing(needed)
     setLines(next.lines ?? [])
@@ -53,7 +69,8 @@ export function ReadbackSheet({ id, initial, missing: initialMissing, onClose, o
       // The gate read is authoritative even when incomplete display groups have no understanding.readback.
       const next = await readJourney<Readback>(id, 'trip/readback')
       if (origin !== location.pathname + location.search) return
-      if (!replace(next).length) await onAdvance()
+      replace(next) // answering never moves on by itself: the summary shows, and the user presses "Tiếp tục đến lịch trình"
+      loadU()
     } catch (e) {
       if (origin !== location.pathname + location.search) return
       if (e instanceof JourneyError && e.status === 409 && e.readback) replace(e.readback, e.missing)
@@ -77,11 +94,11 @@ export function ReadbackSheet({ id, initial, missing: initialMissing, onClose, o
           onAnswer={answers => update({ kind: 'deck', answers })} onOther={edit} />
           : <div className="tg-gt__page tg-gt__fan">
             <Dialog.Title className="tg-gt__heading">{missing.length ? 'Cần thêm thông tin chuyến đi' : lines.length ? 'Mình sẽ xếp lịch theo những điều này' : 'Tiếp tục đến lịch trình'}</Dialog.Title>
-            <Dialog.Description id="gate-description" className="tg-gt__sub">{missing.length ? 'Bạn mở Tìm hiểu để bổ sung ngày đi hoặc lưu ý sức khỏe, ăn uống nhé.' : 'Mình đã có đủ thông tin cần thiết để xếp lịch.'}</Dialog.Description>
-            {!missing.length && lines.length > 0 && <TripSummary lines={lines} />}
+            <Dialog.Description id="gate-description" className="tg-gt__sub">{missing.length ? 'Bạn mở Tìm hiểu để bổ sung ngày đi hoặc lưu ý sức khỏe, ăn uống nhé.' : 'Mình đã có đủ thông tin cần thiết để xếp lịch. Bấm Sửa ở dòng nào bạn muốn đổi.'}</Dialog.Description>
+            {!missing.length && lines.length > 0 && <TripSummary lines={lines} u={u} busy={busy} onEdit={(target, value) => { void update({ kind: 'edit', target, value }) }} />}
             {error && <p className="tg-gt__err" role="alert">{error}</p>}
             <footer className="tg-gt__foot">
-              <button type="button" className="tg-gt__link" disabled={busy} onClick={edit}><Icon name="edit" size={16} />Sửa trong Tìm hiểu</button>
+              {missing.length > 0 ? <button type="button" className="tg-gt__link" disabled={busy} onClick={edit}><Icon name="edit" size={16} />Mở Tìm hiểu</button> : <span />}
               {!missing.length && <button type="button" className="tg-gt__go" disabled={busy} onClick={async () => { setBusy(true); try { await onAdvance() } finally { setBusy(false) } }}>Tiếp tục đến lịch trình<Icon name="arrow" size={18} /></button>}
             </footer>
           </div>}

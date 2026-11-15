@@ -13,16 +13,18 @@ import { AssistantFloat, AssistantPinned } from '../ui/Assistant'
 import { ArtHills, Empty, go, PlacePhoto } from '../ui/common'
 import { openPlace } from '../ui/PlaceSheet'
 import { DiscPicker } from '../ui/DiscPicker'
-import { Icon } from '../ui/icons'
+import { Icon, type IconName } from '../ui/icons'
 import { PlaceCard } from '../ui/PlaceCard'
 import { Pager } from '../ui/Pager'
 import { SelectedBar } from '../ui/SelectedBar'
 import { reducedMotion, useStagedList } from '../ui/useStagedList'
 import { Page, useTitle } from '../ui/Shell'
 import { LongTripWarning } from '../ui/LongTripWarning'
-import { LODGING_TAB, LodgingPanel, useLodgingList } from './Lodging'
+import { LODGING_TAB, LodgingPanel, LodgingSearchResults, useLodgingList } from './Lodging'
 
 const NO_CARDS: Card[] = []
+// Every tab starts with its own icon, the stay tab's bed included, so the row reads as one.
+const TAB_ICONS: Record<string, IconName> = { meal: 'utensils', snack: 'smile', cafe: 'coffee', chill: 'coffee', nature: 'sun', garden: 'tree', camping: 'flame', sights: 'pin', culture: 'flag', fun: 'zap', night: 'moon', spa: 'heart', market: 'ticket' }
 // Back to Hiểu chuyến đi to see or relax a limit: the journey steps back on the server (Decision keeps its picks).
 export function useEditTicket() {
   const { trip } = useTrip()
@@ -107,11 +109,11 @@ export function Explore() {
   const [found, setFound] = useState<SearchResult | null>(null)
   const searching = query.trim().length >= 2
   useEffect(() => {
-    if (!searching || !trip.decisionId) { setFound(null); return }
+    if (!searching || !trip.decisionId || onLodging) { setFound(null); return }
     let live = true
     const t = setTimeout(() => { searchList(trip.decisionId!, query.trim()).then((r) => { if (live) setFound(r) }, () => { if (live) setFound(null) }) }, 300)
     return () => { live = false; clearTimeout(t) }
-  }, [query, searching, trip.decisionId, view?.version, view?.selected.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, searching, onLodging, trip.decisionId, view?.version, view?.selected.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!trip.decisionId)
     return (
@@ -202,17 +204,17 @@ export function Explore() {
                 ) : (
                   <>
                     <label className="tg-xsearch">
-                      <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }} placeholder="Tìm theo tên hoặc loại nơi, ví dụ “bánh căn”, “chùa”, “kem”" aria-label="Tìm địa điểm trong mọi nhóm" />
+                      <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }} placeholder={onLodging ? 'Tìm nơi lưu trú theo tên hoặc địa chỉ, ví dụ “homestay”, “Trại Mát”' : 'Tìm theo tên hoặc loại nơi, ví dụ “bánh căn”, “chùa”, “kem”'} aria-label={onLodging ? 'Tìm nơi lưu trú' : 'Tìm địa điểm trong mọi nhóm'} />
                       {query && <button type="button" className="tg-xsearch__clear" aria-label="Xóa ô tìm" onClick={() => setQuery('')}><Icon name="x" size={16} /></button>}
                       <Icon name="search" size={22} />
                     </label>
-                    {searching ? <SearchResults q={query.trim()} found={found} groups={groups} cmp={cmp} onCmp={onCmp} onDrop={setDropFor} pinned={pinned} onClear={() => setQuery('')} /> : <>
+                    {searching && onLodging ? <LodgingSearchResults q={query.trim()} onClear={() => setQuery('')} /> : searching ? <SearchResults q={query.trim()} found={found} groups={groups} cmp={cmp} onCmp={onCmp} onDrop={setDropFor} pinned={pinned} onClear={() => setQuery('')} /> : <>
                     <div className="tg-tabs" role="tablist" aria-label="Nhóm địa điểm" onKeyDown={(e) => {
                       const i = groups.findIndex((g) => g.id === current?.id)
                       if (e.key === 'ArrowRight') setUi({ tab: groups[(i + 1) % groups.length].id })
                       if (e.key === 'ArrowLeft') setUi({ tab: groups[(i + groups.length - 1) % groups.length].id })
                     }}>
-                      {groups.map((g) => { const on = !onLodging && current?.id === g.id; return <button key={g.id} type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} className="tg-tab" onClick={() => setUi({ tab: g.id })}>{g.label}<b>{g.total}</b>{fresh[g.id] ? <i className="tg-tab__new" aria-label={`${fresh[g.id]} nơi mới`}>+{fresh[g.id]} mới</i> : null}</button> })}
+                      {groups.map((g) => { const on = !onLodging && current?.id === g.id; return <button key={g.id} type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} className="tg-tab" onClick={() => setUi({ tab: g.id })}><Icon name={TAB_ICONS[g.id] ?? 'pin'} size={15} /> {g.label}<b>{g.total}</b>{fresh[g.id] ? <i className="tg-tab__new" aria-label={`${fresh[g.id]} nơi mới`}>+{fresh[g.id]} mới</i> : null}</button> })}
                       {needsLodging && <button type="button" role="tab" aria-selected={onLodging} tabIndex={onLodging ? 0 : -1} className="tg-tab" onClick={() => setUi({ tab: LODGING_TAB })}><Icon name="bed" size={15} /> Nơi lưu trú{lodgingList.opts?.total ? <b>{lodgingList.opts.total}</b> : lodgingList.failed ? null : <b className="tg-tab__wait" aria-label="Đang đếm"><i /></b>}{view.lodging?.chosen || view.lodging?.booked ? <Icon name="check" size={14} /> : null}</button>}
                     </div>
                     {onLodging ? <LodgingPanel list={lodgingList} /> : !current || current.cards.length === 0 ? (

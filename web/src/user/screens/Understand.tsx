@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { useAccount } from '../account'
 import { Sidebar } from '../home/Frame'
-import { useOpenJourney } from '../home/dialogs'
 import { primeDecision } from '../pd/api'
 import type { TripSummary } from '../pd/types'
-import { consumeStageEntry, enterStage, mutateJourney, resumeJourney } from '../journey'
+import { consumeStageEntry, enterStage, peekStageEntry, mutateJourney, resumeJourney } from '../journey'
 import { track } from '../events'
+import { STALE_TEXT } from '../journeyErrors'
 import { rememberTrip } from '../store'
 import { useTrip } from '../trip'
 import { fromSearchInput } from '../tu/adapter'
@@ -47,6 +47,10 @@ const store = {
   },
 }
 
+// Chats opened from the history list: they show their conversation and stay in the chat, whatever step the trip is at.
+// (A page load or the sidebar's "Trò chuyện" button is not one: a trip that moved on keeps leading to its own step.)
+const peek = new Set<string>()
+
 let seq = 0
 const key = () => `m${++seq}`
 const isOpen = (c: Card | Deck | null) => !!c && (c.kind === 'deck' || (c.qid !== 'conversation' && c.qid !== 'frame'))
@@ -77,7 +81,6 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   useTitle('Hiểu chuyến đi')
   const { trip, dispatch } = useTrip()
   const account = useAccount()
-  const openJourney = useOpenJourney()
   const [sid, setSid] = useState<string | null>(null)
   const [u, setU] = useState<Understanding | null>(null)
   const [discovery, setDiscovery] = useState(false)
@@ -89,6 +92,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   const drain = useRef<() => void>(() => {})
   const [handing, setHanding] = useState(false)
   const [offline, setOffline] = useState(false)
+  const [stale, setStale] = useState(false) // the opened chat was built on a corpus version that has been pruned (409 stale_data_version)
   // The chat history can be folded to a strip of icons; the choice is kept in this browser.
   const [folded, setFolded] = useState(() => { try { return localStorage.getItem('tg.history.folded') === '1' } catch { return false } })
   const fold = () => setFolded(f => { try { localStorage.setItem('tg.history.folded', f ? '0' : '1') } catch { /* lasts until the page closes */ } return !f })
@@ -126,7 +130,9 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
       try {
         const origin = location.pathname + location.search
         const old = fresh ? null : trip.journeyId ?? store.get(KEY)
-        const explicitBack = old ? consumeStageEntry(old) === 'trip' : false
+        // Both are cleared only once the chat is on screen, so a second mount of this screen finds them still set.
+        const explicitBack = old ? peekStageEntry(old) === 'trip' : false
+        const peeking = old ? peek.has(old) : false
         const recovery = old
           ? await resumeJourney(old).catch((e) => {
               if (e instanceof ApiError && e.status === 404) return null
@@ -138,14 +144,14 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
           recovery.view = await enterStage(recovery.view.id, 'trip')
           if (!mounted.current || origin !== location.pathname + location.search) return null
         }
-        if (!explicitBack && recovery?.view.stage === 'trip' && recovery.view.outputs.trip) {
+        if (!explicitBack && !peeking && recovery?.view.stage === 'trip' && recovery.view.outputs.trip) {
           setHanding(true)
           const j = await mutateJourney(recovery.view.id, 'trip', 'advance')
           if (!mounted.current || origin !== location.pathname + location.search) return null
           handOff(recovery.view.outputs.trip as SearchInput, j.id)
           return null
         }
-        if (recovery && recovery.view.stage !== 'trip') {
+        if (recovery && recovery.view.stage !== 'trip' && !peeking) {
           const j = recovery.view
           dispatch({ type: 'set', patch: { journeyId: j.id, decisionId: j.id, planningId: null } })
           go(j.stage === 'planning' ? '/plan' : '/explore')
@@ -156,6 +162,8 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
         const v = resumed ?? (await createSession(trip.experience, trip.startWith))
         if (!alive() || origin !== location.pathname + location.search) return null
         store.set(KEY, v.id)
+        consumeStageEntry(v.id)
+        peek.delete(v.id)
         rememberTrip(v.id)
         setSid(v.id)
         const journey = recovery?.view
@@ -168,7 +176,13 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
         setDiscovery(v.discovery === true)
         setMsgs(resumed ? fromTranscript(v) : [botMsg(key(), { say: v.discovery ? DISCOVERY_GREET : GREET })])
         return v.id
-      } catch {
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409 && /stale_data_version/i.test(e.detail)) {
+          // Not a connection problem: that chat can never be opened again, so it is not retried on the next visit.
+          store.set(KEY, null)
+          setStale(true)
+          return null
+        }
         setOffline(true)
         return null
       }
@@ -317,8 +331,12 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   }
   const selectTrip = (selected: TripSummary) => {
     if (busy || selected.id === sid) return
-    openJourney(selected)
-    if (selected.stage === 'trip') onSwitch()
+    // Only the conversation opens. The step the trip is at stays one click away in the sidebar.
+    peek.add(selected.id)
+    store.set(KEY, selected.id)
+    dispatch({ type: 'reset' })
+    dispatch({ type: 'set', patch: { journeyId: selected.id, decisionId: selected.stage === 'trip' ? null : selected.id, planningId: selected.stage === 'planning' ? selected.id : null } })
+    onSwitch()
   }
   const reset = async () => {
     if (!confirm('Đặt lại toàn bộ những gì mình đã hiểu về chuyến này?')) return
@@ -345,12 +363,13 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
   return (
     <div className={`tg-home tg-workspace ${folded ? 'is-mini' : ''}`}>
       <Sidebar path="/understand" />
-      <History active={sid} busy={busy || handing || (!sid && !offline)} collapsed={folded} onToggle={fold} onNew={newTrip} onOpen={selectTrip} />
+      <History active={sid} busy={busy || handing || (!sid && !offline && !stale)} collapsed={folded} onToggle={fold} onNew={newTrip} onOpen={selectTrip} />
       <div className="tg-cx-root tg-workspace__content">
         <LongTripWarning days={Number(u?.trip.find((row) => row.target === 'days')?.value ?? 0)} />
         <div className="tg-cx__body">
           <main className={`tg-cx__chat tg-cx__panel ${dragging ? 'is-dropping' : ''}`} onDragEnter={dragOver} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={dropped}>
-            {offline ? <div className="tg-workspace__state"><Empty art={<ArtHills />} title="Chưa kết nối được trợ lý" body="Máy chủ hành trình chưa trả lời. Thử lại sau ít phút; những gì bạn đã trả lời vẫn còn." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => location.reload()}><Icon name="refresh" size={18} /> Thử lại</button>} /></div>
+            {stale ? <div className="tg-workspace__state"><Empty art={<ArtHills />} title="Chuyến này dùng dữ liệu cũ" body={STALE_TEXT} action={<button type="button" className="tg-btn tg-btn--primary" onClick={newTrip}>Bắt đầu chuyến mới</button>} /></div>
+              : offline ? <div className="tg-workspace__state"><Empty art={<ArtHills />} title="Chưa kết nối được trợ lý" body="Máy chủ hành trình chưa trả lời. Thử lại sau ít phút; những gì bạn đã trả lời vẫn còn." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => location.reload()}><Icon name="refresh" size={18} /> Thử lại</button>} /></div>
               : handing ? <div className="tg-workspace__state"><Busy text="Mình đủ hiểu rồi, đang chuẩn bị gợi ý cho chuyến của bạn…" /></div>
               : <>
             <div className={`tg-cx__scroll ${greeting ? 'is-welcome' : ''}`} ref={scroller}>
@@ -378,7 +397,7 @@ function UnderstandSession({ onSwitch }: { onSwitch: () => void }) {
             {dragging && <div className="tg-cx__drop" aria-hidden="true"><Icon name="image" size={28} /><b>Thả ảnh vào đây</b><span>Ảnh một nơi bạn thích, hoặc danh sách địa điểm</span></div>}
             </>}
           </main>
-          <Board discovery={discovery} u={u} busy={busy || handing || offline} preview={preview} onShow={show} onOpen={openRow} onEdit={edit} />
+          <Board discovery={discovery} u={u} busy={busy || handing || offline || stale} preview={preview} onShow={show} onOpen={openRow} onEdit={edit} />
         </div>
       </div>
       {ticket && <TicketFull {...ticket} open={full} onClose={() => setFull(false)} focus={focus} onFocus={setFocus} onReset={reset} />}

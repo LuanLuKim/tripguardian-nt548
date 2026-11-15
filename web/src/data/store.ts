@@ -407,3 +407,6 @@ export function mapsRouteEmbed(stops: { lat: number; lng: number }[]) {
 export function mapsRouteLink(stops: { lat: number; lng: number }[]) {
   return `https://www.google.com/maps/dir/${stops.map((s) => `${s.lat},${s.lng}`).join('/')}`
 }
+
+// Every place of the loaded snapshot (Thêm trải nghiệm › Nguồn › Tất cả): empty until loadSnapshot has resolved.
+export const allPlaceIds = () => [...byId.keys()]

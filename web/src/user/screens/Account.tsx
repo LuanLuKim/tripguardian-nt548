@@ -20,11 +20,14 @@ import { openShare } from '../home/dialogs'
 import { GuestNotice } from './Guest'
 import { TourButton } from '../tour'
 
-type Kind = 'confirmed' | 'done'
-const STATUS: Record<Kind, string> = { confirmed: 'Đã chốt', done: 'Đã đi' }
+type Kind = 'planning' | 'confirmed' | 'done'
+const STATUS: Record<Kind, string> = { planning: 'Đang lên kế hoạch · chưa chốt lịch', confirmed: 'Đã chốt', done: 'Đã đi' }
 
-// Only a trip with a locked schedule is a trip here; a chat that never got one stays in the chat history.
+// A trip that went on to choosing places or to a schedule but is not locked yet is a plan in progress; a chat that never got
+// that far stays in the chat history.
+const inProgress = (t: TripSummary) => !t.confirmed && t.stage !== 'trip'
 function kindOf(t: TripSummary): Kind {
+  if (inProgress(t)) return 'planning'
   if (!t.start_date) return 'confirmed'
   const end = new Date(t.start_date + 'T00:00')
   end.setDate(end.getDate() + (t.days ?? 1))
@@ -37,19 +40,22 @@ export function Trips() {
   const { trip, dispatch } = useTrip()
   const [list, setList] = useState<TripSummary[] | null>(null)
   const [err, setErr] = useState(false)
-  const [tab, setTab] = useState<Kind>('confirmed')
+  const [tab, setTab] = useState<Kind>('planning')
   const account = useAccount()
   const member = !!account && !account.guest
   useEffect(() => {
     tripSummaries().then((all) => {
-      const l = all.filter((t) => t.confirmed)
+      const l = all.filter((t) => t.confirmed || inProgress(t))
       setList(l)
-      if (!l.some((t) => kindOf(t) === 'confirmed') && l.some((t) => kindOf(t) === 'done')) setTab('done')
+      const has = (k: Kind) => l.some((t) => kindOf(t) === k)
+      setTab(has('planning') ? 'planning' : has('confirmed') ? 'confirmed' : has('done') ? 'done' : 'confirmed')
     }, () => setErr(true))
   }, [])
   const open = (t: TripSummary, to: string) => {
     dispatch({ type: 'reset' })
-    dispatch({ type: 'set', patch: { journeyId: t.id, decisionId: t.id, planningId: t.id } })
+    // A plan in progress opens at the step it stopped on; a locked one has all its steps.
+    const locked = t.confirmed
+    dispatch({ type: 'set', patch: { journeyId: t.id, decisionId: t.id, planningId: locked || t.stage === 'planning' ? t.id : null } })
     go(to)
   }
   const [asking, setAsking] = useState<string | null>(null) // the trip waiting for the user's yes to be removed
@@ -70,12 +76,12 @@ export function Trips() {
       <GuestNotice />
       <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Chuyến của tôi</p><h1>Chuyến đi của bạn</h1><p>Các chuyến của tài khoản này, mở được trên mọi máy.</p></div></header>
       <div className="tg-tabs" role="tablist" aria-label="Trạng thái chuyến">
-        {([['confirmed', 'Sắp đi'], ['done', 'Đã hoàn thành']] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className="tg-tab" onClick={() => setTab(k)}>{l}{list && <b>{list.filter((t) => kindOf(t) === k).length}</b>}</button>)}
+        {([['planning', 'Đang lên kế hoạch'], ['confirmed', 'Sắp đi'], ['done', 'Đã hoàn thành']] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className="tg-tab" onClick={() => setTab(k)}>{l}{list && <b>{list.filter((t) => kindOf(t) === k).length}</b>}</button>)}
       </div>
       {err ? <Empty art={<ArtHills />} title="Chưa tải được danh sách chuyến" body="Máy chủ hành trình chưa trả lời. Thử lại sau ít phút." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => location.reload()}>Thử lại</button>} />
         : !list ? <Busy text="Đang tải các chuyến…" />
         : shown.length === 0 ? (
-          <Empty art={tab === 'done' ? <ArtCup /> : <ArtRoute />} title={tab === 'confirmed' ? 'Chưa có chuyến nào có lịch trình' : 'Chưa có chuyến nào hoàn thành'} body={tab === 'done' ? 'Đi xong chuyến đầu, nó sẽ nằm ở đây.' : 'Chốt lịch một chuyến, nó sẽ nằm ở đây. Các cuộc trò chuyện dang dở vẫn ở Lịch sử chat.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/')}>Về Khám phá</button>} />
+          <Empty art={tab === 'done' ? <ArtCup /> : <ArtRoute />} title={tab === 'planning' ? 'Chưa có chuyến nào đang lên kế hoạch' : tab === 'confirmed' ? 'Chưa có chuyến nào có lịch trình' : 'Chưa có chuyến nào hoàn thành'} body={tab === 'done' ? 'Đi xong chuyến đầu, nó sẽ nằm ở đây.' : tab === 'planning' ? 'Chuyến đã chọn nơi hoặc đã xếp lịch nhưng chưa chốt sẽ nằm ở đây. Các cuộc trò chuyện chưa chọn nơi vẫn ở Lịch sử chat.' : 'Chốt lịch một chuyến, nó sẽ nằm ở đây. Các cuộc trò chuyện dang dở vẫn ở Lịch sử chat.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/')}>Về Khám phá</button>} />
         ) : (
           <div className="tg-trips">
             {shown.map((t) => {
@@ -84,10 +90,11 @@ export function Trips() {
                 <article key={t.id} className="tg-trip">
                   {t.places[0] ? <PlacePhoto id={t.places[0]} className="tg-trip__ph" /> : <div className="tg-trip__ph tg-hero__img" aria-hidden="true" />}
                   <div className="tg-trip__body">
-                    <span className="tg-tag">{STATUS[k]}</span>
+                    <span className={`tg-tag ${k === 'planning' ? 'is-planning' : ''}`}>{k === 'planning' && <Icon name="edit" size={12} />}{STATUS[k]}</span>
                     <h2>Đà Lạt{t.days ? ` ${t.days} ngày` : ''}</h2>
                     <p className="tg-mono tg-muted">{[dateRange(t.start_date, t.days) ?? 'Chưa chọn ngày', t.people ? `${t.people} người` : null, `${t.places.length} nơi`].filter(Boolean).join(' · ')}</p>
                     <div className="tg-trip__act">
+                      {k === 'planning' && <button type="button" className="tg-btn tg-btn--primary tg-btn--sm" onClick={() => open(t, t.stage === 'planning' ? '/plan' : '/explore')}>Tiếp tục lên kế hoạch</button>}
                       {k === 'confirmed' && <><button type="button" className="tg-btn tg-btn--primary tg-btn--sm" onClick={() => open(t, '/plan')}>Xem lịch</button><button type="button" className="tg-link" onClick={() => open(t, '/plan')}>Sửa lại</button></>}
                       {k === 'done' && <><button type="button" className="tg-btn tg-btn--ghost tg-btn--sm" onClick={() => open(t, '/plan')}>Xem lại lịch</button><button type="button" className="tg-link" onClick={() => open(t, '/done')}>Phản hồi</button></>}
                       {member && <button type="button" className="tg-link" onClick={() => openShare(t)}><Icon name="send" size={14} /> Gửi cho bạn bè</button>}

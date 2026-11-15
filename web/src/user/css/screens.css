@@ -290,3 +290,6 @@
 .tg-taste__line { display: flex; gap: 8px; }
 .tg-taste__line .tg-input { flex: 1; min-width: 0; }
 @media (max-width: 1000px) { .tg-me__row { grid-template-columns: auto minmax(0, 1fr); } .tg-me__act { grid-column: 1 / -1; justify-content: flex-start; } .tg-me__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tg-npref { grid-template-columns: 1fr; } }
+
+/* A trip still being planned: not locked, so its tag stands apart from "Đã chốt" */
+.tg-tag.is-planning { display: inline-flex; align-items: center; gap: 5px; background: #fff3d6; color: #7a5200; box-shadow: inset 0 0 0 1px rgba(122, 82, 0, 0.25); }

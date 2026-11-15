@@ -9,7 +9,7 @@ import { isStaleText } from '../journeyErrors'
 import { fmtMin, fmtVnd, info } from '../lib'
 import { usePlanning } from '../planning/planning'
 import type { Action, Diff } from '../planning/types'
-import { setOptimized, setUi, useUi } from '../store'
+import { setOptimized, useUi } from '../store'
 import { useTrip } from '../trip'
 import { ArtRoute, Busy, Empty, go } from '../ui/common'
 import { AssistantFloat } from '../ui/Assistant'
@@ -17,16 +17,17 @@ import { Icon } from '../ui/icons'
 import { RouteStory } from '../ui/RouteStory'
 import { Page, useTitle } from '../ui/Shell'
 import { LongTripWarning } from '../ui/LongTripWarning'
-import { LODGING_TAB } from './Lodging'
 import { candidatesOf, type Candidate } from './plan/candidates'
 import { Choose } from './plan/Choose'
 import { DayView } from './plan/DayView'
+import { Journey } from './plan/Journey'
 import { Overview } from './plan/Overview'
-import { FillRows, FillSheet, useFill } from './plan/fill'
+import { FillRows, FillSheet, RouteSheet, useFill, useTripEdit } from './plan/fill'
+import { Find } from './plan/Find'
+import { LodgingPicker } from './plan/pickers'
 import { useRoutes } from './plan/useRoutes'
-import { BackupCard, KeepAll, Lodging, LodgingGhost, Optimize, TimeCard } from './plan/parts'
-import { costText, MEAL_LABEL, openPlace, placeName, visits } from './plan/shared'
-import { Swap } from './plan/Swap'
+import { BackupCard, KeepAll, Lodging, LodgingGhost, Optimize } from './plan/parts'
+import { costText, MEAL_LABEL, openPlace, placeName, visits, wayName } from './plan/shared'
 import { EveBanner, useEve } from './plan/EveBanner'
 import { TrustCard } from './plan/Trust'
 import { StayOffer, WayIn } from './plan/WayIn'
@@ -47,18 +48,26 @@ const SCOPE_TEXT: Record<Diff['scope'], string> = {
 }
 const VIOLATION: Record<string, string> = { meal_missing: 'Chưa chừa đủ thời gian cho bữa ăn.', meal_window: 'Chưa xếp được bữa ăn vào khung giờ riêng.', hours: 'Giờ ghé nằm ngoài giờ mở cửa.', timed: 'Giờ ghé chưa khớp khung giờ cần thiết.', overlap: 'Có hoạt động trùng giờ.', day_window: 'Lịch vượt khung giờ của ngày.', travel: 'Chưa đủ thời gian di chuyển.', long_leg: 'Chặng đi vượt giới hạn đã chọn.', anchor: 'Chưa xếp được nơi bắt buộc.', budget: 'Chi phí đã biết vượt ngân sách.', duplicate: 'Địa điểm bị xếp trùng.', hard: 'Chưa đáp ứng yêu cầu bắt buộc.', hazard: 'Điều kiện ngày này không cho phép ghé an toàn.' }
 
-type Screen = 'overview' | 'day' | 'swap'
+type Screen = 'overview' | 'day'
 
 export function Plan() {
   useTitle('Lịch trình')
   const { trip, dispatch } = useTrip()
   const { view, diff, error, busy, act, previewAct, editPreview, dismissPreview, confirm, optimize } = usePlanning()
+  const [peeking, setPeeking] = useState(false) // a preview can take several seconds on the server: say so meanwhile
+  const preview = async (a: Action) => { setPeeking(true); try { return await previewAct(a) } finally { setPeeking(false) } }
   const optimized = useUi((u) => (trip.planningId ? u.optimized[trip.planningId] : undefined))
   const fill = useFill(trip.decisionId ?? trip.planningId, trip.planningId)
+  const replan = useTripEdit((trip.decisionId ?? trip.planningId) ?? '', () => setPicker(false)) // a saved place outside the selection: choose it, build the plan again
   const [screen, setScreen] = useState<Screen>('overview')
   const [changing, setChanging] = useState(false) // "Đổi phương án": the choice screen again, over a plan that already exists
   const [picked, setDayIdx] = useState<number | null>(null) // null: the first day that has a stop
   const [swapFor, setSwapFor] = useState<string | null>(null) // the place a swap replaces; null: add one
+  const [picker, setPicker] = useState(false) // the list of places that slides in to add or swap
+  const [ghostFor, setGhostFor] = useState<string | null>(null) // the suggestion whose "+" opened the list: it leads the list
+  const [lodgingOpen, setLodgingOpen] = useState(false)
+  const [review, setReview] = useState(false) // the whole trip as one route, the last look before the plan is locked
+  const [routeOpen, setRouteOpen] = useState(false) // where the trip starts and how it reaches the city
   const [dropAsk, setDropAsk] = useState<string | null>(null)
   const [pickAsk, setPickAsk] = useState<string | null>(null) // another way chosen while a hand-made order exists
   const [warnAsk, setWarnAsk] = useState(false) // confirming a plan that still carries warnings: the user decides
@@ -83,9 +92,10 @@ export function Plan() {
   }, [trip.journeyId, dispatch])
   const eve = useEve(trip.journeyId ?? null) // D.3: tomorrow's pending changes on the confirmed plan
   useEffect(() => { window.scrollTo(0, 0) }, [screen, changing, view?.state.chosen_variant])
+  useEffect(() => { if (screen !== 'day') setPicker(false) }, [screen]) // the place list lives on the day screen only
   // The road of each day is read apart from the plan; it is read again whenever the stops, their order or the lodging change.
   const routeKey = `${view?.state.lodging_id ?? ''}|${(view?.itinerary ?? []).map((x) => x.items.filter((it) => it.kind === 'visit').map((it) => it.place_id).join(',')).join('|')}`
-  const routes = useRoutes(trip.planningId, routeKey, screen === 'day' && !!view?.itinerary)
+  const routes = useRoutes(trip.planningId, routeKey, (screen === 'day' || review) && !!view?.itinerary)
   const variant = useMemo(() => view?.active_variant ?? view?.variants.find((v) => v.id === view.state.chosen_variant) ?? null, [view])
   const back = async (to: string) => {
     if (trip.planningId) {
@@ -95,11 +105,9 @@ export function Plan() {
     }
     go(to)
   }
-  // Where the user sleeps is picked at Lựa chọn: changing it goes back to the "Chỗ ở" tab there.
-  const toLodging = () => {
-    setUi({ tab: LODGING_TAB })
-    void back('/explore')
-  }
+  // Where the trip starts is its own row (Điểm xuất phát, RouteSheet); how it gets to the city is asked under Đến Đà Lạt.
+  // Where the user sleeps is picked here, in the list that slides in from the right.
+  const toLodging = () => setLodgingOpen(true)
 
   if (!trip.planningId)
     return (
@@ -170,16 +178,26 @@ export function Plan() {
   const userDropped = view.state.dropped.filter((x) => !planDropped.some((p) => p.place_id === x.place_id))
   const droppedCount = planDropped.length + userDropped.length
   const warned = !!view.violations?.length || variant?.confirmable === false // a warning is never a gate: the user may confirm anyway
-  const onConfirm = async () => { if (warned && !warnAsk) { setWarnAsk(true); return } setWarnAsk(false); if (await confirm()) go('/done') }
+  const onConfirm = async () => { if (warned && !warnAsk) { setWarnAsk(true); return } setWarnAsk(false); setReview(true) }
+  const finish = async () => { if (await confirm()) go('/done') }
   const openDay = (i: number) => { setDayIdx(i); setScreen('day') }
-  const startSwap = (place: string | null) => { setSwapFor(place); setScreen('swap') }
-  const candidates = candidatesOf(view, variant, days, swapFor)
+  const startSwap = (place: string | null) => { setSwapFor(place); setGhostFor(null); setPicker(true) }
+  const ghostItems = (view.ghosts ?? []).filter((g) => g.day === dayIdx).flatMap((g) => g.items)
+  const candidates = (() => {
+    const base = candidatesOf(view, variant, days, swapFor)
+    const inPlanNow = new Set(days.flatMap((x) => visits(x).map((it) => it.place_id!)))
+    const fromGhost: Candidate[] = ghostItems.filter((g, i) => !inPlanNow.has(g.place_id) && !base.some((c) => c.id === g.place_id) && ghostItems.findIndex((x) => x.place_id === g.place_id) === i) // one row per place, though it fits several gaps
+      .map((g) => ({ id: g.place_id, name: info(g.place_id)?.name ?? g.name, from: 'backup', why: `Hợp khoảng trống này · ≈ ${g.detour_min} phút đi thêm`, forThis: false, warnings: g.note ? [{ code: 'ghost', text: g.note } as never] : undefined }))
+    const all = [...fromGhost, ...base]
+    return ghostFor ? [...all.filter((c) => c.id === ghostFor), ...all.filter((c) => c.id !== ghostFor)] : all
+  })()
   const pickCandidate = async (c: Candidate) => {
     if (!d) return
     const day = d.day - 1
-    await previewAct(swapFor ? { type: 'swap', place: swapFor, with: c.id } : c.from === 'backup' ? { type: 'add_from_backup', place: c.id, day } : { type: 'move_place', place: c.id, day })
+    setPicker(false)
+    await preview(swapFor ? { type: 'swap', place: swapFor, with: c.id } : c.from === 'backup' ? { type: 'add_from_backup', place: c.id, day } : { type: 'move_place', place: c.id, day })
   }
-  const restore = async (id: string) => { setDroppedOpen(false); await previewAct({ type: 'move_place', place: id, day: dayIdx }) }
+  const restore = async (id: string) => { setDroppedOpen(false); await preview({ type: 'move_place', place: id, day: dayIdx }) }
 
   const note = error
     ? <p className="tg-it-diff is-bad" role="alert"><Icon name="warn" size={15} />{error}</p>
@@ -233,9 +251,7 @@ export function Plan() {
   const extras = (
     <>
       <Lodging onChange={toLodging} />
-      <TimeCard day={d?.day ?? 1} itinerary={d} timing={view.time_suitability ?? variant?.time_suitability ?? []} suggestions={view.recommendations ?? variant?.recommendations ?? []} status={view.suggestions?.status}
-        busy={busy} onAdd={(place, day) => act({ type: 'add_from_backup', place, day: day - 1 })} />
-      <BackupCard b={view.backups ?? variant?.backups} day={d?.day ?? 1} busy={busy} onSwap={async (place, w) => { await previewAct({ type: 'swap', place, with: w }) }} />
+      <BackupCard b={view.backups ?? variant?.backups} day={d?.day ?? 1} busy={busy} onSwap={async (place, w) => { await preview({ type: 'swap', place, with: w }) }} />
       <section className="tg-sidecard" aria-labelledby="tg-nt-h">
         <h2 id="tg-nt-h"><Icon name="info" size={18} /> Lưu ý cả chuyến</h2>
         {view.warnings.length === 0 && !(variant?.warnings.length) ? <p className="tg-faint">Chưa có lưu ý nào.</p> : <ul className="tg-notes">{[...view.warnings, ...(variant?.warnings ?? [])].slice(0, 6).map((w, i) => <li key={i}><Icon name="warn" size={14} /><span>{w.text}</span></li>)}</ul>}
@@ -250,25 +266,34 @@ export function Plan() {
     </>
   )
 
+  if (review) return (
+    <Journey days={days} routes={routes} origin={origin?.text ?? null} lodging={hasHotel ? lodgingName : null} arriveHow={trip.searchInput?.context.frame?.arrive?.how ?? trip.searchInput?.context.arrival_mode} leaveHow={trip.searchInput?.context.frame?.leave?.how ?? trip.searchInput?.context.arrival_mode}
+      travelMin={travel} warned={warned} busy={busy} error={error} confirmed={confirmed} onBack={() => setReview(false)} onFinish={() => { void finish() }} />
+  )
   return (
     <>
-      {note && screen !== 'swap' && <div className="tg-it-toast">{note}</div>}
+      {peeking && !editPreview ? <div className="tg-it-toast"><p className="tg-it-diff" role="status"><span className="tg-dots"><i /><i /><i /></span>Đang xem trước thay đổi…</p></div>
+        : note && <div className="tg-it-toast">{note}</div>}
       {fill.deck && fill.open && (trip.decisionId ?? trip.planningId) && <FillSheet id={(trip.decisionId ?? trip.planningId)!} deck={fill.deck} qid={fill.open} onClose={() => fill.setOpen(null)} />}
       <AssistantFloat stage="planning" onOpenDay={(n) => openDay(Math.min(Math.max(0, n - 1), Math.max(0, days.length - 1)))} />
-      {screen === 'overview' && <Overview fill={fill.deck?.tabs.some((t) => t.qid !== 'arrival') ? <FillRows deck={fill.deck} except="arrival" onOpen={fill.setOpen} /> : null} arrivalFill={fill.deck?.tabs.some((t) => t.qid === 'arrival') ? <FillRows deck={fill.deck} only="arrival" onOpen={fill.setOpen} /> : null} lodgingGhost={<LodgingGhost onHotel={toLodging} />} days={days} variant={variant} robustness={robustness} travelMin={travel} visitMin={metrics?.visit_min ?? 0} droppedCount={droppedCount}
+      {screen === 'overview' && <Overview fill={fill.deck?.tabs.some((t) => t.qid !== 'arrival') ? <FillRows deck={fill.deck} except="arrival" onOpen={fill.setOpen} /> : null}
+        arrivalFill={fill.deck?.tabs.some((t) => t.qid === 'arrival') ? <FillRows deck={fill.deck} only="arrival" onOpen={fill.setOpen} /> : null}
+        origin={<div className="tg-it-transit"><span><Icon name="home" size={16} /><b>{origin?.text || 'Chưa có điểm xuất phát'}</b></span><button type="button" className="tg-it-textbtn" onClick={() => setRouteOpen(true)}>{origin?.text ? 'Đổi' : 'Thêm'} <Icon name="chevronRight" size={14} /></button></div>} lodgingGhost={<LodgingGhost />} days={days} variant={variant} robustness={robustness} travelMin={travel} visitMin={metrics?.visit_min ?? 0} droppedCount={droppedCount}
         lodgingName={lodgingName} hasHotel={hasHotel} wayIn={<WayIn lat={origin?.lat} lng={origin?.lng} originText={origin?.text} date={days[0]?.date} way="inbound" />} wayOut={<WayIn lat={origin?.lat} lng={origin?.lng} originText={origin?.text} date={days[days.length - 1]?.date} way="outbound" />}
         stayOffer={hasHotel ? <StayOffer fid={view.state.lodging_id} checkIn={days[0]?.date ?? null} nights={Math.max(1, days.length - 1)} /> : null} arriveHow={trip.searchInput?.context.frame?.arrive?.how ?? trip.searchInput?.context.arrival_mode} leaveHow={trip.searchInput?.context.frame?.leave?.how ?? trip.searchInput?.context.arrival_mode} notices={notices} footer={overviewFooter} busy={busy} delta={delta} sameAs={sameAs}
-        after={<>{view.keep_all ? <KeepAll variant={view.keep_all} busy={busy} onPick={(id) => act({ type: 'pick_variant', id })} /> : null}<TrustCard view={view} /></>} onReoptimize={() => { void previewAct({ type: 'reoptimize' }) }} onDay={openDay} onChangeVariant={() => setChanging(true)} onHotel={toLodging}
+        after={<>{view.keep_all ? <KeepAll variant={view.keep_all} busy={busy} onPick={(id) => act({ type: 'pick_variant', id })} /> : null}<TrustCard view={view} /></>} onReoptimize={() => { void preview({ type: 'reoptimize' }) }} onDay={openDay} onChangeVariant={() => setChanging(true)} onHotel={toLodging}
         onDropped={() => setDroppedOpen(true)} onStory={() => setStory(true)} onOpen={openPlace} />}
       {screen === 'day' && d && <DayView days={days} dayIdx={dayIdx} week={Math.floor(dayIdx / 7)} onDay={setDayIdx} busy={busy} locked={view.state.locked}
         durationRange={view.duration_range} durationOverrides={view.state.visit_duration_override ?? {}} cond={view.day_conditions?.find((c) => c.day === d.day)} tips={view.crowd_tips ?? []}
-        vehicle={vehicle} extras={extras} footer={dayFooter} summary={variant?.label ?? 'Lịch trình'} route={routes?.find((r) => r.day === d.day) ?? null}
-        ghosts={view.ghosts ?? []} onAddGhost={(place) => { void act({ type: 'add_from_backup', place, day: d.day - 1 }) }}
+        vehicle={vehicle} extras={extras} footer={dayFooter} summary={variant ? wayName(variant) : 'Lịch trình'} route={routes?.find((r) => r.day === d.day) ?? null}
+        ghosts={view.ghosts ?? []} onAddGhost={(place) => { setSwapFor(null); setGhostFor(place); setPicker(true) }}
+        side={picker && d ? <Find day={d} replacing={swapFor} candidates={candidates} inPlan={new Set(days.flatMap((x) => visits(x).map((it) => it.place_id!)))} people={trip.people} busy={busy || replan.busy}
+          onClose={() => setPicker(false)} onPick={(c) => { void pickCandidate(c) }} onAddOutside={(place) => { void replan.run([{ kind: 'select', place }]) }} onOpen={openPlace} /> : null}
         onBack={() => setScreen('overview')} onOpen={openPlace} onSwap={startSwap} onDrop={setDropAsk}
         onMoveDay={(place, day) => { void act({ type: 'move_place', place, day }) }} onReorder={(day, order) => act({ type: 'reorder', day, order })}
-        onDuration={(place, minutes) => { void previewAct({ type: 'set_visit_duration', place, minutes }) }} />}
-      {screen === 'swap' && d && <Swap day={d} replacing={swapFor} candidates={candidates} people={trip.people} busy={busy} onOverview={() => setScreen('overview')} onDay={() => setScreen('day')}
-        onPick={(c) => { void pickCandidate(c) }} onOpen={openPlace} onMore={() => back('/explore')} />}
+        onDuration={(place, minutes) => { void preview({ type: 'set_visit_duration', place, minutes }) }} />}
+      <LodgingPicker open={lodgingOpen} onClose={() => setLodgingOpen(false)} />
+      {routeOpen && (trip.decisionId ?? trip.planningId) && <RouteSheet id={(trip.decisionId ?? trip.planningId)!} current={origin?.text ?? null} onClose={() => setRouteOpen(false)} />}
 
       <Optimize open={opt} onClose={() => { setOpt(false); if (trip.planningId && optimized) setOptimized(trip.planningId, { ...optimized, seen: true }) }} onUndo={async () => { await act({ type: 'undo' }); if (trip.planningId) setOptimized(trip.planningId, null); setOpt(false) }} busy={busy} />
 
@@ -279,9 +304,9 @@ export function Plan() {
           <p>Đi lại {editPreview?.delta.travel_min == null ? 'chưa so được' : `${editPreview.delta.travel_min > 0 ? '+' : ''}${fmtMin(editPreview.delta.travel_min)}`} · Tham quan {editPreview?.delta.visit_min == null ? 'chưa so được' : `${editPreview.delta.visit_min > 0 ? '+' : ''}${fmtMin(editPreview.delta.visit_min)}`} · Số nơi {editPreview?.delta.places ?? '—'}</p>
           {!!editPreview?.violations.length && <ul className="tg-notes">{editPreview.violations.map((v, i) => <li key={i}><Icon name="warn" size={14} /><span>{VIOLATION[v.kind] ?? 'Lịch còn xung đột cần xử lý.'}</span></li>)}</ul>}
           {editPreview?.action.type === 'set_visit_duration' && editPreview.view.itinerary?.map(day => <section key={day.day} className="tg-backup"><b>Ngày {day.day}</b>{day.items.filter(item => item.kind === 'visit' || item.kind === 'meal_free').map((item, i) => <span key={i}>{item.start}–{item.end} · {item.kind === 'meal_free' ? MEAL_LABEL[item.name ?? ''] : item.name}</span>)}</section>)}
-          {!!editPreview?.make_room.length && <div className="tg-backup"><b>Cách tạo chỗ trống</b><span>Chọn một đề xuất đã được kiểm tra; máy chủ không tự bỏ nơi.</span>{editPreview.make_room.map((a: Action, i: number) => <button key={i} type="button" className="tg-btn tg-btn--soft tg-btn--sm" disabled={busy} onClick={async () => await previewAct(a)}>Xem cách này</button>)}</div>}
+          {!!editPreview?.make_room.length && <div className="tg-backup"><b>Cách tạo chỗ trống</b><span>Chọn một đề xuất đã được kiểm tra; máy chủ không tự bỏ nơi.</span>{editPreview.make_room.map((a: Action, i: number) => <button key={i} type="button" className="tg-btn tg-btn--soft tg-btn--sm" disabled={busy} onClick={async () => await preview(a)}>Xem cách này</button>)}</div>}
           {!editPreview?.confirmable && <p className="tg-faint">Lịch sau thay đổi chưa thể chốt. Máy chủ sẽ kiểm tra lại khi chốt.</p>}
-          <footer><button type="button" className="tg-btn tg-btn--ghost" onClick={() => dismissPreview()}>Để sau</button><button type="button" className="tg-btn tg-btn--primary" disabled={busy || !editPreview || (editPreview.action.type === 'set_visit_duration' && !editPreview.confirmable)} onClick={async () => { if (!editPreview) return; const ok = await act({ ...editPreview.action, _preview_token: editPreview.token }); dismissPreview(); if (ok) setScreen((s) => (s === 'swap' ? 'day' : s)) }}>Áp dụng thay đổi đã xem</button></footer>
+          <footer><button type="button" className="tg-btn tg-btn--ghost" onClick={() => dismissPreview()}>Để sau</button><button type="button" className="tg-btn tg-btn--primary" disabled={busy || !editPreview || (editPreview.action.type === 'set_visit_duration' && !editPreview.confirmable)} onClick={async () => { if (!editPreview) return; await act({ ...editPreview.action, _preview_token: editPreview.token }); dismissPreview(); }}>Áp dụng thay đổi đã xem</button></footer>
         </Dialog.Content></Dialog.Portal>
       </Dialog.Root>
 
@@ -325,7 +350,7 @@ export function Plan() {
             <li>{variant?.lodging_budget?.total_vnd != null ? `Chỗ nghỉ tính riêng: ≈ ${fmtVnd(variant.lodging_budget.total_vnd)} (${lodgingBasis(variant.lodging_budget)}).` : 'Chưa gồm chỗ nghỉ.'}</li>
             <li>Chưa gồm chuyến đến, về.</li>
           </ul>
-          {variant && <p className="tg-faint">Phương án {variant.label}: {costText(variant)}.</p>}
+          {variant && <p className="tg-faint">Phương án {wayName(variant)}: {costText(variant)}.</p>}
         </Dialog.Content></Dialog.Portal>
       </Dialog.Root>
 

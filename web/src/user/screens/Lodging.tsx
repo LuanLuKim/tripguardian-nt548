@@ -9,6 +9,8 @@ import { toggleSaved, useUi } from '../store'
 import { useTrip } from '../trip'
 import { PlacePhoto, Trust } from '../ui/common'
 import { Pager } from '../ui/Pager'
+import { lodgingSuggest } from '../tu/api'
+import type { LodgingHit } from '../tu/types'
 import { HeartFill, Icon } from '../ui/icons'
 import { openPlace } from '../ui/PlaceSheet'
 import { Contact } from '../ui/contact'
@@ -223,5 +225,44 @@ export function LodgingCard({ c, order, top, on, swap, busy, onPick }: { c: Lodg
         </div>
       </div>
     </article>
+  )
+}
+
+// The search box on the stay tab looks among the stays (the other tabs' search never sees them): name or address, best first.
+// A stay is picked from here the same way as from the grid, with the same question before it replaces another.
+export function LodgingSearchResults({ q, onClear }: { q: string; onClear: () => void }) {
+  const { busy } = useDecision()
+  const { chosen, booked, current, change, dialog } = useLodgingChange()
+  const [got, setGot] = useState<{ q: string; hits: LodgingHit[] } | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    const ctl = new AbortController()
+    setFailed(false)
+    const t = setTimeout(() => {
+      lodgingSuggest(q, ctl.signal).then((hits) => setGot({ q, hits }), (e) => { if (e?.name !== 'AbortError') { setFailed(true); setGot({ q, hits: [] }) } })
+    }, 250)
+    return () => { clearTimeout(t); ctl.abort() }
+  }, [q])
+  if (!got || got.q !== q) return <p className="tg-busy" role="status"><i /> Đang tìm “{q}”…</p>
+  const hits = got.hits
+  const pick = (h: LodgingHit) => change({ type: 'set_lodging', lodging: h.kind === 'corpus' && h.id ? { kind: 'corpus', id: h.id } : { kind: h.kind === 'corpus' ? 'live' : h.kind, id: h.id, text: h.text, lat: h.lat, lng: h.lng } }, h.text)
+  const onId = chosen ? chosen.id : booked?.id
+  return (
+    <section className="tg-xfound" aria-live="polite">
+      <p className="tg-xfound__head">{failed ? 'Chưa tìm được lúc này, bạn thử lại sau ít phút.' : hits.length ? <><b>{hits.length} nơi lưu trú</b> khớp “{q}”.</> : <>Không thấy nơi lưu trú nào khớp “{q}”. Thử tên ngắn hơn, bỏ dấu, hoặc gõ tên đường.</>} <button type="button" className="tg-link" onClick={onClear}>Xóa tìm kiếm</button></p>
+      {hits.length > 0 && <ul className="tg-lodfound">
+        {hits.map((h) => {
+          const on = !!h.id && h.id === onId
+          const p = h.id ? info(h.id) : null
+          return <li key={h.id ?? `${h.lat},${h.lng}`} className={on ? 'is-sel' : ''}>
+            {p && h.id ? <PlacePhoto id={h.id} name={h.text} className="tg-lodfound__ph" /> : <span className="tg-lodfound__ph is-blank" aria-hidden="true"><Icon name="bed" size={22} /></span>}
+            <div><b>{h.text}</b><small className="tg-faint">{[h.rating ? `★ ${h.rating.toFixed(1)}` : null, h.address].filter(Boolean).join(' · ')}</small></div>
+            {on ? <button type="button" className="tg-btn tg-btn--sm tg-btn--soft" disabled><Icon name="check" size={16} /> Đã chọn</button>
+              : <button type="button" className={`tg-btn tg-btn--sm ${current ? 'tg-btn--ghost' : 'tg-btn--primary'}`} disabled={busy} onClick={() => pick(h)}><Icon name={current ? 'swap' : 'plus'} size={16} /> {current ? 'Đổi sang chỗ này' : 'Thêm'}</button>}
+          </li>
+        })}
+      </ul>}
+      {dialog}
+    </section>
   )
 }

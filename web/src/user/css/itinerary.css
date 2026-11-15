@@ -344,13 +344,16 @@ button.tg-it-chip[aria-pressed='true'] { background: var(--tg-pine-soft); border
 .tg-it-stays__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tg-it-stays__head h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1rem; }
 .tg-it-stays > p { margin: 6px 0 12px; font-size: 0.86rem; }
-.tg-it-stays__list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.tg-it-stays__list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
 .tg-it-stay { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 13px; border: 1px solid var(--tg-line); }
-.tg-it-stay__ph, .tg-it-stay__ph img { width: 64px; height: 64px; flex: none; margin: 0; border-radius: 10px; object-fit: cover; overflow: hidden; }
+.tg-it-stay__ph, .tg-it-stay__ph img { width: 52px; height: 52px; flex: none; margin: 0; border-radius: 10px; object-fit: cover; overflow: hidden; }
 span.tg-it-stay__ph { display: grid; place-items: center; background: var(--tg-pine-soft); color: var(--tg-pine); }
 .tg-it-stay__b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 0.82rem; }
 .tg-it-stay__b b { font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tg-it-stay__why { display: inline-flex; align-items: center; gap: 4px; color: var(--tg-pine); }
+.tg-it-stay__b > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; } /* one line each, like the stay list on Lịch trình */
+.tg-it-stay__why { display: block; }
+.tg-it-stay__why svg { margin-right: 4px; vertical-align: -2px; }
 
 /* Từng ngày — theo mẫu tracking (danh sách chặng bên trái, đường đi thật bên phải). Màu chỉ từ token: đường đi và điểm đang xem dùng --tg-brand. */
 .tg-it-stats.is-day { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; justify-content: stretch; padding: 0; margin: 0 0 16px; border: 1px solid var(--tg-line); border-radius: 16px; background: var(--tg-surface); box-shadow: var(--tg-sh-1); }
@@ -438,3 +441,11 @@ span.tg-it-stay__ph { display: grid; place-items: center; background: var(--tg-p
 .tg-tp__hours button.is-on, .tg-tp__mins button.is-on { background: var(--tg-ink); color: #fff; }
 .tg-tp__mins button:disabled { opacity: 0.4; cursor: default; }
 .tg-tp__done { margin-top: 4px; min-height: 40px; border-radius: 999px; background: var(--tg-ink); color: #fff; font-weight: 600; cursor: pointer; }
+
+/* Chọn phương án: what each way gives and what it costs (Choose.tsx prosCons) */
+.tg-it-pc { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 16px; margin: 14px 0 4px; padding: 12px 14px; border-radius: 16px; background: var(--tg-bg); }
+.tg-it-pc ul { display: grid; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+.tg-it-pc li { display: flex; align-items: flex-start; gap: 6px; font-size: 0.86rem; line-height: 1.4; color: var(--tg-ink-2); }
+.tg-it-pc li svg { flex: none; margin-top: 3px; }
+.tg-it-pc .is-pro svg { color: #2f6b45; }
+.tg-it-pc .is-con svg { color: #8a5a00; }

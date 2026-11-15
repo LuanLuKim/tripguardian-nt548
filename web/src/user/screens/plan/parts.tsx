@@ -2,46 +2,17 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { useState, type CSSProperties } from 'react'
 import { fmtMin, fmtVnd, info } from '../../lib'
 import { usePlanning } from '../../planning/planning'
-import type { Backups, CrowdTip, DayConditions, ItineraryDay, TimeRecommendation, TimeSuitabilityDay, Variant } from '../../planning/types'
+import type { Backups, CrowdTip, DayConditions, Variant } from '../../planning/types'
 import { useUi } from '../../store'
 import { useTrip } from '../../trip'
 import { PlacePhoto } from '../../ui/common'
 import { CountUp } from '../../ui/CountUp'
 import { Icon } from '../../ui/icons'
-import { BLOCK, costText, openPlace, visits } from './shared'
+import { BLOCK, costText, openPlace, visits, wayName } from './shared'
 
 // Side cards, notices and dialogs of the itinerary screens (screens/Plan.tsx, screens/plan/*).
 
 export const ADVISORY: Record<string, string> = { storm: 'bão / dông', flood: 'ngập lụt', landslide: 'sạt lở', fire: 'cháy', road_closed: 'đường bị chặn', other: 'khác' }
-
-export function TimeCard({ day, itinerary, timing, suggestions, status, busy, onAdd }: {
-  day: number; itinerary: ItineraryDay | undefined; timing: TimeSuitabilityDay[]; suggestions: TimeRecommendation[];
-  busy: boolean; onAdd: (id: string, day: number) => void
-  status?: 'pending' | 'ready' | 'unavailable'
-}) {
-  const details = timing.find((x) => x.day === day)?.places.filter((p) => p.reasons.length || p.shortened_min) ?? []
-  const optional = suggestions.filter((x) => x.day === day).slice(0, 3)
-  if (!details.length && !optional.length && (!status || status === 'ready')) return null
-  return <section className="tg-sidecard" aria-labelledby="tg-time-h">
-    <h2 id="tg-time-h"><Icon name="clock" size={18} /> Giờ ghé · Ngày {day}</h2>
-    {status === 'pending' && <p className="tg-faint" role="status">Đang tìm hoạt động phù hợp với giờ trống…</p>}
-    {status === 'unavailable' && <p className="tg-faint">Chưa tải được gợi ý thêm hoạt động.</p>}
-    {details.map((p) => <div className="tg-backup" key={p.place_id}>
-      <b>{itinerary?.items.find((i) => i.place_id === p.place_id && i.kind === 'visit')?.name ?? info(p.place_id)?.name ?? p.place_id}</b>
-      {p.reasons.map((r, i) => <span key={i}>{r.text}{r.fit !== null && r.fit < 1 ? ' · lịch chưa khớp hết khung giờ ưu tiên' : ''}</span>)}
-      {p.shortened_min > 0 && <span>Rút khoảng {p.shortened_min} phút để vừa lịch, vẫn giữ thời lượng tối thiểu.</span>}
-    </div>)}
-    {optional.map((s, i) => <div className="tg-backup" key={i}>
-      <span>{s.text}</span>
-      {s.alternatives.map((a) => <div key={a.id} className="tg-backup">
-        <button type="button" className="tg-btn tg-btn--soft tg-btn--sm"
-          disabled={busy} onClick={() => onAdd(a.id, day)}>Thêm {a.name}{a.cost_unknown ? ' · chưa có giá' : ''}</button>
-        {a.warnings?.map((w, j) => <small key={j} className="tg-faint">{w.text}</small>)}
-      </div>)}
-    </div>)}
-    <p className="tg-faint tg-sidecard__mini">Độ phù hợp giờ là ước lượng. Thêm nơi sẽ xếp lại ngày này; bạn có thể hoàn tác.</p>
-  </section>
-}
 
 export function KeepAll({ variant, busy, onPick }: { variant: NonNullable<import('../../planning/types').View['keep_all']>; busy: boolean; onPick: (id: string) => void }) {
   return <details className="tg-sidecard"><summary>Giữ tất cả · Đối chiếu danh sách ban đầu</summary>
@@ -68,7 +39,7 @@ export function Tradeoff({ variants, busy, active, onPick }: { variants: Variant
   ]
   return (
     <div className="tg-trade" role="table" aria-label="Đánh đổi giữa các hành trình">
-      <div role="row" className="tg-trade__r tg-trade__h"><span role="columnheader" /> {variants.map((v) => <button key={v.id} role="columnheader" type="button" className={active === v.id ? 'is-on' : ''} disabled={busy || v.status === 'unavailable'} onClick={() => onPick(v.id)}>{v.label}</button>)}</div>
+      <div role="row" className="tg-trade__r tg-trade__h"><span role="columnheader" /> {variants.map((v) => <button key={v.id} role="columnheader" type="button" className={active === v.id ? 'is-on' : ''} disabled={busy || v.status === 'unavailable'} onClick={() => onPick(v.id)}>{wayName(v)}</button>)}</div>
       {rows.map(([label, f, best]) => (
         <div role="row" className="tg-trade__r" key={label}><span role="rowheader">{label}</span>{variants.map((v) => <span role="cell" key={v.id} className={best(v) ? 'is-best' : ''}>{f(v)}</span>)}</div>
       ))}
@@ -162,44 +133,36 @@ export function NoHotel({ onHotel }: { onHotel: () => void }) {
   )
 }
 
-// The same hand of ghost cards a day's empty slot shows (GhostSlot), for the one slot of the whole trip: where to sleep.
-// Up to three of the stays Planning ranked for it; the round "+" on the card in front picks it (pick_lodging). It is a
-// suggestion, not a choice: nothing changes until the user picks, and not picking is fine.
-export function LodgingGhost({ onHotel }: { onHotel: () => void }) {
+// Where to sleep, while none is chosen: the stays Planning ranked for the trip, as a row of cards across the whole frame (up to
+// eight). "Chọn" picks one (pick_lodging); the photo opens the place. A suggestion, not a choice: nothing changes until the
+// user picks, and not picking is fine.
+const STAYS_SHOWN = 8
+export function LodgingGhost() {
   const { view, act, busy } = usePlanning()
-  const [top, setTop] = useState(0)
   const lod = view?.lodging
-  const picks = lod?.candidates.slice(0, 3) ?? []
-  const n = picks.length
+  const picks = lod?.candidates.slice(0, STAYS_SHOWN) ?? []
   return (
-    <section className="tg-ghost tg-ghost--stay" aria-label="Gợi ý chỗ nghỉ">
+    <section className="tg-ghost tg-staygrid" aria-label="Gợi ý chỗ nghỉ">
       <header>
         <Icon name="sparkle" size={14} />
         <b>Gợi ý · Chỗ nghỉ</b>
-        <small>chưa chọn</small>
-        <button type="button" className="tg-link" onClick={onHotel}>Xem tất cả</button>
+        {picks.length > 0 && <small>{picks.length} chỗ hợp với các nơi đã chọn</small>}
       </header>
       {lod?.status === 'pending' ? <p className="tg-faint" role="status">Đang tìm chỗ nghỉ hợp với chuyến…</p>
-        : n === 0 ? <p className="tg-faint">Chưa có gợi ý. Bạn tìm chỗ nghỉ trong "Xem tất cả".</p>
+        : picks.length === 0 ? <p className="tg-faint">Chưa có gợi ý. Bấm "Chọn chỗ nghỉ" để tìm theo tên.</p>
         : (
-          <ul className={`tg-ghost__fan ${n === 1 ? 'is-one' : ''}`} style={{ '--n': n, '--cw': n === 1 ? '100%' : n === 2 ? '58%' : '46%' } as CSSProperties}>
-            {picks.map((c, i) => {
-              const chosen = i === top
-              return (
-                <li key={c.id} className={chosen ? 'is-front' : ''} style={{ '--i': i, '--d': Math.abs(i - top), '--side': Math.sign(i - top) } as CSSProperties} onMouseEnter={() => setTop(i)}>
-                  <span className="tg-ghost__bg" aria-hidden="true"><PlacePhoto id={c.id} name="" sizes="160px" /></span>
-                  <span className="tg-ghost__thumb">
-                    <PlacePhoto id={c.id} name="" sizes="240px" />
-                    <button type="button" className="tg-ghost__add" disabled={busy || !chosen} aria-label={`Chọn ${c.name}`} title="Chọn chỗ nghỉ này" onClick={() => { void act({ type: 'pick_lodging', id: c.id }) }}><Icon name="plus" size={16} /></button>
-                  </span>
-                  <button type="button" className="tg-ghost__open" aria-label={`Xem chi tiết ${c.name}`} onFocus={() => setTop(i)} onClick={() => (chosen ? openPlace(c.id) : setTop(i))} />
-                  <span className="tg-ghost__txt">
-                    <strong>{c.name}</strong>
-                    <small>{[c.rating ? `★ ${c.rating.toFixed(1)}` : null, c.price_vnd ? `${fmtVnd(c.price_vnd)}/đêm` : 'Chưa có giá', c.avg_min != null ? `≈ ${fmtMin(c.avg_min)} tới các nơi` : null].filter(Boolean).join(' · ')}</small>
-                  </span>
-                </li>
-              )
-            })}
+          <ul>
+            {picks.map((c, i) => (
+              <li key={c.id} style={{ '--i': i } as CSSProperties}>
+                <button type="button" className="tg-staygrid__ph" aria-label={`Xem chi tiết ${c.name}`} onClick={() => openPlace(c.id)}><PlacePhoto id={c.id} name="" sizes="260px" /></button>
+                <div className="tg-staygrid__txt">
+                  <strong title={c.name}>{c.name}</strong>
+                  <small>{[c.rating ? `★ ${c.rating.toFixed(1)}` : null, c.price_vnd ? `${fmtVnd(c.price_vnd)}/đêm` : 'Chưa có giá'].filter(Boolean).join(' · ')}</small>
+                  {c.avg_min != null && <small>≈ {fmtMin(c.avg_min)} tới các nơi đã chọn</small>}
+                </div>
+                <button type="button" className="tg-btn tg-btn--primary tg-btn--sm" disabled={busy} aria-label={`Chọn ${c.name}`} onClick={() => { void act({ type: 'pick_lodging', id: c.id }) }}><Icon name="plus" size={15} />Chọn</button>
+              </li>
+            ))}
           </ul>
         )}
     </section>
@@ -247,29 +210,38 @@ export function BackupCard({ b, day, busy, onSwap }: { b: Backups | undefined; d
 }
 
 // The Planning Agent's proposal: kept by the server only when it passes the deterministic checks and is not worse.
+// A card in the middle of the screen with the verdict first: how much travel it saves (before / after as two bars), why it is safe, one button.
 export function Optimize({ open, onClose, onUndo, busy }: { open: boolean; onClose: () => void; onUndo: () => void; busy: boolean }) {
   const { trip } = useTrip()
   const o = useUi((u) => (trip.planningId ? u.optimized[trip.planningId] : undefined))
   const better = o?.status === 'accepted' && o.after < o.before
+  const tone = !o ? 'wait' : better ? 'good' : o.status === 'accepted' ? 'calm' : 'info'
+  const title = !o ? 'Đang thử xếp lại…' : better ? 'Mình xếp lại được tốt hơn' : o.status === 'accepted' ? 'Lịch hiện tại đã khá gọn' : 'Giữ lịch hiện tại'
   return (
     <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="tg tg-overlay" />
-        <Dialog.Content className="tg tg-drawer" aria-describedby={undefined}>
-          <header><span className="tg-tag"><Icon name="sparkle" size={13} /> Đề xuất tối ưu</span><Dialog.Close className="tg-icon-btn" aria-label="Đóng"><Icon name="x" size={20} /></Dialog.Close></header>
-          <Dialog.Title>{!o ? 'Đang thử xếp lại…' : better ? 'Mình xếp lại được tốt hơn' : o.status === 'accepted' ? 'Lịch hiện tại đã khá gọn' : 'Chưa áp dụng được đề xuất'}</Dialog.Title>
+        <Dialog.Content className={`tg tg-optim is-${tone}`} aria-describedby={undefined}>
+          <Dialog.Close className="tg-icon-btn tg-optim__x" aria-label="Đóng"><Icon name="x" size={20} /></Dialog.Close>
+          <span className="tg-optim__ic" aria-hidden="true">{!o ? <span className="tg-dots"><i /><i /><i /></span> : <Icon name={better ? 'sparkle' : o.status === 'accepted' ? 'check' : 'info'} size={26} />}</span>
+          <p className="tg-optim__tag">Đề xuất tối ưu</p>
+          <Dialog.Title>{title}</Dialog.Title>
           {o && better && (
             <>
-              <div className="tg-ba">
-                <div><span>Trước</span><b className="tg-mono">{fmtMin(o.before)}</b><small>di chuyển</small></div>
-                <Icon name="arrow" size={22} />
-                <div className="is-after"><span>Sau</span><b><CountUp from={o.before} to={o.after} render={fmtMin} /></b><small>tiết kiệm {fmtMin(o.before - o.after)}</small></div>
+              <div className="tg-optim__bars" role="img" aria-label={`Di chuyển giảm từ ${fmtMin(o.before)} xuống ${fmtMin(o.after)}`}>
+                <div><span>Trước</span><i style={{ width: '100%' }} /><b className="tg-mono">{fmtMin(o.before)}</b></div>
+                <div className="is-after"><span>Sau</span><i style={{ width: `${Math.max(8, Math.round((o.after / o.before) * 100))}%` }} /><b><CountUp from={o.before} to={o.after} render={fmtMin} /></b></div>
               </div>
-              <div className="tg-ba__why"><h3>Vì sao</h3><ul><li>Thứ tự trong ngày được xếp lại để bớt quay đầu giữa các khu.</li><li>Lịch mới đã qua kiểm tra giờ mở cửa, nơi đã khóa và giới hạn của bạn.</li><li>Điểm theo mục tiêu của hành trình này không kém lịch cũ.</li></ul><p className="tg-ba__keep"><Icon name="shield" size={15} /> Mình không đổi chỗ ở, nhịp độ, nơi đã khóa hay tập địa điểm.</p></div>
+              <p className="tg-optim__save">Tiết kiệm khoảng <b>{fmtMin(o.before - o.after)}</b> di chuyển</p>
+              <ul className="tg-optim__why">
+                <li><Icon name="check" size={15} />Thứ tự trong ngày được xếp lại để bớt quay đầu giữa các khu.</li>
+                <li><Icon name="check" size={15} />Đã qua kiểm tra giờ mở cửa, nơi đã khóa và giới hạn của bạn.</li>
+                <li><Icon name="shield" size={15} />Không đổi chỗ ở, nhịp độ, nơi đã khóa hay tập địa điểm.</li>
+              </ul>
             </>
           )}
-          {o && !better && <p className="tg-muted">{o.status === 'accepted' ? `Không có cách xếp nào giảm di chuyển đáng kể mà vẫn đúng giờ mở cửa. Giữ lịch hiện tại (${fmtMin(o.after)} di chuyển).` : 'Đề xuất chưa qua được kiểm tra (vướng nơi đã khóa, giờ mở cửa hoặc không tốt hơn), nên mình giữ lịch hiện tại.'}</p>}
-          <footer>{better && <button type="button" className="tg-btn tg-btn--ghost" disabled={busy} onClick={onUndo}>Giữ lịch cũ</button>}<button type="button" className="tg-btn tg-btn--primary" onClick={onClose}>{better ? 'Giữ cách xếp mới' : 'Đóng'} <Icon name="check" size={18} /></button></footer>
+          {o && !better && <p className="tg-optim__msg">{o.status === 'accepted' ? `Không có cách xếp nào giảm di chuyển đáng kể mà vẫn đúng giờ mở cửa. Lịch hiện tại chỉ mất ${fmtMin(o.after)} di chuyển.` : 'Cách xếp mới chưa qua được kiểm tra (vướng nơi đã khóa, giờ mở cửa hoặc không tốt hơn), nên mình giữ lịch bạn đang có. Lịch của bạn không bị thay đổi.'}</p>}
+          <div className="tg-optim__acts">{better && <button type="button" className="tg-btn tg-btn--ghost" disabled={busy} onClick={onUndo}>Giữ lịch cũ</button>}<button type="button" className="tg-btn tg-btn--primary" onClick={onClose}>{better ? 'Giữ cách xếp mới' : 'Đã hiểu'} <Icon name="check" size={18} /></button></div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

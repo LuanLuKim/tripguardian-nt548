@@ -81,7 +81,7 @@ function useFan(count: number, at: number, goTo: (i: number) => void) {
     s.dir = Math.sign(at - s.pos) || s.dir
     run()
   }, [at, reduced, paint, run])
-  useEffect(() => () => cancelAnimationFrame(live.current.raf), [])
+  useEffect(() => () => { cancelAnimationFrame(live.current.raf); live.current.raf = 0 }, []) // a stale id would keep run() from ever starting again (StrictMode remounts)
 
   const settle = (fn: () => void) => { live.current.onSettle = fn }
   const unit = () => (stage.current?.clientWidth ?? 800) * 0.22 // a card's worth of dragging

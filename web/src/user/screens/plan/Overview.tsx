@@ -4,7 +4,7 @@ import type { ItineraryDay, Robustness, Variant } from '../../planning/types'
 import { Hint, PlacePhoto } from '../../ui/common'
 import { Icon, type IconName } from '../../ui/icons'
 import { TripMap } from './TripMap'
-import { dayAreas, placeName, shortDate, visits } from './shared'
+import { dayAreas, placeName, shortDate, visits, wayName } from './shared'
 
 // Mẫu docs/design/mock/designs/itinerary (màn tổng quan): the whole trip on one map, then the journey top to bottom —
 // arrival, where to sleep, one card per day, departure. A day opens on its own screen.
@@ -24,8 +24,8 @@ function Row({ icon, title, sub, children }: { icon: IconName; title: string; su
   )
 }
 
-export function Overview({ fill, arrivalFill, lodgingGhost, days, variant, robustness, travelMin, visitMin, droppedCount, lodgingName, hasHotel, arriveHow, leaveHow, wayIn, wayOut, stayOffer, notices, after, delta, sameAs, busy, footer, onDay, onChangeVariant, onHotel, onDropped, onStory, onReoptimize, onOpen }: {
-  fill?: ReactNode; arrivalFill?: ReactNode; lodgingGhost?: ReactNode; days: ItineraryDay[]; variant: Variant | null; robustness?: Robustness; travelMin: number; visitMin: number; droppedCount: number
+export function Overview({ fill, arrivalFill, origin, lodgingGhost, days, variant, robustness, travelMin, visitMin, droppedCount, lodgingName, hasHotel, arriveHow, leaveHow, wayIn, wayOut, stayOffer, notices, after, delta, sameAs, busy, footer, onDay, onChangeVariant, onHotel, onDropped, onStory, onReoptimize, onOpen }: {
+  fill?: ReactNode; arrivalFill?: ReactNode; origin?: ReactNode; lodgingGhost?: ReactNode; days: ItineraryDay[]; variant: Variant | null; robustness?: Robustness; travelMin: number; visitMin: number; droppedCount: number
   lodgingName: string | null; hasHotel: boolean; arriveHow?: string | null; leaveHow?: string | null; wayIn?: ReactNode; wayOut?: ReactNode; stayOffer?: ReactNode; notices: ReactNode; after: ReactNode; delta: string | null; sameAs: string | null; busy: boolean; footer: ReactNode
   onDay: (i: number) => void; onChangeVariant: () => void; onHotel: () => void; onDropped: () => void; onStory: () => void; onReoptimize: () => void; onOpen: (id: string) => void
 }) {
@@ -33,13 +33,13 @@ export function Overview({ fill, arrivalFill, lodgingGhost, days, variant, robus
   const first = days[0]
   const last = days[days.length - 1]
   const range = days.length > 1 ? `${shortDate(first?.date, 1)} – ${shortDate(last?.date, days.length)}` : shortDate(first?.date, 1)
-  const label = variant?.label ?? 'Lịch trình'
+  const label = variant ? wayName(variant) : 'Lịch trình'
   return (
     <>
       <div className="tg-it-crumb">
         <button type="button" className="tg-it-crumb__back" aria-label="Quay lại chọn phương án" onClick={onChangeVariant}><Icon name="arrowLeft" size={18} /></button>
         <span>Chuyến đi của bạn</span><Icon name="chevronRight" size={14} /><strong>Tổng quan</strong>
-        <div className="tg-it-crumb__right"><span>{label}</span><button type="button" className="tg-it-textbtn" onClick={onChangeVariant}>Đổi phương án</button></div>
+        <div className="tg-it-crumb__right"><span>Đang xem: {label}</span><button type="button" className="tg-it-textbtn" onClick={onChangeVariant}>Xem phương án khác</button></div>
       </div>
       <main className="tg-it-ov">
         <TripMap groups={days.map((d) => visits(d).map((it) => it.place_id!))} title="Bản đồ cả chuyến" className="is-banner" labels={false} onOpen={onOpen}>
@@ -64,6 +64,7 @@ export function Overview({ fill, arrivalFill, lodgingGhost, days, variant, robus
             <div className="tg-it-plan"><span><Icon name="check" size={14} />{label} · {ids.length} nơi trong lịch</span>{droppedCount > 0 && <button type="button" className="tg-it-textbtn" onClick={onDropped}>{droppedCount} nơi tạm bỏ <Icon name="chevronRight" size={14} /></button>}</div>
           </div>
         </Row>
+        {origin && <Row icon="home" title="Điểm xuất phát" sub="Trước khi đến Đà Lạt">{origin}</Row>}
         <Row icon={wayIcon(arriveHow)} title="Đến Đà Lạt" sub={shortDate(first?.date, 1)}>
           {arrivalFill}
           <div className="tg-it-transit"><span><Icon name={wayIcon(arriveHow)} size={16} /><b>Di chuyển đến Đà Lạt</b></span><span>{first ? `Lịch ngày đầu bắt đầu lúc ${first.window[0]}` : 'Chưa có thông tin chuyến đến'}</span></div>

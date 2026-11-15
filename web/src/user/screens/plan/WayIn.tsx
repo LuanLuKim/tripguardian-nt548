@@ -3,7 +3,6 @@ import { isDated, offerAge, readJourneyWay, readStayOffers, type Journey, type O
 import { track } from '../../events'
 import { fmtMin, fmtVnd } from '../../lib'
 import { Icon, type IconName } from '../../ui/icons'
-import { go } from '../../ui/common'
 import '../../css/wayin.css'
 import '../../css/fixes.css'
 
@@ -122,7 +121,7 @@ export function WayIn({ lat, lng, originText, date, way, destLat, destLng }: {
   const text = originText?.trim() || ''
   const key = `${lat}|${lng}|${text}|${date}|${way}|${destLat}|${destLng}`
   const ready = (typeof lat === 'number' && typeof lng === 'number') || !!text
-  const noData = text ? `Xuất phát từ ${text} — TripGuardian chưa có dữ liệu chuyến hoặc đường đi cho bạn.` : 'TripGuardian chưa có dữ liệu chuyến hoặc đường đi cho bạn.'
+  const noData = 'TripGuardian chưa có dữ liệu chuyến hoặc đường đi cho bạn.'
   useEffect(() => {
     if (!ready) return
     let live = true
@@ -132,16 +131,16 @@ export function WayIn({ lat, lng, originText, date, way, destLat, destLng }: {
     return () => { live = false }
   }, [key, ready]) // eslint-disable-line react-hooks/exhaustive-deps
   const city = way === 'inbound' ? 'Đường tới Đà Lạt' : 'Đường về'
-  if (!ready) return <div className="tg-wy"><h4>{city}</h4><p className="tg-wy__note">Bạn thêm điểm xuất phát ở bước Tìm hiểu để TripGuardian tìm cách đi phù hợp nhé.</p><button type="button" className="tg-btn tg-btn--soft tg-btn--sm" onClick={() => go('/understand')}>Thêm điểm xuất phát <Icon name="arrow" size={14} /></button></div>
-  if (!got || got.key !== key) return <div className="tg-wy" aria-busy="true"><h4>{city}</h4>{text && <p className="tg-wy__note">Xuất phát từ {text} — TripGuardian đang tìm cách đi cho bạn.</p>}<ul className="tg-wy__list">{[0, 1, 2].map((i) => <li key={i} className="tg-wy__card is-skel"><span className="tg-skel" /></li>)}</ul></div>
+  if (!ready) return null // the origin is asked in its own row above Đến Đà Lạt (Overview)
+  if (!got || got.key !== key) return <div className="tg-wy" aria-busy="true"><h4>{city}</h4><p className="tg-wy__note">TripGuardian đang tìm cách đi cho bạn.</p><ul className="tg-wy__list">{[0, 1, 2].map((i) => <li key={i} className="tg-wy__card is-skel"><span className="tg-skel" /></li>)}</ul></div>
   if (!got.data) return <div className="tg-wy"><h4>{city}</h4><p className="tg-wy__note">{text ? noData : 'Chưa tải được các cách đi lúc này. Lịch trình vẫn dùng được, bạn thử lại sau nhé.'}</p></div>
   const options = got.data.options
   if (!options.length) return <div className="tg-wy"><h4>{city}</h4><p className="tg-wy__note">{noData}</p></div>
   const fastest = options.filter((o) => o.feasible === true && o.minutes != null).sort((a, b) => a.minutes! - b.minutes!)[0]
   return (
     <div className="tg-wy">
+      
       <h4>{city}{got.data.day && <small>ngày {got.data.day.slice(8, 10)}/{got.data.day.slice(5, 7)}</small>}</h4>
-      {text && <p className="tg-wy__note">Xuất phát từ {text}</p>}
       <ul className="tg-wy__list">{options.map((o, i) => <Card key={o.mode} o={o} i={i} fastest={o === fastest} />)}</ul>
       <p className="tg-wy__note">Giờ đường bộ là ước tính theo bản đồ. Giá và chuyến lấy từ trang đặt vé, bấm vào để xem bản mới nhất.</p>
     </div>

@@ -134,14 +134,9 @@ export function PlaceSearch({ onPick, placeholder }: { onPick: (p: { id: string;
   )
 }
 
-// Xem đầy đủ: every line with where it came from, editable in place; limits show what they cost.
-export function TicketFull({ open, onClose, u, busy, preview, focus, source, onFocus, onEdit, onShow, onReset }: TicketProps & { open: boolean; onClose: () => void; focus: string | null; onFocus: (t: string | null) => void; onReset: () => void }) {
+// The editor under each line of the ticket, keyed by line key. Shared by the full ticket and the read-back before planning.
+export function ticketEditors(u: Understanding, onEdit: (t: string, v: string | null) => void): Record<string, ReactNode> {
   const t = tripOf(u)
-  const [chainOpen, setChainOpen] = useState<string | null>(null)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (open && focus) setTimeout(() => ref.current?.querySelector(`[data-row="${focus}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
-  }, [open, focus])
   const companions: Who[] = t.companions?.value ?? []
   const editors: Record<string, ReactNode> = {
     dates: (
@@ -191,6 +186,17 @@ export function TicketFull({ open, onClose, u, busy, preview, focus, source, onF
   editors.companions = <>{editors.who}<label className="tg-full__time">Tổng số người<input className="tg-input" type="number" min="1" value={t.people?.value ?? ''} onChange={e => onEdit('people', e.target.value || null)} /></label></>
   editors.budget = <div className="tg-full__edit is-stack"><label>Ngân sách (đồng)<input className="tg-input" type="number" min="1" defaultValue={u.budget_vnd?.value?.amount ?? ''} onBlur={e => { if (e.target.value) onEdit('budget_vnd', e.target.value) }} /></label><Seg label="Phạm vi ngân sách" value={u.budget_vnd?.value?.scope ?? null} options={Object.entries(BUDGET_SCOPE_LABEL).map(([value, label]) => ({ value, label }))} onChange={v => onEdit('budget_scope', v)} /><button type="button" className="tg-chip" aria-pressed={t.budget_unlimited?.value === true} onClick={() => onEdit('budget_unlimited', t.budget_unlimited?.value === true ? 'false' : 'true')}>Không giới hạn</button></div>
   editors.care = <p className="tg-muted">Các giới hạn của cả nhóm ở phần Giới hạn cứng bên dưới. Bạn có thể kể thêm trong ô tin nhắn.</p>
+  return editors
+}
+
+// Xem đầy đủ: every line with where it came from, editable in place; limits show what they cost.
+export function TicketFull({ open, onClose, u, busy, preview, focus, source, onFocus, onEdit, onShow, onReset }: TicketProps & { open: boolean; onClose: () => void; focus: string | null; onFocus: (t: string | null) => void; onReset: () => void }) {
+  const [chainOpen, setChainOpen] = useState<string | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open && focus) setTimeout(() => ref.current?.querySelector(`[data-row="${focus}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+  }, [open, focus])
+  const editors = ticketEditors(u, onEdit)
   const all = allLines(u)
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()} modal={false}>

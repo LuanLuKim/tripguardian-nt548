@@ -43,13 +43,14 @@ function Block({ it }: { it: ItineraryItem }) {
 
 const MODE_ICON: Record<string, 'walk' | 'bike' | 'car'> = { walk: 'walk', motorbike: 'bike', car: 'car' }
 
-export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange, durationOverrides, cond, tips, vehicle, extras, footer, summary, route, ghosts, onAddGhost,
+export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange, durationOverrides, cond, tips, vehicle, extras, footer, summary, route, ghosts, onAddGhost, side,
   onBack, onOpen, onSwap, onDrop, onMoveDay, onReorder, onDuration }: {
   days: ItineraryDay[]; dayIdx: number; week: number; onDay: (i: number) => void; busy: boolean; locked: string[]
   durationRange?: [number, number]; durationOverrides: Record<string, number>; cond: DayConditions | undefined; tips: CrowdTip[]
   vehicle: string; extras: ReactNode; footer: ReactNode; summary: string
   route: MapDayRoute | null // this day's road from planning/routes; null while it loads or when the day has none
-  ghosts: Ghost[]; onAddGhost: (place: string) => void // empty-slot suggestions (all days); a tap adds the place to this day
+  ghosts: Ghost[]; onAddGhost: (place: string | null) => void // the "+" after a slot's cards: the list of places, that slot's first
+  side?: ReactNode // the place list (Find), shown over the map so the day stays in sight
   onBack: () => void; onOpen: (id: string) => void; onSwap: (place: string | null) => void; onDrop: (place: string) => void
   onMoveDay: (place: string, day: number) => void; onReorder: (day: number, order: string[]) => Promise<boolean>
   onDuration: (place: string, minutes: number | null) => void
@@ -239,7 +240,8 @@ export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange
           </div>
           {footer}
         </section>
-        <section className="tg-it-day__map" aria-label="Bản đồ">
+        <section className={`tg-it-day__map ${side ? 'has-side' : ''}`} aria-label={side ? 'Chọn nơi' : 'Bản đồ'}>
+          {side}
           <TripMap groups={allMap ? days.map((x, i) => (i === dayIdx ? order : visits(x).map((it) => it.place_id!))) : [dayIds]} title={allMap ? 'Lộ trình cả chuyến' : `Lộ trình ngày ${d?.day ?? ''}`} className={allMap ? '' : 'is-main'} hot={lit} onHot={setHot} onOpen={onOpen} soft notes={notes}
             routes={mapRoutes} ends={!allMap && route ? { start: startName, end: endName, startAt: first?.start, endAt: last?.end, startPoint: (route.start.id ? info(route.start.id) : null) ?? route.start.mapPoint, endPoint: (route.end.id ? info(route.end.id) : null) ?? route.end.mapPoint } : undefined}>
             <div className="tg-it-map__top">

@@ -244,7 +244,12 @@ export interface TagsBlock { kind: 'tags'; level?: 'tags' | 'subtags'; title?: s
 // One card of the tag stage (src/trip/api/engine.py tag_stage): a tag, a subtag, the "Xem tất cả" of a level, or a place.
 export interface TagNode { ref: string; kind: 'tag' | 'subtag' | 'all' | 'place'; label: string; count: number; cover: string | null; has_children: boolean; wished?: boolean; id?: string; card?: ChatPlace }
 export interface TagLevel { sig: string; ref: string; label: string; count: number; wished: boolean; nodes: TagNode[] }
-export type ResultBlock = DishBlock | ServicesBlock | TagsBlock
+// What is on and in season (src/trip/api/blocks.py trends_block), only the sections the question asked for. A row has a
+// corpus place (id: its card is in cards), an event's own day (on) and picture, or a season; source = its page.
+export interface TrendRow { title: string; text: string; meta?: string; id?: string; on?: string; image?: string; source?: WebSource }
+export interface TrendSection { kind: 'event' | 'season' | 'places'; heading: string; rows: TrendRow[] }
+export interface TrendsBlock { kind: 'trends'; as_of: string; sections: TrendSection[]; cards: ChatPlace[] }
+export type ResultBlock = DishBlock | ServicesBlock | TagsBlock | TrendsBlock
 
 export interface ChatPlaces { ids: string[]; why: string; cards: ChatPlace[] }
 

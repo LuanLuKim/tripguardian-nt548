@@ -8,8 +8,9 @@ import { Icon } from '../../ui/icons'
 
 // Name chats after their first message; older journeys fall back to their place and days. Metadata stays in the tooltip.
 // A trip that went on to Lựa chọn without a typed word is a trip, not a new chat: it is named after the city and its picks.
+// A chat that kept places (stepped back to the chat from Lựa chọn) is not a new chat: it never carries that name.
 const chatName = (t: TripSummary) => t.title || (t.days ? tripTitle(t)
-  : t.stage !== 'trip' ? `${tripTitle(t)}${t.places.length ? ` · ${t.places.length} nơi` : ''}` : 'Cuộc trò chuyện mới')
+  : t.stage !== 'trip' || t.places.length ? `${tripTitle(t)}${t.places.length ? ` · ${t.places.length} nơi` : ''}` : 'Cuộc trò chuyện mới')
 
 const STAGE: Record<TripSummary['stage'], string> = { trip: 'Tìm hiểu', decision: 'Lựa chọn', planning: 'Lịch trình' }
 const chatMeta = (t: TripSummary) => [t.days ? `${t.days} ngày` : null, t.people ? `${t.people} người` : null, t.places.length ? `${t.places.length} nơi` : null, t.confirmed ? 'Đã chốt' : STAGE[t.stage]].filter(Boolean).join(' · ')
@@ -99,12 +100,33 @@ export function History({ active, busy, collapsed, onToggle, onNew, onOpen }: { 
             {!list && !error ? <p className="tg-find__none">Đang tải…</p>
               : error ? <p className="tg-find__none">Chưa tải được lịch sử.</p>
               : found.length === 0 ? <p className="tg-find__none">{q ? `Không có chuyến nào khớp “${query.trim()}”.` : 'Những chuyến bạn bắt đầu sẽ nằm ở đây.'}</p>
-              : found.map(t => <button key={t.id} type="button" className={`tg-find__row ${t.id === active ? 'is-active' : ''}`} disabled={busy} onClick={() => open(t)}><Icon name="chat" size={20} /><span>{chatName(t)}</span>{t.confirmed && <small>Đã chốt</small>}</button>)}
+              : found.map(t => <div key={t.id} className={`tg-find__item ${t.id === active ? 'is-active' : ''}`}>
+                <button type="button" className="tg-find__row" disabled={busy} onClick={() => open(t)}><Icon name="chat" size={20} /><span>{chatName(t)}</span>{t.confirmed && <small>Đã chốt</small>}</button>
+                <button type="button" className="tg-find__del" aria-label={`Xóa cuộc trò chuyện: ${chatName(t)}`} title="Xóa cuộc trò chuyện" disabled={busy} onClick={() => { setRemoveError(false); setRemoving(t) }}><Icon name="x" size={18} /></button>
+              </div>)}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   )
+  // One confirmation for both ways to delete (the row's menu and the search palette's cross), in the folded strip too.
+  const confirm = (
+    <Dialog.Root open={!!removing} onOpenChange={o => { if (!o && !removeBusy) setRemoving(null) }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="tg-history__veil is-top" />
+        <Dialog.Content className="tg tg-history__confirm">
+          <Dialog.Title>Xóa cuộc trò chuyện này?</Dialog.Title>
+          <Dialog.Description>“{removing ? chatName(removing) : ''}” sẽ biến mất khỏi danh sách của bạn và không mở lại được.</Dialog.Description>
+          {removeError && <p role="alert" className="tg-history__err">Chưa xóa được. Bạn thử lại nhé.</p>}
+          <div>
+            <button type="button" disabled={removeBusy} onClick={() => setRemoving(null)}>Hủy</button>
+            <button type="button" className="is-danger" disabled={removeBusy} onClick={() => removing && remove(removing)}>{removeBusy ? 'Đang xóa…' : 'Xóa'}</button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+
   // Folded: the column is gone; three small icons float at the top-left of the chat (open, new chat, search).
   if (collapsed) return (
     <>
@@ -114,6 +136,7 @@ export function History({ active, busy, collapsed, onToggle, onNew, onOpen }: { 
         <button type="button" className="tg-history__ic" aria-label="Tìm kiếm" title="Tìm kiếm" onClick={() => setSearching(true)}><Icon name="search" size={19} /></button>
       </div>
       {palette}
+      {confirm}
     </>
   )
   return (
@@ -158,20 +181,7 @@ export function History({ active, busy, collapsed, onToggle, onNew, onOpen }: { 
             </section>
           ))}
       </div>
-      <Dialog.Root open={!!removing} onOpenChange={o => { if (!o && !removeBusy) setRemoving(null) }}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="tg-history__veil" />
-          <Dialog.Content className="tg tg-history__confirm">
-            <Dialog.Title>Xóa cuộc trò chuyện này?</Dialog.Title>
-            <Dialog.Description>“{removing ? chatName(removing) : ''}” sẽ biến mất khỏi danh sách của bạn và không mở lại được.</Dialog.Description>
-            {removeError && <p role="alert" className="tg-history__err">Chưa xóa được. Bạn thử lại nhé.</p>}
-            <div>
-              <button type="button" disabled={removeBusy} onClick={() => setRemoving(null)}>Hủy</button>
-              <button type="button" className="is-danger" disabled={removeBusy} onClick={() => removing && remove(removing)}>{removeBusy ? 'Đang xóa…' : 'Xóa'}</button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      {confirm}
       <footer className="tg-history__foot"><Icon name="lock" size={14} /><span>Mỗi chuyến đi, một câu chuyện riêng.</span></footer>
     </aside>
   )

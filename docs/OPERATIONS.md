@@ -42,8 +42,8 @@ Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô t�
 | NAS (`/data/work/luanhh/nas/tripguardian/`) | Cách tạo |
 |---|---|
 | `pg-backup/` | `scripts/pg_backup_nas.sh` hằng đêm (§4): `pg_dump` nén, giữ 14 bản mới nhất, chỉ chủ sở hữu đọc được; đổi đích bằng `PG_BACKUP_DIR` |
-| `data/` | bản sao `data/`, chép lại bằng tay: `rsync -aH data/ /data/work/luanhh/nas/tripguardian/data/` |
-| `archive-<ngày>/` | log, file làm việc và bản backup cũ đã dọn khỏi repo (tar + danh sách) |
+
+Từ 14/11/2026 NAS **chỉ** giữ `pg-backup/`. Bản sao `data/` (267 GB, chủ yếu `tiktok/videos`) và `archive-20261109/` đã bị chủ dự án xóa để giữ hạn mức `/data/work` (NAS + local cộng chung 1000 GiB): `data/` hiện chỉ có một bản ở local. Không chép `data/` lên NAS lại khi chưa hỏi chủ dự án. Sau khi NAS bị xóa, cron 02:30 tự tạo lại `pg-backup/` (kiểm `logs/pg_backup_nas.log`).
 
 `./run.sh db-backup` là bản dump tại chỗ vào `data/backup/pg/` (giữ 14), `prod` chạy nó trước khi migrate.
 
@@ -57,7 +57,7 @@ Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô t�
 */10 * * * * /data/work/luanhh/local/tripguardian/scripts/disk_guard.sh # tripguardian-disk-guard
 30 2 * * * /data/work/luanhh/local/tripguardian/scripts/pg_backup_nas.sh # tripguardian-pg-backup
 15 3 * * * cd /data/work/luanhh/local/tripguardian && ./run.sh prewarm >> logs/prewarm_transit.log 2>&1
-0 4 * * * /data/work/luanhh/local/tripguardian/scripts/pulse_daily.sh dalat --once # tripguardian-pulse
+0 4 * * * /data/work/luanhh/local/tripguardian/scripts/trends_daily.sh dalat # tripguardian-trends
 ```
 
 - `@reboot`: Docker rootless tự lên (linger bật); 120 giây sau chạy lại toàn bộ `prod`, log `logs/run/reboot.log`. `SKIP_CLEF=1` vì GPU dùng chung với người khác; muốn Clef tự lên sau reboot thì bỏ biến này.
@@ -65,7 +65,7 @@ Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô t�
 - `disk_guard.sh`: ổ chứa Docker data-root còn dưới 5 GiB thì ghi `logs/disk_guard.log` và chạy `CHECKPOINT` trên Postgres.
 - `pg_backup_nas.sh`: §3, log `logs/pg_backup_nas.log`.
 - `prewarm` (`scripts/prewarm_transit.py`): tra trước xe khách cho các tuần tới vào cache `data/live/vexere/` (phạm vi `config/live.yaml` `transit_prewarm`; một nguồn lỗi 8 lần liền thì dừng nguồn đó). Chuyến bay không cache (`flight_cache: false`): mỗi câu hỏi mở Google Flights trực tiếp. Máy không có Chrome thì `run.sh` trỏ Playwright vào Chromium trong `.cache/ms-playwright`.
-- `pulse_daily.sh`: làm mới bản tin Nhịp Đà Lạt từ dữ liệu đã crawl (`docs/CORPUS.md` §Nhịp Đà Lạt), log `logs/pulse_daily.log`; bản tin cũ quá `stale_after_days` thì web báo chưa được làm mới.
+- `trends_daily.sh`: crawl đêm cho Nhịp Đà Lạt rồi dựng bản tin (`docs/CORPUS.md` §Nhịp Đà Lạt, §Sự kiện sắp tới): `corpus events` (sự kiện tháng này và tháng sau từ web, Extractor trên endpoint Judge / UIT), `corpus tiktok poi_refresh` (`poi_refresh_per_run` = 200 trang nơi TikTok, không đăng nhập, không tải video), rồi `pulse_daily.sh --once`. Bước lỗi được ghi và bước sau vẫn chạy; khóa `logs/trends_daily.lock` tránh chạy chồng; log `logs/trends_daily.log` (bản tin: `logs/pulse_daily.log`). Thay dòng `tripguardian-pulse` cũ (chỉ tính lại bản tin, không crawl). Bản tin cũ quá `stale_after_days` thì web báo chưa được làm mới.
 
 ## 5. Kiểm tra sức khỏe
 

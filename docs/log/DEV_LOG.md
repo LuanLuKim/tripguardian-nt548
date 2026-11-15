@@ -29,6 +29,48 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 
 ## Các mục
 
+## web-ui-feedback-round2-2026-11-13 — Chọn phương án, gợi ý khoảng trống, Thêm trải nghiệm, Hành trình
+
+- file: `src/planning/overload.py` (tên hướng, bỏ ghép tên khi trùng lịch); `web/src/user/screens/plan/{Choose,GhostSlot,Find,Journey,Overview,parts,fill,WayIn,DayView,shared}.ts(x)`, `screens/Plan.tsx`, `planning/{planning.tsx,types.ts}`, `data/store.ts` (`allPlaceIds`), `css/{day,plan,itinerary,journey}.css`; bỏ `PlaceSwapPicker`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/planning` (1170 passed, 1 skipped); `cd web && npx tsc --noEmit`; `plan/notes`, `pd/web-f`, `understand/trip-disc`, `journey`, `scripts/test_planning_state.mjs` đạt. Chạy thật (Vite :5199 → harness :8769, khách mới): ảnh `frontend_images/real6/`, `real7/`.
+
+### Hiện tại (13/11/2026)
+- Chọn phương án: tối đa 3 thẻ, xếp theo dùng được → giữ nhiều nơi → hợp gu → ít đi lại; trùng lịch là một thẻ; tên *Giữ nơi hợp gu nhất / Di chuyển thuận lợi nhất / Tiết kiệm nhất* (web đổi tên theo id nên bản server cũ cũng hiện đúng); khối Lợi ích / Hạn chế; bấm thẻ là xem lịch trình, *Xem phương án khác* quay lại, chỉ Chốt mới khóa.
+- Tổng quan: *Điểm xuất phát* là mục riêng trước *Đến Đà Lạt* (thẻ bên phải chỉ hỏi nơi khởi hành); hàng *Đường tới Đà Lạt · Chọn* quay lại dưới *Đến Đà Lạt*; gợi ý chỗ nghỉ là lưới thẻ đầy khung, tối đa 8 chỗ, mỗi thẻ có *Chọn*.
+- Ngày: khoảng trống giữ hàng thẻ cũ, thêm nút "+" sau thẻ cuối; bấm "+" mở *Thêm trải nghiệm* (thiết kế cũ, đè lên nửa bản đồ, cột ngày vẫn thấy) với Nguồn *Tất cả* (cả danh mục Đà Lạt trừ chỗ ở) / *Gợi ý* / *Đã lưu* và đủ loại trải nghiệm theo nguồn.
+- Xem trước thay đổi: gắn với lịch (`view.state`), không với một bản `view`; trước đó gợi ý tải sau (poll 300 ms) làm mất kết quả xem trước. Có thông báo "Đang xem trước thay đổi…" trong lúc chờ (server 5–10 giây).
+- Hành trình: sơ đồ lộ trình cùng bảng màu Lịch trình (`Journey.tsx`, `css/journey.css`; `Plan.tsx` đọc `useRoutes` cả khi đang ở màn này). Mỗi ngày một bảng trắng, các mục lấy đúng từ lịch ngày và đúng thứ tự: *Xuất phát* (tên từ `routes`), khối Tự do / Nghỉ / Ăn (nghỉ `drop_bags` là "Ghé chỗ ở gửi đồ"), điểm dừng (ảnh, giờ, thời lượng), *Kết thúc ngày*; treo trên / dưới đường nét đứt, tối đa 7 mốc một hàng (5 / 3 khi hẹp), hàng sau đi ngược; số chấm chỉ đếm điểm dừng; chiều cao hàng theo loại thẻ. Đường nét đứt đi liền từ *Kết thúc ngày* ngày trước, qua ô *Nghỉ đêm*, vào *Xuất phát* ngày sau (`Through` + `Link`); hiện dần khi cuộn.
+
+### Trước đó (_không có_)
+- hành vi: _không có_
+
+## web-ui-feedback-real-2026-11-13 — Chạy thật Lịch trình: lỗi lưu điểm xuất phát, lịch cũ sau khi dựng lại, cổng đứng ở dev
+
+- file: `src/harness/dispatch.py` (`decision.trip` nhận thêm `edit`), `tests/harness/test_trip_gate.py`; `web/src/user/ui/Gate.tsx` (`useFan` đặt lại `raf`), `screens/Plan.tsx`, `screens/plan/{fill,candidates,pickers,panels,WayIn,Overview}.ts(x)`, `css/{plan,itinerary}.css`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/harness` (481 passed, 3 skipped); `cd web && npx tsc --noEmit`; `plan/notes`, `pd/web-f`, `understand/trip-disc`, `journey` test đạt. Chạy thật: Vite :5199 → harness prod :8769, khách mới, chat → Chọn nơi → cổng → Lịch trình (chỗ nghỉ, Thêm / Đổi, Đã lưu, *Thêm* nơi ngoài lựa chọn, Hành trình, Chốt → `/done`); ảnh `frontend_images/real4/`. Lưu điểm xuất phát chỉ kiểm bằng pytest: harness prod chạy `.prod_src/` cũ nên vẫn trả 400 cho tới khi deploy.
+
+### Hiện tại (13/11/2026)
+- server: `decision.trip` nhận `deck`, `drop`, `edit`, `readback_ok`. Trước đó `edit` bị từ chối (400) nên mọi nút *Sửa* trong bản tóm tắt của cổng và thẻ *Bạn đi từ đâu, bằng gì?* ở Lịch trình đều báo "Chưa lưu được thông tin".
+- web: sau khi lưu thẻ Thông tin chuyến / điểm xuất phát / *Thêm* nơi ngoài lựa chọn, Lịch trình đọc lại lịch (`useTripEdit` gọi `reload()`); trước đó màn vẫn hiện lịch cũ và *Chốt* gửi vào lịch mới chưa chọn phương án (HTTP 500).
+- web: quạt thẻ của cổng chạy lại ở dev (StrictMode làm `raf` cũ chặn `run()`, thẻ trước đứng yên và che thẻ đang hỏi); prod không đổi.
+- giao diện: Đến Đà Lạt một hàng điểm xuất phát (*Thêm* / *Đổi*), bỏ hàng *Đường tới Đà Lạt · Chọn* và khối "Thêm điểm xuất phát" lặp; gợi ý chỗ nghỉ ở Tổng quan là ba thẻ ngang không chồng (≥ 900 px; hẹp hơn vẫn là quạt); thẻ chỗ ở ở màn Chọn phương án trải đều, mỗi dòng một hàng; bảng Thêm / Đổi một dòng lý do, nút *Thêm* / *Đổi*, không lặp nơi, không lộ mã `same_kind`; ô tìm chỗ nghỉ "Tìm chỗ nghỉ theo tên, địa chỉ".
+
+### Trước đó (_không có_)
+- hành vi: _không có_
+
+## web-ui-feedback-2026-11-13 — Lịch sử chat, cổng thông tin, bảng bên phải ở Lịch trình, màn Hành trình
+
+- file: `web/src/user/screens/{Understand,Explore,Lodging,Plan,Account}.tsx`, `screens/understand/History.tsx`, `screens/plan/{panels,pickers,fill,Journey,WayIn,parts}.tsx`, `ui/{ReadbackSheet,Ticket,useStagedList}.ts(x)`, `css/{plan,gate,workspace,explore,screens}.css`; bỏ `plan/Swap.tsx`, `TimeCard`
+- cách kiểm chứng: `cd web && npx tsc --noEmit`; `plan/notes.test.mjs` (bỏ ca TimeCard / Swap), `pd/web-f.test.mjs`, `trip-disc.test.mjs`, `journey.test.mjs` đạt; `chat-trim.test.mjs` fail từ trước (thay đổi chưa commit của Blocks / Turn, không phải đợt này). Ảnh `frontend_images/ui-feedback-*.png` chụp từ fixture, chưa chạy với harness thật.
+
+### Hiện tại (13/11/2026)
+- hành vi: bấm chuyện cũ ở lịch sử chỉ mở hội thoại (không nhảy sang bước đang làm), có dấu X xóa trong ô tìm kèm hộp xác nhận, nút ba chấm to hơn; Chọn nơi giữ thứ tự thẻ khi chọn / bỏ (nơi mới nối đuôi); ô tìm của tab Nơi lưu trú tìm trong chỗ ở (`lodgingSuggest`), mọi tab có biểu tượng; Chuyến của tôi có tab *Đang lên kế hoạch*
+- cổng trước lập lịch: thẻ ngày / lưu ý giữ thiết kế cũ; trả lời xong không tự sang Lịch trình, bản tóm tắt sửa tại chỗ bằng ô sửa của phiếu chuyến (không còn *Sửa trong Tìm hiểu* ở bản tóm tắt)
+- Lịch trình: Đi với / Nhịp độ / Ngân sách / Đường tới và điểm xuất phát mở bảng bên phải; chọn chỗ nghỉ, Đổi, Thêm, "+" của thẻ gợi ý mở bảng chọn nơi (tab Gợi ý / Đã lưu, có ô tìm); bỏ thẻ Giờ ghé; Đề xuất tối ưu là thẻ giữa màn; Chốt kế hoạch này → màn Hành trình → Chốt hành trình → Phản hồi
+
+### Trước đó (_không có_)
+- hành vi: _không có_
+
 ## planning-gate-2026-11-10 — Chỉ hỏi ngày đi và lưu ý an toàn trước lập lịch
 
 - file: `src/trip/{domain/readiness,domain/required,domain/deck,domain/compile,api/engine}.py`, `src/planning/engine.py`, `src/harness/dispatch.py`, `web/src/user/ui/{ReadbackSheet,Gate}.tsx`, `web/src/user/css/gate.css`; test Trip / Planning / Harness và `web/scripts/test_planning_gate_*.mjs`.
@@ -1007,3 +1049,22 @@ _không có_
 - hành vi: Chưa deploy. `layout.assign`: tập nơi xếp đủ mà còn ngày trống thì ngày đó nhận một nơi từ ngày có ít nhất hai nơi khi tổng đường tăng không quá `spread_extra_min` (default 45 trong `settings.py`, chưa ghi vào YAML vì prod đọc `config/` trực tiếp); 4 nơi cùng khu / 3 ngày ra 2-1-1 thay vì 4-0-0; cụm xa vượt ngưỡng vẫn ở cùng nhau. `conditions.describe(cond, cfg)` thêm `weather_cause` vào `day_conditions`; web hiện "Gió mạnh (…)" thay nhãn cố định "Mưa lớn hoặc dông", lịch dựng trước đó giữ nhãn cũ.
 ### Trước đó (2026-11-04)
 - hành vi: Chỉ dời nơi sang ngày trống khi tổng đường không tăng, nên chuyến có chỗ ở (mỗi ngày thêm một lượt đi-về) gần như không bao giờ dời. Web gọi mọi ngày `heavy` là "Mưa lớn hoặc dông", kể cả ngày chỉ có gió giật.
+
+## chat-style-2026-11-13 — chat Hiểu chuyến đi: dòng "đang làm gì" như ChatGPT, chip nguồn, thẻ nơi bấm mới mở, văn phong tự nhiên (`docs/Role_Web_Functional_Design.md` §6, `docs/TRIP_UNDERSTANDING.md` §19)
+
+- file: `web/src/user/screens/understand/{Turn,Places,Rich,Sources}.tsx`, `web/src/user/css/{chat,ask}.css`, `src/trip/agent/prompt.py` (`ASSISTANT`: Trends, Voice)
+- cách kiểm chứng: `cd web && npx tsc -b`; `pytest tests/trip tests/agents`; dựng `Turn` (bước đang chạy, bước xong, `ChatPlaces` không `why`) và chụp ảnh; lượt thật qua `bench.assistant.engine_for("live")` với "research cho tui đà lạt có gì hot", "3 ngày 2 đêm đi với người yêu nên đi đâu", "tháng 11 có sự kiện gì". `chat-trim.test.mjs` ca `completed` / `waiting` đã đỏ từ trước thay đổi này (bước `rec:` đang hiện còn test đòi ẩn), ca `dish` xanh.
+### Hiện tại (2026-11-13)
+- hành vi: Chưa deploy. Chủ dự án 13/11: giữ trả lời ngắn trong bong bóng (gọn hơn bài dài của ChatGPT), chỉ học điểm hay của ChatGPT; bản thử bài research đọc web (25–40 s mỗi lượt) đã bỏ vì quá chậm cho sản phẩm.
+  - Dòng tiến trình: một dòng chữ xám, đang chạy thì nói bước hiện tại ("Đang tìm kiếm N trang web", "Đang ghi nhận người đi cùng", không có bước thì "Đang suy nghĩ"), xong thì "Đã xử lý trong N giây"; luôn gập, bấm mới mở danh sách bước (chữ xám trên một đường kẻ, bỏ chấm tròn và biểu tượng tia sáng).
+  - Lượt xong có nguồn web: một chip "tên-miền +N" dưới lời, bấm xổ danh sách link (chữ cái trên nền màu thay favicon, không gọi dịch vụ ngoài; chỉ link http/https). `Rich` dựng đoạn / danh sách / `##` / `**đậm**` thành phần tử (không HTML).
+  - `PlaceStage` và khối tag không tự mở: chat chỉ có một dòng ảnh nhỏ, bấm mới mở sân khấu (`autoOpen` mặc định tắt; `ui/Assistant.tsx` bước quyết định vẫn bật). Tiêu đề: `why` của agent nếu có, không thì loại nơi chiếm ≥ 60% ("Quán cà phê hợp với chuyến này"), hai loại chiếm ≥ 80%, còn lại "Nơi hợp với chuyến này"; dòng phụ là số nơi và hai tên đầu; bỏ chữ "từ dữ liệu". Câu hỏi bằng ảnh (`PhotoStage`) vẫn tự mở vì cần trả lời.
+  - Văn phong (prompt, prod chưa có vì `.prod_src/` đóng băng): xu hướng kể như người quen theo dõi Đà Lạt, không đọc số video / đánh giá / tác giả, ngày cập nhật nói một lần, không mở đầu bằng "Tham khảo:"; mọi lời không nói về chính dữ liệu ("theo dữ liệu", "dữ liệu ghi nhận", "N video"). Đo 13/11: "có gì hot" 7,3 s ("Tính đến 12/11, Vườn Hồng Chân đèo Mimosa, Tu viện Phanxicô và Đồi Gác Vọng đang được nhiều người chú ý…"), "đi với người yêu" 8,2 s.
+  - Còn mở: sự kiện tháng 11 vẫn thiếu và có mục đã qua (Jazz 6–8/11) vì đầu vào của Nhịp (TikTok, Maps, web) dừng ở 27–29/10 dù bản tin vẫn chạy mỗi đêm.
+
+## trends-events-2026-11-13 — sự kiện có ngày từ web, TikTok liệt kê lại mỗi đêm, khối xu hướng trong chat (`docs/CORPUS.md` §Sự kiện sắp tới, §Nhịp)
+
+- file: `src/corpus/events/{__init__,gate,run}.py`, `config/web_events.yaml`, `src/corpus/llm/tasks.py` (`EVENT_EXTRACT`), `src/corpus/crawl/web/client.py` (`image`, `per_domain`), `src/corpus/crawl/tiktok/poi_refresh.py`, `src/corpus/pulse/{signals,compute,render,__init__}.py`, `config/{pulse,queries}.yaml`, `src/trip/api/{blocks,engine}.py` (`trends_block`), `src/trip/infrastructure/knowledge.py` (`trend_rows`, `_intro`, `allows`), `web/src/user/screens/understand/{Trends,Blocks,Turn,Sources}.tsx`, `web/src/user/tu/types.ts`, `scripts/trends_daily.sh`, `tests/events/`, `tests/trip/test_trends_block.py`, `tests/pulse/test_pulse_compute.py`
+- cách kiểm chứng: `pytest tests/events tests/pulse tests/trip`; `python -m corpus events --city dalat`, `python -m corpus pulse --city dalat`, rồi đọc bằng `.prod_src` (bàn giao `docs/plans/2026-11-13-chat-trends-HANDOFF.md`); lượt chat thật "tháng 11 có sự kiện gì".
+### Hiện tại (2026-11-13)
+- hành vi: Chưa deploy, cron chưa đổi. `corpus events`: 5 truy vấn có tháng / năm, 14 trang + 22 đoạn trích, 81 mục model trả, 23 sự kiện qua gate; Nhịp chọn 6 (Festival Âm nhạc quốc tế Lang Biang 13–15/11, K-Vietnam Wellness 20/11, giải chạy 21/11, Festival Hoa 19–31/12, …) thay các sự kiện chỉ có tháng. Mục sự kiện mới vẫn mang `status` / `months` để prod cũ đọc được. `poi_refresh` thử 5 nơi; lượt đầu 731 nơi và dòng cron chờ chủ dự án. Chat: câu xu hướng có lời ngắn + khối mục đánh số (chỉ phần được hỏi), hàng không ảnh hiện như đoạn bài viết; "tháng 11 có sự kiện gì" 6 s.

@@ -3,6 +3,7 @@
 Nothing here crawls: a source that is missing gives an empty signal, never an invented one."""
 
 import json
+import re
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -61,15 +62,27 @@ def tiktok_videos(root: Path, fids: set, tz_h: int) -> dict:
     return {fid: list(rows.values()) for fid, rows in out.items()}
 
 
+def maps_recent(root: Path, fid: str) -> dict | None:
+    """The place's newest reviews from `gmaps refresh` (data/gmaps/reviews_recent/), None when never refreshed."""
+    return _read(root / "gmaps" / "reviews_recent" / f"{_safe(fid)}.json")
+
+
 def maps_reviews(root: Path, fids: set) -> dict:
-    """{fid: [{date, author, stars}]} from data/gmaps/observations (the date is the crawl's reading of 'x trước')."""
+    """{fid: [{date, author, stars}]} from data/gmaps/observations (the date is the crawl's reading of 'x trước') and
+    the reviews `gmaps refresh` read since; one row per author (Maps keeps one review per person), the later reading
+    winning."""
     out = {}
     for fid in fids:
         d = _read(root / "gmaps" / "observations" / f"{_safe(fid)}.json")
-        rows = [{"date": r["observed_at"][:10], "author": r["author"], "stars": r["stars"]}
-                for r in (d or {}).get("ratings", []) if r.get("observed_at") and r.get("author") and r.get("stars") is not None]
+        rows = {r["author"]: {"date": r["observed_at"][:10], "author": r["author"], "stars": r["stars"]}
+                for r in (d or {}).get("ratings", []) if r.get("observed_at") and r.get("author") and r.get("stars") is not None}
+        recent = maps_recent(root, fid) or {}
+        for r in recent.get("reviews") or ():
+            day, s = observed_at(r.get("published_text"), recent["at"]), stars(r.get("rating"))
+            if day and s and r.get("author_hash"):
+                rows[r["author_hash"]] = {"date": day, "author": r["author_hash"], "stars": s}
         if rows:
-            out[fid] = rows
+            out[fid] = list(rows.values())
     return out
 
 
@@ -82,12 +95,40 @@ def maps_places(root: Path, fids: set, tz_h: int) -> tuple[dict, dict]:
         d = _read(f)
         if not d or not d.get("fid"):
             continue
-        if d["fid"] in fids and isinstance(d.get("reviews"), int):
-            totals[d["fid"]] = d["reviews"]
-        if d.get("status") == CLOSED:
-            as_of = datetime.fromtimestamp(f.stat().st_mtime, UTC).astimezone(tz).date().isoformat()
-            status[d["fid"]] = {"name": d.get("name") or "", "status": CLOSED, "as_of": as_of, "reviews": d.get("reviews") or 0}
+        recent = maps_recent(root, d["fid"]) or {}
+        now_count = _count(recent.get("review_count"))  # what Maps shows at the last refresh, when there was one
+        if d["fid"] in fids and (now_count or isinstance(d.get("reviews"), int)):
+            totals[d["fid"]] = now_count or d["reviews"]
+        if (recent.get("status") or d.get("status")) == CLOSED:
+            as_of = (recent["at"][:10] if recent.get("status") == CLOSED else
+                     datetime.fromtimestamp(f.stat().st_mtime, UTC).astimezone(tz).date().isoformat())
+            status[d["fid"]] = {"name": d.get("name") or "", "status": CLOSED, "as_of": as_of,
+                                "reviews": now_count or d.get("reviews") or 0}
     return totals, status
+
+
+_AGE = re.compile(r"(một|\d+) (phút|giờ|ngày|tuần|tháng|năm) trước")   # as corpus.observe.gmaps.prep, which pulls the
+_DAYS = {"phút": 0, "giờ": 0, "ngày": 1, "tuần": 7, "tháng": 30, "năm": 365}  # Extractor in: online reads this module
+
+
+def observed_at(published_text: str | None, fetched_at: str) -> str | None:
+    """The day Maps' "3 tuần trước" means, read at fetched_at."""
+    m = _AGE.search(published_text or "")
+    if not m:
+        return None
+    days = (1 if m.group(1) == "một" else int(m.group(1))) * _DAYS[m.group(2)]
+    return (datetime.fromisoformat(fetched_at).date() - timedelta(days=days)).isoformat()
+
+
+def stars(rating: str | None) -> int | None:
+    m = re.match(r"\s*([1-5])", rating or "")
+    return int(m.group(1)) if m else None
+
+
+def _count(text) -> int | None:
+    """Number in a Maps label ("1.701 bài đánh giá" -> 1701)."""
+    digits = re.sub(r"\D", "", str(text or "").split(" ")[0])
+    return int(digits) if digits else None
 
 
 def web_domains(root: Path, city: str, fids: set) -> dict:

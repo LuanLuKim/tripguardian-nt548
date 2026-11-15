@@ -17,7 +17,7 @@ from .aggregate import run as aggregate_run
 from .serving import run as serving_run
 from . import build, judge, navigate, pulse, views
 from .review import server as review_server
-from .crawl.gmaps import counts as gmaps_counts, crawl as gmaps_crawl, filter as gmaps_filter, listing as gmaps_list, qc as gmaps_qc, relevant as gmaps_relevant, extremes as gmaps_extremes, keywords as gmaps_keywords, visit as gmaps_visit, revisit as gmaps_revisit, services as gmaps_services, search as gmaps_search, stay_price as gmaps_stay_price, resolve as gmaps_resolve
+from .crawl.gmaps import counts as gmaps_counts, crawl as gmaps_crawl, filter as gmaps_filter, listing as gmaps_list, qc as gmaps_qc, relevant as gmaps_relevant, extremes as gmaps_extremes, keywords as gmaps_keywords, visit as gmaps_visit, revisit as gmaps_revisit, refresh as gmaps_refresh, services as gmaps_services, search as gmaps_search, stay_price as gmaps_stay_price, resolve as gmaps_resolve
 from .observe import gmaps as gmaps_observe
 from .observe.gmaps import photos as gmaps_photo_observe
 from .observe.gmaps import styles as gmaps_style_observe
@@ -57,7 +57,7 @@ PHASES = {  # source -> phase -> (run, needs a browser)
               "list": (gmaps_list.run, False), "svc_search": (gmaps_services.run_search, True), "svc_list": (gmaps_services.run_list, False), "svc_place": (gmaps_services.run_place, True), "stay_price": (gmaps_stay_price.run, True),
               "crawl": (gmaps_crawl.run, True), "relevant": (gmaps_relevant.run, True), "extremes": (gmaps_extremes.run, True),
               "keywords": (gmaps_keywords.run, True), "visit": (gmaps_visit.run, True), "revisit": (gmaps_revisit.run, True),
-              "photos": (gmaps_photos.run, True), "menu": (gmaps_menu.run, True), "qc": (gmaps_qc.run, False),
+              "refresh": (gmaps_refresh.run, True), "photos": (gmaps_photos.run, True), "menu": (gmaps_menu.run, True), "qc": (gmaps_qc.run, False),
               "observe": (gmaps_observe.run, False), "photo_observe": (gmaps_photo_observe.run, False),
               "style_observe": (gmaps_style_observe.run, False), "photo_scenes": (gmaps_photo_scenes.run, False), "photo_appeal": (gmaps_photo_appeal.run, False),
               "menu_read": (gmaps_menu_read.run, False), "dish_check": (gmaps_dish_check.run, False),
@@ -71,18 +71,19 @@ PHASES = {  # source -> phase -> (run, needs a browser)
 }
 
 
+NOT_IN_ALL = {("gmaps", "refresh")}  # a nightly job of its own (docs/CORPUS.md §Nhịp), not a step of the first crawl
 SHARDABLE = {"place_search", "place_crawl", "comments_crawl"}  # tiktok phases that split their todo list by --shard for a second account
 
 
 def run(source: str, phase: str, city: str, headed: bool, limit: int | None = None, wait_relevant: bool = False,
         profile: str | None = None, shard: tuple[int, int] | None = None, place_web: dict | None = None) -> None:
-    for p in PHASES[source] if phase == "all" else (phase,):
+    for p in [q for q in PHASES[source] if (source, q) not in NOT_IN_ALL] if phase == "all" else (phase,):
         fn, browser_phase = PHASES[source][p]
         if browser_phase and source == "tiktok":
             out = fn(city, headed, profile_name=profile, **({"shard": shard} if p in SHARDABLE else {}),
                      **({"limit": limit} if p in ("place_crawl", "poi_crawl", "poi_refresh", "web_videos") else {}))
-        elif source == "gmaps" and p in ("crawl", "relevant", "extremes", "keywords", "photos", "menu", "visit", "revisit", "svc_search", "svc_place"):
-            out = fn(city, headed, **({"limit": limit} if p in ("extremes", "keywords", "photos", "menu", "visit", "revisit", "svc_search", "svc_place") else {}),
+        elif source == "gmaps" and p in ("crawl", "relevant", "extremes", "keywords", "photos", "menu", "visit", "revisit", "refresh", "svc_search", "svc_place"):
+            out = fn(city, headed, **({"limit": limit} if p in ("extremes", "keywords", "photos", "menu", "visit", "revisit", "refresh", "svc_search", "svc_place") else {}),
                      shard=shard, profile_name=profile)
         elif browser_phase and p in ("photos", "extremes", "keywords", "visit", "pages", "stay_price", "price", "resolve", "offers"):
             out = fn(city, headed, limit=limit)

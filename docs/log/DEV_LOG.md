@@ -43,6 +43,18 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 ### Trước đó
 - _không có_
 
+## gmaps-refresh-2026-11-15 — Đánh giá Maps mới cho Nhịp, Extractor trên UIT
+
+- file: `src/corpus/crawl/gmaps/refresh.py`, `src/corpus/__main__.py` (`refresh`, `NOT_IN_ALL`), `src/corpus/pulse/signals.py` (`maps_recent`, `maps_reviews`, `maps_places`), `scripts/trends_daily.sh`; `.env` (Extractor → UIT); test `tests/pulse/test_pulse_signals.py`, `tests/crawl/gmaps/test_gmaps_refresh.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/pulse tests/crawl/gmaps/test_gmaps_refresh.py`; chạy thật `CORPUS_ATTACH_URL=http://127.0.0.1:9530 CORPUS_PROFILE_STATE=1 … -m corpus gmaps refresh --city dalat --limit 5` (5/5, 120 đánh giá mỗi nơi).
+
+### Hiện tại (15/11/2026)
+- `gmaps refresh` lấy đánh giá Maps mới (tới "một tháng trước", tối đa 120) của nơi đang phục vụ, chỗ ở sau cùng, nơi lâu chưa làm mới trước; ghi `data/gmaps/reviews_recent/`. Nhịp gộp vào `maps_reviews` (mỗi người một dòng) và lấy số đánh giá / trạng thái đóng cửa mới nhất. Chạy trong cửa sổ đăng nhập cổng 9530; job đêm bỏ qua khi cửa sổ đóng.
+- Extractor chạy trên Gemma UIT (`EXTRACTOR_PARALLEL=36`) vì host LAN không phản hồi; prod đã `prod-restart`.
+
+### Trước đó (_không có_)
+- hành vi: _không có_ (đánh giá Maps dừng ở lần crawl cuối; Extractor trỏ host LAN `:8900` đã chết).
+
 ## overload-most-2026-11-15 — Hướng thứ tư "Giữ nhiều nơi bạn chọn nhất", confirm chưa chọn hướng
 
 - file: `src/planning/overload.py` (`DIRECTIONS`, `LABEL` / `GAIN` / `TRADEOFF`, `_next` nhánh `most`), `src/planning/engine.py` (`confirm`); `web/src/user/screens/plan/{Choose.tsx,shared.ts}`, `planning/types.ts`; test `tests/planning/test_planning_{overload,overload_edits,composer,engine,lodging_golden,variants}.py`, `realistic_checks.py`

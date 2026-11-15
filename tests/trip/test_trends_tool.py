@@ -26,7 +26,7 @@ def with_trends(retrieval, served_catalog):
 def test_places_go_through_the_hard_filters_and_carry_their_id(with_trends, kids_hard_state):
     k, calls = with_trends
     out = k.trends(kids_hard_state, kind="hot", month=None)
-    assert calls == [{"kind": "hot", "month": None, "limit": 3}]
+    assert calls == [{"kind": "hot", "month": None, "limit": 8}]  # one kind asked: its whole short list (ONE_KIND_LIMIT)
     assert out["items"][0]["sources"] == [{"label": "Video TikTok", "date": "2026-10-27"}]  # no URL: its digits would flood told_numbers
     assert [i["name"] for i in out["items"]] == ["Cà Phê Đồi Thông Xanh", "Dã quỳ"]  # the unsuitable place is gone
     assert out["items"][0]["id"] == "0xa:0x1" and "id" not in out["items"][1] and "place_id" not in out["items"][0]

@@ -309,7 +309,16 @@ a.tg-cx__tag:hover { border-color: var(--tg-pine); color: var(--tg-pine); }
 .tg-tr__row { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 14px; align-items: start; padding: 12px 0; }
 .tg-tr__row + .tg-tr__row { border-top: 1px solid var(--tg-line); }
 .tg-tr__row:not(:has(> .tg-tr__img)) { grid-template-columns: minmax(0, 1fr); padding: 8px 0; }
-.tg-tr__img { width: 128px; height: 92px; border-radius: 12px; object-fit: cover; background: var(--tg-pine-soft); }
+.tg-tr__img { position: relative; overflow: hidden; margin: 0; width: 128px; height: 92px; border-radius: 12px; background: var(--tg-pine-soft); }
+.tg-tr__img img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* where to see a season, where an event is held: corpus places, each a small button that opens the place */
+.tg-tr__see { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.tg-tr__see > span { font-size: 0.78rem; color: var(--tg-ink-3); }
+.tg-tr__seebtn { padding: 3px 10px; border: 1px solid var(--tg-line); border-radius: 999px; background: var(--tg-surface); color: var(--tg-ink); font: inherit; font-size: 0.8rem; cursor: pointer; transition: border-color 140ms, background 140ms; }
+.tg-tr__seebtn:hover { border-color: var(--tg-pine); background: var(--tg-pine-soft); }
+.tg-tr__seebtn:focus-visible { outline: 2px solid var(--tg-pine); outline-offset: 2px; }
+/* the site a found picture is on (corpus.events.picture), over the picture's foot */
+.tg-tr__img figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 6px 3px; overflow: hidden; color: #fff; font-size: 0.62rem; line-height: 1.2; white-space: nowrap; text-overflow: ellipsis; background: linear-gradient(transparent, rgba(0, 0, 0, 0.55)); }
 .tg-tr__body { min-width: 0; display: grid; gap: 2px; justify-items: start; }
 .tg-tr__title { padding: 0; font: 600 0.98rem/1.4 var(--tg-sans); color: var(--tg-ink); text-align: left; text-decoration: underline dotted var(--tg-ink-3); text-underline-offset: 4px; }
 .tg-tr__title:hover { text-decoration-color: var(--tg-ink); }

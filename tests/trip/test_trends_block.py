@@ -23,9 +23,9 @@ def cards(ids):
     return [{"id": i} for i in ids]
 
 
-def test_an_events_question_gets_only_the_dated_events():
+def test_an_events_question_gets_the_dated_events_then_the_places_people_go_to_now():
     b = trends_block(ROWS, trend_kinds(fold("tháng 11 có sự kiện gì")), cards)
-    assert [s["kind"] for s in b["sections"]] == ["event"]
+    assert [s["kind"] for s in b["sections"]] == ["event", "places"]
     row = b["sections"][0]["rows"][0]
     assert row == {"title": "Festival Âm nhạc quốc tế Lang Biang", "meta": "13–15/11, 19:00 · Quảng trường Lâm Viên",
                    "text": "Đêm chính 14/11", "on": "2026-11-13", "image": "https://a.vn/p.jpg",
@@ -46,3 +46,26 @@ def test_a_broad_question_gets_events_seasons_and_places():
 def test_nothing_to_show_is_no_block():
     assert trends_block({}, ("event",), cards) is None
     assert trends_block({"as_of": "2026-11-13", "items": []}, ("event",), cards) is None
+
+
+def test_a_season_row_has_its_pages_sentence_and_its_picture_with_the_site():
+    rows = {"as_of": "2026-11-13", "items": [
+        {"kind": "season", "name": "hoa Mimosa", "place_id": None, "text": "Đang vào mùa hoa Mimosa (tháng 11) · Sang tháng 11…",
+         "summary": "Sang hẳn tháng 11 thì bạn tha hồ ngắm hoa rực rỡ.", "image": "https://mia.vn/m.jpg",
+         "image_from": {"url": "https://mia.vn/m", "domain": "mia.vn"}, "sources": SRC, "intro": None}]}
+    row = trends_block(rows, ("season",), cards)["sections"][0]["rows"][0]
+    assert row["meta"] == "Đang vào mùa · tháng 11" and row["text"].startswith("Sang hẳn tháng 11")
+    assert (row["image"], row["image_from"]) == ("https://mia.vn/m.jpg", "mia.vn")
+
+
+def test_a_season_question_gets_only_the_season():
+    assert trend_kinds(fold("tháng 11 này Đà Lạt có mùa hoa gì")) == ("season",)
+
+
+def test_a_season_row_carries_where_to_see_it_and_those_places_come_as_cards():
+    rows = {"as_of": "2026-11-15", "items": [
+        {"kind": "season", "name": "hoa dã quỳ", "place_id": None, "text": "Đang vào mùa hoa dã quỳ (tháng 10–1)",
+         "see": ["0x1:0xa", "0x1:0xb"], "sources": SRC, "intro": None}]}
+    b = trends_block(rows, ("season",), cards)
+    assert b["sections"][0]["rows"][0]["see"] == ["0x1:0xa", "0x1:0xb"]
+    assert [c["id"] for c in b["cards"]] == ["0x1:0xa", "0x1:0xb"]

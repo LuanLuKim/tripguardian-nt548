@@ -175,8 +175,8 @@ def watch(tools, emit: Callable, cards_of: Callable) -> None:
     tools.model_called = called
 
 
-# What a trends question asks about, on the accent-folded message: only those sections are shown (an events question
-# gets the events, not the season and the hot places too)
+# What a trends question asks about, on the accent-folded message: the sections that answer it (an events question gets
+# the events and the places people go to now; a season question the seasons, each with where to see it)
 EVENT_ASK = re.compile(r"\b(su kien|le hoi|festival|show|concert|dem nhac|hoa nhac|trien lam|giai chay|marathon|expo)\b")
 SEASON_ASK = re.compile(r"\b(mua|san may|no hoa|hoa gi|co hong|da quy|thoi tiet)\b")
 SECTIONS = {"event": "Sự kiện sắp diễn ra", "season": "Đang vào mùa", "places": "Nơi đang được nhắc nhiều"}
@@ -187,9 +187,9 @@ ROWS = {"event": 5, "season": 4, "places": 4}
 def trend_kinds(folded_text: str) -> tuple[str, ...]:
     """The sections a trends question asks for, in the order shown."""
     if EVENT_ASK.search(folded_text):
-        return ("event",)
+        return ("event", "places")  # what is on, then where people go now (owner 2026-11-15)
     if SEASON_ASK.search(folded_text):
-        return ("season", "event")
+        return ("season",)          # "mùa hoa gì": the seasons, each with where to see it; events are another question
     return ("event", "season", "places")
 
 
@@ -201,7 +201,8 @@ def _source(it: dict) -> dict | None:
 def trends_block(rows: dict, sections: tuple[str, ...], cards_of: Callable) -> dict | None:
     """The chat's trends block (web screens/understand/Trends.tsx): numbered sections of rows from the Nhịp items
     (Knowledge.trend_rows), each row a picture, a title, one short line, a sentence and its page. No model writes it:
-    an event's line and sentence are the dated event's own (corpus.events), a place's sentence is its checked intro.
+    an event's line and sentence are the dated event's own (corpus.events), a season's sentence is a page's own quote,
+    a place's sentence is its checked intro; an event's or season's picture is the one corpus.events found by its name.
     A season named only by its months ("Tháng 10 - 12") is left out. None when no section has a row."""
     if not rows:
         return None
@@ -222,10 +223,15 @@ def trends_block(rows: dict, sections: tuple[str, ...], cards_of: Callable) -> d
             row = {"title": it["name"][:1].upper() + it["name"][1:]}
             if kind == "event":
                 row.update(meta=it["text"].split(" · " + it["summary"])[0] if it.get("summary") else it["text"],
-                           text=it.get("summary") or "", on=it["on"], **({"image": it["image"]} if it.get("image") else {}))
+                           text=it.get("summary") or "", on=it["on"])
             elif kind == "season":
                 months = re.search(r"\((tháng [^)]*)\)", it["text"])
-                row.update(meta=f"Đang vào mùa · {months[1]}" if months else "Đang vào mùa", text="")
+                row.update(meta=f"Đang vào mùa · {months[1]}" if months else "Đang vào mùa", text=it.get("summary") or "")
+            if kind in ("event", "season") and it.get("see"):
+                row["see"] = list(it["see"])[:3]    # a season's places to see it at, an event's venue: they open as cards
+            if kind in ("event", "season") and it.get("image"):
+                # a picture found by its name (corpus.events.picture), credited to the page it is on
+                row.update(image=it["image"], **({"image_from": it["image_from"]["domain"]} if it.get("image_from") else {}))
             else:
                 row.update(id=it["place_id"], text=it.get("intro") or "")
             if src := _source(it):
@@ -237,5 +243,6 @@ def trends_block(rows: dict, sections: tuple[str, ...], cards_of: Callable) -> d
             out.append({"kind": kind, "heading": SECTIONS[kind], "rows": found})
     if not out:
         return None
-    ids = [r["id"] for s in out for r in s["rows"] if r.get("id")]
+    ids = list(dict.fromkeys([*(r["id"] for s in out for r in s["rows"] if r.get("id")),
+                              *(x for s in out for r in s["rows"] for x in r.get("see", ()))]))
     return {"kind": "trends", "as_of": rows["as_of"], "sections": out, "cards": cards_of(ids) if ids else []}

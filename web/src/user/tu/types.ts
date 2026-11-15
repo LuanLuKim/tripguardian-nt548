@@ -246,7 +246,7 @@ export interface TagNode { ref: string; kind: 'tag' | 'subtag' | 'all' | 'place'
 export interface TagLevel { sig: string; ref: string; label: string; count: number; wished: boolean; nodes: TagNode[] }
 // What is on and in season (src/trip/api/blocks.py trends_block), only the sections the question asked for. A row has a
 // corpus place (id: its card is in cards), an event's own day (on) and picture, or a season; source = its page.
-export interface TrendRow { title: string; text: string; meta?: string; id?: string; on?: string; image?: string; source?: WebSource }
+export interface TrendRow { title: string; text: string; meta?: string; id?: string; on?: string; image?: string; image_from?: string; see?: string[]; source?: WebSource }
 export interface TrendSection { kind: 'event' | 'season' | 'places'; heading: string; rows: TrendRow[] }
 export interface TrendsBlock { kind: 'trends'; as_of: string; sections: TrendSection[]; cards: ChatPlace[] }
 export type ResultBlock = DishBlock | ServicesBlock | TagsBlock | TrendsBlock

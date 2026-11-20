@@ -85,3 +85,41 @@ def general_wish(text: str, aliases: dict[str, dict]) -> bool:
             or PLACE_VERBS.search(t)):
         return False  # a question, a greeting or a command for the model to answer
     return not any(names_in(text, a["name"]) for a in aliases.values())
+
+
+# The one chat of Lựa chọn (and the home page) has two agents behind it: Decision's acts on the lists and Trip's conversation
+# (discovery, events, trends, what a place is like, dates, who goes, photos, links, stays). These words are about the lists.
+LIST_WORDS = re.compile(r"\b(?:loc|bo loc|so sanh|sap xep|xep theo|chia nhom|nhom nao|danh sach|tab|hoan tac|undo|da chon|"
+                        r"vi sao khong|tai sao khong|sao khong (?:co|goi y|thay)|giong (?:quan|cho|noi) (?:nay|do|kia)|"
+                        r"lap lich|xep lich|chot|khoa|da di|di roi|den roi|toi roi)\b")
+# "tìm thêm quán cà phê", "gợi ý thêm": more of a kind is discovery (Trip's photo cards), not a pick
+DISCOVER = re.compile(r"\b(?:tim them|goi y them|kham pha|co (?:quan|cho|noi|gi) nao|nen di dau|nen an gi|o dau)\b")
+
+
+# On Lịch trình the schedule's assistant answers by default (moves, adds, why, times, the places of the plan); Trip takes what is
+# discovery or the city's pulse, which the schedule's tools do not hold.
+PULSE = re.compile(r"\b(?:su kien|le hoi|festival|dang hot|xu huong|dao nay|mua (?:gi|hoa|nay)|vao mua|dang mua|tiktok|moi mo)\b")
+
+
+def plan_route(text: str) -> str:
+    """"trip" for discovery and the city's pulse (events, seasons, what is hot), else "planning". No model."""
+    t = squash(text)
+    return "trip" if t and (DISCOVER.search(t) or PULSE.search(t)) else "planning"
+
+
+def route(text: str, aliases: dict[str, dict]) -> str:
+    """"decision" when the message acts on or asks about the lists on screen (a pick, a drop, a filter, a place named or
+    pointed at, why one is missing, undo); "unsure" when it has a verb about places but names or points at none ("bỏ mấy
+    quán cà phê đi": the lists, or a wish about the trip?), which Clef settles; "trip" for everything else. No model."""
+    t = squash(text)
+    if not t:
+        return "trip"
+    if exact_command(text, aliases) is not None or common_wish(text, aliases) is not None or UNDO.search(t) or LIST_WORDS.search(t):
+        return "decision"
+    if DISCOVER.search(t) and not any(names_in(text, a["name"]) for a in aliases.values()):
+        return "trip"
+    if any(names_in(text, a["name"]) for a in aliases.values()):
+        return "decision"
+    if PLACE_VERBS.search(t):
+        return "decision" if POINTS_AT.search(t) else "unsure"  # "chọn quán đầu", "bỏ nơi thứ hai" / "bỏ mấy quán cà phê"
+    return "trip"

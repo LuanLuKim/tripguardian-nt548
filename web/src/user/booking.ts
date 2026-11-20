@@ -1,5 +1,6 @@
 // The way in and out of the city: GET /api/harness/journey (options from home) and /api/harness/booking/offers (links and
 // prices a provider states). Fields mirror src/journey/types.py and src/booking/types.py; null means "not known", never a guess.
+import type { RideBrand, RideLeg } from './rides'
 
 export interface Offer {
   offer_id: string; provider: string; kind: 'coach' | 'flight' | 'stay'; mode: string
@@ -11,8 +12,9 @@ export interface Offer {
   flight_no?: string | null; stops?: number | null; duration_min?: number | null; fetched_at?: string | null
 }
 export interface Leg {
-  kind: 'drive' | 'transfer' | 'flight'; from_label: string; to_label: string; minutes: number | null
+  kind: 'drive' | 'transfer' | 'flight' | 'coach'; from_label: string; to_label: string; minutes: number | null
   distance_km: number | null; via?: string | null; coords: [number, number][] | null; source: string | null; fetched_at: string | null
+  rides?: RideLeg | null // a transfer's ride-hailing quotes (journey.rides), priced where it starts
 }
 export interface WayOption {
   mode: 'car' | 'motorbike' | 'bus' | 'plane'; feasible: boolean | null; reason: string; legs: Leg[]
@@ -24,6 +26,7 @@ export interface Journey {
   origin: [number, number] | null; dest: [number, number] | null; dest_is_centre?: boolean; way: 'inbound' | 'outbound'; day: string | null
   origin_text?: string; reason?: 'unknown_origin'
   options: WayOption[]
+  ride_brands?: Record<string, RideBrand> // where the transfers' ride quotes come from
 }
 
 const get = async <T>(path: string, params: Record<string, string | number | undefined | null>): Promise<T> => {

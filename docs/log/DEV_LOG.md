@@ -29,6 +29,288 @@ Sửa sau này: chuyển Hiện tại sang Trước đó, viết Hiện tại m�
 
 ## Các mục
 
+## clip-stage-2026-11-20 — Stage clip kiểu TikTok trong chat, "▶ N clip" trên thẻ nơi
+
+- file: `src/corpus/serving/clips.py` (+ `python -m corpus clips`, tự chạy sau `tiktok clips`), `src/trip/infrastructure/reads.py` (`Feeds.clips`, `Reads.clips`), `src/trip/agent/knowledge_tools.py` (`place_clips`), `src/trip/api/blocks.py` (`clips_block`), `src/trip/api/engine.py` (giữ `place_clips` khi covered), `src/trip/agent/prompt.py` (dòng Clips), `web/src/user/ui/clips.tsx`, `web/src/user/screens/understand/Clips.tsx`, `web/src/user/css/clips.css`, `Blocks.tsx`, `Places.tsx`, `Ask.tsx` (`kickerIcon`, đếm stage mở), `PlaceSheet.tsx` (dùng `ui/clips.tsx`), `tu/types.ts`
+- cách kiểm chứng: `pytest tests/trip/test_reads.py -k clips`; ảnh `frontend_images/clip-stage-2026-11-20/` qua `node web/scripts/shots_clip_stage.mjs <vite> <clips_block.json>` (payload dựng bằng `Reads.clips` trên dữ liệu thật; Chromium headless không có codec nên player TikTok báo lỗi trong ảnh)
+
+### Hiện tại (20/11/2026)
+- hành vi: `data/serving/clips/dalat.json` có 5.832 clip của 1.768 nơi (5.812 clip có chữ để khớp). Agent Trip gọi `place_clips` khi xem chuyển động trả lời tốt hơn ảnh (một nơi thế nào, săn mây, đường lên, đông không) hoặc khi được hỏi clip; clip khớp `about` lên trước, mỗi tác giả một clip, các nơi lần lượt, tối đa 12. Chat hiện một dòng clip, bấm mở stage clip trên nền mờ: clip dọc ở giữa, clip trước/sau ló ra, lăn / vuốt / ↑ ↓ để lướt, bấm để dừng, bên cạnh có nơi, Thích, tác giả, Mở trên TikTok. Thẻ nơi trên sân khấu ảnh có "▶ N clip" mở stage clip của nơi đó. Chưa deploy (bản deploy 20/11 09:33 không có phần này).
+
+### Trước đó
+- _không có_
+
+
+## chat-new-compact-2026-11-20 — Nút "Trò chuyện mới" ở mọi khung chat, khung chat trống thu gọn
+
+- file: `web/src/user/ui/TripChat.tsx` (`fresh`, prop `head`), `web/src/user/ui/Assistant.tsx` (`Head` có nút), `web/src/user/css/assistant.css` (cuối file), `src/trip/api/engine.py` (`NEW_CHAT`, `since_new_chat`, `Engine.new_chat`), `src/trip/api/tools.py`, `src/harness/dispatch.py` (nhánh `new_chat`)
+- cách kiểm chứng: `pytest tests/harness/test_dispatch.py tests/harness/test_new_chat.py tests/trip/test_engine.py`; ảnh `frontend_images/chat-compact-2026-11-20/` qua `node web/scripts/shots_chat_compact.mjs` (Vite :5233)
+
+### Hiện tại (20/11/2026)
+- hành vi: khung chat thả từ góc (trang chủ, Lựa chọn, Lịch trình) khi chưa có tin chỉ cao vừa màn chào (454px thay vì 808px ở cửa sổ 900px), tin đầu tiên mới giãn hết chiều cao (có chuyển động nếu trình duyệt hỗ trợ `interpolate-size`). Đầu mọi khung chat (thả và ghim) có nút "Trò chuyện mới": gửi `new_chat` kèm bản chụp tin; harness ghi mốc vào cả Trip, Decision, Planning của journey; Trip thêm dòng `kind: new_chat`, view và lịch sử gửi model chỉ lấy phần sau mốc, đóng thẻ hỏi đang mở trừ câu lưu ý sức khỏe. Server lưu xong web mới xóa tin; lỗi thì giữ tin và báo. Chuyến, nơi đã chọn, lịch giữ nguyên. Lên prod 20/11/2026 09:33 (`./run.sh prod`, smoke ok).
+
+### Trước đó
+- _không có_
+
+
+## one-chat-2026-11-19 — Một khung chat (trang chủ + Lựa chọn), vào thẳng Lựa chọn, clip TikTok nhúng, tên sự kiện
+
+- file: `src/harness/dispatch.py` (`_chat`, `READBACK_KINDS`), `src/decision/heuristics.py` (`route`), `src/decision/engine.py` (`Engine.route`, Clef), `src/decision/tools.py` (read `route`), `src/corpus/events/gate.py` (`tidy`), `src/corpus/events/run.py`, `src/corpus/crawl/tiktok/frames.py` (`saved`, `seeable`, `has_frames`), `clips.py`, `place_web.py`, `web_videos.py`, `place_verify.py`, `poi_crawl.py`, `scripts/free_tiktok_clips.py` (`--all`); web `user/ui/TripChat.tsx`, `user/startTrip.ts`, `user/ui/Assistant.tsx`, `user/home/{Frame,dialogs,EventPost}.tsx`, `user/screens/Explore.tsx`, `user/ui/{SplitPlan,PlaceSheet,Shell,ReadbackSheet}.tsx`, `user/screens/plan/TripMap.tsx`, `user/pd/decision.tsx`, `user/trip.tsx`, `router.ts`, `UserApp.tsx`, `ui/bits.tsx`, `server.mjs`, `scripts/export_snapshot.py`; xóa `user/screens/Understand.tsx`, `understand/{History,TopBar}.tsx`.
+- cách kiểm chứng: `pytest tests/harness tests/decision tests/events tests/pulse tests/crawl/tiktok`; `npx tsc --noEmit -p web`; ảnh `frontend_images/one-chat-2026-11-19/` (`node web/scripts/shots_chat.mjs <vite>`, chỉ lượt chat là luồng mẫu).
+
+### Hiện tại (2026-11-19)
+- hành vi: không còn màn Tìm hiểu. "Khám phá nơi muốn đến" (tên mới của "Tạo chuyến đi") mở bảng chọn kiểu chuyến + đi cùng ai, rồi tạo chuyến (`show` + advance) và mở thẳng Lựa chọn; tag đã chọn / chữ ở ô tìm / chủ đề là tin đầu của chat. Chat ở trang chủ và Lựa chọn là một (`TripChat`), mọi tin là `decision.trip`; harness gửi câu về danh sách cho trợ lý Decision, câu mơ hồ hỏi Clef, còn lại là lượt Trip đầy đủ; Decision dựng lại chỉ khi Search Input đổi (event `view`). Thanh bước thay bằng tai thỏ *Lưới ảnh* · *Bản đồ lịch trình* trên Lựa chọn; "Xem chi tiết lịch trình" chỉ nằm trong bản đồ và phóng bản đồ ra thành trang lịch; Lịch trình về lại bằng nút *Bản đồ lịch trình* ở breadcrumb. Chat: nơi của câu trả lời là thẻ ảnh, tên nơi trong lời là liên kết, prompt Trip dặn lời ngắn khi có thẻ nơi; khung chat trang chủ là thẻ cao ở cột phải; chat trống mở bằng màn chào cũ thu nhỏ (4 thẻ quạt); nơi của câu trả lời là dòng gập mở sân khấu ảnh. Chat Lịch trình gộp vào cùng khung (`planning.trip`, `_chat_on_plan`, `plan_route`); bỏ nút trò chuyện mới và fixture `assistant.fixture.tsx` / `test_assistant_chat.mjs` (kiểm hội thoại riêng từng stage, đã bỏ). Bản đồ: một instance cho mọi ngày, style + thư viện đọc một lần và làm nóng khi rảnh, ảnh nền offline hiện ngay. Clip TikTok chỉ phát qua player nhúng (preconnect, keyframe hiện ngay, clip kề nạp sẵn); mp4 xóa được bằng `free_tiktok_clips.py --all` (16.907 clip, 211 GB, chưa chạy: chờ deploy web). Tên sự kiện re-case, nơi diễn ra bỏ đuôi thành phố; web lấy ảnh nơi diễn ra hoặc đơn vị tổ chức khi thiếu ảnh; `data/dalat/{events,pulse}/latest.json` đã sửa tại chỗ.
+
+### Trước đó
+- hành vi: _không có_
+
+
+## explore-map-tags-2026-11-17 — Chọn nơi: menu sắp xếp riêng, nút Lưới ảnh | Bản đồ, bản đồ lịch trình lớn, tag lợi / hại một dòng
+
+- file: `web/src/user/ui/{ExploreSide,CardTags,SplitPlan,PlaceCard,common,icons}.tsx`, `screens/{Explore,Lodging}.tsx`, `css/{explore,split,shell}.css`, `ui/__tests__/pet.test.mjs`
+- cách kiểm chứng: `cd web && npx tsc --noEmit`; `node web/src/user/ui/__tests__/pet.test.mjs` (chạy ở gốc repo); chụp bằng tài khoản dev trên Vite
+
+### Hiện tại (17/11/2026, chưa deploy)
+- hành vi: ô sắp xếp là menu riêng (`SortMenu`, Radix Popover, ↑ ↓ Enter Esc) thay `<select>`, một nút bo tròn "Sắp xếp · Hợp nhất".
+- hành vi: ổ khóa bên phải bỏ; nút đôi **Lưới ảnh | Bản đồ** (`ViewSwitch`) ở đầu trang. Bản đồ mở thì danh sách thành hàng gọn (`.tg-grid.is-list`: ảnh cao bằng thẻ bên trái; tên, loại · thời lượng · ★, khu, tag, rồi hàng khóa · so sánh · bỏ và nút chính) trong thẻ trắng cao bằng bản đồ, bản đồ chiếm phần còn lại (`--tg-split`), chỉ hiện lịch trình với tab từng ngày; rê chuột trên hàng thì chấm nơi đó sáng.
+- hành vi: thẻ nơi / chỗ ở bỏ ô "Đánh đổi" dài và dòng thú cưng bấm mở; thay bằng một dòng hai khối (`CardTags`): khối lợi (xanh) và khối hại (vàng), mỗi khối chứa nhiều tag rút ngắn cách nhau dấu phẩy, hai khối chia đều dòng nên hại không bị mất khỏi khung, tooltip sáng liệt kê từng tag đầy đủ; bỏ ba vạch độ tin cậy trên thẻ nơi; thẻ đã chọn tô terracotta nhạt + dấu tích; sao Google vàng. `PetFacts.tsx` không còn nơi gọi.
+
+### Trước đó
+- _không có_
+
+## closed-places-2026-11-18 — Nơi đóng cửa: bỏ khỏi Nhịp và trợ lý
+
+- file: `src/corpus/pulse/{compute,render,signals,__init__}.py`, `config/pulse.yaml`, `src/trip/infrastructure/reads.py`, `src/trip/agent/{tool_schemas,knowledge_tools,prefetch}.py`, `tests/pulse/`, `tests/trip/test_reads.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest tests/pulse tests/trip/test_reads.py tests/trip/test_knowledge_tools.py`; đối chiếu 164 nơi Maps ghi đóng cửa (31 vĩnh viễn, 133 tạm thời) với `data/serving/places.json`: 0 nơi còn ở serving
+
+### Hiện tại (18/11/2026, chưa deploy)
+- hành vi: serving đã loại nơi có `closure` hoặc Judge phán đóng / đổi chủ; việc còn lại là Nhịp hết mục `closed` (bản tin, `trends(kind=closed)`, `signals.maps_totals` chỉ còn số đánh giá), `place_status` không còn `closed_reported` / `closure`, công cụ `trends` và prefetch không còn loại `closed`. Bản `latest.json` cũ còn mục `closed` thì bản tin bỏ qua ngay; chạy lại `python -m corpus pulse --city dalat` để ghi bản mới.
+
+### Trước đó
+- _không có_
+
+## chat-pick-context-2026-11-17 — Lựa chọn trên thẻ ảnh tới agent đủ ngữ cảnh, thẻ kế tiếp nối mạch, bỏ câu hỏi mặc định
+
+- file: `src/trip/api/engine.py` (`photo_choice`, `NEXT_CARD_WAIT_S`, `_deck`, `_agent_turn`, `_explored`, `_local_now`, `remember`), `src/trip/domain/memo.py`, `src/trip/infrastructure/{profile,looks}.py`, `src/harness/dispatch.py`, `src/trip/domain/drill.py` (`AFTER`, `next_topics`), `src/trip/agent/prompt.py`, `src/trip/agent/tool_schemas.py` (`WordCards`), `src/trip/api/tools.py` (`drill_key`), `web/src/user/screens/{Understand.tsx,understand/{Turn,Ask,Places}.tsx}`
+- cách kiểm chứng: `python -m pytest -q tests/trip`; `cd web && npx tsc --noEmit`
+
+### Hiện tại (17/11/2026, chưa deploy)
+- hành vi: chọn trên thẻ ảnh, agent nhận `chosen` (kiểu giữ + dấu hiệu + nơi trên ảnh, kiểu không chọn, lời mở thẻ); Xong trên sân khấu tag và dải nơi trợ lý tìm cũng gửi `explored` kèm chi tiết từng lựa chọn.
+- hành vi: thẻ ảnh kế tiếp theo hướng liền kề (`drill.AFTER`), lượt chờ thẻ đó trước khi gọi model và đưa vào `next_card`; prompt bỏ câu "Có vẻ bạn nghiêng về …" nhắc lại nhãn, thay bằng một chi tiết mới + một câu dẫn sang thẻ kế.
+- hành vi: thẻ ảnh không còn câu hỏi mặc định từ config, tiêu đề sân khấu là nhãn thẻ; thẻ drill được gợi ý gập dưới lời trợ lý, không tự mở; gõ "có" / "xem thử" mở ngay không gọi model; prompt bớt khuôn, để agent tự chọn (cảm thán, gợi ý, kết mở). Sân khấu ảnh không lặp thẻ cho đủ 5 chỗ: số thẻ đúng bằng số dòng gập đếm; phụ đề màn tag đếm đúng thứ đang hiện (N hướng / N kiểu / N nơi). Ảnh: `frontend_images/chat-offer-2026-11-18/`, kiểm bằng `node web/scripts/test_understand_offer.mjs <vite-url>`.
+- hành vi: nơi được chọn mang `known_for` (đặc điểm review xác nhận); mỗi lượt khám phá có `local_now` (mùa, sự kiện, nơi đang hot từ Nhịp Đà Lạt) để agent nói như người địa phương; chờ thẻ kế tiếp tối đa 0,8 giây. Mở lại chat: thẻ đang mở gắn vào lời trợ lý cuối, không thành bong bóng riêng.
+- hành vi: khóa `drill_scores.json` chỉ theo biến thể ảnh, không theo câu chữ của thẻ.
+- hành vi: memo của Agent cho mỗi chat (`domain/memo.py`, `Engine.remember`, `TripTools.remember`), ghi khi chốt lịch và khi chat im 30 phút (`harness/dispatch.py` `MEMO_IDLE_S`), chỉ khi có lượt mới; gồm sở thích bằng lời, phong cách ảnh của nơi / kiểu đã chọn, nhu cầu sức khỏe của chính người dùng, cách đi; chat sau đọc như prior (`remembered`). Lựa chọn trên thẻ ảnh và sân khấu tag mang thêm phong cách ảnh (`Looks.style_labels`, `common_style`).
+
+### Trước đó
+- _không có_
+
+
+## chat-tab-split-2026-11-17 — Chat thành tab góc dưới phải, khóa chia đôi Lựa chọn, thanh "Đã chọn" gọn
+
+- file: `web/src/user/ui/{Assistant,SplitPlan,SelectedBar,icons}.tsx`, `screens/Explore.tsx`, `css/{assistant,split,bar}.css`, `public/img/gen/bot-chat{,@2x}.webp`, `public/img/bunny/{chat,chat_head}.webp`, `scripts/gen_mascot_moods.py`
+- cách kiểm chứng: `cd web && npx tsc --noEmit`; ảnh `frontend_images/chat-drop-lock-2026-11-17/`
+
+### Hiện tại (17/11/2026, chưa deploy)
+- hành vi: `AssistantFloat` thành tab sát góc dưới bên phải (thỏ + "Hỏi TripGuardian", màu xám ấm như tai thỏ); rê chuột / focus thì chat mở lên từ mép; bấm tab, gõ vào chat, phím `/` hoặc "vì sao không gợi ý" thì giữ mở đến khi đóng (X, Esc, bấm lại tab); ở Lịch trình tab đứng trên chân trang `.tg-it-foot`. Quả cầu nổi giữa mép phải bỏ.
+- hành vi: avatar chatbot là thỏ đeo tai nghe (`BotAvatar`, cả chat Hiểu chuyến đi), lời chào là thỏ cầm bong bóng chat; sinh bằng `gen_mascot_moods.py chat chat_head`.
+- hành vi: Lựa chọn có nút khóa ở mép phải: bấm thì nửa phải màn hình là bản đồ của ngày đang chọn (chỉ chấm các nơi được xếp, rê chuột vào chấm hiện tên nơi, bấm mở chi tiết), thẻ chọn ngày nổi trên bản đồ ("Ngày 1 · 4 điểm dừng", Ngày 2, …); cập nhật ngay khi chọn / bỏ nơi (đang xếp lại thì bản đồ cũ mờ đi); cột lọc thụt vào, lưới còn 3 cột; bấm khóa nữa thì đóng. Đọc từ `preview` ngầm của Decision, không gọi thêm. Trạng thái nhớ ở `localStorage` `tg.split`; khi mở, chat không ghim cạnh lưới.
+- hành vi: bấm "Lựa chọn" ở tai thỏ khi đang ở chat (`useFlowNav`, `ui/Shell.tsx`) chốt bước hiểu chuyến đi như nút chuyển của chat (`advance`, đọc `outputs.trip`, nạp trạng thái chuyến, mở Lựa chọn); chat chưa hiểu đủ (409 "has not compiled Search Input") thì ở lại chat và báo, không còn mở trang trống "Chưa có gợi ý".
+- hành vi: Lịch trình: lỗi 429 (hạn mức 60 yêu cầu / phút / người của harness) tự tải lại sau 30 giây thay vì dừng ở nút Thử lại.
+- hành vi: thanh "Đã chọn" thành viên thuốc ôm nội dung (bỏ số nơi trùng lặp).
+
+### Trước đó
+- _không có_
+
+## chat-redesign-2026-11-17 — Khung chat: lịch sử kiểu Chats, top bar, tai thỏ, avatar, cột phải do trợ lý chọn, sân khấu ảnh tràn màn hình
+
+- file: `web/src/user/screens/Understand.tsx`, `screens/understand/{History,TopBar,SidePanel,Turn,Ask}.tsx`, `tags/{TagStage,Subtags,tree}.tsx`, `home/Frame.tsx`, `css/{workspace,tags,ask,shell,home}.css`, `src/trip/agent/{tool_schemas,tools,prompt,knowledge_tools}.py`, `src/trip/api/{engine,blocks}.py`, `src/trip/domain/{drill,vibes}.py`, `config/trip.yaml`
+- cách kiểm chứng: `cd web && npx tsc --noEmit`; `.venv/bin/python -m pytest tests/trip -q` (`test_assistant_cards.py`: `show_aside`, `word_cards`); ảnh `frontend_images/chat-redesign-2026-11-17/`
+
+### Hiện tại (17/11/2026, chưa deploy)
+- hành vi: lịch sử chat theo mẫu Chats (số chat, "Chat mới", ô lọc, tab Tất cả / Chuyến đi, chia theo ngày, mỗi chat có ảnh nhỏ + tên + dòng phụ, rê chuột hiện tóm tắt chuyến); top bar thay thanh chuyến (bỏ "Thông tin chuyến" và "Tiếp tục đến chọn nơi"); ba bước của luồng chuyến chuyển từ rail sang tai thỏ trên mép màn hình; rail chỉ mở khi vào mũi tên; avatar mascot và người dùng trong chat; Be Vietnam Pro cho chat.
+- hành vi: sân khấu ảnh giữ thiết kế cũ (nền blur, nhãn, đường dẫn, chip "Thích cả kiểu này", chấm trang, dòng phím, thanh Xong), chỉ khác: hiện 5 thẻ một lần và hàng xoay vòng (`StageRing` `reach`, vòng nhiều lần khi ít thẻ).
+- hành vi: chữ của chatbot không cố định: tool `word_cards` (chữ thẻ ảnh), `browse_tags.question` (tiêu đề thẻ tag), `show_aside` (cột phải, có thể không hiện), bullet *Voice* trong prompt; config `drills.question` chỉ còn là dự phòng, đã bỏ "Chọn một hay nhiều".
+- lưu ý: cần deploy đầy đủ (`./run.sh prod`): web gửi và nhận `aside`, backend đang chạy bản cũ không có tool mới.
+
+### Trước đó
+- _không có_
+
+## rides-inline-fill-2026-11-17 — Gọi xe Grab / Be / Xanh SM toàn quốc (giữa các điểm và cửa tới cửa ở thẻ cách đi), điểm xuất phát gõ ngay trong hàng, lựa chọn mở khi rê chuột (`docs/BOOKING.md` §Gọi xe, `docs/UI_SPEC_USER_WEB.md` Trang 8)
+
+- file: `config/rides_tariffs.json` (bảng sạch, dựng bởi `python -m journey.tariffs`), `config/provinces.yaml`, `config/provinces.geojson`, `src/journey/tariffs/{common,grab,be,xanhsm,lado,boundaries,build,__main__}.py`, `src/journey/areas.py`, `src/journey/rides.py`, `src/journey/{options,types}.py` (`with_rides`, `Leg.rides`, `Journey.ride_brands`), `src/harness/booking_routes.py` (`rides`), `src/harness/server.py` (`GET /api/harness/rides`), `src/planning/travel.py` (`road_km`, `distance_km`), `src/planning/build.py` (item `travel` có `distance_km`), `src/trip/domain/required.py` (tên *Phương tiện lên Đà Lạt*), `web/src/user/rides.ts`, `web/src/user/screens/plan/{Rides.tsx,fill.tsx,DayView.tsx,WayIn.tsx}`, `web/src/user/screens/Plan.tsx`, `web/src/user/css/{rides.css,fill.css}`
+- cách kiểm chứng: `pytest tests/booking/test_rides.py tests/booking/test_tariffs.py tests/booking/test_journey_options.py tests/planning/test_planning_travel_output.py tests/planning/test_planning_golden.py tests/planning/test_planning_lodging_golden.py`; `cd web && npx tsc --noEmit -p .`; `python -m journey.tariffs build` rồi đọc báo cáo; ảnh ở `frontend_images/web-rides-2026-11-17/`, `frontend_images/web-door-to-door-2026-11-17/`
+
+### Hiện tại (17/11/2026, prod 12:28, cùng lượt với lịch trang chủ và mascot mới)
+- hành vi: giá gọi xe có cho mọi tỉnh mà hãng công bố, đọc từ trang của hãng bằng bộ đọc riêng (Grab 60 vùng, Be 31, Xanh SM 45 gồm Lado ở Lâm Đồng) rồi làm sạch thành `config/rides_tariffs.json`; mỗi dòng có giá phải được một luật đọc, không thì bỏ cả khối và ghi báo cáo; build không ghi đè bảng cũ khi trang đọc không ra, hai lần tải khác nhau, hoặc giá đổi quá 30% chưa được chấp nhận. Chặng tính giá ở tỉnh cũ của nơi đón (ranh giới geoBoundaries; sân bay lấy tỉnh của sân bay; Phú Quốc, Sa Pa, Hội An là khu vực con), cộng tuyến cố định (Grab sân bay / liên tỉnh, beAirport, Lado Đà Lạt → Liên Khương), phí nền tảng Grab theo ngày đi, phí đón sân bay. Thẻ Máy bay / Xe khách ở *Phương tiện lên Đà Lạt* / *Phương tiện về* có dòng *Cửa tới cửa* (gọi xe nhà → sân bay/bến + vé rẻ nhất × số người + gọi xe sân bay/bến → chỗ ở), bấm để xem từng chặng; chặng thiếu giá thì không ra tổng, nói rõ chặng nào thiếu. Chặng cuối tính tới chỗ ở đã chọn (trước đây luôn tới trung tâm). Tự lái chỉ km và giờ.
+
+### Trước đó (17/11/2026, prod 09:38)
+- hành vi: chuyến không có xe riêng (tới bằng máy bay / xe khách, đi taxi / Grab, hoặc chưa nói) thì mỗi ngày có thanh *Gọi xe giữa các điểm* (Xe máy / Ô tô, tổng cước ngày) và mỗi chặng có hàng ghost so Grab / Be / Xanh SM; bấm một hãng là chọn cho cả chuyến, chân trang tổng quan cộng cước cả chuyến. Giá tính từ bảng hãng công bố: Grab (08/07/2026), Be (tab Lâm Đồng / TP.HCM / Hà Nội trên be.com.vn: ở Lâm Đồng beCar, beCar Tiết Kiệm, beTaxi, không beBike), Xanh SM ở Lâm Đồng = taxi Lado trên nền tảng Xanh SM theo bảng giá Lado (không Xanh SM Bike); mỗi hãng lấy dịch vụ rẻ nhất đủ chỗ, chip ghi tên dịch vụ, hãng không có loại xe đang chọn hiện "không có xe máy". Điểm xuất phát gõ địa chỉ ngay trong hàng (bỏ `RouteSheet`). Các hàng Thông tin chuyến và *Phương tiện lên Đà Lạt* (tên cũ *Đường tới Đà Lạt*) mở lựa chọn khi rê chuột, bấm là lưu; *Chi tiết* mở thẻ đầy đủ.
+
+## explore-chat-2026-11-16 — Hiểu chuyến đi khám phá gu: cấp vibe, Xong mở hướng mới, bảng câu hỏi nổi, chuyển chat mượt (`docs/TRIP_UNDERSTANDING.md` §5, §19; `docs/UI_SPEC_USER_WEB.md` Trang 3)
+
+- file: `src/trip/infrastructure/browse.py` (`stage`, `_node`, `_with`, `DEPTH`), `src/trip/api/engine.py` (`_explored`, `explored` qua `_run` / `_agent_turn`), `src/trip/agent/prompt.py` (không ngõ cụt, `CURRENT CONTEXT explored`), `src/trip/domain/ask.py` (gu luôn `multi`), `web/src/user/screens/Understand.tsx`, `web/src/user/screens/understand/{Ask,Turn,History}.tsx`, `web/src/user/tags/{TagStage,Subtags,env}.tsx`, `web/src/user/css/{ask,workspace}.css`
+- cách kiểm chứng: `pytest tests/trip/test_browse.py tests/trip/test_tag_stage.py tests/trip/test_trip_r8.py`; `node web/scripts/test_understand_explore.mjs <vite-url>` và `node web/scripts/test_understand_ui.mjs <vite-url>` (ảnh ở `frontend_images/understand-*.png`)
+
+### Hiện tại (16/11/2026)
+- hành vi: sân khấu tag chia tiếp một kiểu đủ nơi thành vibe (sở thích: kiểu → vibe → nơi; câu mơ hồ: hướng → kiểu → vibe → nơi). Xong có lựa chọn gửi turn `explored`; engine chỉ nhận nơi / kiểu phiên đang giữ, agent đoán gu một câu rồi mở một hướng liền kề bằng ảnh thật. Tin cụt / mơ hồ không bị đáp "nói rõ hơn": agent mở hướng bằng `browse_tags`. Câu hỏi gu luôn chọn nhiều. Câu hỏi của tin cuối nổi thành bảng trên ô nhắn, chat phía sau mờ; Để sau / Esc thu thành một dòng. Rail và lịch sử nằm ngoài phiên chat (đổi chat không dựng lại, giữ cuộn), chat đang mở hiện khung chờ thay vì canvas chào, view đọc song song với journey. Lịch sử không còn làm mờ chuyến cũ hay phủ mờ chân danh sách.
+
+### Trước đó
+- _không có_
+
+## trends-hot-seasons-2026-11-16 — Mùa thật sự là mùa, "đang hot" cho mùa / sự kiện / nơi, hạng nơi bão hòa muộn hơn
+
+- file: `src/corpus/pulse/{compute,render,__init__}.py` (`seasons`, `season_same`, `season_claims`, `season_names`, `_talk`, `_months_of`, `web_events`, `hot_note`), `src/corpus/events/{seasons,gate,run}.py`, `src/corpus/llm/tasks.py` (`SEASON_GROUP`, `EVENT_EXTRACT`), `config/pulse.yaml` (`season.{min_sources,hot_*,max_items,same}`, `event.hot_sources`, `trending.cap`), `src/trip/api/blocks.py` (`ROWS` mùa 6, `hot` của hàng), `src/trip/agent/prompt.py`; `web/src/user/home/{HotTag,Pulse,Trending,SeasonPost,EventPost}.tsx`, `screens/understand/Trends.tsx`, `tu/types.ts`, `css/pulse.css`; test `tests/pulse/test_pulse_compute.py`, `test_pulse_render.py`, `tests/trip/test_trends_block.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/pulse tests/trip/test_trends_block.py tests/trip/test_reads.py tests/decision/test_hot_label.py`; `cd web && npx tsc -p tsconfig.json --noEmit`; `corpus pulse` rồi đọc `data/dalat/pulse/latest.json`
+
+### Hiện tại (16/11/2026)
+- Mùa: chỉ hiện tượng mới là mùa (nhóm chỉ toàn nơi bị bỏ), cần ≥ 2 nguồn, biến thể gộp qua `season.same`; tháng 11 từ 8 mục còn 12 mùa thật, không còn "du lịch Đà Lạt", "miền Bắc cưới", Thác Datanla, Langbiang. "Vườn hồng" (37 clip) nhập vào "mùa hồng chín", nay là mùa hot nhất (39 clip, 34 tác giả).
+- Đang hot: một chuẩn (≥ 3 clip của ≥ 3 tác giả trong 30 ngày) cho mùa; nơi trending mang cờ khi đạt chuẩn của `hot`; sự kiện hot khi ≥ 2 trang độc lập đưa tin (clip không nhắc sự kiện nào). Mùa hot đứng đầu bảng; mùa không hot vẫn hiện nhưng không bị gọi là hot (8 / 12 mùa tháng 11 hot).
+- Hạng nơi: bão hòa clip 8 / 3 → 20 / 6; Vườn Hồng chân đèo Mimosa từ hạng 17 lên 2.
+- Tên sự kiện "Triển lãm khoảng 150 tranh cổ động tấm lớn" **không** do bước đọc trang làm cụt: đó là nguyên văn tiêu đề trên dalat.app. Sửa: `gate.clean_name` bỏ từ ước lượng (khoảng / gần / hơn / trên / tầm) đứng ngay trước số, prompt `event_extract` dặn lấy tiêu đề chứ không phải mô tả. Tên vẫn là chữ của trang, không thêm chữ nào.
+- `season.same` không còn phải điền tay: `corpus events` gom tên mùa bằng Gemma UIT (`season_group`, `corpus/events/seasons.py`), bảng tay chỉ còn là ghi đè. Mô phỏng với bảng tay tắt cho cùng 8 mùa hot như trước.
+- Chưa deploy (prod đọc config sống nên `trending.cap` mới có hiệu lực ở lần chạy `pulse` kế tiếp, còn cờ hot chờ deploy `src/`).
+
+### Trước đó (15/11/2026)
+- Mùa gộp theo `season_key` chỉ bằng luật chữ, tối đa 8 mục, gồm cả claim "nơi" mang tính thời tiết; sự kiện và nơi không có cờ hot; bão hòa clip 8 / 3.
+
+## web-polish-2026-11-16 — Trang chủ, thanh bên gập, bộ nhớ đệm, bài 3D, phương án lịch
+
+- file: `web/src/user/home/{MiniCalendar,Pulse,Frame}.tsx`, `screens/{Discover,Explore,Understand,Account}.tsx`, `screens/plan/Choose.tsx`, `screens/understand/History.tsx`, `community/{Tour3d.tsx,featured.ts,Posts.tsx,Reader.tsx,Search.tsx,data.ts}`, `ui/{SelectedBar,Shell,BackToChat,Ticket}.tsx`, `pd/{api.ts,decision.tsx}`, `css/*`; bỏ `ui/DiscPicker.tsx`
+- cách kiểm chứng: `cd web && npx tsc -p tsconfig.json --noEmit`; ảnh chụp ở `frontend_images/2026-11-16-web-polish/` (Vite dev + `page.route` giả lập API)
+
+### Hiện tại (16/11/2026)
+- Lịch trang chủ tô đen chuyến đã chốt còn phía trước và hiện thẻ chuyến (rộng 300px) khi rê chuột; Trending có hai tab Sự kiện / Địa điểm, năm hàng mỗi tab, hàng sự kiện có ảnh lớn hơn và bấm vào mở bài sự kiện (`home/EventPost.tsx`, dựng từ chính các trường của bản tin, không thêm chữ ngoài nguồn). Nút "Xếp hạng" của thẻ mở trang `/trending` (`home/Trending.tsx`): bục 3 nơi hot, các hạng còn lại, sự kiện sắp tới, mùa đang vào.
+- Thanh bên trong luồng chuyến gập thành dải ở mép trái với một mũi tên nhấp nháy, rê chuột vào là trượt ra và mũi tên ẩn đi (`RailDock`); Lựa chọn có nút "Về trò chuyện", không còn Đĩa xoay.
+- Danh sách chat, danh sách chuyến, view Lựa chọn và nội dung chat được giữ trong bộ nhớ để mở lại là thấy ngay; quay về bước trước không chờ máy chủ.
+- Chat càng cũ càng mờ; nút "…" của chat chỉ hiện khi rê chuột. Đã lưu chỉ hiện tab nhóm đang có nơi. Chuyến chưa có nơi nào không hiện ở Chuyến của tôi.
+- Giới hạn đã loại hiện thành banner ấm và từng hàng có số nơi bị bỏ in lớn, biểu tượng và nút "Nới giới hạn"; bỏ dòng "đóng cửa mọi ngày"; danh sách "Đã chọn" ghi sao, loại, thời lượng, giá; hàng nút của thẻ nơi cố định chiều cao.
+- "Vì sao có N phương án?" nói bằng số, liệt kê ba cách kèm lý do và vừa khung màn hình; không còn bảng / hộp "So sánh chi tiết" (thẻ phương án đã đủ); vé chuyến cảnh báo giờ kết thúc ngày sớm bất thường (nguyên nhân của lịch bỏ gần hết nơi: `day_end` 07:15 làm các ngày không còn giờ đi chơi).
+- Bài ghim "Đi một vòng Đà Lạt trước khi đến" giới thiệu Khám phá 3D.
+- Nơi thiếu ảnh (dưới `min_photos` ảnh không người) được lấy ảnh có người (không phải cảnh `crowd`): ảnh không người luôn đứng trước, trong nhóm có người thì ảnh người chiếm ít khung nhất (`shows_place` cao nhất) lên đầu; ảnh chưa chấm vẫn được dùng, xếp cuối (`corpus.serving.scenes`, `web/scripts/export_photo_allow.py` ghi cùng thứ tự vào `photo_allow.json`). Nơi chưa có nhãn cảnh (hoặc nhãn nào cũng không dùng được) lấy thẳng ảnh đã crawl, nét và đủ sáng nhất trước (code đo từ điểm ảnh, không qua model), ảnh mới trước ảnh cũ hơn 3 năm (`unlabelled` trong `export_photo_allow.py`); còn 24 nơi không có ảnh nào. 136 nơi mới được gắn nhãn cảnh bằng Gemma UIT; 256 nơi mà UIT trả 500 khi chấm ảnh (`photo_appeal`) được chấm bằng `cx/gpt-6.1-terra` qua 9router (schema trong prompt, `guided=False`), nên mọi nơi có nhãn đều có điểm `shows_place`. Chi tiết nơi ở Chọn nơi vẫn là `PlaceSheet` (hộp nổi).
+
+### Trước đó (_không có_)
+- hành vi:
+
+## home-calendar-2026-11-17 — ngày lễ ra khỏi sự kiện, lịch có sao ngày lễ và thời tiết
+
+- file: `src/corpus/pulse/compute.py` (`events`), `src/corpus/pulse/signals.py`, `src/trip/infrastructure/knowledge.py` (`month_days`), `src/trip/api/{engine,tools}.py`, `src/harness/{dispatch,server}.py` (`GET /api/harness/calendar`), `web/src/user/home/MiniCalendar.tsx`, `web/src/user/css/home.css`, `web/src/user/ui/icons.tsx` (`storm`)
+- cách kiểm chứng: `.venv/bin/python -m pytest tests/pulse tests/trip/test_reads.py`; `npx tsc --noEmit` trong `web/`; ảnh chụp `frontend_images/2026-11-17-calendar/` (dữ liệu thật của `month_days` đưa qua `page.route` vì harness đang chạy là code cũ, chưa có route mới)
+
+### Hiện tại (17/11/2026)
+- hành vi: `compute.events` không còn hàng ngày lễ nào (tín hiệu `holidays` của pulse bỏ). Lịch trang chủ gọi `/api/harness/calendar` cho tháng đang xem: ngày lễ = sao hổ phách ở góc ô, thời tiết = icon dưới số chỉ khi có dự báo Open-Meteo (16 ngày), chọn một ngày (mặc định hôm nay) hiện dải chi tiết gồm tên ngày lễ, mưa %, nhiệt độ (không hiện âm lịch). Lỗi hay thiếu dữ liệu thì lịch vẫn như cũ. Hàng ngày lễ trong snapshot Nhịp đã ghi sẵn còn hiện đến khi job đêm chạy lại.
+
+### Trước đó (16/11/2026)
+- hành vi: ngày lễ của `CalendarDay` là hàng `event` khi có sự kiện web ở Đà Lạt trùm ngày đó (nên 24/11 vẫn lọt vì K-Vietnam kéo dài đến 24/11); lịch chỉ vẽ ngày, hôm nay và chuyến đã chốt.
+
+## trending-rail-2026-11-16 — Trending: tab Mùa, thẻ xem trước, chi tiết đổi màu, tên một dòng
+
+- file: `web/src/user/home/Pulse.tsx` (`Row`, `Preview`, tab), `home/EventPost.tsx`, `home/SeasonPost.tsx`, `css/pulse.css`, `css/event.css`
+- cách kiểm chứng: `npx tsc -b --noEmit` trong `web/`; ảnh chụp `frontend_images/2026-11-16-trending/` (đăng nhập tài khoản `DEV_ACCOUNT_*`, bản tin giả lập)
+
+### Hiện tại (2026-11-16)
+- hành vi: khối Trending có tab Mùa; hàng = số hạng + ảnh tròn + tên một dòng (đuôi mờ dần, không xuống dòng); rê chuột mở thẻ xem trước cạnh khối (ảnh, tóm tắt, nút mở), bấm mở chi tiết; chi tiết sự kiện / mùa dùng nền nâu của trang (không còn xanh lá), thêm chip nhanh và thẻ địa điểm. Chuyển động: thẻ xem trước trượt theo hàng đang rê (không đóng rồi mở lại), tab có thanh trượt và hàng trượt vào theo hướng đổi tab, dòng phụ dưới tiêu đề luôn một dòng. Nút Xếp hạng mở `TrendingSheet` chồng lên trang (nền mờ; ba tab xếp hạng Địa điểm hot / Mùa / Sự kiện sắp tới, mỗi tab một bảng, cũng là nội dung trang `/trending`), không rời trang chủ.
+
+### Trước đó (_không có_)
+- hành vi:
+
+## admin-users-2026-11-15 — Admin: bảng điều khiển Người dùng + Xu hướng tiêu dùng, dọn khách kiểu cũ
+
+- file: `src/analytics/users.py` (`overview`, `people`, `person`), `src/analytics/trends.py` (`trends`, cache `_ASKS`), route `users`, `users/list`, `users/<uuid hex>`, `trends` ở `server.py`; `web/src/admin/screens/{Users,UserDetail,Trends}.tsx`, `admin/analytics.ts`, `admin/AdminApp.tsx` (`g u`, `g t`), `admin/admin.css` (`.u-*`, `.t-*`); `migrations/009_legacy_guests.sql`; test `tests/analytics/test_{users,trends}.py`, `tests/db/test_migrate.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/analytics tests/db` (cần `TEST_DATABASE_URL`); `cd web && npx tsc --noEmit -p .`; `python -m analytics serve` + Vite dev rồi mở `/admin/users`, `/admin/trends`; ảnh `frontend_images/admin-users/`. Trên DB thật (role chỉ đọc): Người dùng 0,23 s, danh sách 0,1 s, Xu hướng 0,2 s (lần đầu sau khởi động ~5 s, đọc nền).
+
+### Hiện tại (15/11/2026)
+- Màn Người dùng đếm theo người (`docs/ANALYTICS.md` §5, `docs/Role_Web_Functional_Design.md` §3.9): KPI so với kỳ trước, biểu đồ theo ngày, các bước mỗi người đã tới, giữ chân theo tuần đăng ký, tính năng được dùng, hồ sơ, tín hiệu cần chú ý (không ngưỡng), bảng mọi dòng `users`, trang một người.
+- Màn Xu hướng tiêu dùng (§6, §3.10): nơi đang lên, nơi được chọn / xem / thích / lưu / vào lịch / bị bỏ và tỉ lệ chọn sau khi thấy thẻ, lịch nhiều người lập (độ dài, giờ, cặp nơi), khi nào đi, khách muốn gì, chủ đề và từ khóa.
+- Event gán cho chủ hành trình trước `events.user_id`; tài khoản `@test.local` / `@example.com` và hành trình `synthetic` bị loại trừ khi bật "Gồm tài khoản thử".
+- `009_legacy_guests`: 27 dòng `kind = user, role = guest` (khách từ trước cột `kind`, constraint `role` ở prod đã bị nới tay) thành `kind = guest`, constraint `role` về `('user', 'admin')` như `001_init.sql`; đã áp lên prod sau `./run.sh db-backup` (`data/backup/pg/2026-11-15_1149.sql.gz`) rồi `purge_guests()` xóa 27 khách đó, 1.005 hành trình giữ nguyên với `user_id = NULL` (chủ dự án 15/11/2026).
+
+### Trước đó
+- _không có_
+
+## gmaps-refresh-2026-11-15 — Đánh giá Maps mới cho Nhịp, Extractor trên UIT
+
+- file: `src/corpus/crawl/gmaps/refresh.py`, `src/corpus/__main__.py` (`refresh`, `NOT_IN_ALL`), `src/corpus/pulse/signals.py` (`maps_recent`, `maps_reviews`, `maps_places`), `scripts/trends_daily.sh`; `.env` (Extractor → UIT); test `tests/pulse/test_pulse_signals.py`, `tests/crawl/gmaps/test_gmaps_refresh.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/pulse tests/crawl/gmaps/test_gmaps_refresh.py`; chạy thật `CORPUS_ATTACH_URL=http://127.0.0.1:9530 CORPUS_PROFILE_STATE=1 … -m corpus gmaps refresh --city dalat --limit 5` (5/5, 120 đánh giá mỗi nơi).
+
+### Hiện tại (15/11/2026)
+- `gmaps refresh` lấy đánh giá Maps mới (tới "một tháng trước", tối đa 60; 120 mất ~2 phút một nơi đông) của nơi đang phục vụ, chỗ ở sau cùng, nơi lâu chưa làm mới trước; ghi `data/gmaps/reviews_recent/`. Nhịp gộp vào `maps_reviews` (mỗi người một dòng) và lấy số đánh giá / trạng thái đóng cửa mới nhất. Chạy trong cửa sổ đăng nhập cổng 9530; job đêm bỏ qua khi cửa sổ đóng. `gmaps observe` đọc thêm `reviews_recent` (ngày tính từ lần làm mới, `input_hash` gồm file này) và chỉ gửi model đánh giá chưa đọc; job đêm chạy nó sau `refresh`.
+- Extractor chạy trên Gemma UIT (`EXTRACTOR_PARALLEL=36`) vì host LAN không phản hồi; prod đã `prod-restart`.
+
+### Trước đó (_không có_)
+- hành vi: _không có_ (đánh giá Maps dừng ở lần crawl cuối; Extractor trỏ host LAN `:8900` đã chết).
+
+## overload-most-2026-11-15 — Hướng thứ tư "Giữ nhiều nơi bạn chọn nhất", confirm chưa chọn hướng
+
+- file: `src/planning/overload.py` (`DIRECTIONS`, `LABEL` / `GAIN` / `TRADEOFF`, `_next` nhánh `most`), `src/planning/engine.py` (`confirm`); `web/src/user/screens/plan/{Choose.tsx,shared.ts}`, `planning/types.ts`; test `tests/planning/test_planning_{overload,overload_edits,composer,engine,lodging_golden,variants}.py`, `realistic_checks.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/planning -k "overload or composer or engine or lodging_golden or variants or realistic"`; `node --test web/src/user/screens/plan/notes.test.mjs` (từ gốc repo); `cd web && npx tsc -b`. Đo 19 nơi / 2 ngày: 3 hướng 1,7–2,0 s (27 lần `schedule_trip`), 4 hướng 2,7 s (41 lần), ra 3 thẻ khác nhau thay vì 2.
+
+### Hiện tại (15/11/2026)
+- Quá tải có bốn hướng: thêm `most` (chủ dự án 13/11/2026) bỏ trước nơi chiếm nhiều thời gian nhất (`visit["short"]` nếu chưa xếp, `_freed` nếu đã xếp), hòa thì bỏ nơi ít hợp gu; lý do "chiếm 2h30 của lịch, tính cả đường đi" / "cần ít nhất 1h30, lịch không còn chỗ". Trùng lịch vẫn gộp một thẻ (`merged`).
+- Web Chọn phương án: vẫn tối đa 3 thẻ (chủ dự án 15/11/2026), chọn trong bốn hướng theo dùng được → giữ nhiều nơi đã chọn nhất → hợp gu → ít đi lại; bảng tên có `most`.
+- `confirm` phiên quá tải chưa chọn hướng: `NotConfirmable` → 409 "choose a plan option before confirming" (trước: `AttributeError` trong `_variant_dict` → 500).
+- Giới hạn số lần gọi scheduler trong test 40 → 52.
+
+### Trước đó (13/11/2026)
+- hành vi: ba hướng `fit` / `travel` / `cost`, web tối đa 3 thẻ; `confirm` không chọn hướng → 500.
+
+## trends-pictures-seasons-2026-11-15 — Ảnh sự kiện / mùa, chọn mùa theo số nguồn, trợ lý không bỏ sót mùa
+
+- file: `src/corpus/events/{picture.py,run.py,__init__.py}` (`pictures`, `season_names`), `src/corpus/crawl/web/client.py` (`Web.images`), `src/corpus/pulse/{compute,render,__init__}.py` (`seasons`, `season_key`, `season_summary`, `image_from`), `config/pulse.yaml` (`season.max_items` 6 → 8); `src/trip/api/blocks.py` (`trend_kinds`, hàng mùa), `src/trip/infrastructure/knowledge.py` (`ONE_KIND_LIMIT`, `names_place`), `src/trip/agent/prompt.py` (mùa hoa là "mùa bây giờ"); `web/src/user/screens/understand/Trends.tsx`, `tu/types.ts`, `css/chat.css`; test `tests/events/test_events_picture.py`, `tests/pulse/test_pulse_compute.py`, `tests/trip/test_trends_block.py`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/events tests/pulse tests/trip/test_trends_block.py`; dựng lại `corpus pulse` → `corpus events` → `corpus pulse`, rồi `PYTHONPATH=.prod_src … pulse.bulletin / trends` (đọc được). Lượt chat thật (`bench.assistant.engine_for("live")`): "tháng 11 này Đà Lạt có mùa hoa gì" 4,4 s → "đang vào mùa hoa dã quỳ, mimosa và cải trắng; cũng đang vào mùa cỏ hồng"; "người mới… có gì đặc biệt" 4,0 s → sự kiện + mùa + hai nơi TikTok, không hỏi ngược.
+
+### Hiện tại (15/11/2026)
+- Ảnh: `corpus events` tìm ảnh cho mọi sự kiện và mọi mùa của bản Nhịp đêm trước qua SearXNG `categories=images`; luật code ở `picture.why_not` (tiêu đề chứa ≥ 75 % chữ của tên, không năm khác, ảnh sự kiện không đăng trước năm sự kiện − 1, https, cạnh ngắn ≥ 480 px, tỷ lệ 0,6–2,4, không mạng xã hội / logo / banner / ảnh đã dùng). Sự kiện ưu tiên ảnh tìm được, `og:image` là dự phòng. 15/11: 27 ảnh / 34 lượt.
+- Mùa (`compute.seasons`): gộp tên cùng một mùa (`season_key`), chỉ hiện tượng hoặc claim `season` về một nơi (bỏ "thời điểm đẹp" của nơi, thành phố, khu, món, tên chỉ là thời tiết), xếp theo số nguồn rồi trạng thái, 8 mục; `summary` = câu trích nêu đúng tháng; ảnh theo tên. Tháng 11: hoa dã quỳ (51 nguồn), đồi Cỏ Hồng, hồng treo gió, săn mây, hoa mimosa, hoa Cải Trắng, mùa hồng chín, dâu tây.
+- Nơi ngắm mùa (`compute.see_places`, offline): tối đa 2 nơi mang tên mùa rồi nơi các trang nguồn của mùa nhắc gần tên mùa (≥ 2 trang, độ nâng ≥ 1,2, bỏ tên quá phổ biến, chỉ nơi để ngắm). Tháng 11: dã quỳ → Đèo Prenn, Thung Lũng Vàng; cỏ hồng → Đồi Cỏ Hồng Đà Lạt / hồ Tuyền Lâm; săn mây → Thiên Đường Săn Mây Cầu Đất, Đồi Thiên Phúc Đức; mimosa → Đèo Prenn, Thung lũng Tình Yêu, Chùa Tàu; dâu tây → các vườn dâu. `render.months` viết mùa qua năm mới là "tháng 10–1".
+- Trợ lý: `trends` một loại trả tới 8 mục; mục mùa có `see_at`, sự kiện có `held_at`; mùa trùng tên nơi mang `names_place` (bộ gác không thay lời); prompt nói rõ "mùa hoa gì" chỉ trả từ Nhịp và nêu một hai nơi ngắm. Khối dưới lời theo nhu cầu câu hỏi (chủ dự án 15/11/2026): sự kiện → sự kiện + nơi đang được nhắc; mùa → mùa kèm nơi ngắm; câu chung → cả ba. Đo: "mùa hoa gì" 5,0 s → "…dã quỳ, mimosa và cải trắng. Bạn có thể ngắm dã quỳ ở Đèo Prenn…"; "tháng này có sự kiện gì" 4,6 s, khối 5 sự kiện (7 chip nơi diễn ra) + 4 nơi.
+- Web: hàng có ảnh từ site khác hiện tên site ở chân ảnh, ảnh không tải được thì hàng thành đoạn chữ; chip *Ngắm ở* / *Nơi diễn ra* (`SeeAt` trong `Trends.tsx`, `.tg-tr__see`). Ảnh: `frontend_images/2026-11-15/`.
+
+### Trước đó (13/11/2026)
+- hành vi: ảnh sự kiện chỉ là `og:image` của trang (hay là banner, có ảnh năm 2024); mùa xếp theo trạng thái trước (mùa dã quỳ 47 nguồn chưa kiểm bị loại, còn "săn mây", "đồi chè", "Tháng 10 - 12"), 6 mục, không ảnh, không câu; `trends` 3 mục mỗi loại nên câu "mùa hoa gì" không thấy mùa hoa nào và model trả bằng hiểu biết riêng ("Tham khảo: …dã quỳ, cải trắng, cúc họa mi").
+
+## web-ui-feedback-round2-2026-11-13 — Chọn phương án, gợi ý khoảng trống, Thêm trải nghiệm, Hành trình
+
+- file: `src/planning/overload.py` (tên hướng, bỏ ghép tên khi trùng lịch); `web/src/user/screens/plan/{Choose,GhostSlot,Find,Journey,Overview,parts,fill,WayIn,DayView,shared}.ts(x)`, `screens/Plan.tsx`, `planning/{planning.tsx,types.ts}`, `data/store.ts` (`allPlaceIds`), `css/{day,plan,itinerary,journey}.css`; bỏ `PlaceSwapPicker`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/planning` (1170 passed, 1 skipped); `cd web && npx tsc --noEmit`; `plan/notes`, `pd/web-f`, `understand/trip-disc`, `journey`, `scripts/test_planning_state.mjs` đạt. Chạy thật (Vite :5199 → harness :8769, khách mới): ảnh `frontend_images/real6/`, `real7/`.
+
+### Hiện tại (13/11/2026)
+- Chọn phương án: tối đa 3 thẻ, xếp theo dùng được → giữ nhiều nơi → hợp gu → ít đi lại; trùng lịch là một thẻ; tên *Giữ nơi hợp gu nhất / Di chuyển thuận lợi nhất / Tiết kiệm nhất* (web đổi tên theo id nên bản server cũ cũng hiện đúng); khối Lợi ích / Hạn chế; bấm thẻ là xem lịch trình, *Xem phương án khác* quay lại, chỉ Chốt mới khóa.
+- Tổng quan: *Điểm xuất phát* là mục riêng trước *Đến Đà Lạt* (thẻ bên phải chỉ hỏi nơi khởi hành); hàng *Đường tới Đà Lạt · Chọn* quay lại dưới *Đến Đà Lạt*; gợi ý chỗ nghỉ là lưới thẻ đầy khung, tối đa 8 chỗ, mỗi thẻ có *Chọn*.
+- Ngày: khoảng trống giữ hàng thẻ cũ, thêm nút "+" sau thẻ cuối; bấm "+" mở *Thêm trải nghiệm* (thiết kế cũ, đè lên nửa bản đồ, cột ngày vẫn thấy) với Nguồn *Tất cả* (cả danh mục Đà Lạt trừ chỗ ở) / *Gợi ý* / *Đã lưu* và đủ loại trải nghiệm theo nguồn.
+- Xem trước thay đổi: gắn với lịch (`view.state`), không với một bản `view`; trước đó gợi ý tải sau (poll 300 ms) làm mất kết quả xem trước. Có thông báo "Đang xem trước thay đổi…" trong lúc chờ (server 5–10 giây).
+- Hành trình: sơ đồ lộ trình cùng bảng màu Lịch trình (`Journey.tsx`, `css/journey.css`; `Plan.tsx` đọc `useRoutes` cả khi đang ở màn này). Mỗi ngày một bảng trắng, các mục lấy đúng từ lịch ngày và đúng thứ tự: *Xuất phát* (tên từ `routes`), khối Tự do / Nghỉ / Ăn (nghỉ `drop_bags` là "Ghé chỗ ở gửi đồ"), điểm dừng (ảnh, giờ, thời lượng), *Kết thúc ngày*; treo trên / dưới đường nét đứt, tối đa 7 mốc một hàng (5 / 3 khi hẹp), hàng sau đi ngược; số chấm chỉ đếm điểm dừng; chiều cao hàng theo loại thẻ. Đường nét đứt đi liền từ *Kết thúc ngày* ngày trước, qua ô *Nghỉ đêm*, vào *Xuất phát* ngày sau (`Through` + `Link`); hiện dần khi cuộn.
+
+### Trước đó (_không có_)
+- hành vi: _không có_
+
+## web-ui-feedback-real-2026-11-13 — Chạy thật Lịch trình: lỗi lưu điểm xuất phát, lịch cũ sau khi dựng lại, cổng đứng ở dev
+
+- file: `src/harness/dispatch.py` (`decision.trip` nhận thêm `edit`), `tests/harness/test_trip_gate.py`; `web/src/user/ui/Gate.tsx` (`useFan` đặt lại `raf`), `screens/Plan.tsx`, `screens/plan/{fill,candidates,pickers,panels,WayIn,Overview}.ts(x)`, `css/{plan,itinerary}.css`
+- cách kiểm chứng: `.venv/bin/python -m pytest -q tests/harness` (481 passed, 3 skipped); `cd web && npx tsc --noEmit`; `plan/notes`, `pd/web-f`, `understand/trip-disc`, `journey` test đạt. Chạy thật: Vite :5199 → harness prod :8769, khách mới, chat → Chọn nơi → cổng → Lịch trình (chỗ nghỉ, Thêm / Đổi, Đã lưu, *Thêm* nơi ngoài lựa chọn, Hành trình, Chốt → `/done`); ảnh `frontend_images/real4/`. Lưu điểm xuất phát chỉ kiểm bằng pytest: harness prod chạy `.prod_src/` cũ nên vẫn trả 400 cho tới khi deploy.
+
+### Hiện tại (13/11/2026)
+- server: `decision.trip` nhận `deck`, `drop`, `edit`, `readback_ok`. Trước đó `edit` bị từ chối (400) nên mọi nút *Sửa* trong bản tóm tắt của cổng và thẻ *Bạn đi từ đâu, bằng gì?* ở Lịch trình đều báo "Chưa lưu được thông tin".
+- web: sau khi lưu thẻ Thông tin chuyến / điểm xuất phát / *Thêm* nơi ngoài lựa chọn, Lịch trình đọc lại lịch (`useTripEdit` gọi `reload()`); trước đó màn vẫn hiện lịch cũ và *Chốt* gửi vào lịch mới chưa chọn phương án (HTTP 500).
+- web: quạt thẻ của cổng chạy lại ở dev (StrictMode làm `raf` cũ chặn `run()`, thẻ trước đứng yên và che thẻ đang hỏi); prod không đổi.
+- giao diện: Đến Đà Lạt một hàng điểm xuất phát (*Thêm* / *Đổi*), bỏ hàng *Đường tới Đà Lạt · Chọn* và khối "Thêm điểm xuất phát" lặp; gợi ý chỗ nghỉ ở Tổng quan là ba thẻ ngang không chồng (≥ 900 px; hẹp hơn vẫn là quạt); thẻ chỗ ở ở màn Chọn phương án trải đều, mỗi dòng một hàng; bảng Thêm / Đổi một dòng lý do, nút *Thêm* / *Đổi*, không lặp nơi, không lộ mã `same_kind`; ô tìm chỗ nghỉ "Tìm chỗ nghỉ theo tên, địa chỉ".
+
+### Trước đó (_không có_)
+- hành vi: _không có_
+
+## web-ui-feedback-2026-11-13 — Lịch sử chat, cổng thông tin, bảng bên phải ở Lịch trình, màn Hành trình
+
+- file: `web/src/user/screens/{Understand,Explore,Lodging,Plan,Account}.tsx`, `screens/understand/History.tsx`, `screens/plan/{panels,pickers,fill,Journey,WayIn,parts}.tsx`, `ui/{ReadbackSheet,Ticket,useStagedList}.ts(x)`, `css/{plan,gate,workspace,explore,screens}.css`; bỏ `plan/Swap.tsx`, `TimeCard`
+- cách kiểm chứng: `cd web && npx tsc --noEmit`; `plan/notes.test.mjs` (bỏ ca TimeCard / Swap), `pd/web-f.test.mjs`, `trip-disc.test.mjs`, `journey.test.mjs` đạt; `chat-trim.test.mjs` fail từ trước (thay đổi chưa commit của Blocks / Turn, không phải đợt này). Ảnh `frontend_images/ui-feedback-*.png` chụp từ fixture, chưa chạy với harness thật.
+
+### Hiện tại (13/11/2026)
+- hành vi: bấm chuyện cũ ở lịch sử chỉ mở hội thoại (không nhảy sang bước đang làm), có dấu X xóa trong ô tìm kèm hộp xác nhận, nút ba chấm to hơn; Chọn nơi giữ thứ tự thẻ khi chọn / bỏ (nơi mới nối đuôi); ô tìm của tab Nơi lưu trú tìm trong chỗ ở (`lodgingSuggest`), mọi tab có biểu tượng; Chuyến của tôi có tab *Đang lên kế hoạch*
+- cổng trước lập lịch: thẻ ngày / lưu ý giữ thiết kế cũ; trả lời xong không tự sang Lịch trình, bản tóm tắt sửa tại chỗ bằng ô sửa của phiếu chuyến (không còn *Sửa trong Tìm hiểu* ở bản tóm tắt)
+- Lịch trình: Đi với / Nhịp độ / Ngân sách / Đường tới và điểm xuất phát mở bảng bên phải; chọn chỗ nghỉ, Đổi, Thêm, "+" của thẻ gợi ý mở bảng chọn nơi (tab Gợi ý / Đã lưu, có ô tìm); bỏ thẻ Giờ ghé; Đề xuất tối ưu là thẻ giữa màn; Chốt kế hoạch này → màn Hành trình → Chốt hành trình → Phản hồi
+
+### Trước đó (_không có_)
+- hành vi: _không có_
+
 ## planning-gate-2026-11-10 — Chỉ hỏi ngày đi và lưu ý an toàn trước lập lịch
 
 - file: `src/trip/{domain/readiness,domain/required,domain/deck,domain/compile,api/engine}.py`, `src/planning/engine.py`, `src/harness/dispatch.py`, `web/src/user/ui/{ReadbackSheet,Gate}.tsx`, `web/src/user/css/gate.css`; test Trip / Planning / Harness và `web/scripts/test_planning_gate_*.mjs`.
@@ -665,6 +947,11 @@ _không có_
 - file: `web/src/user/screens/{Landing,GetApp}.tsx`, `web/src/user/landing/{scene,terrain,device,route}.ts`, `web/src/user/landing/{places,points,stats}.json` (sinh bằng `web/scripts/pick_landing_places.py`; `--signals-only` chỉ làm mới `signals`), `web/scripts/landscape/bake.ts` → `web/public/world/dalat.bin`, `web/public/img/landing-{poster,p1..p5}.webp`, `web/src/user/css/{landing,motion}.css`, `web/src/user/faq.ts`, `docs/UI_SPEC_LANDING.md`
 - cách kiểm chứng: `npx tsc --noEmit -p web`; Vite riêng một cổng, mở `/?3d=on` (Chromium + SwiftShader) và `/?3d=off` ở 1440×900, cuộn hết 6 nhịp, mỗi thẻ chương hiện trọn khi dừng đúng nhịp; bấm `Lên lịch chuyến của bạn` ở màn đầu và hộp cuối → sang `/app`
 
+### 2026-11-18 · thêm Khám phá 3D + Chuyện kể, tinh gọn landing
+- file: `web/src/user/landing/Showcase.tsx` (mới), `web/src/user/screens/Landing.tsx`, `web/src/user/css/landing.css`, `web/src/user/ui/Space3d.tsx` (export `prefetch`), `web/server.mjs` (`/media/landing/*.mp4` có Range, đệm 1 ngày), `web/public/media/landing/{langbiang.mp4,*-poster.webp}`, `tests/web/test_landing_3d_structure.py`, `docs/UI_SPEC_LANDING.md`
+- hành vi: thêm lưới 10 mô hình 3D và hai phim (Mùa xuân không về tương tác, Langbiang); chương Lựa chọn gộp luôn thẻ "vì sao" (5 chương, vẫn 6 nhịp camera); bỏ khối "Ảnh thật của chỗ thật", dòng `Sắp có`, link khách ở hộp CTA cuối; thanh trên còn Cách hoạt động / Khám phá / Hỏi nhanh. Tải nhẹ theo ý định người xem (UI_SPEC_LANDING §3).
+- cách kiểm chứng: `npx tsc --noEmit -p web`; `pytest tests/web/test_landing_3d_structure.py`; build ra thư mục tạm + `node server.mjs <cổng>` rồi Chromium: Range 206, hover dựng khung phim ẩn, đóng gỡ khung, 3D hiện poster rồi `is-ready`, Esc đóng. Chưa kiểm phát mp4 (Chromium của Playwright không có H.264). Chưa deploy.
+
 ### Hiện tại (2026-10-17)
 - hành vi: cùng ngày, landing đổi sang vibe của trang chủ: bỏ bộ hồng và Lora; dùng token của app (nền `#f6f6f6`, chữ `#111`, nút `--tg-brown`), Be Vietnam Pro, thanh trên là thẻ trắng nổi, hộp CTA cuối nâu–đen; `--tg-sun` trên landing là cam đất `#b4532a`. Cảnh 3D, `bake.ts` / `dalat.bin` và 6 ảnh nền (`landing-poster`, `p1..p5`, chụp lại từ cảnh mới, `?v=home1`) đổi sang đá ấm, thông xám xanh, mái cam đất, nắng vàng. Bản hồng cũ lưu trong `logs/landing-pink-backup-2026-10-17/` (không vào git).
 - hành vi: landing về lại thung lũng Đà Lạt 3D tông hồng mận (cảnh, `dalat.bin`, ảnh nền và ảnh bản nhẹ của bản 2026-10-13); bộ hồng chỉ trên `.tg.tg-landing`, app vẫn trắng–đen. Bỏ bản đồ hành trình, linh vật 3D và nhánh video dựng sẵn (`mascot.ts`, `clips.ts`, `story.ts`, `capture.ts`, `web/capture.html`, `render_landing.mjs`, `public/landing/clips`; còn trong git ở `dee7497`). Giữ từ bản sau: phiên khách khi bấm CTA, `Dùng thử khách` khi đã đăng nhập, chuyển cảnh `tg-l2h` (sân khấu → hero, nút → `Tạo chuyến đi`; không còn cặp linh vật).
@@ -1007,3 +1294,55 @@ _không có_
 - hành vi: Chưa deploy. `layout.assign`: tập nơi xếp đủ mà còn ngày trống thì ngày đó nhận một nơi từ ngày có ít nhất hai nơi khi tổng đường tăng không quá `spread_extra_min` (default 45 trong `settings.py`, chưa ghi vào YAML vì prod đọc `config/` trực tiếp); 4 nơi cùng khu / 3 ngày ra 2-1-1 thay vì 4-0-0; cụm xa vượt ngưỡng vẫn ở cùng nhau. `conditions.describe(cond, cfg)` thêm `weather_cause` vào `day_conditions`; web hiện "Gió mạnh (…)" thay nhãn cố định "Mưa lớn hoặc dông", lịch dựng trước đó giữ nhãn cũ.
 ### Trước đó (2026-11-04)
 - hành vi: Chỉ dời nơi sang ngày trống khi tổng đường không tăng, nên chuyến có chỗ ở (mỗi ngày thêm một lượt đi-về) gần như không bao giờ dời. Web gọi mọi ngày `heavy` là "Mưa lớn hoặc dông", kể cả ngày chỉ có gió giật.
+
+## chat-style-2026-11-13 — chat Hiểu chuyến đi: dòng "đang làm gì" như ChatGPT, chip nguồn, thẻ nơi bấm mới mở, văn phong tự nhiên (`docs/Role_Web_Functional_Design.md` §6, `docs/TRIP_UNDERSTANDING.md` §19)
+
+- file: `web/src/user/screens/understand/{Turn,Places,Rich,Sources}.tsx`, `web/src/user/css/{chat,ask}.css`, `src/trip/agent/prompt.py` (`ASSISTANT`: Trends, Voice)
+- cách kiểm chứng: `cd web && npx tsc -b`; `pytest tests/trip tests/agents`; dựng `Turn` (bước đang chạy, bước xong, `ChatPlaces` không `why`) và chụp ảnh; lượt thật qua `bench.assistant.engine_for("live")` với "research cho tui đà lạt có gì hot", "3 ngày 2 đêm đi với người yêu nên đi đâu", "tháng 11 có sự kiện gì". `chat-trim.test.mjs` ca `completed` / `waiting` đã đỏ từ trước thay đổi này (bước `rec:` đang hiện còn test đòi ẩn), ca `dish` xanh.
+### Hiện tại (2026-11-13)
+- hành vi: Chưa deploy. Chủ dự án 13/11: giữ trả lời ngắn trong bong bóng (gọn hơn bài dài của ChatGPT), chỉ học điểm hay của ChatGPT; bản thử bài research đọc web (25–40 s mỗi lượt) đã bỏ vì quá chậm cho sản phẩm.
+  - Dòng tiến trình: một dòng chữ xám, đang chạy thì nói bước hiện tại ("Đang tìm kiếm N trang web", "Đang ghi nhận người đi cùng", không có bước thì "Đang suy nghĩ"), xong thì "Đã xử lý trong N giây"; luôn gập, bấm mới mở danh sách bước (chữ xám trên một đường kẻ, bỏ chấm tròn và biểu tượng tia sáng).
+  - Lượt xong có nguồn web: một chip "tên-miền +N" dưới lời, bấm xổ danh sách link (chữ cái trên nền màu thay favicon, không gọi dịch vụ ngoài; chỉ link http/https). `Rich` dựng đoạn / danh sách / `##` / `**đậm**` thành phần tử (không HTML).
+  - `PlaceStage` và khối tag không tự mở: chat chỉ có một dòng ảnh nhỏ, bấm mới mở sân khấu (`autoOpen` mặc định tắt; `ui/Assistant.tsx` bước quyết định vẫn bật). Tiêu đề: `why` của agent nếu có, không thì loại nơi chiếm ≥ 60% ("Quán cà phê hợp với chuyến này"), hai loại chiếm ≥ 80%, còn lại "Nơi hợp với chuyến này"; dòng phụ là số nơi và hai tên đầu; bỏ chữ "từ dữ liệu". Câu hỏi bằng ảnh (`PhotoStage`) vẫn tự mở vì cần trả lời.
+  - Văn phong (prompt, prod chưa có vì `.prod_src/` đóng băng): xu hướng kể như người quen theo dõi Đà Lạt, không đọc số video / đánh giá / tác giả, ngày cập nhật nói một lần, không mở đầu bằng "Tham khảo:"; mọi lời không nói về chính dữ liệu ("theo dữ liệu", "dữ liệu ghi nhận", "N video"). Đo 13/11: "có gì hot" 7,3 s ("Tính đến 12/11, Vườn Hồng Chân đèo Mimosa, Tu viện Phanxicô và Đồi Gác Vọng đang được nhiều người chú ý…"), "đi với người yêu" 8,2 s.
+  - Còn mở: sự kiện tháng 11 vẫn thiếu và có mục đã qua (Jazz 6–8/11) vì đầu vào của Nhịp (TikTok, Maps, web) dừng ở 27–29/10 dù bản tin vẫn chạy mỗi đêm.
+
+## trends-events-2026-11-13 — sự kiện có ngày từ web, TikTok liệt kê lại mỗi đêm, khối xu hướng trong chat (`docs/CORPUS.md` §Sự kiện sắp tới, §Nhịp)
+
+- file: `src/corpus/events/{__init__,gate,run}.py`, `config/web_events.yaml`, `src/corpus/llm/tasks.py` (`EVENT_EXTRACT`), `src/corpus/crawl/web/client.py` (`image`, `per_domain`), `src/corpus/crawl/tiktok/poi_refresh.py`, `src/corpus/pulse/{signals,compute,render,__init__}.py`, `config/{pulse,queries}.yaml`, `src/trip/api/{blocks,engine}.py` (`trends_block`), `src/trip/infrastructure/knowledge.py` (`trend_rows`, `_intro`, `allows`), `web/src/user/screens/understand/{Trends,Blocks,Turn,Sources}.tsx`, `web/src/user/tu/types.ts`, `scripts/trends_daily.sh`, `tests/events/`, `tests/trip/test_trends_block.py`, `tests/pulse/test_pulse_compute.py`
+- cách kiểm chứng: `pytest tests/events tests/pulse tests/trip`; `python -m corpus events --city dalat`, `python -m corpus pulse --city dalat`, rồi đọc bằng `.prod_src` (bàn giao `git 69e19a59:docs/plans/2026-11-13-chat-trends-HANDOFF.md`); lượt chat thật "tháng 11 có sự kiện gì".
+### Hiện tại (2026-11-13)
+- hành vi: Chưa deploy, cron chưa đổi. `corpus events`: 5 truy vấn có tháng / năm, 14 trang + 22 đoạn trích, 81 mục model trả, 23 sự kiện qua gate; Nhịp chọn 6 (Festival Âm nhạc quốc tế Lang Biang 13–15/11, K-Vietnam Wellness 20/11, giải chạy 21/11, Festival Hoa 19–31/12, …) thay các sự kiện chỉ có tháng. Mục sự kiện mới vẫn mang `status` / `months` để prod cũ đọc được. `poi_refresh` thử 5 nơi; lượt đầu 731 nơi và dòng cron chờ chủ dự án. Chat: câu xu hướng có lời ngắn + khối mục đánh số (chỉ phần được hỏi), hàng không ảnh hiện như đoạn bài viết; "tháng 11 có sự kiện gì" 6 s.
+
+## ux-speed-trends-2026-11-18 — không hỏi trước khi lập lịch, xếp đầy ngày 1 khi chưa có ngày, 429 không còn hiện, Trending gộp lễ hội (`docs/TRIP_UNDERSTANDING.md`, `docs/PLANNING.md` ⓑ, `docs/CORPUS.md` §Sự kiện sắp tới, `docs/SECURITY.md`, `docs/UI_SPEC_USER_WEB.md`)
+
+- file: `src/trip/domain/readiness.py`, `src/planning/{layout,build}.py`, `src/harness/{protection,server}.py`, `config/security.yaml`, `src/corpus/events/{gate,run,seasons}.py`, `src/corpus/llm/{roles,tasks}.py` (`TRENDS`, `EVENT_EXTRACT.part_of`), `src/corpus/pulse/{compute,render}.py` (`parts`), `web/src/net.ts`, `web/src/main.tsx`, `web/src/user/{journeyErrors.ts,tu/types.ts}`, `web/src/user/ui/{SelectedBar,ReadbackSheet,Gate}.tsx`, `web/src/user/screens/{Explore,Plan}.tsx`, `web/src/user/screens/plan/{fill,TripMap}.tsx`, `web/src/user/home/{EventPost,Pulse}.tsx`, `web/src/user/css/{bar,gate,event,itinerary}.css`, tests `tests/{events,harness,trip,planning}/…`
+- cách kiểm chứng: `pytest tests/trip tests/harness tests/events tests/planning tests/pulse` (xanh, trừ `tests/analytics/test_users.py` của việc dashboard đang dở và `tests/decision/test_wish_speed.py` đo tốc độ khi máy tải); `cd web && npx tsc --noEmit -p .`; `python -m corpus events --city dalat && python -m corpus pulse --city dalat`; ảnh `frontend_images/fixes-2026-11-18/`
+### Hiện tại (2026-11-18)
+- hành vi: Đã deploy đầy đủ 18/11/2026 03:29 (`./run.sh prod`, smoke ok; kèm sửa `build.condition_warnings` khi dự báo thiếu `rain_mm`); dữ liệu sự kiện / Nhịp đã dựng lại bằng code mới (prod đọc `data/` trực tiếp).
+  - Lỗi "Máy chủ đang bận": là quota 60 request/phút mỗi người, mở app đã tốn ~35 (8 lần `/me/library`, 5 lần `/trips`…). Nay 240/phút, `429` báo đúng số giây chờ; `web/src/net.ts` gộp GET trùng, dùng lại danh sách 4 giây, tự gửi lại sau 429. Câu lỗi không còn nói "nhiều người dùng".
+  - Không hỏi ngày đi / lưu ý trước khi lập lịch; chỉ hỏi lại vấn đề sức khỏe người dùng tự nhắc mà chưa rõ. Ngày đi chọn ở khối "Ngày đi" của Lịch trình, Lưu ý là một hàng như Đi với / Ngân sách. Chưa có ngày: `fill_first` xếp đầy ngày 1 rồi mới sang ngày 2 (trước: 2 nơi thành 2 ngày, mỗi ngày một nơi).
+  - Trending: `EVENT_EXTRACT` / `SEASON_GROUP` chạy trên terra (Gemma loại oan 38 / 75 mục vì `in_city`); tên Anh, số La Mã không tách sự kiện; tiết mục vào `parts` của lễ hội; sự kiện chưa qua giữ 7 ngày khi đêm sau không trang nào nhắc. 17/11 Festival Hoa hiện 4 lần, nay 1 lần với 4 tiết mục.
+  - Web: thanh Lập lịch chỉ còn số nơi, giờ tham quan, chi phí; ô tìm không còn ví dụ; bản đồ Lịch trình không còn dải trắng, màu tươi hơn; bỏ thẻ Phương án dự phòng, Độ tin cậy của lịch, nút Tổng quan ở thanh dưới màn ngày; câu lưu ý thời tiết / chỗ ở viết lại; tóm tắt chuyến đi không còn nhãn nguồn.
+### Trước đó
+- _không có_
+
+## planning-fast-optimal-2026-11-18 — lịch hiện nhanh, "Tối ưu lịch" tất định, quá tải ba hướng (`docs/PLANNING.md` §ⓓ, §Quá tải, §Tối ưu lịch, §Giới hạn đã biết; `docs/UI_SPEC_USER_WEB.md` Lịch trình 11)
+
+- file: `src/planning/optimize.py` (mới), `src/planning/{engine,overload,variants,route,build,session,scope,tools,__init__}.py`, `src/harness/{contracts,__main__}.py`, `web/src/user/{store.ts,planning/api.ts,planning/planning.tsx,screens/Plan.tsx,screens/plan/parts.tsx,screens/plan/Choose.tsx}`, tests `tests/planning/{test_planning_optimize,test_planning_fast_plan,bench_preview,bench_optimize,bench_judge}.py` (mới), `tests/planning/test_planning_realism.py` + cập nhật các test còn hướng `travel` / đường model của `recommend`
+- cách kiểm chứng: `pytest tests/planning tests/harness` (toàn bộ: xanh trừ `tests/decision/test_wish_speed.py`, ngân sách 120 ms đo khi máy tải, code Decision không đổi); `python tests/planning/bench_preview.py --runs 1 --gap 3`; `python tests/planning/bench_optimize.py [--shuffle]`; ảnh `frontend_images/web-optimize-2026-11-18/`
+### Hiện tại (2026-11-18)
+- hành vi: Đã deploy 18/11/2026: đầy đủ lúc 04:16 (`./run.sh prod`, cùng landing mới của phiên khác; smoke ok, `/media/landing/*.mp4` trả 206), rồi chỉ `src/` lúc 04:26 cho bản sửa ngày trống của "Tối ưu lịch" (đông cứng + khởi động lại như `prod`, không build web vì cây web đang có việc dở chưa duyệt của phiên khác). Thử thật trên prod: `recommend` 1,2–1,4 s.
+  - Preview của Lựa chọn không tìm hướng quá tải: chỉ lịch chính (nơi vừa + `leftover`), thẻ quá tải `pending`; ba hướng tìm ở nền (luồng `plan-search`, dùng lại trip và lịch chính của preview), `create` chờ đúng việc đó. Hướng chạy trên pool worker spawn khởi động sẵn lúc harness warm (`planning.warm_workers`, 8 worker), hết hạn thì giết cả pool. Đo 22 ca: preview p90 4,3 s → 270 ms; create sau 3 s xem bản đồ p90 3,3 s → 0,5 s.
+  - Quá tải: ba hướng `fit` / `cost` / `most`, bỏ `travel`; thẻ trùng tập nơi gộp như cũ.
+  - Rút thời gian ghé không bao giờ dưới `short`, thời lượng người dùng đặt không rút; thẻ có dòng Lưu ý `visit_shortened` nêu nơi bị bớt bao nhiêu phút.
+  - "Tối ưu lịch" (`Engine.recommend`, payload `{scope: keep_mine | all}`): bộ tìm tất định, không model. Tìm trên ma trận (tour Held-Karp, dời / đổi nơi giữa ngày, chia quét quanh chỗ ở) rồi chạy đồng hồ ngày cho 6 ứng viên; chỉ nhận khi không thêm vi phạm / bữa lỡ, không tăng phút xe và tốt hơn theo hàm mục tiêu (xe gồm lượt về chỗ ở + độ lệch tải + phạt giờ + nhịp); áp qua act `optimize` (một bước hoàn tác, replay đúng). Web hỏi trước khi lịch có chỗ người dùng tự sắp; ngăn kết quả nói phút xe và các điều tốt hơn khác. Không làm trống ngày người dùng đi (phạt `spread_extra_min` mỗi ngày trống, như luật ngày trống của bộ chia ngày). Đo `--shuffle`: tổng xe 4790 → 4561 phút, không ca nào tăng, chậm nhất 1,0 s.
+  - Log phiên cũ có act `recommend` (đề xuất model) vẫn replay qua `_proposal_trial`.
+  - Sau bản 04:26, đánh giá "Tối ưu lịch" từ phía người dùng (chủ dự án 18/11), **chưa deploy, chưa commit**:
+    - Đọc lịch bằng `tests/planning/bench_judge.py` (mới): lịch đầu qua hết bộ kiểm; lịch shuffle rồi Tối ưu còn 9 ca lỗi người dùng thấy ngay (ngồi không ở chỗ ở, lỡ hoàng hôn, về quá giờ), vì bộ tìm chỉ nhìn số vi phạm + phút xe và không với tới lịch tự động.
+    - Lịch tự động của đúng tập nơi (`schedule_trip`) luôn là ứng viên (`seeds`); mỗi ngày chọn giữa ngày hiện tại, thứ tự tìm được, ngày như lịch tự động xếp (kèm giờ đẹp nó bỏ vì lý do vật lý) và thứ tự đó chạy lại, theo vi phạm validator của ngày → bữa lỡ → `day_value`. Act `optimize` mang `unpinned` theo ngày để đường sửa lịch giữ đúng các giờ đẹp đã bỏ.
+    - Hàm mục tiêu thêm chờ / ngồi không quá 30′, giờ đẹp bị bỏ (`PIN_LOST` 90), về quá giờ; bữa lỡ không còn tính bữa mà khung giờ đã qua trước khi ngày bắt đầu (ngày tới 14:00 bị phạt oan "lỡ bữa trưa").
+    - `improves`: bớt vi phạm hoặc bữa lỡ thì được đi xe thêm; ngang nhau thì vẫn không bao giờ tăng phút xe.
+    - Đo: `bench_judge` mọi lịch sau Tối ưu (lịch đầu và shuffle, 20 ca) qua hết bộ kiểm; `bench_optimize --shuffle` 14/22 ca được sửa, xe 4790 → 4571 phút, chậm nhất 1,9 s. `pytest tests/planning tests/harness` xanh (1670 + test mới).
+### Trước đó
+- _không có_

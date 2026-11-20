@@ -361,8 +361,8 @@ class Trends(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tool_name: ClassVar[str] = "trends"
 
-    kind: Literal["hot", "top", "event", "season", "new", "closed"] | None = Field(
-        None, description="hot = new videos, top = several sources, event, season, new = new place, closed. Omit for all.")
+    kind: Literal["hot", "top", "event", "season", "new"] | None = Field(
+        None, description="hot = new videos, top = several sources, event, season, new = new place. Omit for all.")
     month: int | None = Field(None, ge=1, le=12, description="Only seasons and events of this month.")
 
 
@@ -389,6 +389,29 @@ class QuickReplies(BaseModel):
         if any(not o.strip() or len(o) > 40 for o in v):
             raise ValueError("each option is 1-40 characters")
         return [o.strip() for o in v]
+
+
+class WordCards(BaseModel):
+    """Write the words on a photo card: the small label, the question and the reason. Your words only: the card has
+    no stock question. For next_card your reply's last sentence is already its heading: call this only to word it
+    differently; it does not end the turn and costs the user another model call."""
+    model_config = ConfigDict(extra="forbid")
+    tool_name: ClassVar[str] = "word_cards"
+
+    question: str = Field(max_length=70, description="A short heading (one line), drawn from what the user said: a question or an invitation, never an instruction.")
+    why: str = Field("", max_length=90, description="One short line on why you ask, in their own words, or empty.")
+    header: str = Field("", max_length=30, description="A tiny label of the card, or empty.")
+
+    @field_validator("question", "why", "header")
+    @classmethod
+    def _clean(cls, v):
+        return v.strip()
+
+    @model_validator(mode="after")
+    def _filled(self):
+        if not self.question:
+            raise ValueError("write the question")
+        return self
 
 
 # ---------- photos, screenshots and links the user sent (asst-perceive; registered in agent/perceive_tools.py) ----------
@@ -451,10 +474,10 @@ class MoreLikeShown(BaseModel):
 # TurnTools decides which)
 MODELS = {m.tool_name: m for m in (RecordFact, ResolveRelativeDate, AddDays, WeekdayDate, DateOf, SearchPlaces,
                                    SearchFeatures, Ask, AskUser, AskRequired, FindDishes, FindKinds, SuggestDirections, WebSearch, WebRead,
-                                   FindPlaces, GetPlace, SimilarPlaces, Weather, Distance, Trends, ShowPlaces, QuickReplies)}
+                                   FindPlaces, GetPlace, SimilarPlaces, Weather, Distance, Trends, ShowPlaces, QuickReplies, WordCards)}
 WEB_TOOLS = frozenset({"web_search", "web_read"})
 # read-only corpus / live tools of the assistant (config/trip.yaml assistant.enabled): their results are cached per turn
 READ_TOOLS = frozenset({"find_places", "get_place", "similar_places", "weather", "distance", "trends"})
 # the assistant's display tools: the app builds what they show from ids (TurnTools.shown_places / quick)
-SHOW_TOOLS = frozenset({"show_places", "quick_replies"})
+SHOW_TOOLS = frozenset({"show_places", "quick_replies", "word_cards"})
 ASSISTANT_TOOLS = READ_TOOLS | SHOW_TOOLS

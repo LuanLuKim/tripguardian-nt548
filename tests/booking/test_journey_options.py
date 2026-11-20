@@ -214,3 +214,16 @@ def test_coach_without_a_located_station_keeps_no_door_to_door_claim():
     ha_tinh = (18.3428, 105.9057)  # Hà Tĩnh region: no station in config/live.yaml
     j = journey.options(ha_tinh, DAY, LODGING, route=fake_route(), offers=offers_of([trip(300000)]))
     assert by_mode(j)["bus"].legs == () and by_mode(j)["bus"].minutes is None
+
+
+def test_transfer_legs_carry_ride_quotes_only_when_asked():
+    plain = by_mode(journey.options(SGN_HOME, DAY, LODGING, route=fake_route(), offers=offers_of()))["plane"]
+    assert all(leg.rides is None for leg in plain.legs)
+    j = journey.options(SGN_HOME, DAY, LODGING, route=fake_route(), offers=offers_of(), with_rides=True)
+    legs = by_mode(j)["plane"].legs
+    home, air, city = legs
+    assert home.kind == "transfer" and home.rides["region"] == "ho_chi_minh"  # priced where the leg starts
+    assert city.rides["region"] == "lam_dong" and air.rides is None
+    assert any(q["brand"] == "xanhsm" and q["vnd_min"] for q in city.rides["quotes"])  # Lado's board in Lâm Đồng
+    assert set(j.as_dict()["ride_brands"]) == {"grab", "be", "xanhsm"}
+    assert all(leg.rides is None for leg in by_mode(j)["car"].legs)  # driving yourself: km and hours only

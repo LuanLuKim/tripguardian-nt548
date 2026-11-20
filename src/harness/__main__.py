@@ -180,10 +180,20 @@ def main():
     harness.companion = companion
     harness.calendar = Calendar(pool(), accounts, records, os.environ.get("APP_BASE_URL", ""))
     harness.notify = Notify(pool(), records)
-    harness.warm_releases(lambda: recent_bindings(pool()), lambda: recent_journeys(pool()))
+    harness.warm_releases(lambda: recent_bindings(pool()), lambda: recent_journeys(pool()), encoders=True)
+    # the overload search's standing workers (planning.overload pool), so the first overloaded trip does not start them
+    threading.Thread(target=_warm_planning_workers, name="planning-workers-warm", daemon=True).start()
     test_login = os.environ.get("TG_TEST_LOGIN") == "1"  # walk-throughs only; refused when APP_BASE_URL is https
     print(f"Journey harness: http://127.0.0.1:{args.port} (app {version})")
     run(harness, accounts, args.port, os.environ.get("APP_BASE_URL", ""), test_login, Social(pool()), Library(pool()), mailer_from_env())
+
+
+def _warm_planning_workers() -> None:
+    try:
+        from planning import warm_workers
+        warm_workers()
+    except Exception:
+        logging.getLogger(__name__).exception("Planning worker warmup failed")
 
 
 def _eve_store():

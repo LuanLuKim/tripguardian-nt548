@@ -10,7 +10,6 @@ A query already recorded (younger than MAX_AGE_DAYS) is not asked again, so a st
 
 import json
 import time
-from pathlib import Path
 
 from ...categories import group
 from ..common.files import data_dir, load_config, safe_name

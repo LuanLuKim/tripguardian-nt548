@@ -7,7 +7,7 @@ import os
 import random
 import sys
 import time as clock
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from psycopg.types.json import Jsonb
 
@@ -377,7 +377,7 @@ class Notify:
 
     def _variant_stats(self, conn, kind: str) -> dict[str, tuple[int, int]]:
         """(sends, rewards) per variant over 60 days; reward = opened, then a journey action by the same user within
-        open_window_h (docs/ANALYTICS.md §Thông báo)."""
+        open_window_h (docs/COMPANION.md §7)."""
         rows = conn.execute(
             "SELECT variant, count(*) AS sends, count(*) FILTER (WHERE opened_at IS NOT NULL AND EXISTS ("
             "SELECT 1 FROM events e WHERE e.user_id = n.user_id AND e.source = 'server' AND e.at > n.opened_at "

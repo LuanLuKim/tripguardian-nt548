@@ -134,14 +134,9 @@ export function PlaceSearch({ onPick, placeholder }: { onPick: (p: { id: string;
   )
 }
 
-// Xem đầy đủ: every line with where it came from, editable in place; limits show what they cost.
-export function TicketFull({ open, onClose, u, busy, preview, focus, source, onFocus, onEdit, onShow, onReset }: TicketProps & { open: boolean; onClose: () => void; focus: string | null; onFocus: (t: string | null) => void; onReset: () => void }) {
+// The editor under each line of the ticket, keyed by line key. Shared by the full ticket and the read-back before planning.
+export function ticketEditors(u: Understanding, onEdit: (t: string, v: string | null) => void): Record<string, ReactNode> {
   const t = tripOf(u)
-  const [chainOpen, setChainOpen] = useState<string | null>(null)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (open && focus) setTimeout(() => ref.current?.querySelector(`[data-row="${focus}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
-  }, [open, focus])
   const companions: Who[] = t.companions?.value ?? []
   const editors: Record<string, ReactNode> = {
     dates: (
@@ -174,6 +169,11 @@ export function TicketFull({ open, onClose, u, busy, preview, focus, source, onF
     times: (
       <div className="tg-full__edit">
         {(['checkin_at', 'checkout_at', 'day_end'] as const).map((k) => <label key={k} className="tg-full__time"><span className="tg-faint">{FIELD_LABEL[k]}</span><TimeInput className="tg-input" label={FIELD_LABEL[k]} value={t[k]?.value ?? ''} onChange={(v) => onEdit(k, v || null)} /></label>)}
+        {(() => {
+          // A day that ends before it starts (or at breakfast) leaves no time to go anywhere: the plan then drops almost every place, so say it here, where the time is set.
+          const start = (t.checkin_at?.value as string | undefined) ?? '08:00', end = t.day_end?.value as string | undefined
+          return end && (end <= start || end < '12:00') ? <p className="tg-alert" role="status"><Icon name="warn" size={16} /> Mỗi ngày xong lúc {end}, {end <= start ? 'không sau giờ bắt đầu' : 'tức là buổi sáng'}: gần như không còn giờ để đi chơi. Nếu ý bạn là buổi tối, chọn lại giờ (ví dụ 19:15).</p> : null
+        })()}
       </div>
     ),
     purpose: <Seg label="Mục đích" value={u.purpose?.value ?? null} options={Object.entries(PURPOSE_LABEL).map(([value, label]) => ({ value, label }))} onChange={(v) => onEdit('purpose', v)} />,
@@ -191,6 +191,17 @@ export function TicketFull({ open, onClose, u, busy, preview, focus, source, onF
   editors.companions = <>{editors.who}<label className="tg-full__time">Tổng số người<input className="tg-input" type="number" min="1" value={t.people?.value ?? ''} onChange={e => onEdit('people', e.target.value || null)} /></label></>
   editors.budget = <div className="tg-full__edit is-stack"><label>Ngân sách (đồng)<input className="tg-input" type="number" min="1" defaultValue={u.budget_vnd?.value?.amount ?? ''} onBlur={e => { if (e.target.value) onEdit('budget_vnd', e.target.value) }} /></label><Seg label="Phạm vi ngân sách" value={u.budget_vnd?.value?.scope ?? null} options={Object.entries(BUDGET_SCOPE_LABEL).map(([value, label]) => ({ value, label }))} onChange={v => onEdit('budget_scope', v)} /><button type="button" className="tg-chip" aria-pressed={t.budget_unlimited?.value === true} onClick={() => onEdit('budget_unlimited', t.budget_unlimited?.value === true ? 'false' : 'true')}>Không giới hạn</button></div>
   editors.care = <p className="tg-muted">Các giới hạn của cả nhóm ở phần Giới hạn cứng bên dưới. Bạn có thể kể thêm trong ô tin nhắn.</p>
+  return editors
+}
+
+// Xem đầy đủ: every line with where it came from, editable in place; limits show what they cost.
+export function TicketFull({ open, onClose, u, busy, preview, focus, source, onFocus, onEdit, onShow, onReset }: TicketProps & { open: boolean; onClose: () => void; focus: string | null; onFocus: (t: string | null) => void; onReset: () => void }) {
+  const [chainOpen, setChainOpen] = useState<string | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open && focus) setTimeout(() => ref.current?.querySelector(`[data-row="${focus}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+  }, [open, focus])
+  const editors = ticketEditors(u, onEdit)
   const all = allLines(u)
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()} modal={false}>

@@ -1,7 +1,6 @@
 """find_services: utilities / rental / tour / coach stations for the assistant (agent/services_tool.py). They are not
 PlaceCards: no cards, never Decision candidates or Planning stops."""
 
-from datetime import date
 
 import pytest
 from test_knowledge_tools import call, recs, turn  # noqa: F401  (fixtures)

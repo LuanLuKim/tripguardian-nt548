@@ -27,7 +27,7 @@ from ..infrastructure.settings import Settings
 from .prefetch import place_id
 from .rules import WISH_FIELDS, TripRules
 from .tool_schemas import ASSISTANT_TOOLS, MODELS, READ_TOOLS, WEB_TOOLS, AddDays, DateOf, Distance, FindPlaces, \
-    GetPlace, QuickReplies, ShowPlaces, SimilarPlaces, Trends, Weather, WeekdayDate
+    GetPlace, QuickReplies, ShowPlaces, SimilarPlaces, Trends, Weather, WeekdayDate, WordCards
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +93,7 @@ class TurnTools(TripRules, TurnCore):
         self.compared, self.judge = compared or [], judge  # judge: infrastructure.clef.Judge or None
         self.web = web  # infrastructure.web.Web or None (no web tools then)
         self.cards = cards  # False (refine at Chọn nơi): no ask tool, nothing there could answer a card
+        self._running: dict[str, str] = {}  # tool name -> the progress line it started and has not finished
         self.on_trace = on_trace or (lambda trace: None)  # the screen's progress line (engine "trace" event)
         self.on_state = on_state  # the screen's trip summary, sent as soon as a fact is known (engine "state" event)
         self.shown: list[dict] = []  # facts of the model call being written, already previewed
@@ -119,6 +120,7 @@ class TurnTools(TripRules, TurnCore):
         self.route = None  # agent/prefetch.Route of this turn, when the assistant prepared it
         self.shown_places: list[dict] = []  # show_places calls this turn: {ids, why}; the engine adds the cards
         self.quick: list[str] = []  # quick_replies of this turn
+        self.words: dict | None = None  # word_cards of this turn: the model's own heading for the photo card
         self.rankings: list[list[str]] = []  # each find_places' ranked ids (Knowledge.find): the cards of a reply
         self._find_lock = Lock()
         self._find_jobs: dict[tuple, Future] = {}
@@ -255,8 +257,14 @@ class TurnTools(TripRules, TurnCore):
 
     def run(self, name: str, args: dict) -> dict:
         started = time.monotonic()
+        self._trace_start(name, args)
         try:
-            return self._run_tool(name, args)
+            result = self._run_tool(name, args)
+            self._trace_settle(name, "error" not in result)
+            return result
+        except BaseException:
+            self._trace_settle(name, False)
+            raise
         finally:
             self.timings.append(f"t_tool name={name} seconds={time.monotonic() - started:.3f}")
 
@@ -353,9 +361,58 @@ class TurnTools(TripRules, TurnCore):
     def _remember(self, result) -> None:
         self.remember(result)
 
+    # tools whose line is the same whatever the arguments: the user sees each step the moment it starts, not after a silent wait
+    PLAIN_STEPS = {
+        "trends": "Xem Nhịp Đà Lạt: sự kiện, mùa và nơi đang được nhắc", "browse_tags": "Chọn các hướng gợi ý bằng ảnh thật",
+        "find_stays": "Tìm chỗ ở phù hợp", "find_services": "Tìm dịch vụ gần đó", "place_evidence": "Đọc nhận xét của khách",
+        "compare_places": "So sánh các nơi", "place_status": "Kiểm tra giờ mở cửa", "route_time": "Tính thời gian di chuyển",
+        "climate": "Xem khí hậu Đà Lạt", "calendar": "Xem lịch lễ và ngày nghỉ", "estimate_cost": "Ước tính chi phí",
+        "local_tips": "Tìm mẹo địa phương", "area_notice": "Xem thông báo của khu vực", "photo_identify": "Nhận ra nơi trong ảnh bạn gửi",
+        "photo_similar": "Tìm nơi giống ảnh bạn gửi", "place_photos": "Xem ảnh của nơi này", "link_resolve": "Đọc liên kết bạn gửi",
+        "more_like_shown": "Tìm thêm nơi giống những nơi vừa xem"}
+    # a search by meaning needs the two encoders on the GPU; right after a restart that takes a while, and the user is told
+    SEMANTIC = frozenset({"find_places", "search_features", "similar_places", "photo_similar", "more_like_shown"})
+
+    def _trace_start(self, name: str, args: dict) -> None:
+        """The line of a read that is about to run, shown as running (the web says "Đang …") before the wait, so a slow step is
+        never a blank screen. The finished call rewrites the same line."""
+        if name == "record_fact" or (name not in self.PLAIN_STEPS and name not in self.SEMANTIC | {
+                "search_places", "find_dishes", "find_kinds", "get_place", "weather", "distance"}):
+            return
+        line = self._trace_line(name, args)
+        if line is None or any(st["id"] == line[0] and st["status"] == "ok" for st in self.trace):
+            return
+        sid, text = line
+        if name in self.SEMANTIC:
+            try:
+                from corpus.index import Embedder
+                if not Embedder.shared_ready():
+                    text += " · đang khởi động bộ hiểu ngữ nghĩa (lần đầu sau khi máy chủ khởi động, hơi lâu)"
+            except Exception:  # no corpus package here: the plain line
+                pass
+        self._running[name] = sid
+        self.step(sid, text, "run")
+
+    def _trace_settle(self, name: str, ok: bool) -> None:
+        """A line started by `_trace_start` that the call itself did not finish (a cached read, an early return) ends here."""
+        if (sid := self._running.pop(name, None)) is None:
+            return
+        for st in self.trace:
+            if st["id"] == sid and st["status"] == "run":
+                self.step(sid, st["label"].split(" · đang khởi động")[0], "ok" if ok else "fail")
+                return
+
     def _trace_call(self, name: str, args: dict, ok: bool, status: str | None = None) -> None:
         """What the call did, as one line of the turn's progress the user sees (the web shows it like a thinking block).
         Web and look steps write their own lines."""
+        if (line := self._trace_line(name, args)) is None:
+            return
+        sid, text = line
+        sid = self._running.pop(name, None) or sid  # the line this call started is the one it finishes (its arguments may have been resolved since)
+        if ok or not any(st["id"] == sid and st["status"] == "ok" for st in self.trace):
+            self.step(sid, text, status or ("ok" if ok else "fail"))
+
+    def _trace_line(self, name: str, args: dict) -> tuple[str, str] | None:
         from ..domain.questions import FIELD_LABEL
         from ..domain.readiness import TITLE
         said = lambda k: str(args.get(k) or "").strip()[:40]
@@ -394,10 +451,11 @@ class TurnTools(TripRules, TurnCore):
             sid, text = "ask", "Chọn câu hỏi giúp hiểu rõ hơn"
         elif name == "ask_required":
             sid, text = "ask", f"Hỏi tiếp: {TITLE.get(str(args.get('topic')), 'thông tin chuyến đi').lower()}"
+        elif name in self.PLAIN_STEPS:
+            sid, text = name, self.PLAIN_STEPS[name]
         else:
-            return
-        if ok or not any(st["id"] == sid and st["status"] == "ok" for st in self.trace):
-            self.step(sid, text, status or ("ok" if ok else "fail"))
+            return None
+        return sid, text
 
     # ---------- writes ----------
 
@@ -743,6 +801,11 @@ class TurnTools(TripRules, TurnCore):
     def _quick_replies(self, a: dict) -> dict:
         self.quick = QuickReplies.model_validate(a).options
         return {"ok": True, "note": "the buttons show under your reply"}
+
+    def _word_cards(self, a: dict) -> dict:
+        inp = WordCards.model_validate(a)
+        self.words = {"question": inp.question, "why": inp.why, "header": inp.header}
+        return {"ok": True, "note": "the photo card carries your words; write the reply now"}
 
     def _add_days(self, a: dict) -> dict:
         inp = AddDays.model_validate(a)

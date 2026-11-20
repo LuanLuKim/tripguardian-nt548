@@ -22,7 +22,7 @@ export const clockOf = (o: Option) => o.label.match(/\b\d{2}:\d{2}\b/)?.[0]
   ?? o.description.match(/\b\d{2}:\d{2}\b/)?.[0]
 
 const scopeIds = ['trip_total', 'per_day', 'per_person', 'per_person_day']
-export const TAB_ICON: Record<string, IconName> = { trip: 'calendar', companions: 'users', mobility: 'car', care: 'heart', pace: 'gauge', budget: 'wallet', lodging: 'bed' }
+export const TAB_ICON: Record<string, IconName> = { trip: 'calendar', arrival: 'route', companions: 'users', mobility: 'car', care: 'heart', pace: 'gauge', budget: 'wallet', lodging: 'bed' }
 
 // What the user chose on a deck's tabs, and the answers the server reads (one form for the gate sheet's deck and
 // the chat's one-question card).

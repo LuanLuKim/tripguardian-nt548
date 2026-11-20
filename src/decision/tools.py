@@ -14,6 +14,7 @@ from corpus.releases import Binding, bind, resolve_binding
 from corpus.retrieval import RetrievalEngine
 from corpus.snapshot import shared
 
+from .heuristics import plan_route
 from .agent import run_agent
 from .engine import Engine, NoSession, NotConfirmable, diff
 from .contracts import DecisionOutput, EvidenceInput
@@ -104,6 +105,10 @@ class Tools:
             except (TypeError, ValueError):
                 raise ValueError("n must be a page number") from None
             return self.engine.page(sid, str(payload.get("group", "")), n)
+        if operation == "route":
+            if payload.get("on") == "plan":
+                return {"route": plan_route(str(payload.get("text", "")))}
+            return {"route": self.engine.route(sid, str(payload.get("text", "")))}
         if operation == "search":
             return self.engine.search(sid, str(payload.get("q", "")))
         if operation == "draft":

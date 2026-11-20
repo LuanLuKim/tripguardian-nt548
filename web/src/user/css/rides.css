@@ -1,0 +1,21 @@
+/* Gọi xe giữa các điểm (screens/plan/Rides.tsx). Tokens only. */
+.tg-ride-bar { display: grid; gap: 6px; margin: 0 0 12px; padding: 12px 14px; border: 1px dashed var(--tg-line-2); border-radius: 16px; background: var(--tg-surface); }
+.tg-ride-bar__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.tg-ride-bar__head > span { display: inline-flex; align-items: center; gap: 6px; color: var(--tg-ink); font-size: 0.9rem; }
+.tg-ride-bar__sum { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 0.88rem; color: var(--tg-ink-2); margin: 0; }
+.tg-ride-bar__note { font-size: 0.76rem; color: var(--tg-ink-3); }
+.tg-ride-seg { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--tg-line-2); }
+.tg-ride-seg button { border: 0; background: none; padding: 4px 12px; border-radius: 999px; font: 600 0.8rem var(--tg-sans); color: var(--tg-ink-3); cursor: pointer; }
+.tg-ride-seg button.is-on { background: var(--tg-surface); color: var(--tg-ink); box-shadow: var(--tg-sh-1); }
+
+.tg-ride { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -4px 0 8px 2px; }
+.tg-ride__km { font-size: 0.74rem; color: var(--tg-ink-3); margin-right: 2px; }
+.tg-ride__chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 9px; border: 1px dashed var(--tg-line-2); border-radius: 999px; background: transparent; font: 500 0.76rem var(--tg-sans); color: var(--tg-ink-3); cursor: pointer; transition: border-color 140ms, background 140ms, color 140ms; }
+.tg-ride__chip b { font-weight: 600; color: var(--tg-ink-2); }
+button.tg-ride__chip:hover { border-color: var(--tg-ink-3); color: var(--tg-ink-2); }
+.tg-ride__chip.is-best { border-style: solid; border-color: var(--tg-pine); color: var(--tg-pine); }
+.tg-ride__chip.is-on { border-style: solid; border-color: var(--tg-brand); background: var(--tg-brand-soft); color: var(--tg-brand); }
+.tg-ride__chip.is-on b, .tg-ride__chip.is-best b { color: inherit; }
+.tg-ride__chip.is-none { cursor: default; opacity: 0.55; }
+@media (prefers-reduced-motion: reduce) { .tg-ride__chip { transition: none; } }
+.tg-ride__chip small { font-size: 0.7rem; color: inherit; opacity: 0.75; }

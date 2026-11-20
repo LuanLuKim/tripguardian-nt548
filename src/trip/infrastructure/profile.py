@@ -1,9 +1,11 @@
 """Stored profile per user (docs/TRIP_UNDERSTANDING.md §17): data/trip/profiles/<user_id>.json.
 
-The file holds each remembered session's votes, the user's edits to entries, the Judge's flags and a pause switch:
-{"sessions": [...], "edits": {entry id: Edit}, "flags": {entry id: verdict}, "paused": bool}. Entries are derived
-from it on every read (domain/patterns.py). The user id is opaque (an account id through the harness). Health and body
-signals never reach this file (patterns.observe does not vote on them).
+The file holds each remembered session's votes, the user's edits to entries, the Judge's flags, a pause switch and the
+Agent's memo of each chat: {"sessions": [...], "edits": {entry id: Edit}, "flags": {entry id: verdict}, "paused": bool,
+"memos": {session id: {"day", "upto", "memo"}}}. Entries are derived from the votes on every read (domain/patterns.py).
+The user id is opaque (an account id through the harness). The votes hold the user's own body needs only as patterns.observe
+allows; a memo holds the health, body or diet needs the user said about themself (owner 2026-11-17: kept without asking
+again, under the same remember consent).
 """
 
 import json
@@ -12,11 +14,13 @@ import threading
 from datetime import date
 from pathlib import Path
 
+from ..domain.memo import Memo
 from ..domain.patterns import Edit, Entry, Pattern, Summary, entries, entry_id, patterns_of
 from .settings import PatternSettings
 
 USER_ID = re.compile(r"[A-Za-z0-9_-]{8,64}")
 MAX_SESSIONS = 200  # oldest summaries beyond this are dropped
+MAX_MEMOS = 30  # memos of the latest chats kept
 STATEMENT_MAX = 200
 
 
@@ -32,7 +36,7 @@ class ProfileStore:
 
     @staticmethod
     def _read(path: Path) -> dict:
-        empty = {"sessions": [], "edits": {}, "flags": {}, "paused": False}
+        empty = {"sessions": [], "edits": {}, "flags": {}, "paused": False, "memos": {}}
         if not path.exists():
             return empty
         try:
@@ -40,9 +44,21 @@ class ProfileStore:
             return {"sessions": [Summary.model_validate(x) for x in raw["sessions"]],
                     "edits": {k: Edit.model_validate(v) for k, v in (raw.get("edits") or {}).items()},
                     "flags": {k: str(v) for k, v in (raw.get("flags") or {}).items()},
-                    "paused": raw.get("paused") is True}
+                    "paused": raw.get("paused") is True,
+                    "memos": ProfileStore._memos(raw.get("memos"))}
         except (OSError, ValueError, KeyError, TypeError, AttributeError):  # unreadable: an empty profile, never a failed trip
             return empty
+
+    @staticmethod
+    def _memos(raw) -> dict:
+        """The stored memos; one that does not read is dropped alone, never the votes beside it."""
+        out = {}
+        for k, v in (raw or {}).items() if isinstance(raw, dict) else ():
+            try:
+                out[str(k)] = {"day": str(v["day"]), "upto": int(v["upto"]), "memo": Memo.model_validate(v["memo"])}
+            except (ValueError, KeyError, TypeError):
+                continue
+        return out
 
     def _write(self, path: Path, data: dict) -> None:
         sessions = [s for s in data["sessions"] if s.votes][-MAX_SESSIONS:]
@@ -50,7 +66,9 @@ class ProfileStore:
         body = {"sessions": [s.model_dump(mode="json") for s in sessions],
                 "edits": {k: v.model_dump(mode="json") for k, v in data["edits"].items() if k in ids},
                 "flags": {k: v for k, v in data["flags"].items() if k in ids},
-                "paused": data["paused"]}
+                "paused": data["paused"],
+                "memos": {k: {**v, "memo": v["memo"].model_dump(mode="json")} for k, v in
+                          sorted(data["memos"].items(), key=lambda kv: kv[1]["day"])[-MAX_MEMOS:]}}
         self.root.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
@@ -95,6 +113,37 @@ class ProfileStore:
             done = Summary(sid=key, day=day, votes=merged, how={k: "acted" for k in merged})
             d["sessions"] = [s for s in d["sessions"] if s.sid != key] + [done]
             self._write(path, d)
+
+    def memo_upto(self, user_id: str, sid: str) -> int:
+        """The last turn of chat `sid` its memo read; -1 when it has none."""
+        path = self._path(user_id)
+        with self._lock:
+            got = self._read(path)["memos"].get(sid)
+        return got["upto"] if got else -1
+
+    def memo(self, user_id: str, sid: str) -> Memo | None:
+        path = self._path(user_id)
+        with self._lock:
+            got = self._read(path)["memos"].get(sid)
+        return got["memo"] if got else None
+
+    def put_memo(self, user_id: str, sid: str, day: date, upto: int, memo: Memo) -> None:
+        """One memo per chat: writing it again replaces it."""
+        path = self._path(user_id)
+        with self._lock:
+            d = self._read(path)
+            d["memos"][sid] = {"day": day.isoformat(), "upto": upto, "memo": memo}
+            self._write(path, d)
+
+    def memos(self, user_id: str, but: str = "") -> list[Memo]:
+        """The memos of the user's other chats, newest first; none while the profile is paused."""
+        path = self._path(user_id)
+        with self._lock:
+            d = self._read(path)
+        if d["paused"]:
+            return []
+        rows = sorted(((v["day"], k, v["memo"]) for k, v in d["memos"].items() if k != but), reverse=True)
+        return [m for _, _, m in rows]
 
     @staticmethod
     def _signal(d: dict, eid: str) -> tuple[str, str] | None:

@@ -1,7 +1,7 @@
 """web places: fee / hours queries through SearXNG -> data/web/<city>/place_snippets.jsonl, read by search observe."""
 import json
 
-from corpus.crawl import gsearch, web
+from corpus.crawl import gsearch
 from corpus.crawl.web import places
 
 

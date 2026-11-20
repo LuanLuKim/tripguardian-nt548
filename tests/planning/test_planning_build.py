@@ -1,6 +1,6 @@
 import json
 
-from plan_fixtures import CENTRE, CFG, all_days, decision, fake_matrix, fixed_sun, no_geocode, prepared, rec, spot
+from plan_fixtures import CENTRE, CFG, all_days, decision, fake_matrix, fixed_sun, no_geocode, rec, spot
 
 from live import Unavailable
 from planning import build_plan, render_text

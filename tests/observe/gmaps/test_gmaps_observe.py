@@ -772,3 +772,20 @@ def test_a_later_visit_fills_only_what_the_first_crawl_lacked(tmp_path):
     assert facts["closure"] == "permanent"
     assert facts["time_spent"] == {"min_minutes": 60, "max_minutes": 120}
     assert extract.rule_facts(tmp_path.parent, raw, None)["time_spent"] is None  # no file: nothing added
+
+
+def test_reviews_gmaps_refresh_read_join_newest_first_dated_from_that_read_and_change_the_input(tmp_path):
+    d = tmp_path / "places" / "0x1_0x2"
+    d.mkdir(parents=True)
+    (d / "reviews.json").write_text(json.dumps([{"review_id": "old", "text": "cũ", "published_text": "2 tháng trước"}]))
+    (d / "place.json").write_text(json.dumps({"fid": "0x1:0x2", "fetched_at": "2026-10-01T00:00:00+00:00"}))
+    before = extract.input_hash(d, set())
+    recent = tmp_path / "reviews_recent" / "0x1_0x2.json"
+    recent.parent.mkdir()
+    recent.write_text(json.dumps({"at": "2026-11-15T05:00:00+00:00", "reviews": [
+        {"review_id": "new", "text": "mới", "published_text": "2 ngày trước"},
+        {"review_id": "old", "text": "cũ", "published_text": "3 tháng trước"}]}))
+    reviews, _ = extract.load_samples(d)
+    assert [r["review_id"] for r in reviews] == ["new", "old"]          # the crawl's copy of "old" stays
+    assert reviews[0]["fetched_at"] == "2026-11-15T05:00:00+00:00" and "fetched_at" not in reviews[1]
+    assert extract.input_hash(d, set()) != before

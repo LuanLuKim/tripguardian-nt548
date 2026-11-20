@@ -12,12 +12,15 @@ flowchart LR
   H --> PG[(Postgres :5433)]
   H --> AG[Agent / Judge / Extractor]
   H --> SX[SearXNG :8888]
-  W -.->|404| P["/admin, mọi /api khác"]
+  W -->|"/api/analytics (tự kiểm đăng nhập)"| AN["analytics :8770"]
+  W -->|"review API, snapshot admin: sau khi analytics xác nhận cookie"| RV["review :8765"]
+  W -.->|404| P["mọi /api khác"]
 ```
 
 - Mọi tiến trình nghe `127.0.0.1`; chỉ tunnel Cloudflare ra internet. Chỉ `web/server.mjs` được tunnel trỏ tới.
-- Công khai: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media/*` (jpg / webp / png) và clip `/media/tiktok/<id>/video.mp4`.
-- Riêng tư (public trả 404): `/admin`, review server `:8765`, analytics `:8770`, API độc lập của Trip / Decision / Planning (`:8766–8768`).
+- Công khai: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media/*` (jpg / webp / png, gồm keyframe clip `/media/tiktok/<id>/frames/*.jpg`); clip TikTok phát qua player nhúng của TikTok, server không phục vụ video.
+- Admin Web (`/admin`) công khai nhưng bắt đăng nhập: khung trang chỉ vẽ form đăng nhập, mọi số liệu nằm sau cookie `tg_admin`. `/api/analytics/*` được proxy (analytics tự kiểm cookie); review API (`/api/queue`, `/api/decision(s)`, `/api/labels*`) và `/data/snapshot-admin.json` chỉ được gửi sau khi `server.mjs` hỏi `GET /api/analytics/me` và nhận 200 (`admin()` trong `web/server.mjs`); chưa đăng nhập trả 401. Ghi (POST) chỉ nhận khi `Origin` trùng `Host`. Cookie HttpOnly, SameSite=Strict, thêm Secure khi tới qua https. Sai mật khẩu 5 lần trong 15 phút thì khóa địa chỉ đó (`x-tg-client-ip` từ Cloudflare), không khóa người khác. Tài khoản duy nhất: `ADMIN_EMAIL` / `ADMIN_PASSWORD` trong `.env`.
+- Riêng tư (public trả 404): review server `:8765` và analytics `:8770` khi truy cập thẳng, API độc lập của Trip / Decision / Planning (`:8766–8768`), mọi `/api` ngoài các route trên.
 - `web/server.mjs` từ chối đường dẫn có thành phần bắt đầu bằng `.`, file `.map`, đường dẫn thoát khỏi thư mục gốc hoặc symlink ra ngoài (`inside()`), mọi method khác GET / HEAD ngoài proxy.
 
 ## 2. Xác thực và phiên
@@ -55,7 +58,7 @@ flowchart TD
   A -->|không| S503[503]
   A -->|có| U{"phiên hợp lệ?"}
   U -->|không| S401[401]
-  U -->|có| L{"≤ 60 req/phút/user?"}
+  U -->|có| L{"≤ 240 req/phút/user?"}
   L -->|không| S429[429]
   L -->|có| M{"mutation: Origin<br/>khớp APP_BASE_URL / Host?"}
   M -->|không| S403[403]
@@ -67,6 +70,7 @@ flowchart TD
 - `config/security.yaml`: 32 request đang xử lý, 128 socket (`ProtectedHTTPServer`), timeout đọc 15 giây, bộ đếm tối đa 10.000 khóa (hết thì từ chối khóa mới).
 - `web/server.mjs`: tối đa 64 socket tới harness, `headersTimeout` 15 giây, `requestTimeout` 30 giây, 100 request mỗi socket.
 - Quota nằm trong một tiến trình; lưu lượng lớn phải chặn ở Cloudflare (`docs/AGENT_HARNESS.md` §5).
+- Giới hạn mỗi người (`http.per_user_minute`, 240 từ 18/11/2026; 60 trước đó làm người dùng thật chạm `429` sau vài lần chọn nơi vì riêng mở app đã tốn ~35 request): cửa sổ trượt 60 giây; `429` trả `Retry-After` và `retry_after` = số giây tới khi call cũ nhất rời cửa sổ (`RateGate.wait`). Web (`web/src/net.ts`) chờ đúng số giây đó (≤ 30) rồi gửi lại, tối đa 2 lần, vì call bị từ chối chưa chạy; nó cũng gộp các GET trùng đang bay và dùng lại 4 giây các danh sách hay đọc (`/me`, `/me/library`, `/trips`, `/notifications`, `/friends`, `/pulse`, `/calendar`, `/tags/trending`), mọi lệnh ghi xóa bản dùng lại.
 
 ## 5. Chat, model, nội dung không tin cậy
 
@@ -88,7 +92,7 @@ Bộ lọc heuristic và prompt phạm vi giảm rủi ro, không chứng minh c
 - `SEARXNG_SECRET` truyền bằng biến môi trường khi `docker run`, không nằm trong `docker/searxng/settings.yml`; SearXNG nghe `127.0.0.1`, `public_instance: false`.
 - Token tunnel Cloudflare nằm ngoài repo (`~/.cloudflared/tripguardian.token`).
 - Gitignored: `/data/`, `.browser/` (profile trình duyệt crawl, có phiên đăng nhập Google), `logs/`, `tests/fixtures/gmaps/`, `tests/fixtures/tiktok/` (trang thật có người dùng thật), `certs/uit-ca-bundle.pem`.
-- Event không mang email, tên hay chữ người dùng gõ; client chỉ gửi được tên sự kiện và khóa thuộc allowlist (`src/harness/events.py`). Health / thể chất chỉ ở phiên, không lưu dài hạn (`docs/TRIP_UNDERSTANDING.md` §17).
+- Event không mang email, tên hay chữ người dùng gõ; client chỉ gửi được tên sự kiện và khóa thuộc allowlist (`src/harness/events.py`). Health / thể chất người dùng tự nói về chính mình chỉ được lưu dài hạn trong hồ sơ Trip (phiếu `need:` và memo) khi tài khoản bật đồng ý `consents.patterns`, xóa cùng tài khoản; của người đi cùng chỉ ở phiên (`docs/TRIP_UNDERSTANDING.md` §17).
 - `log_message` của harness tắt, nên log truy cập không ghi URL hay cookie.
 - Mỗi nguồn ngoài (TikTok, Google) có module và thư mục dữ liệu riêng; captcha do người giải, hệ thống không vượt.
 
@@ -105,11 +109,11 @@ Bộ lọc heuristic và prompt phạm vi giảm rủi ro, không chứng minh c
 
 Các điểm dưới đây đúng với code hiện tại, chưa có biện pháp trong repo:
 
-1. **Không giới hạn theo địa chỉ IP trong harness, trừ các route đặt lại mật khẩu.** `per_ip_minute` (`config/security.yaml`) và `AUTH_PER_IP_15MIN` (`src/harness/server.py`) được khai báo nhưng không dùng; chỉ `password/forgot` và `password/reset` đọc `x-tg-client-ip` (từ `web/server.mjs`, chỉ tin khi socket là loopback) để giới hạn theo địa chỉ. Hệ quả cho phần còn lại của `/api/auth/*`: `/api/auth/*` chưa có phiên nên không bị giới hạn 60 req/phút; `POST /api/auth/guest` tạo khách mới không hạn chế nên né được giới hạn theo user; `register` / `login` tốn CPU scrypt và chỉ bị chặn theo email sai mật khẩu, không theo nguồn. Chặn thật sự hiện chỉ ở slot toàn cục (`max_active`, `max_connections`) và Cloudflare.
+1. **Không giới hạn theo địa chỉ IP trong harness, trừ các route đặt lại mật khẩu.** `per_ip_minute` (`config/security.yaml`) và `AUTH_PER_IP_15MIN` (`src/harness/server.py`) được khai báo nhưng không dùng; chỉ `password/forgot` và `password/reset` đọc `x-tg-client-ip` (từ `web/server.mjs`, chỉ tin khi socket là loopback) để giới hạn theo địa chỉ. Hệ quả cho phần còn lại của `/api/auth/*`: `/api/auth/*` chưa có phiên nên không bị giới hạn 240 req/phút; `POST /api/auth/guest` tạo khách mới không hạn chế nên né được giới hạn theo user; `register` / `login` tốn CPU scrypt và chỉ bị chặn theo email sai mật khẩu, không theo nguồn. Chặn thật sự hiện chỉ ở slot toàn cục (`max_active`, `max_connections`) và Cloudflare.
 2. **Chưa có header bảo vệ trình duyệt.** `web/server.mjs` và harness không gửi CSP, `X-Frame-Options` / `frame-ancestors`, HSTS, `Referrer-Policy` (chỉ có `X-Content-Type-Options: nosniff` ở file tĩnh). Nếu Cloudflare thêm thì cấu hình đó nằm ngoài repo.
 3. **Email chưa xác nhận lúc đăng ký.** Đăng ký bằng email người khác chiếm trước được tài khoản email đó cho tới khi chủ thật đăng nhập Google (Google nhận lại, gỡ mật khẩu, kết thúc phiên cũ) hoặc đặt lại mật khẩu bằng mã gửi về email (kết thúc mọi phiên, người chiếm mất quyền vào).
-4. **Analytics (`:8770`), review (`:8765`) và API module độc lập không có xác thực**, chỉ dựa vào `127.0.0.1` và việc `web/server.mjs` không proxy chúng. Role `admin` có trong DB nhưng không có route admin nào trên harness public.
+4. **API module độc lập (`:8766–8768`) không có xác thực**, chỉ dựa vào `127.0.0.1` và việc `web/server.mjs` không proxy chúng. Admin Web dùng một tài khoản chung trong `.env`: không có quên mật khẩu, không xác thực hai bước, một mật khẩu lộ là lộ toàn bộ dữ liệu người dùng; phiên giữ trong bộ nhớ nên khởi động lại analytics là đăng xuất mọi người. Review server (`:8765`) tự nó không có xác thực, chỉ được `server.mjs` che. Role `admin` trong DB không có route admin nào trên harness public.
 5. **Sao lưu Postgres không mã hóa** (`data/backup/pg/<ngày>.sql.gz`, chứa hash phiên và token Google đã mã hóa). Thư mục gốc còn các bản `.env.bak_*` chứa bí mật (gitignored, vẫn nằm trên đĩa).
-6. **Clip và ảnh của bên thứ ba được phục vụ công khai** (`/media/tiktok`, `/media/gmaps`), gồm nội dung của người dùng TikTok / Google.
+6. **Ảnh của bên thứ ba được phục vụ công khai** (keyframe `/media/tiktok`, `/media/gmaps`), gồm nội dung của người dùng TikTok / Google.
 7. **CI chỉ chạy `pytest`** (`.github/workflows/test.yml`): không quét phụ thuộc, không quét bí mật, không kiểm header.
 8. **Chặn prompt injection là heuristic**; một câu mới vẫn có thể tới Agent, lúc đó chỉ còn schema và quyền tool chặn hậu quả (§5).

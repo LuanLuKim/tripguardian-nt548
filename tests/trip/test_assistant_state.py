@@ -39,7 +39,7 @@ def test_warm_runs_one_find_after_looks_and_marks_the_engine_warm(make_assistant
     from trip_fixtures import ScriptedChat
     engine = make_assistant(ScriptedChat())
     assert engine.warmed.is_set()  # an engine nobody warms is ready at once
-    seen, order = [], []
+    seen = []
     engine.looks = type("L", (), {"warmed": threading.Event()})()
     engine.looks.warmed.set()
     find = engine.knowledge.find

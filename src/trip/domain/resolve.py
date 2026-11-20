@@ -20,7 +20,8 @@ def score(q: str, name: str) -> float:
 def search(q: str, catalog: Catalog, limit: int = 6) -> list[Candidate]:
     if len(squash(q)) < 2:
         return []
-    records = (NameRecord(p.id, p.name, p.category_group) for p in catalog.places)
+    records = (NameRecord(p.id, p.name, p.category_group,
+                          ((p.evidence_record or {}).get("identity") or {}).get("name_raw")) for p in catalog.places)
     hits = corpus_search_names(q, records, within=set(catalog.by_id),
                                release_id=catalog.release_id, limit=limit)
     return [catalog.by_id[h.place_id] for h in hits if h.place_id in catalog.by_id]

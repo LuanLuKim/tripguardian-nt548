@@ -2,7 +2,6 @@
 
 from datetime import UTC, date, datetime, timedelta
 
-import pytest
 
 import booking
 from booking.settings import Settings

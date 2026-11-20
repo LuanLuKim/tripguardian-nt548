@@ -78,13 +78,14 @@ def overload_text(trip, ov: dict, left) -> tuple[str, list[dict]]:
     return text, why
 
 
-def plan_cards(trip, *, protected=()) -> dict:
+def plan_cards(trip, *, protected=(), search: bool = True, main=None) -> dict:
     """overload.plan_or_directions plus what its readers need around it:
     - back_to_decision names the places (place_id + name) no day had room for;
     - an invalid fitting plan opens as an editable draft whose violations stay on its rows (never an empty screen);
     - fields the web still reads until the plan screen is rebuilt: each card's `dropped_by_plan`, the overload card's
-      `text`, `selection_places`, `keep_all_valid` (always False: keeping every pick does not fit)."""
-    out = plan_or_directions(trip, protected=protected)
+      `text`, `selection_places`, `keep_all_valid` (always False: keeping every pick does not fit).
+    search=False: Lựa chọn's live preview, no direction search (overload.plan_or_directions)."""
+    out = plan_or_directions(trip, protected=protected, search=search, main=main)
     name = lambda pid: trip.by_place[pid].name if pid in trip.by_place else pid
     for v in out["variants"]:
         v["dropped_by_plan"] = drop_metadata(trip, v["id"], v["dropped"])

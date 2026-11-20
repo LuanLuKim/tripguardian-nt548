@@ -1,4 +1,4 @@
-"""What a diner's diet means for eating places (docs/PLACE_DECISION.md §8.1). Evidence only: the served
+"""What a diner's diet means for eating places (docs/PLACE_DECISION.md §8). Evidence only: the served
 `vegetarian_options` / `vegan_options` value, and what the place says it is in its own name and Google category. A
 place that says it is a grill, a seafood place or the like is never marked "Hợp nhất" for a vegetarian or a seafood
 allergy and is listed after the others; a place with no evidence stays unknown, never "matches"."""

@@ -1,4 +1,4 @@
-# Trip Understanding thresholds (docs/TRIP_UNDERSTANDING.md §5.4, §8-9).
+# Trip Understanding thresholds (docs/TRIP_UNDERSTANDING.md §5, §8, §9).
 n_min: 1            # reviews behind a place's feature value before it counts as evidence
 top_k: 20           # shortlist size used to measure whether a question changes the result
 enough_factor: 1.5  # a hard filter's coverage is "enough" when verified passes >= top_k * enough_factor
@@ -68,6 +68,7 @@ web_timeout_s: 6.0
 web_cache_dir: data/web_cache
 web_ttl_days: 30
 looks: true            # corpus.index for "vibe retro" and photos the user sends
+discovery: true        # the chat explores tastes; dates, party, transport, care, pace, budget and lodging are asked at the gate only (owner 2026-11-16)
 
 drill_min: 10
 drill_score_min: 0.14
@@ -79,7 +80,7 @@ drill_scores_path: data/trip/drill_scores.json  # written offline by `python -m 
 drills:
   chill:
     header: "Kiểu chill"
-    question: "Chill với bạn trông giống kiểu nào? Chọn một hay nhiều."
+    question: "Một buổi chill ở Đà Lạt của bạn trông thế nào?"
     variants:
       - {label: "Cà phê ngắm đồi thông", axis: place, cues: [quán cà phê trên đồi, view đồi thông, bàn ghế ngoài trời], writes: [{field: soft, value: "scenic_view=present:love"}]}
       - {label: "Quán nhỏ ấm cúng, yên tĩnh", axis: place, cues: [quán nhỏ decor ấm cúng, ánh đèn vàng, góc ngồi yên tĩnh], writes: [{field: soft, value: "cozy_decor=present:love"}, {field: soft, value: "noise=quiet:love"}]}
@@ -88,7 +89,7 @@ drills:
       - {label: "Vườn hoa, sân vườn xanh", axis: place, cues: [vườn hoa, sân vườn nhiều cây xanh, lối đi nhỏ], writes: [{field: soft, value: "flower_garden=present:love"}]}
   cà phê:
     header: "Kiểu quán cà phê"
-    question: "Bạn thích quán cà phê kiểu nào? Chọn một hay nhiều."
+    question: "Quán cà phê trong mơ của bạn ở Đà Lạt nhìn ra đâu?"
     variants:
       - {label: "View đồi, thung lũng", axis: place, cues: [quán cà phê view thung lũng, đồi thông, ban công ngoài trời], writes: [{field: soft, value: "scenic_view=present:love"}]}
       - {label: "Decor xinh, ấm cúng", axis: place, cues: [decor ấm cúng, đèn vàng, đồ gỗ], writes: [{field: soft, value: "cozy_decor=present:love"}]}
@@ -97,14 +98,14 @@ drills:
       - {label: "Cà phê ngon, pha chế kỹ", axis: place, cues: [quầy pha chế, máy pha espresso, ly cà phê], writes: [{field: soft, value: "drink_quality=good:love"}]}
   săn mây:
     header: "Kiểu săn mây"
-    question: "Bạn muốn săn mây ở kiểu chỗ nào?"
+    question: "Biển mây sớm mai, bạn muốn đón từ đâu?"
     variants:
       - {label: "Đồi trống ngắm biển mây", axis: place, cues: [biển mây, đồi cỏ, bình minh], writes: [{field: soft, value: "cloud_hunting=present:love"}]}
       - {label: "Quán cà phê săn mây", axis: place, cues: [quán cà phê trên cao, biển mây phía dưới, ghế gỗ], writes: [{field: soft, value: "cloud_hunting=present:love"}, {field: soft, value: "long_stay_chill=present:love"}]}
       - {label: "Leo núi đón mây", axis: place, cues: [đỉnh núi, đường mòn, mây trắng], writes: [{field: soft, value: "cloud_hunting=present:love"}, {field: soft, value: "hiking=present:love"}]}
   ngắm đồi:
     header: "Kiểu ngắm đồi"
-    question: "Bạn muốn ngắm đồi kiểu nào?"
+    question: "Ngọn đồi nào làm bạn muốn đứng lại thật lâu?"
     variants:
       - {label: "Đồi thông xanh", axis: place, cues: [đồi thông, cỏ xanh, bầu trời], writes: [{field: soft, value: "scenic_view=present:love"}]}
       - {label: "Đồi hoa", axis: place, cues: [đồi hoa, thảm hoa, sườn đồi], writes: [{field: soft, value: "flower_garden=present:love"}]}
@@ -112,7 +113,7 @@ drills:
       - {label: "Đi bộ lên đồi", axis: place, cues: [đường mòn lên đồi, người đi bộ, rừng], writes: [{field: soft, value: "hiking=present:love"}]}
   chụp ảnh:
     header: "Kiểu chụp ảnh"
-    question: "Bạn muốn có những tấm ảnh kiểu nào? Chọn một hay nhiều."
+    question: "Những tấm ảnh Đà Lạt của bạn mang màu sắc nào?"
     variants:
       - {label: "Góc decor check-in", axis: place, cues: [góc check-in, decor nhiều màu, tiểu cảnh], writes: [{field: soft, value: "photo_spot=present:love"}]}
       - {label: "Vườn hoa rực rỡ", axis: place, cues: [vườn hoa, hoa nhiều màu, lối đi giữa hoa], writes: [{field: soft, value: "flower_garden=present:love"}]}
@@ -121,7 +122,7 @@ drills:
       - {label: "Thuê trang phục chụp", axis: place, cues: [người mặc trang phục, áo dài, cổ phục], writes: [{field: soft, value: "costume_rental=present:love"}]}
   thiên nhiên:
     header: "Kiểu thiên nhiên"
-    question: "Thiên nhiên bạn muốn là kiểu nào? Chọn một hay nhiều."
+    question: "Giữa thiên nhiên Đà Lạt, bạn muốn đắm mình vào đâu?"
     variants:
       - {label: "Thác nước", axis: place, cues: [thác nước, đá, suối], writes: [{field: soft, value: "nature=present:love"}]}
       - {label: "Rừng thông, đường mòn", axis: place, cues: [rừng thông, đường mòn, cây cao], writes: [{field: soft, value: "hiking=present:love"}]}
@@ -129,29 +130,31 @@ drills:
       - {label: "Vườn, nông trại tự hái", axis: place, cues: [vườn dâu, nông trại, luống rau], writes: [{field: soft, value: "pick_your_own=present:love"}]}
   cắm trại:
     header: "Kiểu cắm trại"
-    question: "Bạn muốn cắm trại kiểu nào?"
+    question: "Đêm cắm trại của bạn, lều sẽ dựng ở đâu?"
     variants:
       - {label: "Glamping lều tiện nghi", axis: place, cues: [lều glamping, giường trong lều, đèn dây], writes: [{field: soft, value: "camping=present:love"}, {field: soft, value: "cozy_decor=present:love"}]}
       - {label: "Cắm trại bên hồ", axis: place, cues: [lều cắm trại, bờ hồ, bãi cỏ], writes: [{field: soft, value: "camping=present:love"}, {field: soft, value: "scenic_view=present:love"}]}
       - {label: "Cắm trại trong rừng thông", axis: place, cues: [lều trong rừng thông, lửa trại, cây thông], writes: [{field: soft, value: "camping=present:love"}, {field: soft, value: "nature=present:love"}]}
   ăn uống:
     header: "Kiểu ăn uống"
-    question: "Bạn muốn ăn ở những chỗ kiểu nào? Chọn một hay nhiều."
+    question: "Bữa ngon ở Đà Lạt, bạn muốn ngồi ở quán thế nào?"
     variants:
       - {label: "Quán đặc sản địa phương", axis: place, cues: [món đặc sản, quán bình dân, bàn ghế nhựa], writes: [{field: soft, value: "local_specialty_food=present:love"}]}
       - {label: "Nhà hàng view đẹp", axis: place, cues: [nhà hàng view đồi, cửa kính lớn, bàn ăn], writes: [{field: soft, value: "scenic_view=present:love"}, {field: soft, value: "food_quality=good:love"}]}
       - {label: "Quán ấm cúng", axis: place, cues: [quán ăn ấm cúng, đèn vàng, nồi lẩu], writes: [{field: soft, value: "cozy_decor=present:love"}]}
       - {label: "Đông khách, nhiều món ngon", axis: place, cues: [quán đông người, nhiều món, khay đồ ăn], writes: [{field: soft, value: "food_quality=good:love"}]}
+      - {label: "Lẩu, đồ nướng", axis: place, cues: [nồi lẩu bốc khói, bếp than nướng, bàn ăn nhóm đông], writes: [{field: soft, value: "food_quality=good:love"}]}
+      - {label: "Ăn vặt, bữa sáng nhẹ", axis: place, cues: [xe đẩy đồ ăn vặt, bánh nóng, bữa sáng], writes: [{field: soft, value: "local_specialty_food=present:love"}]}
   về đêm:
     header: "Kiểu buổi tối"
-    question: "Buổi tối bạn muốn đi kiểu nào?"
+    question: "Đà Lạt về đêm se lạnh, bạn muốn dành buổi tối ra sao?"
     variants:
       - {label: "Nhạc sống, acoustic", axis: place, cues: [sân khấu nhỏ, người hát, đèn sân khấu], writes: [{field: soft, value: "live_music=present:love"}]}
       - {label: "Bar, quán view đêm", axis: place, cues: [quầy bar, view thành phố về đêm, ánh đèn], writes: [{field: soft, value: "scenic_view=present:love"}]}
       - {label: "Quán ấm cúng yên tĩnh", axis: place, cues: [quán đèn vàng, góc ngồi yên tĩnh, buổi tối], writes: [{field: soft, value: "noise=quiet:love"}, {field: soft, value: "cozy_decor=present:love"}]}
   tâm linh:
     header: "Kiểu nơi tâm linh"
-    question: "Bạn muốn ghé nơi tâm linh kiểu nào?"
+    question: "Bạn tìm sự bình yên ở nơi nào?"
     variants:
       - {label: "Chùa kiến trúc đẹp", axis: place, cues: [chùa, mái cong, tượng phật], writes: [{field: soft, value: "heritage_architecture=present:love"}]}
       - {label: "Thiền viện yên tĩnh", axis: place, cues: [chùa trên đồi, sân vườn yên tĩnh, hồ sen], writes: [{field: soft, value: "noise=quiet:love"}]}
@@ -166,7 +169,7 @@ assistant:
   prefetch_wait_s: 3.0   # wait for prepared data at most this long; later results only fill the turn's cache
   reply_words: 60        # hard cut of the reply (whole sentences, the last question kept)
   ask_words: 40          # the length the prompt asks for; below reply_words so the cut rarely bites
-  reply_style: "Answer in the first sentence, no preamble or praise, do not repeat what the cards or data already show (name, photo, hours), at most one short question, no lists."
+  reply_style: "Answer in the first sentence, no preamble, greeting or praise, do not repeat what the cards or data already show (name, photo, hours), at most one short question, no lists."
   hide_prepared_lookup: true  # find_places is not offered when data holds places (tim_noi) or a named place (chi_tiet)
   covered_tools: write   # first call when prepared data answers every asked group: all | write (record_fact only) | none; measured 28/10 r6
   service_tier: priority # sent with every Agent call while enabled; 9router forwards it to the Codex upstream (docs/LLM_PROVIDER.md)

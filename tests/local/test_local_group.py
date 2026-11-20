@@ -235,7 +235,7 @@ def test_one_official_page_keeps_only_the_kinds_it_is_the_authority_on():
 
 
 def test_claim_ids_are_the_same_in_every_process():
-    import subprocess, sys, json as _json
+    import subprocess, sys
     code = ("import sys; sys.path.insert(0, 'src'); from datetime import datetime, UTC; import json; "
             "from corpus.local.group import group_claims; "
             "r = {'doc_id':'d','source_url':'u','domain':'a.vn','retrieved_at':'2026-10-28T00:00:00+00:00',"

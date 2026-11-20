@@ -25,8 +25,9 @@ export function summary(picks: Pick[]) {
   return [places ? `${places} nơi` : '', kinds ? `${kinds} kiểu` : ''].filter(Boolean).join(', ')
 }
 
-export function TagStage({ tree, nav, picks, leaving, kicker, close, onPlace, onKind, onRemove, onSeen }: {
+export function TagStage({ tree, nav, picks, leaving, kicker, close, onDone, onPlace, onKind, onRemove, onSeen }: {
   tree: Tree; nav: { current: Nav }; picks: Pick[]; leaving: boolean; kicker: string; close: (then?: () => void) => void
+  onDone: () => void // Xong: closes the stage, and with picks lets the assistant read them
   onPlace: (card: ChatPlace, via: string[]) => void
   onKind: (node: TagNode, via: string[]) => void
   onRemove: (pick: Pick) => void
@@ -45,7 +46,8 @@ export function TagStage({ tree, nav, picks, leaving, kicker, close, onPlace, on
   const at = Math.min(Math.max(0, nodes.length - 1), nav.current.ats[here] ?? startAt(nodes.length))
   const setAt: Dispatch<SetStateAction<number>> = v => {
     const next = typeof v === 'function' ? v(at) : v
-    nav.current.ats[here] = Math.max(0, Math.min(nodes.length - 1, next))
+    const n = nodes.length // the row is a circle: past the last card comes the first
+    nav.current.ats[here] = n ? ((next % n) + n) % n : 0
     tick()
   }
   const front = nodes[at]
@@ -103,7 +105,7 @@ export function TagStage({ tree, nav, picks, leaving, kicker, close, onPlace, on
     stageKeys(e, panel, nodes.length, setAt, () => up(), key => (key === 'Enter' ? open(front) : choose(front)))
   }
 
-  const cards: StageCard[] = nodes.map((n, i) => {
+  const cards: StageCard[] = nodes.map(n => {
     if (n.kind === 'place') return placeCard(n.card!, liked(n))
     const on = wished(n)
     const picked = inside(n)
@@ -111,11 +113,11 @@ export function TagStage({ tree, nav, picks, leaving, kicker, close, onPlace, on
       id: n.ref, photo: n.cover, alt: n.label, title: n.label, on, deck: true, loading: loading === n.ref,
       line: <>
         <small><Icon name="pin" size={13} />{n.count.toLocaleString('vi-VN')} nơi</small>
-        <small>{n.kind === 'tag' ? 'Mở các kiểu bên trong' : n.kind === 'all' ? 'Mọi nơi của mục này' : 'Xem từng nơi'}</small>
+        <small>{n.kind === 'all' ? 'Mọi nơi của mục này' : 'Mở xem bên trong'}</small>
       </>,
       badge: picked ? <span className="tg-stage__badge"><Icon name="check" size={12} strokeWidth={2.6} />{picked} đã chọn</span> : null,
-      extra: n.kind === 'all' ? null : <button type="button" className={`tg-stage__wish ${on ? 'is-on' : ''}`} tabIndex={i === at ? 0 : -1} aria-pressed={on}
-        onClick={e => { e.stopPropagation(); setAt(i); choose(n) }}><Icon name={on ? 'check' : 'plus'} size={14} strokeWidth={2.4} />{on ? 'Thích cả kiểu' : 'Thích cả kiểu này'}</button>,
+      extra: n.kind === 'all' ? null : <button type="button" className={`tg-stage__wish ${on ? 'is-on' : ''}`} tabIndex={n === front ? 0 : -1} aria-pressed={on}
+        onClick={e => { e.stopPropagation(); setAt(nodes.indexOf(n)); choose(n) }}><Icon name={on ? 'check' : 'plus'} size={14} strokeWidth={2.4} />{on ? 'Thích cả kiểu' : 'Thích cả kiểu này'}</button>,
       pick: <Icon name="chevronRight" size={20} strokeWidth={2.2} />, pickLabel: `Mở ${n.label}`,
     }
   })
@@ -131,8 +133,16 @@ export function TagStage({ tree, nav, picks, leaving, kicker, close, onPlace, on
     })}
   </nav>
   const places = picks.filter(p => p.kind === 'place').length
-  const why = error || (here === ROOT ? 'Chọn nhiều kiểu cũng được, mình gom lại cho bạn.' : `${level?.count.toLocaleString('vi-VN') ?? ''} nơi`)
-  return <StageFrame leaving={leaving} kicker={kicker} question={level?.label ?? '…'} why={why} crumbs={crumbs} onBack={path.length ? () => up() : undefined}
+  // Each level says what to do with it: kinds to open (pick as many as you like), or the places themselves to keep. The first level's
+  // heading is the assistant's own short question (block.title) when it wrote one.
+  const leaves = nodes.length > 0 && nodes.every(n => n.kind === 'place')
+  // the count is what this level shows: its directions, its kinds ("Xem tất cả" is not one), or its place cards
+  const shown = (leaves ? nodes.length : nodes.filter(n => n.kind !== 'all').length).toLocaleString('vi-VN')
+  const question = !level ? '…' : here === ROOT ? level.label : leaves ? level.label : `${level.label}: bạn mê kiểu nào?`
+  const word = tree.block.level === 'tags' ? 'hướng' : 'kiểu' // a vague ask opens directions, a named interest its kinds
+  const why = error || (here === ROOT ? `${shown} ${word} · chọn bao nhiêu cũng được, bấm vào một ${word} để mở tiếp.`
+    : leaves ? `${shown} nơi · thả tim nơi bạn muốn ghé` : `${shown} kiểu · mỗi kiểu một không khí riêng, chọn nhiều cũng được`)
+  return <StageFrame leaving={leaving} kicker={kicker} question={question} why={why} crumbs={crumbs} onBack={path.length ? () => up() : undefined}
     onClose={() => close()} onKeyDown={keys} panel={panel}>
     {level ? <StageRing key={here} cards={cards} at={at} setAt={setAt} busy={busy} label="Các lựa chọn" multi tree={{ phase, dir }}
       prevLabel="Thẻ trước" nextLabel="Thẻ sau" hint="← → xoay · Enter mở · Space chọn · Esc lên một cấp"
@@ -148,7 +158,7 @@ export function TagStage({ tree, nav, picks, leaving, kicker, close, onPlace, on
         </li>)}
         {!picks.length && <li className="tg-basket__none">Bấm tim để lưu nơi bạn thích, hoặc “Thích cả kiểu này”. Không bắt buộc chọn.</li>}
       </ul>
-      <button type="button" className="tg-btn tg-btn--primary" onClick={() => close()}>{picks.length ? `Xong · ${places ? `${places} nơi` : summary(picks)}` : 'Xong'} <Icon name="check" size={16} /></button>
+      <button type="button" className="tg-btn tg-btn--primary" onClick={onDone}>{picks.length ? `Xong · ${places ? `${places} nơi` : summary(picks)}` : 'Xong'} <Icon name="check" size={16} /></button>
     </footer>
   </StageFrame>
 }

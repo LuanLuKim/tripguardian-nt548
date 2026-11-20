@@ -48,7 +48,7 @@ def test_engine_overload_offers_directions_and_tracks_direction_specific_drops()
     created = e.create(d, None)
     sid, view = created["id"], created["view"]
     assert view["overload"]["level"] == "overloaded"
-    assert {d for v in view["variants"] for d in [v["id"], *v.get("merged", [])]} == {"fit", "travel", "cost"}
+    assert {d for v in view["variants"] for d in [v["id"], *v.get("merged", [])]} == {"fit", "cost", "most"}
     cheap = next(v for v in view["variants"] if "cost" in [v["id"], *v.get("merged", [])])
     assert cheap["status"] == "available" and "p7" not in cheap["kept"]
     e.act(sid, {"type": "pick_variant", "id": cheap["id"]})
@@ -56,7 +56,7 @@ def test_engine_overload_offers_directions_and_tracks_direction_specific_drops()
     assert set(chosen["state"]["plan_dropped"]) == set(cheap["dropped_by_plan"][i]["place_id"]
                                                         for i in range(len(cheap["dropped_by_plan"])))
     assert {i["place_id"] for day in chosen["itinerary"] for i in day["items"] if i["kind"] == "visit"} == set(cheap["kept"])
-    other = next(v for v in view["variants"] if "travel" in [v["id"], *v.get("merged", [])] and v["status"] == "available")
+    other = next(v for v in view["variants"] if v["id"] != cheap["id"] and v["status"] == "available")
     switched = e.act(sid, {"type": "pick_variant", "id": other["id"]})["view"]
     assert set(switched["state"]["plan_dropped"]) == {x["place_id"] for x in other["dropped_by_plan"]}
     assert not switched["state"]["dropped"]

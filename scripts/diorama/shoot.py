@@ -2,7 +2,6 @@
 Usage: python shoot.py <url> <out_dir> [w h]
 Writes orbit_*.png, hs_<id>.png, console.txt into out_dir."""
 import json, sys, time
-from pathlib import Path
 from paths import DATA, REPO
 from playwright.sync_api import sync_playwright
 

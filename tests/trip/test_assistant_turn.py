@@ -173,7 +173,7 @@ def test_a_cache_only_response_without_text_gets_one_call_without_read_tools(mak
 def test_the_assistant_calls_the_model_twice_at_most(make_assistant):
     chat = ScriptedChat(reply(call("get_place", id="0xa:0x1")), reply(call("get_place", id="0xc:0x1")),
                         say("không bao giờ tới đây"))
-    s = run_turn(make_assistant(chat), f"{CAFE} có gì?")
+    run_turn(make_assistant(chat), f"{CAFE} có gì?")
     assert chat.calls == 2 and "record_fact" in chat.seen[1][1]
     assert "get_place" not in chat.seen[1][1]
 
@@ -239,7 +239,6 @@ def test_uncovered_question_keeps_the_tools(make_assistant):
 
 def test_a_fact_said_at_turn_one_is_still_in_the_state_at_turn_thirty():
     import datetime
-    from trip.domain.state import with_meta
     state = TripState().model_copy(update={"days": TripState().days.model_copy(update={"value": 3, "source": "user", "status": "confirmed"})})
     transcript = []
     for t in range(1, 31):

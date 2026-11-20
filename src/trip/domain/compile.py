@@ -11,7 +11,7 @@ from .state import (AnchorRef, Context, HardFilter, NoveltySpec, PaceSpec, Searc
 
 
 class UnhandledSignal(Exception):
-    """A health / body / diet hint has not been answered yet (docs/ARCHITECTURE.md §18.3)."""
+    """A health / body / diet hint has not been answered yet (docs/TRIP_UNDERSTANDING.md §7)."""
 
 
 def day_window(state: TripState, buffer_min: int = ARRIVAL_BUFFER_MIN,

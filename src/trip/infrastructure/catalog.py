@@ -108,6 +108,10 @@ class Catalog:
             return cls._from_served(evidence.values(), n_min, videos)
         out = []
         ont = load_ontology()
+        records = list(records)
+        from corpus import distinct_names  # the same tidy names as serving, from intel built before naming.py too
+        names = distinct_names({r["place_fid"]: r.get("place_name_raw") or r["place_name"]
+                                for r in records if r.get("place_name")})
         for r in records:
             known, total = {}, 0
             for fid, sig in (r.get("features") or {}).items():
@@ -139,7 +143,7 @@ class Catalog:
             ev = {**ev, **{k: r[k] for k in ("menu", "details", "review_dishes") if k in r}}
             hours = (r.get("operation") or {}).get("hours")
             out.append(Candidate(
-                id=r["place_fid"], name=r["place_name"], category=ident.get("category"),
+                id=r["place_fid"], name=names.get(r["place_fid"]) or r["place_name"], category=ident.get("category"),
                 lat=ident.get("lat"), lng=ident.get("lng"),
                 hours={d: tuple(tuple(w) for w in ws) for d, ws in hours.items()} if hours else None,
                 known=known, weight=total, category_group=ev["identity"].get("category_group"),

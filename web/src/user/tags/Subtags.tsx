@@ -60,6 +60,16 @@ export function SubtagBlock({ block, autoOpen, onLike }: {
       return more.length ? [...p, ...more] : p
     })
   }
+  // Xong with something kept: the assistant reads the picks and opens a new direction. The same picks are told once.
+  const told = useRef('')
+  const done = () => close(() => {
+    const now = picks.map(p => p.key).sort().join('|')
+    if (!picks.length || !env.sid || now === told.current) return
+    told.current = now
+    const labels = picks.map(p => p.label)
+    const shown = labels.slice(0, 4).join(' · ') + (labels.length > 4 ? ` và ${labels.length - 4} nữa` : '')
+    env.explore(sig, picks.map(p => (p.kind === 'place' ? `place:${p.id}` : p.label)), shown)
+  })
   const tags = block.level === 'tags'
   const covers = root.nodes.slice(0, 3).map(n => n.cover)
   const chosen = summary(picks)
@@ -71,6 +81,6 @@ export function SubtagBlock({ block, autoOpen, onLike }: {
       <Icon name="chevronRight" size={18} />
     </button>
     {open && <TagStage tree={tree.current} nav={nav} picks={picks} leaving={leaving} kicker={tags ? 'Gợi ý theo hướng' : 'Các kiểu nơi'}
-      close={then => close(then)} onPlace={place} onKind={kind} onRemove={remove} onSeen={seen} />}
+      close={then => close(then)} onDone={done} onPlace={place} onKind={kind} onRemove={remove} onSeen={seen} />}
   </section>
 }

@@ -57,7 +57,7 @@ def test_preview_semantic_hit_rebinds_decision_and_invalidates_dependencies():
     e.preview(d)
     built = []
     real = e._build_base
-    e._build_base = lambda decision: built.append(1) or real(decision)
+    e._build_base = lambda decision, *a, **kw: built.append(1) or real(decision, *a, **kw)
     cached = next(iter(e._previews.values()))[1]
     changed = copy.deepcopy(d)
     changed.update(decision_log=[{'new': True}], wishlist=['new'], feasibility={'new': True})

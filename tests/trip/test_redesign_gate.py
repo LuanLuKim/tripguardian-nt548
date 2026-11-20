@@ -1,5 +1,6 @@
 from dataclasses import replace
-"""Seven display groups, legacy read-back metadata, and the dates-and-care planning gate.
+"""Seven display groups, legacy read-back metadata, and the planning gate: since 2026-11-18 it asks only an open health
+hint the user raised (no dates, no care question).
 
 Test ids Q1-Q13 of git 7c4da01:docs/plans/2026-10-15-trip-understanding-architecture.md §5.3 (Q14 lives in
 tests/planning/test_planning_trip_gate.py).
@@ -44,15 +45,15 @@ def keys(st):
 
 # ---------- Q1-Q8: what "answered" means ----------
 
-def test_q1_an_empty_trip_only_needs_dates_and_care_at_the_gate():
-    assert keys(TripState()) == ["trip", "care"]
+def test_q1_an_empty_trip_needs_nothing_at_the_gate():
+    assert keys(TripState()) == []  # nothing is asked before planning (owner 2026-11-18)
     assert [k for k, _ in readiness.missing(TripState(), readiness.REQUIRED)] == REQUIRED
     assert all(label and "_" not in label for _, label in readiness.missing(TripState()))  # Vietnamese, no ids
 
 
-def test_q2_a_month_is_not_a_trip_date():
+def test_q2_a_month_is_not_a_trip_date_but_planning_does_not_wait_for_one():
     st = build(drop=("start_date",), month=said(11))
-    assert keys(st) == ["trip"]
+    assert keys(st) == [] and "trip" in dict(readiness.missing(st, readiness.REQUIRED))
 
 
 def test_q2_dates_without_the_two_hours_are_enough():
@@ -108,7 +109,7 @@ def test_q7_an_amount_without_what_it_covers_is_not_enough():
 
 def test_skipping_budget_does_not_answer_other_required_topics():
     st = with_meta(TripState(), declined=tuple(REQUIRED))
-    assert keys(st) == ["trip", "care"]
+    assert keys(st) == []  # nothing is asked before planning (owner 2026-11-18)
 
 
 def test_skipping_budget_does_not_clear_a_physical_signal():
@@ -147,8 +148,9 @@ def test_pending_diet_is_still_asked_at_the_gate_after_a_chat_skip(catalog, cfg)
     assert gate.tabs[0].question == diet.question(st)
 
 
-def test_a_guessed_date_is_not_a_gate_answer():
-    assert keys(build(start_date=said("2026-11-20", source="inferred"))) == ["trip"]
+def test_a_guessed_date_is_not_a_users_answer():
+    st = build(start_date=said("2026-11-20", source="inferred"))
+    assert keys(st) == [] and "trip" in dict(readiness.missing(st, readiness.REQUIRED))
 
 
 def test_gate_answers_ignore_the_chat_card_and_never_ask_optional_topics(engine):
@@ -157,11 +159,7 @@ def test_gate_answers_ignore_the_chat_card_and_never_ask_optional_topics(engine)
     sid = e.create("first", "nothing")["id"]
     s = e.store.get(sid)
     s.card = deck.build(s.state, e.catalog, e.cfg, ask="mobility")
-    e.turn(sid, TurnInput(kind="deck", at="gate", answers={"trip.dates": "2026-11-20..2026-11-22"}), lambda *_: None)
-    assert [t.qid for t in s.card.tabs] == ["care"]
-    assert e._readback(s.state)["missing"] == ["care"]
-    e.turn(sid, TurnInput(kind="deck", at="gate", answers={"care": ["none"]}), lambda *_: None)
-    assert e._readback(s.state)["missing"] == [] and s.card.tabs == ()
+    assert e._readback(s.state)["missing"] == [] and not deck.build(s.state, e.catalog, e.cfg, at="gate").tabs  # nothing is asked before planning (owner 2026-11-18)
     assert chat.calls == 0
     assert not any(getattr(s.state, key).known for key in ("companions", "mobility", "pace", "budget_vnd", "lodging", "checkin_at", "checkout_at"))
 
@@ -174,7 +172,12 @@ def test_plan_page_fill_asks_only_empty_optional_groups_and_writes_them(engine):
     e.turn(sid, TurnInput(kind="deck", at="gate", answers={"care": ["none"]}), skip)
     s = e.store.get(sid)
     fill = e._readback(s.state)["fill"]
-    assert {t["qid"] for t in fill["tabs"]} == set(readiness.PLAN_FILL)
+    # the way to the city comes first; the way around it is asked only once a plane or coach makes it worth asking
+    assert [t["qid"] for t in fill["tabs"]] == ["companions", "arrival", "care", "pace", "budget"]
+    e.turn(sid, TurnInput(kind="deck", at="plan", answers={"arrival": ["plane"]}), skip)
+    s = e.store.get(sid)
+    assert s.state.arrival_mode.value == "plane"
+    assert {t["qid"] for t in e._readback(s.state)["fill"]["tabs"]} == set(readiness.PLAN_FILL) | {"arrival"}  # the answered way in stays, chosen
     e.turn(sid, TurnInput(kind="deck", at="plan", answers={"mobility": ["motorbike"]}), skip)
     s = e.store.get(sid)
     assert s.state.mobility.known and s.state.mobility.source == "user"
@@ -182,18 +185,30 @@ def test_plan_page_fill_asks_only_empty_optional_groups_and_writes_them(engine):
     assert e._readback(s.state)["missing"] == [] and chat.calls == 0
 
 
-def test_gate_cannot_skip_dates_or_care(engine):
+def test_plan_page_driving_in_names_the_vehicle_and_skips_the_way_around(engine):
     e, _ = engine
     sid = e.create("first", "nothing")["id"]
-    events = []
-    e.turn(sid, TurnInput(kind="deck", at="gate", answers={"trip": ["skip"], "care": ["skip"]}),
-           lambda event, data: events.append((event, data)))
-    assert keys(e.store.get(sid).state) == ["trip", "care"]
+    skip = lambda *_: None
+    e.turn(sid, TurnInput(kind="deck", at="gate", answers={"trip.dates": "2026-11-20..2026-11-22"}), skip)
+    e.turn(sid, TurnInput(kind="deck", at="gate", answers={"care": ["none"]}), skip)
+    e.turn(sid, TurnInput(kind="deck", at="plan", answers={"arrival": ["self_motorbike"]}), skip)
+    s = e.store.get(sid)
+    assert s.state.arrival_mode.value == "self" and s.state.mobility.value == "motorbike" and s.state.mobility.source == "user"
+    assert [t["qid"] for t in e._readback(s.state)["fill"]["tabs"]] == ["companions", "arrival", "care", "pace", "budget"]
+
+
+def test_a_gate_skip_never_waives_a_health_hint_the_user_raised(engine):
+    e, _ = engine
+    sid = e.create("first", "nothing")["id"]
+    s = e.store.get(sid)
+    s.state = TripState.model_validate({"signals": [{"kind": "pregnant", "quote": "vợ bầu", "turn": 1}]})
+    e.turn(sid, TurnInput(kind="deck", at="gate", answers={"care": ["skip"]}), lambda *_: None)
+    assert keys(e.store.get(sid).state) == ["care"]
 
 
 def test_q8_search_input_always_carries_readiness():
     si = compile_search_input(TripState())
-    assert list(si.readiness.missing) == ["trip", "care"] and si.readiness.readback_ok is False
+    assert list(si.readiness.missing) == [] and si.readiness.readback_ok is False  # nothing is asked before planning (owner 2026-11-18)
 
 
 # ---------- Q9-Q12: the read-back ----------
@@ -333,16 +348,18 @@ def test_budget_skip_reaches_readback_with_unknown_budget_and_survives_reload(en
     assert chat.calls == 0
 
 
-def test_q13_readback_ok_is_refused_while_answers_are_missing(engine):
+def test_q13_readback_ok_is_refused_while_a_health_hint_is_open(engine):
     e, _ = engine
     sid = e.create("first", "nothing")["id"]
+    s = e.store.get(sid)
+    s.state = TripState.model_validate({"signals": [{"kind": "pregnant", "quote": "vợ bầu", "turn": 1}]})
     e.turn(sid, TurnInput(kind="readback_ok"), lambda *_: None)
     assert e.store.get(sid).state.meta.readback_digest is None
 
 
-def test_legacy_gate_skips_cannot_waive_dates_or_care():
+def test_legacy_gate_skips_leave_nothing_to_ask():
     st = with_meta(TripState(), declined=("trip", "gate:trip", "gate:mobility", "gate:care"))
-    assert keys(st) == ["trip", "care"]
+    assert keys(st) == []
 
 
 def test_a_gate_skip_never_waives_an_open_health_hint():

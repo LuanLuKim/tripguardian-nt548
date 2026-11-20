@@ -81,7 +81,7 @@ def ask(prompt, images=(), model="sol", effort="low", want_json=True, side=1400,
                 text = d["choices"][0]["message"]["content"]
             usage = dict(d.get("usage") or {}, seconds=round(time.time() - t, 1), model=model)
             return (_json(text) if want_json else text), usage
-        except Exception as e:  # network / router hiccup: retry, then raise
+        except Exception:  # network / router hiccup: retry, then raise
             if attempt == retries:
                 raise
             time.sleep(5 * (attempt + 1))

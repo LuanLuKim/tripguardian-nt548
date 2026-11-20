@@ -1,0 +1,4301 @@
+{
+ "version": 1,
+ "built_at": "2026-11-17T11:22:04+07:00",
+ "brands": {
+  "grab": {
+   "name": "Grab",
+   "sources": [
+    "https://www.grab.com/vn/en/blog/bang-thong-tin-cac-dich-vu-tren-ung-dung-grab/"
+   ],
+   "as_of": "2026-07-08",
+   "note": "Đã cộng phí nền tảng 1.000đ–3.000đ (xe máy), 3.000đ–9.000đ (ô tô) tới 25/02/2027, sau đó 7% giá cước",
+   "services": {
+    "bike": {
+     "label": "GrabBike",
+     "vehicle": "motorbike",
+     "seats": 1
+    },
+    "car4": {
+     "label": "GrabCar 4 chỗ",
+     "vehicle": "car",
+     "seats": 4
+    },
+    "car6": {
+     "label": "GrabCar 6 chỗ",
+     "vehicle": "car",
+     "seats": 6
+    }
+   },
+   "fares": {
+    "an_giang": {
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11880
+       ]
+      ],
+      "per_min": 216
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        15316
+       ]
+      ],
+      "per_min": 216
+     }
+    },
+    "ba_ria_vung_tau": {
+     "bike": {
+      "open": 13255,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11880
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        15415
+       ]
+      ],
+      "per_min": 648
+     }
+    },
+    "bac_giang": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "bac_lieu": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "bac_ninh": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 28473,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        9818
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12764
+       ]
+      ],
+      "per_min": 540
+     }
+    },
+    "ben_tre": {
+     "car4": {
+      "open": 24545,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11782
+       ]
+      ],
+      "per_min": 353
+     },
+     "car6": {
+      "open": 31418,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14924
+       ]
+      ],
+      "per_min": 491
+     }
+    },
+    "binh_dinh": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12175
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "binh_duong": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 28473,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        9818
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12764
+       ]
+      ],
+      "per_min": 540
+     }
+    },
+    "binh_thuan": {
+     "bike": {
+      "open": 13255,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12960
+       ]
+      ],
+      "per_min": 550
+     },
+     "car6": {
+      "open": 32891,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        15807
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "ca_mau": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11880
+       ]
+      ],
+      "per_min": 216
+     }
+    },
+    "can_tho": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11880
+       ]
+      ],
+      "per_min": 216
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        15316
+       ]
+      ],
+      "per_min": 216
+     }
+    },
+    "cao_bang": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "da_nang": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12175
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "dak_lak": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        10800
+       ]
+      ],
+      "per_min": 334
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 324
+     }
+    },
+    "dak_nong": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "dien_bien": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "dong_nai": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 28473,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        9818
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12764
+       ]
+      ],
+      "per_min": 540
+     }
+    },
+    "dong_thap": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     }
+    },
+    "gia_lai": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        10800
+       ]
+      ],
+      "per_min": 334
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 324
+     }
+    },
+    "ha_giang": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "ha_noi": {
+     "bike": {
+      "open": 13255,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 28473,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        9818
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12764
+       ]
+      ],
+      "per_min": 540
+     }
+    },
+    "ha_tinh": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "hai_duong": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        10800
+       ]
+      ],
+      "per_min": 334
+     }
+    },
+    "hai_phong": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        10800
+       ]
+      ],
+      "per_min": 334
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12371
+       ]
+      ],
+      "per_min": 648
+     }
+    },
+    "ho_chi_minh": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 28473,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        9818
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12764
+       ]
+      ],
+      "per_min": 540
+     }
+    },
+    "hoa_binh": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "hung_yen": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "khanh_hoa": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12960
+       ]
+      ],
+      "per_min": 550
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        15807
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "kien_giang": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11880
+       ]
+      ],
+      "per_min": 216
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        15316
+       ]
+      ],
+      "per_min": 216
+     }
+    },
+    "kon_tum": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "lai_chau": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "lam_dong": {
+     "bike": {
+      "open": 13255,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11880
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        16495
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "lang_son": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "long_an": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 28473,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        9818
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12764
+       ]
+      ],
+      "per_min": 540
+     }
+    },
+    "nam_dinh": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "nghe_an": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        10800
+       ]
+      ],
+      "per_min": 334
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 324
+     }
+    },
+    "ninh_binh": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     },
+     "car4": {
+      "open": 29455,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        13156
+       ]
+      ],
+      "per_min": 344
+     },
+     "car6": {
+      "open": 31418,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14924
+       ]
+      ],
+      "per_min": 491
+     }
+    },
+    "ninh_thuan": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 29455,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        13156
+       ]
+      ],
+      "per_min": 344
+     },
+     "car6": {
+      "open": 31418,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14924
+       ]
+      ],
+      "per_min": 491
+     }
+    },
+    "phu_quoc": {
+     "bike": {
+      "open": 13255,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 24545,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11782
+       ]
+      ],
+      "per_min": 295
+     },
+     "car6": {
+      "open": 29455,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        13745
+       ]
+      ],
+      "per_min": 589
+     }
+    },
+    "phu_tho": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "phu_yen": {
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12175
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "quang_binh": {
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        10800
+       ]
+      ],
+      "per_min": 334
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14924
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "quang_nam": {
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12175
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "quang_ngai": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12175
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "quang_ninh": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        10800
+       ]
+      ],
+      "per_min": 334
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12371
+       ]
+      ],
+      "per_min": 648
+     }
+    },
+    "quang_tri": {
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12960
+       ]
+      ],
+      "per_min": 550
+     },
+     "car6": {
+      "open": 32891,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        15807
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "sa_pa": {
+     "bike": {
+      "open": 13255,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        15000
+       ]
+      ],
+      "per_min": 800
+     },
+     "car6": {
+      "open": 32400,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        18000
+       ]
+      ],
+      "per_min": 960
+     }
+    },
+    "soc_trang": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     }
+    },
+    "son_la": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "tay_ninh": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 29455,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        13156
+       ]
+      ],
+      "per_min": 344
+     },
+     "car6": {
+      "open": 31418,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14924
+       ]
+      ],
+      "per_min": 491
+     }
+    },
+    "thai_binh": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "thai_nguyen": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "thanh_hoa": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 26509,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11782
+       ]
+      ],
+      "per_min": 344
+     },
+     "car6": {
+      "open": 29455,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14727
+       ]
+      ],
+      "per_min": 461
+     }
+    },
+    "thua_thien_hue": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12175
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 33382,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        14335
+       ]
+      ],
+      "per_min": 864
+     }
+    },
+    "tien_giang": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 22582,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        11095
+       ]
+      ],
+      "per_min": 353
+     },
+     "car6": {
+      "open": 25527,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        12764
+       ]
+      ],
+      "per_min": 461
+     }
+    },
+    "tra_vinh": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "tuyen_quang": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    },
+    "vinh_long": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     }
+    },
+    "vinh_phuc": {
+     "bike": {
+      "open": 12273,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        4222
+       ]
+      ],
+      "per_min": 344
+     },
+     "car4": {
+      "open": 28473,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        9818
+       ]
+      ],
+      "per_min": 442
+     },
+     "car6": {
+      "open": 29455,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        9818
+       ]
+      ],
+      "per_min": 982
+     }
+    },
+    "yen_bai": {
+     "bike": {
+      "open": 12027,
+      "open_km": 2,
+      "per_km": [
+       [
+        null,
+        3878
+       ]
+      ],
+      "per_min": 285
+     }
+    }
+   },
+   "routes": [
+    {
+     "service": "car4",
+     "from": [
+      "ha_noi"
+     ],
+     "to": {
+      "airport": "HAN"
+     },
+     "both_ways": true,
+     "min_km": 20.0,
+     "price": 186545,
+     "per_km": 9327,
+     "label": "GrabCar 4 chỗ · giá tuyến Hà Nội ⇄ sân bay Nội Bài",
+     "source_label": "GrabCar Hà Nội – Sân bay; và GrabCar Sân bay – Hà Nội"
+    },
+    {
+     "service": "car6",
+     "from": [
+      "ha_noi"
+     ],
+     "to": {
+      "airport": "HAN"
+     },
+     "both_ways": true,
+     "min_km": 20.0,
+     "price": 225818,
+     "per_km": 11743,
+     "label": "GrabCar 6 chỗ · giá tuyến Hà Nội ⇄ sân bay Nội Bài",
+     "source_label": "GrabCar 6 chỗ Hà Nội – Sân bay; và GrabCar 6 chỗ Sân bay – Hà Nội"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "da_nang"
+     ],
+     "to": {
+      "area": "hoi_an"
+     },
+     "both_ways": true,
+     "min_km": 25.0,
+     "price": 279818,
+     "per_km": 10309,
+     "label": "GrabCar 4 chỗ · giá tuyến Đà Nẵng ⇄ Hội An",
+     "source_label": "Đà Nẵng ⇔ Hội An 4 chỗ (giá cước 1 chiều)"
+    },
+    {
+     "service": "car6",
+     "from": [
+      "da_nang"
+     ],
+     "to": {
+      "area": "hoi_an"
+     },
+     "both_ways": true,
+     "min_km": 25.0,
+     "price": 329891,
+     "per_km": 14335,
+     "label": "GrabCar 6 chỗ · giá tuyến Đà Nẵng ⇄ Hội An",
+     "source_label": "Đà Nẵng ⇔ Hội An 6 chỗ (giá cước 1 chiều)"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "tay_ninh"
+     ],
+     "to": {
+      "area": "ho_chi_minh"
+     },
+     "both_ways": false,
+     "min_km": 40.0,
+     "price": 349527,
+     "per_km": 6382,
+     "label": "GrabCar 4 chỗ · giá tuyến Tây Ninh → TP. Hồ Chí Minh",
+     "source_label": "GrabCar Tuyến Tây Ninh đi TP. HCM"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "ba_ria_vung_tau"
+     ],
+     "to": {
+      "area": "ho_chi_minh"
+     },
+     "both_ways": false,
+     "min_km": 50.0,
+     "price": 437891,
+     "per_km": 6382,
+     "label": "GrabCar 4 chỗ · giá tuyến Bà Rịa – Vũng Tàu → TP. Hồ Chí Minh",
+     "source_label": "GrabCar Tuyến Vũng Tàu đi TP. HCM"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "tien_giang"
+     ],
+     "to": {
+      "area": "ho_chi_minh"
+     },
+     "both_ways": false,
+     "min_km": 60.0,
+     "price": 499746,
+     "per_km": 6382,
+     "label": "GrabCar 4 chỗ · giá tuyến Tiền Giang → TP. Hồ Chí Minh",
+     "source_label": "GrabCar Tuyến Tiền Giang đi TP. HCM"
+    },
+    {
+     "service": "car6",
+     "from": [
+      "tay_ninh"
+     ],
+     "to": {
+      "area": "ho_chi_minh"
+     },
+     "both_ways": false,
+     "min_km": 40.0,
+     "price": 454582,
+     "per_km": 7855,
+     "label": "GrabCar 6 chỗ · giá tuyến Tây Ninh → TP. Hồ Chí Minh",
+     "source_label": "GrabCar Tuyến 6 chỗ Tây Ninh đi TP. HCM"
+    },
+    {
+     "service": "car6",
+     "from": [
+      "ba_ria_vung_tau"
+     ],
+     "to": {
+      "area": "ho_chi_minh"
+     },
+     "both_ways": false,
+     "min_km": 50.0,
+     "price": 569455,
+     "per_km": 7855,
+     "label": "GrabCar 6 chỗ · giá tuyến Bà Rịa – Vũng Tàu → TP. Hồ Chí Minh",
+     "source_label": "GrabCar Tuyến 6 chỗ Vũng Tàu đi TP. HCM"
+    },
+    {
+     "service": "car6",
+     "from": [
+      "tien_giang"
+     ],
+     "to": {
+      "area": "ho_chi_minh"
+     },
+     "both_ways": false,
+     "min_km": 60.0,
+     "price": 649964,
+     "per_km": 7855,
+     "label": "GrabCar 6 chỗ · giá tuyến Tiền Giang → TP. Hồ Chí Minh",
+     "source_label": "GrabCar Tuyến 6 chỗ Tiền Giang đi TP. HCM"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "ninh_binh"
+     ],
+     "to": {
+      "area": "ha_noi"
+     },
+     "both_ways": false,
+     "min_km": 80.0,
+     "price": 580255,
+     "per_km": 6873,
+     "label": "GrabCar 4 chỗ · giá tuyến Ninh Bình → Hà Nội",
+     "source_label": "GrabCar Tuyến đi Hà Nội"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "nam_dinh"
+     ],
+     "to": {
+      "area": "ha_noi"
+     },
+     "both_ways": false,
+     "min_km": 80.0,
+     "price": 580255,
+     "per_km": 6873,
+     "label": "GrabCar 4 chỗ · giá tuyến Nam Định → Hà Nội",
+     "source_label": "GrabCar Tuyến đi Hà Nội"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "quang_ninh"
+     ],
+     "to": {
+      "area": "ha_noi"
+     },
+     "both_ways": false,
+     "min_km": 100.0,
+     "price": 741273,
+     "per_km": 7364,
+     "label": "GrabCar 4 chỗ · giá tuyến Quảng Ninh → Hà Nội",
+     "source_label": "GrabCar Tuyến đi Hà Nội"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "quang_binh"
+     ],
+     "to": {
+      "area": "ha_noi"
+     },
+     "both_ways": false,
+     "min_km": 100.0,
+     "price": 741273,
+     "per_km": 7364,
+     "label": "GrabCar 4 chỗ · giá tuyến Quảng Bình → Hà Nội",
+     "source_label": "GrabCar Tuyến đi Hà Nội"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "dong_nai"
+     ],
+     "to": {
+      "airport": "SGN"
+     },
+     "both_ways": false,
+     "min_km": 17.0,
+     "price": 169855,
+     "per_km": 6382,
+     "label": "GrabCar 4 chỗ · giá tuyến Đồng Nai → sân bay Tân Sơn Nhất",
+     "source_label": "GrabCar đi Sân bay"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "binh_duong"
+     ],
+     "to": {
+      "airport": "SGN"
+     },
+     "both_ways": false,
+     "min_km": 17.0,
+     "price": 169855,
+     "per_km": 6382,
+     "label": "GrabCar 4 chỗ · giá tuyến Bình Dương → sân bay Tân Sơn Nhất",
+     "source_label": "GrabCar đi Sân bay"
+    },
+    {
+     "service": "car4",
+     "from": [
+      "long_an"
+     ],
+     "to": {
+      "airport": "SGN"
+     },
+     "both_ways": false,
+     "min_km": 17.0,
+     "price": 169855,
+     "per_km": 6382,
+     "label": "GrabCar 4 chỗ · giá tuyến Long An → sân bay Tân Sơn Nhất",
+     "source_label": "GrabCar đi Sân bay"
+    },
+    {
+     "service": "car6",
+     "from": [
+      "dong_nai"
+     ],
+     "to": {
+      "airport": "SGN"
+     },
+     "both_ways": false,
+     "min_km": 17.0,
+     "price": 220909,
+     "per_km": 9818,
+     "label": "GrabCar 6 chỗ · giá tuyến Đồng Nai → sân bay Tân Sơn Nhất",
+     "source_label": "GrabCar 6 chỗ đi Sân bay"
+    },
+    {
+     "service": "car6",
+     "from": [
+      "binh_duong"
+     ],
+     "to": {
+      "airport": "SGN"
+     },
+     "both_ways": false,
+     "min_km": 17.0,
+     "price": 220909,
+     "per_km": 9818,
+     "label": "GrabCar 6 chỗ · giá tuyến Bình Dương → sân bay Tân Sơn Nhất",
+     "source_label": "GrabCar 6 chỗ đi Sân bay"
+    },
+    {
+     "service": "car6",
+     "from": [
+      "long_an"
+     ],
+     "to": {
+      "airport": "SGN"
+     },
+     "both_ways": false,
+     "min_km": 17.0,
+     "price": 220909,
+     "per_km": 9818,
+     "label": "GrabCar 6 chỗ · giá tuyến Long An → sân bay Tân Sơn Nhất",
+     "source_label": "GrabCar 6 chỗ đi Sân bay"
+    }
+   ],
+   "airport_pickup": {
+    "SGN": 10000,
+    "DAD": 10000,
+    "CXR": 10000,
+    "PQC": 10000
+   },
+   "platform_fee": {
+    "until": "2027-02-25",
+    "motorbike": [
+     1000,
+     3000
+    ],
+    "car": [
+     3000,
+     9000
+    ],
+    "after_pct": 7
+   }
+  },
+  "be": {
+   "name": "Be",
+   "sources": [
+    "https://be.com.vn/consumer/be-transport/"
+   ],
+   "as_of": "2026-11-17",
+   "note": "Giá niêm yết trên be.com.vn, chưa có phụ phí đêm",
+   "services": {
+    "bike": {
+     "label": "beBike",
+     "vehicle": "motorbike",
+     "seats": 1
+    },
+    "car4": {
+     "label": "beCar 4 chỗ",
+     "vehicle": "car",
+     "seats": 4
+    },
+    "car7": {
+     "label": "beCar 7 chỗ",
+     "vehicle": "car",
+     "seats": 6
+    },
+    "saver": {
+     "label": "beCar Tiết Kiệm",
+     "vehicle": "car",
+     "seats": 4
+    },
+    "economy": {
+     "label": "beCar Economy",
+     "vehicle": "car",
+     "seats": 4
+    },
+    "taxi4": {
+     "label": "beTaxi 4 chỗ",
+     "vehicle": "car",
+     "seats": 4
+    },
+    "taxi7": {
+     "label": "beTaxi 7 chỗ",
+     "vehicle": "car",
+     "seats": 6
+    }
+   },
+   "fares": {
+    "ba_ria_vung_tau": {
+     "bike": {
+      "open": 15054,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        5019
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 29188,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        13587
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 35226,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        17110
+       ]
+      ],
+      "night": 20000
+     },
+     "saver": {
+      "open": 29188,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        12574
+       ]
+      ]
+     },
+     "taxi4": {
+      "open": 38000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        18700
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 40000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        21600
+       ]
+      ]
+     }
+    },
+    "bac_ninh": {
+     "bike": {
+      "open": 14050,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4918
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 30194,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        10065
+       ],
+       [
+        null,
+        9562
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 36232,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        11574
+       ],
+       [
+        null,
+        10568
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi4": {
+      "open": 32000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        14300
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "binh_dinh": {
+     "taxi4": {
+      "open": 10000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        14500
+       ],
+       [
+        null,
+        10300
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 10000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        17500
+       ],
+       [
+        null,
+        11400
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "binh_duong": {
+     "bike": {
+      "open": 15041,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4412
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 31201,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        11574
+       ],
+       [
+        null,
+        10568
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 37239,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        14090
+       ],
+       [
+        null,
+        13084
+       ]
+      ],
+      "night": 20000
+     },
+     "saver": {
+      "open": 30669,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        10019
+       ]
+      ]
+     },
+     "taxi4": {
+      "open": 35000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        15100
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 38000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        18200
+       ]
+      ]
+     }
+    },
+    "binh_thuan": {
+     "car4": {
+      "open": 31000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        13200
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 37000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        15900
+       ]
+      ],
+      "night": 20000
+     },
+     "economy": {
+      "open": 28000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        12000
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "ca_mau": {
+     "taxi4": {
+      "open": 5000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        13700
+       ],
+       [
+        null,
+        11600
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 5000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        14900
+       ],
+       [
+        null,
+        12800
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "can_tho": {
+     "bike": {
+      "open": 14050,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        5019
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 29647,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        12268
+       ],
+       [
+        null,
+        12000
+       ]
+      ]
+     },
+     "car7": {
+      "open": 35781,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        16152
+       ]
+      ]
+     },
+     "saver": {
+      "open": 29647,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11522
+       ]
+      ]
+     },
+     "taxi4": {
+      "open": 15000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        29.0,
+        16000
+       ],
+       [
+        null,
+        14500
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 15000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        29.0,
+        20000
+       ],
+       [
+        null,
+        17000
+       ]
+      ]
+     }
+    },
+    "con_dao": {
+     "taxi7": {
+      "open": 25000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        17000
+       ]
+      ],
+      "night": 10000
+     }
+    },
+    "da_nang": {
+     "bike": {
+      "open": 14050,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        5019
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 29188,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        14090
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 35226,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        16606
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 25000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        null,
+        22600
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "dak_lak": {
+     "taxi4": {
+      "open": 40000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        16500
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 42000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        18800
+       ]
+      ]
+     }
+    },
+    "dong_nai": {
+     "bike": {
+      "open": 15041,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4412
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 31201,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        11574
+       ],
+       [
+        null,
+        10568
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 37239,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        14090
+       ],
+       [
+        null,
+        13084
+       ]
+      ],
+      "night": 20000
+     },
+     "saver": {
+      "open": 30669,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        10019
+       ]
+      ]
+     },
+     "taxi4": {
+      "open": 29000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        17400
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        20900
+       ]
+      ]
+     }
+    },
+    "gia_lai": {
+     "taxi4": {
+      "open": 40000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        16500
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 44000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        19300
+       ]
+      ]
+     }
+    },
+    "ha_noi": {
+     "bike": {
+      "open": 14472,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4918
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 31704,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        10568
+       ],
+       [
+        null,
+        10040
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 37319,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        13194
+       ],
+       [
+        null,
+        12048
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi4": {
+      "open": 33000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        10500
+       ],
+       [
+        null,
+        10000
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 38000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        21.0,
+        16500
+       ],
+       [
+        null,
+        14000
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "hai_phong": {
+     "bike": {
+      "open": 13783,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4923
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11350
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 35400,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        13600
+       ]
+      ],
+      "night": 20000
+     },
+     "economy": {
+      "open": 28000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        10300
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "ho_chi_minh": {
+     "bike": {
+      "open": 13817,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4633
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 31501,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        11805
+       ],
+       [
+        null,
+        10779
+       ]
+      ],
+      "night": 20000,
+      "pickup": {
+       "SGN": 15000
+      }
+     },
+     "car7": {
+      "open": 37239,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        14372
+       ],
+       [
+        null,
+        13346
+       ]
+      ],
+      "night": 20000,
+      "pickup": {
+       "SGN": 15000
+      }
+     },
+     "taxi4": {
+      "open": 32000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        12500
+       ],
+       [
+        null,
+        11500
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 38000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15500
+       ],
+       [
+        null,
+        14500
+       ]
+      ]
+     }
+    },
+    "hung_yen": {
+     "bike": {
+      "open": 14050,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4918
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 30194,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        10065
+       ],
+       [
+        null,
+        9562
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 36232,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        11574
+       ],
+       [
+        null,
+        10568
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi4": {
+      "open": 15000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        20.0,
+        14000
+       ],
+       [
+        null,
+        12000
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 15000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        20.0,
+        17000
+       ],
+       [
+        null,
+        14000
+       ]
+      ]
+     }
+    },
+    "kien_giang": {
+     "taxi4": {
+      "open": 8000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        13300
+       ],
+       [
+        null,
+        9500
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 10000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        14800
+       ],
+       [
+        null,
+        12300
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "kon_tum": {
+     "taxi4": {
+      "open": 32000,
+      "open_km": 0.0,
+      "per_km": [
+       [
+        null,
+        15000
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 25000,
+      "open_km": 0.0,
+      "per_km": [
+       [
+        null,
+        18500
+       ]
+      ]
+     }
+    },
+    "lam_dong": {
+     "car4": {
+      "open": 31201,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        11574
+       ],
+       [
+        null,
+        10568
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 37239,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        14090
+       ],
+       [
+        null,
+        13084
+       ]
+      ],
+      "night": 20000
+     },
+     "saver": {
+      "open": 31201,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11245
+       ]
+      ]
+     },
+     "taxi4": {
+      "open": 40000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        16000
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 50000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        22500
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "long_an": {
+     "bike": {
+      "open": 13035,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4412
+       ]
+      ],
+      "night": 10000
+     },
+     "car4": {
+      "open": 31201,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        11574
+       ],
+       [
+        null,
+        10568
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 37239,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        14090
+       ],
+       [
+        null,
+        13084
+       ]
+      ],
+      "night": 20000
+     },
+     "saver": {
+      "open": 30669,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        10019
+       ]
+      ]
+     },
+     "taxi4": {
+      "open": 41000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        21600
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 46000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        22700
+       ]
+      ]
+     }
+    },
+    "nghe_an": {
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11350
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 36000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        14250
+       ]
+      ],
+      "night": 20000
+     },
+     "economy": {
+      "open": 28000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        10400
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi4": {
+      "open": 39000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        14800
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 47000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        18000
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "ninh_binh": {
+     "car4": {
+      "open": 32000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        12900
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 35400,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        13200
+       ]
+      ],
+      "night": 20000
+     },
+     "economy": {
+      "open": 29000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11700
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi4": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        26.0,
+        12500
+       ],
+       [
+        null,
+        11000
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        26.0,
+        15000
+       ],
+       [
+        null,
+        13500
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "phu_quoc": {
+     "car4": {
+      "open": 29000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11400
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 34000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        14250
+       ]
+      ],
+      "night": 20000
+     },
+     "economy": {
+      "open": 28000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        10500
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi4": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        null,
+        16000
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 22000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        null,
+        19000
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "phu_yen": {
+     "taxi4": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        null,
+        16000
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 22000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        null,
+        19000
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "quang_nam": {
+     "car4": {
+      "open": 29647,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        13494
+       ]
+      ]
+     },
+     "car7": {
+      "open": 35781,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        16357
+       ]
+      ]
+     },
+     "saver": {
+      "open": 28624,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        12268
+       ]
+      ]
+     }
+    },
+    "quang_ninh": {
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11200
+       ]
+      ],
+      "night": 20000
+     },
+     "car7": {
+      "open": 37500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        13500
+       ]
+      ],
+      "night": 20000
+     },
+     "economy": {
+      "open": 28000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        10300
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "quang_tri": {
+     "taxi4": {
+      "open": 38000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        16000
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 45000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        21500
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "thanh_hoa": {
+     "taxi4": {
+      "open": 18000,
+      "open_km": 1.4,
+      "per_km": [
+       [
+        30.0,
+        13000
+       ],
+       [
+        null,
+        12000
+       ]
+      ],
+      "night": 10000
+     },
+     "taxi7": {
+      "open": 41000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        19000
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "thua_thien_hue": {
+     "car4": {
+      "open": 29647,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        13494
+       ]
+      ]
+     },
+     "car7": {
+      "open": 35781,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        16357
+       ]
+      ]
+     },
+     "saver": {
+      "open": 29647,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11961
+       ]
+      ]
+     },
+     "taxi4": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        null,
+        16500
+       ]
+      ]
+     },
+     "taxi7": {
+      "open": 42000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        20400
+       ]
+      ]
+     }
+    },
+    "tien_giang": {
+     "taxi4": {
+      "open": 10000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        14900
+       ],
+       [
+        null,
+        10500
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 10000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        17500
+       ],
+       [
+        null,
+        13500
+       ]
+      ],
+      "night": 20000
+     }
+    },
+    "vinh_long": {
+     "taxi4": {
+      "open": 10000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        13900
+       ],
+       [
+        null,
+        10500
+       ]
+      ],
+      "night": 20000
+     },
+     "taxi7": {
+      "open": 10000,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        30.0,
+        15900
+       ],
+       [
+        null,
+        13500
+       ]
+      ],
+      "night": 20000
+     }
+    }
+   },
+   "routes": [
+    {
+     "service": "car4",
+     "from": [
+      "ha_noi"
+     ],
+     "to": {
+      "airport": "HAN"
+     },
+     "both_ways": true,
+     "fare": {
+      "open": 26747,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        8916
+       ]
+      ],
+      "night": 20000
+     },
+     "label": "beAirport · giá tuyến Hà Nội ⇄ sân bay Nội Bài",
+     "source_label": "beCar Airport"
+    }
+   ],
+   "airport_pickup": {}
+  },
+  "xanhsm": {
+   "name": "Xanh SM",
+   "sources": [
+    "https://www.greensm.com/vn-vi/greensm-car",
+    "https://www.greensm.com/vn-vi/greensm-bike",
+    "https://ladotaxi.com"
+   ],
+   "as_of": "2026-11-17",
+   "note": "Giá niêm yết, có thể giảm hoặc tăng theo giờ. Ở Lâm Đồng xe là taxi điện của đối tác Lado trên nền tảng Xanh SM (Green SM), tính theo bảng giá Lado",
+   "services": {
+    "bike": {
+     "label": "Green SM Bike",
+     "vehicle": "motorbike",
+     "seats": 1
+    },
+    "car4": {
+     "label": "Green SM Car",
+     "vehicle": "car",
+     "seats": 4
+    },
+    "lado4": {
+     "label": "Xanh SM · taxi Lado 4 chỗ",
+     "vehicle": "car",
+     "seats": 4
+    },
+    "lado7": {
+     "label": "Xanh SM · taxi Lado 7 chỗ",
+     "vehicle": "car",
+     "seats": 6
+    }
+   },
+   "fares": {
+    "ba_ria_vung_tau": {
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15200
+       ],
+       [
+        25.0,
+        14700
+       ],
+       [
+        null,
+        13300
+       ]
+      ]
+     }
+    },
+    "bac_ninh": {
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        13000
+       ],
+       [
+        null,
+        11000
+       ]
+      ]
+     }
+    },
+    "ben_tre": {
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        14000
+       ],
+       [
+        null,
+        13000
+       ]
+      ]
+     }
+    },
+    "binh_duong": {
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15200
+       ],
+       [
+        25.0,
+        14700
+       ],
+       [
+        null,
+        13300
+       ]
+      ]
+     }
+    },
+    "binh_phuoc": {
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15000
+       ],
+       [
+        25.0,
+        14600
+       ],
+       [
+        null,
+        13500
+       ]
+      ]
+     }
+    },
+    "can_tho": {
+     "bike": {
+      "open": 12200,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4200
+       ]
+      ],
+      "per_min": 275
+     },
+     "car4": {
+      "open": 31000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        30.0,
+        14700
+       ],
+       [
+        null,
+        13500
+       ]
+      ]
+     }
+    },
+    "da_nang": {
+     "bike": {
+      "open": 12000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4500
+       ]
+      ]
+     },
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15300
+       ],
+       [
+        25.0,
+        14000
+       ],
+       [
+        null,
+        13000
+       ]
+      ]
+     }
+    },
+    "dong_nai": {
+     "bike": {
+      "open": 12200,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4200
+       ]
+      ],
+      "per_min": 275
+     },
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15000
+       ],
+       [
+        25.0,
+        14600
+       ],
+       [
+        null,
+        13500
+       ]
+      ]
+     }
+    },
+    "dong_thap": {
+     "car4": {
+      "open": 25000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        30.0,
+        13600
+       ],
+       [
+        null,
+        9000
+       ]
+      ]
+     }
+    },
+    "gia_lai": {
+     "car4": {
+      "open": 20000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        11000
+       ]
+      ]
+     }
+    },
+    "ha_giang": {
+     "car4": {
+      "open": 15000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        12.0,
+        13000
+       ],
+       [
+        30.0,
+        12500
+       ],
+       [
+        null,
+        11000
+       ]
+      ]
+     }
+    },
+    "ha_nam": {
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        13200
+       ],
+       [
+        null,
+        11300
+       ]
+      ]
+     }
+    },
+    "ha_noi": {
+     "bike": {
+      "open": 13200,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4200
+       ]
+      ],
+      "per_min": 275
+     },
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        14700
+       ],
+       [
+        25.0,
+        13800
+       ],
+       [
+        null,
+        11900
+       ]
+      ]
+     }
+    },
+    "hai_duong": {
+     "car4": {
+      "open": 15000,
+      "open_km": 0.6,
+      "per_km": [
+       [
+        12.0,
+        12800
+       ],
+       [
+        25.0,
+        11500
+       ],
+       [
+        null,
+        10200
+       ]
+      ]
+     }
+    },
+    "hai_phong": {
+     "bike": {
+      "open": 15200,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4200
+       ]
+      ],
+      "per_min": 280
+     }
+    },
+    "hau_giang": {
+     "car4": {
+      "open": 31000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        30.0,
+        14700
+       ],
+       [
+        null,
+        13500
+       ]
+      ]
+     }
+    },
+    "ho_chi_minh": {
+     "bike": {
+      "open": 10200,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4150
+       ]
+      ],
+      "per_min": 275
+     },
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15200
+       ],
+       [
+        25.0,
+        14700
+       ],
+       [
+        null,
+        13300
+       ]
+      ]
+     }
+    },
+    "hung_yen": {
+     "car4": {
+      "open": 28000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        12500
+       ],
+       [
+        null,
+        10600
+       ]
+      ]
+     }
+    },
+    "khanh_hoa": {
+     "bike": {
+      "open": 12000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4000
+       ]
+      ],
+      "per_min": 275
+     },
+     "car4": {
+      "open": 27000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        17100
+       ],
+       [
+        null,
+        11900
+       ]
+      ]
+     }
+    },
+    "kon_tum": {
+     "car4": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        25.0,
+        14000
+       ],
+       [
+        null,
+        11900
+       ]
+      ]
+     }
+    },
+    "lam_dong": {
+     "lado4": {
+      "open": 15000,
+      "open_km": 0.0,
+      "per_km": [
+       [
+        26.0,
+        11800
+       ],
+       [
+        null,
+        10500
+       ]
+      ]
+     },
+     "lado7": {
+      "open": 15000,
+      "open_km": 0.0,
+      "per_km": [
+       [
+        26.0,
+        18700
+       ],
+       [
+        null,
+        13500
+       ]
+      ]
+     }
+    },
+    "lao_cai": {
+     "car4": {
+      "open": 12500,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        25.0,
+        12400
+       ],
+       [
+        null,
+        11100
+       ]
+      ]
+     }
+    },
+    "long_an": {
+     "car4": {
+      "open": 29500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15200
+       ],
+       [
+        25.0,
+        14700
+       ],
+       [
+        null,
+        10500
+       ]
+      ]
+     }
+    },
+    "nam_dinh": {
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        13200
+       ],
+       [
+        null,
+        11300
+       ]
+      ]
+     }
+    },
+    "nghe_an": {
+     "bike": {
+      "open": 13500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4200
+       ]
+      ]
+     }
+    },
+    "ninh_binh": {
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        13200
+       ],
+       [
+        null,
+        11300
+       ]
+      ]
+     }
+    },
+    "ninh_thuan": {
+     "car4": {
+      "open": 27000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        17100
+       ],
+       [
+        null,
+        11900
+       ]
+      ]
+     }
+    },
+    "phu_quoc": {
+     "car4": {
+      "open": 25000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15700
+       ],
+       [
+        25.0,
+        15000
+       ],
+       [
+        null,
+        14500
+       ]
+      ]
+     }
+    },
+    "phu_yen": {
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        14000
+       ]
+      ]
+     }
+    },
+    "quang_binh": {
+     "car4": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        null,
+        11800
+       ]
+      ]
+     }
+    },
+    "quang_nam": {
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15300
+       ],
+       [
+        25.0,
+        14000
+       ],
+       [
+        null,
+        13000
+       ]
+      ]
+     }
+    },
+    "quang_ngai": {
+     "car4": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        25.0,
+        14000
+       ],
+       [
+        null,
+        11900
+       ]
+      ]
+     }
+    },
+    "quang_ninh": {
+     "bike": {
+      "open": 12000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4500
+       ]
+      ]
+     },
+     "car4": {
+      "open": 29500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        12400
+       ],
+       [
+        null,
+        11000
+       ]
+      ]
+     }
+    },
+    "quang_tri": {
+     "car4": {
+      "open": 20000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        null,
+        11800
+       ]
+      ]
+     }
+    },
+    "soc_trang": {
+     "car4": {
+      "open": 31000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        30.0,
+        14700
+       ],
+       [
+        null,
+        13500
+       ]
+      ]
+     }
+    },
+    "tay_ninh": {
+     "car4": {
+      "open": 29500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15200
+       ],
+       [
+        25.0,
+        14700
+       ],
+       [
+        null,
+        10500
+       ]
+      ]
+     }
+    },
+    "thai_binh": {
+     "car4": {
+      "open": 28000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        12500
+       ],
+       [
+        null,
+        10600
+       ]
+      ]
+     }
+    },
+    "thai_nguyen": {
+     "car4": {
+      "open": 27000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        14200
+       ],
+       [
+        25.0,
+        13000
+       ],
+       [
+        null,
+        12000
+       ]
+      ]
+     }
+    },
+    "thanh_hoa": {
+     "car4": {
+      "open": 18000,
+      "open_km": 1.5,
+      "per_km": [
+       [
+        12.0,
+        14200
+       ],
+       [
+        25.0,
+        13000
+       ],
+       [
+        null,
+        12000
+       ]
+      ]
+     }
+    },
+    "thua_thien_hue": {
+     "bike": {
+      "open": 13500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        null,
+        4200
+       ]
+      ]
+     },
+     "car4": {
+      "open": 30000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        12.0,
+        15200
+       ],
+       [
+        25.0,
+        13800
+       ],
+       [
+        null,
+        11500
+       ]
+      ]
+     }
+    },
+    "tien_giang": {
+     "car4": {
+      "open": 25000,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        30.0,
+        13600
+       ],
+       [
+        null,
+        9000
+       ]
+      ]
+     }
+    },
+    "tra_vinh": {
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        14000
+       ],
+       [
+        null,
+        13000
+       ]
+      ]
+     }
+    },
+    "tuyen_quang": {
+     "car4": {
+      "open": 15000,
+      "open_km": 1.0,
+      "per_km": [
+       [
+        12.0,
+        13000
+       ],
+       [
+        30.0,
+        12500
+       ],
+       [
+        null,
+        11000
+       ]
+      ]
+     }
+    },
+    "vinh_long": {
+     "car4": {
+      "open": 30500,
+      "open_km": 2.0,
+      "per_km": [
+       [
+        25.0,
+        14000
+       ],
+       [
+        null,
+        13000
+       ]
+      ]
+     }
+    },
+    "yen_bai": {
+     "car4": {
+      "open": 12500,
+      "open_km": 0.5,
+      "per_km": [
+       [
+        25.0,
+        12400
+       ],
+       [
+        null,
+        11100
+       ]
+      ]
+     }
+    }
+   },
+   "routes": [
+    {
+     "service": "lado4",
+     "from": [
+      "lam_dong"
+     ],
+     "to": {
+      "airport": "DLI"
+     },
+     "both_ways": false,
+     "min_km": 35.0,
+     "price": 155000,
+     "per_km": null,
+     "label": "Xanh SM · taxi Lado 4 chỗ · giá tuyến Lâm Đồng → sân bay Liên Khương",
+     "source_label": "Đà Lạt(Dalat) -> Sân Bay(Airport) (35km)"
+    },
+    {
+     "service": "lado7",
+     "from": [
+      "lam_dong"
+     ],
+     "to": {
+      "airport": "DLI"
+     },
+     "both_ways": false,
+     "min_km": 35.0,
+     "price": 255000,
+     "per_km": null,
+     "label": "Xanh SM · taxi Lado 7 chỗ · giá tuyến Lâm Đồng → sân bay Liên Khương",
+     "source_label": "Đà Lạt(Dalat) -> Sân Bay(Airport) (35km)"
+    }
+   ],
+   "airport_pickup": {}
+  }
+ }
+}

@@ -17,6 +17,14 @@
 :root.tg-nav-back::view-transition-old(root) { animation: tg-vt-leave-r 240ms cubic-bezier(0.4, 0, 0.6, 1) both; }
 :root.tg-nav-back::view-transition-new(root) { animation: tg-vt-enter-l 420ms cubic-bezier(0.22, 0.8, 0.3, 1) both; }
 :root.tg-nav-fwd::view-transition-group(root), :root.tg-nav-back::view-transition-group(root) { animation-duration: 420ms; }
+/* Lựa chọn -> Lịch trình ("Xem chi tiết lịch trình"): the map beside the list grows into the whole schedule; the page behind cross-fades. */
+:root.tg-nav-plan body.tg-has-split .tg-split { view-transition-name: tg-grow; } /* old page: the open map (one name per page) */
+:root.tg-nav-plan body:not(.tg-has-split) #tg-main { view-transition-name: tg-grow; } /* new page: the schedule */
+:root.tg-nav-plan::view-transition-group(tg-grow) { animation-duration: 460ms; animation-timing-function: cubic-bezier(0.22, 0.8, 0.3, 1); }
+:root.tg-nav-plan::view-transition-old(tg-grow), :root.tg-nav-plan::view-transition-new(tg-grow) { height: 100%; object-fit: cover; }
+@media (prefers-reduced-motion: reduce) {
+  :root.tg-nav-plan::view-transition-group(*), :root.tg-nav-plan::view-transition-old(*), :root.tg-nav-plan::view-transition-new(*) { animation: none !important; }
+}
 /* the browser's cross-fade replaces the fallback fade-in of a page */
 html[data-vt] .tg-flow { animation: none; }
 @media (prefers-reduced-motion: reduce) {
@@ -35,3 +43,7 @@ html[data-vt] .tg-flow { animation: none; }
 @media (prefers-reduced-motion: reduce) {
   :root.tg-l2h::view-transition-group(*), :root.tg-l2h::view-transition-old(*), :root.tg-l2h::view-transition-new(*) { animation: none !important; }
 }
+/* Lịch trình -> Lựa chọn ("Bản đồ lịch trình"): the schedule shrinks back into the map beside the list */
+:root.tg-nav-back body:not(.tg-has-split) #tg-main { view-transition-name: tg-grow; }
+:root.tg-nav-back body.tg-has-split .tg-split { view-transition-name: tg-grow; }
+:root.tg-nav-back::view-transition-group(tg-grow) { animation-duration: 420ms; animation-timing-function: cubic-bezier(0.22, 0.8, 0.3, 1); }

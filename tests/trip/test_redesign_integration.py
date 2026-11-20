@@ -10,8 +10,10 @@ def said(value):
 
 
 def test_listed_care_needs_an_actual_limit():
+    from trip.domain.readiness import missing
     state = TripState.model_validate({"care": said("listed")})
-    assert "care" in dict(readiness_missing(state))
+    assert "care" in dict(missing(state))                 # the talk still asks it
+    assert "care" not in dict(readiness_missing(state))   # planning does not wait for it (owner 2026-11-18)
 
 
 def test_a_direct_signal_is_kept_after_removing_its_inferred_companion():

@@ -174,59 +174,87 @@ class Browse:
 
     # ---------- the stage: one node of the tag -> subtag -> place tree ----------
 
+    # Levels above the places: a named interest opens kinds, then the vibes inside one kind ("Săn mây" -> "Quán cà phê
+    # săn mây" -> "Quán cà phê kiểu Hàn"); a vague ask has its tags on top of that.
+    DEPTH = {"subtags": 2, "tags": 3}
+
     def stage(self, criteria: dict, state: TripState, path: Sequence[str]) -> dict:
         """One node of the tree a tags block opens (docs/TRIP_UNDERSTANDING.md §19): `criteria` = the block's ask, `path` =
-        the refs from the root ("category:cafe", then "experience:cloud_hunting"; "*" = every place of the parent).
-        Read only, the trip's hard limits and hidden places apply (fail-closed). -> {label, ids, children}: ids = every place
-        of the node, best first; children = [{id, kind: "tag" | "subtag", label, count, ids}] when the node splits, else None
-        (the node's places are the leaves). ValueError when the path is not a node of this ask."""
-        if not path or len(path) > 2:
-            raise ValueError("path needs one or two refs")
+        the refs from the root ("category:cafe", then "style:korean"; "*" = every place of the parent). A node splits
+        again on an axis its parents left open while it is above DEPTH of the ask's mode. Read only, the trip's hard
+        limits and hidden places apply (fail-closed). -> {label, ids, children}: ids = every place of the node, best
+        first; children = [{id, kind: "subtag", label, count, ids}] when the node splits, else None (the node's places
+        are the leaves). ValueError when the path is not a node of this ask."""
+        if not path:
+            raise ValueError("path needs a ref")
         if not isinstance(criteria, dict) or set(criteria) & set(FLAT_KEYS):
             raise ValueError("criteria must be an object of find_places keys")
-        canonical = []
-        for node in path:
-            resolved = tags.resolve_ref(node)
-            if resolved is None and not node.startswith("dish:v:"):
-                return {"label": "Gu không còn khả dụng", "ids": [], "children": None}
-            canonical.append(tags.ref(*resolved) if resolved else node)
-        path = canonical
         core = {k: v for k, v in criteria.items() if k != "exclude"}
         c = Criteria.parse(core, load_ontology())
         exclude = set(criteria.get("exclude") or ())
         found = self.k.retrieval.find(core, limit=POOL)
         hits = [h for h in found.hits if h.place_id not in exclude and self.k._admissible(h.place_id, state)]
         mode, _ = policy.first_pick(policy.dimensions(c.groups, c.must, c.dish, c.text), len(hits))
-        head, rest = path[0], path[1:]
-        if mode == "subtags":  # a named interest: its subtags are the first level, their places the leaves
-            root = self._result(hits, self.fixed(c), c.dish, criteria, state)
-            split = root.get("_split")
-            sub = next((s for s in (split or {}).get("subtags", ()) if s["id"] == head), None)
-            if sub is None or rest:
-                raise ValueError(f"{head!r} is not a subtag of this ask")
-            return {"label": sub["label"], "ids": list(sub["place_ids"]), "children": None}
-        if mode != "tags":
+        if mode not in self.DEPTH:
             raise ValueError("this ask shows a plain list: no tags to open")
+        if len(path) > self.DEPTH[mode]:
+            raise ValueError(f"path is deeper than this ask's {self.DEPTH[mode]} levels")
+        canonical = []
+        for node in path:
+            resolved = tags.resolve_ref(node)
+            if resolved is None and not node.startswith("dish:v:"):
+                return {"label": "Gu không còn khả dụng", "ids": [], "children": None}
+            canonical.append(tags.ref(*resolved) if resolved else node)
+        head, rest = canonical[0], canonical[1:]
+        placed = [(h, t) for h in hits if (t := self.place_tags(h.place_id)) is not None]
+        if mode == "subtags":  # a named interest: its subtags are the first level
+            split = self._result(hits, self.fixed(c), c.dish, criteria, state).get("_split")
+            sub = next((s for s in (split or {}).get("subtags", ()) if s["id"] == head), None)
+            if sub is None:
+                raise ValueError(f"{head!r} is not a subtag of this ask")
+            keep = set(sub["place_ids"])
+            return self._node(sub["label"], [x for x in placed if x[0].place_id in keep],
+                              self._with(self.fixed(c), sub["axis"], sub["key"]), c.dish, rest, 1, self.DEPTH[mode])
         resolved = tags.resolve_ref(head)
         if resolved is None:
             return {"label": "Gu không còn khả dụng", "ids": [], "children": None}
         axis, key = resolved
-        placed = [(h, t) for h in hits if (t := self.place_tags(h.place_id)) is not None and t.carries(axis, key)]
-        label = tags.label(axis, key)
-        if not placed:
-            return {"label": label, "ids": [], "children": None}
         fixed, dish = self._fixed_of(axis, key)
-        variants = {t.id: tags.dish_variants(self.k.retrieval.get_place(t.id) or {}, dish) for _, t in placed} if dish else None
-        split = tags.split([t for _, t in placed], fixed, variants)
+        return self._node(tags.label(axis, key), [x for x in placed if x[1].carries(axis, key)], fixed, dish, rest, 1,
+                          self.DEPTH[mode])
+
+    def _node(self, label: str, placed: list, fixed: tags.Fixed | None, dish: str | None, rest: Sequence[str],
+              depth: int, limit: int) -> dict:
+        """The node reached after `depth` refs, or the one `rest` leads to below it. fixed None = no further split."""
         ids = [h.place_id for h, _ in placed]
+        if not ids:  # nothing of it passes the trip's limits any more: an empty node, not a broken path
+            return {"label": label, "ids": [], "children": None}
+        split = None
+        if fixed is not None and depth < limit:
+            variants = {t.id: tags.dish_variants(self.k.retrieval.get_place(t.id) or {}, dish) for _, t in placed} if dish else None
+            split = tags.split([t for _, t in placed], fixed, variants)
         if split is None:
             if rest:
-                raise ValueError(f"{head!r} does not split")
+                raise ValueError(f"{label!r} does not split")
             return {"label": label, "ids": ids, "children": None}
         subs = [{"id": s.id, "kind": "subtag", "label": s.label, "count": s.count, "ids": list(s.place_ids)} for s in split.subtags]
         if not rest:
             return {"label": label, "ids": ids, "children": subs}
-        sub = next((s for s in subs if s["id"] == rest[0]), None)
-        if sub is None or len(rest) > 1:
-            raise ValueError(f"{rest[0]!r} is not a subtag of {head!r}")
-        return {"label": sub["label"], "ids": sub["ids"], "children": None}
+        sub = next((s for s in split.subtags if s.id == rest[0]), None)
+        if sub is None:
+            raise ValueError(f"{rest[0]!r} is not a subtag of {label!r}")
+        keep = set(sub.place_ids)
+        return self._node(sub.label, [x for x in placed if x[0].place_id in keep], self._with(fixed, sub.axis, sub.key),
+                          dish, rest[1:], depth + 1, limit)
+
+    @staticmethod
+    def _with(fixed: tags.Fixed, axis: str, key: str) -> tags.Fixed | None:
+        """`fixed` and the subtag just opened, so its children split on another axis. None: a dish or a dish variant,
+        whose places are the leaves."""
+        if axis == "category":
+            return tags.Fixed(groups=fixed.groups | {key}, features=fixed.features, styles=fixed.styles, dish=fixed.dish)
+        if axis == "experience":
+            return tags.Fixed(groups=fixed.groups, features=fixed.features | {key}, styles=fixed.styles, dish=fixed.dish)
+        if axis == "style":
+            return tags.Fixed(groups=fixed.groups, features=fixed.features, styles=fixed.styles | {key}, dish=fixed.dish)
+        return None

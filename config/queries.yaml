@@ -20,6 +20,7 @@ tiktok:
   poi_download: 10  # poi_crawl: the best N of them downloaded for asr / asr_check / place_verify
   poi_tabs: 3  # poi_crawl: parallel place pages (logged out, no captcha seen 2026-10-09); working level in poi_crawl_throttle.json
   poi_tabs_start: 2
+  poi_refresh_per_run: 200  # poi_refresh: places listed again each night, longest ago first (~2 weeks round the city)
   clips_per_place: 6  # clips: verified videos users can play on a place card (PlaceSheet shows 6)
   crawl_videos_per_place: null  # place_crawl: each place's own top N "yes" videos actually downloaded; null = every
                                 # "yes" video (2026-10-06: coverage over cost, users want depth). Was 5 (4292 videos);

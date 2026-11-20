@@ -3,6 +3,8 @@ import { fmtVnd, info } from '../../lib'
 import type { ItineraryDay, Variant } from '../../planning/types'
 
 export const visits = (d: ItineraryDay) => d.items.filter((it) => it.kind === 'visit' && it.place_id)
+// How firmly a plan holds when the day runs late, as a short tag (the server's own labels, Vững / Khả thi / Mong manh, are not shown).
+export const ROBUST_TAG: Record<string, string> = { solid: 'Dư dả', feasible: 'Vừa vặn', fragile: 'Sát giờ' }
 export const costText = (v: Variant) => (v.metrics.cost_vnd ? `~${fmtVnd(v.metrics.cost_vnd)}` : 'Chưa có giá')
 
 // "2026-10-13" -> "13 thg 10"; the day number when the trip has no date yet.
@@ -36,3 +38,8 @@ export const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').re
 export const BLOCK: Record<string, string> = { meal_free: 'Ăn (tự chọn)', rest: 'Nghỉ', wait: 'Chờ', free: 'Tự do quanh đây', buffer: 'Đệm' }
 export const BLOCK_NOTE: Record<string, string> = { meal_free: 'Ăn ngoài hoặc hỏi chỗ ở có phục vụ bữa này; dịch vụ và giá chưa xác nhận.', rest: 'Nghỉ chân, về chỗ ở hoặc ngồi lại.', wait: 'Chờ tới khung giờ ghé hoặc giờ mở cửa.', free: 'Thời gian tự do trước khi di chuyển tới điểm kế tiếp.', buffer: 'Thời gian dự phòng, trễ một chút vẫn ổn.' }
 export const MEAL_LABEL: Record<string, string> = { breakfast: 'Ăn sáng (tự chọn)', lunch: 'Ăn trưa (tự chọn)', dinner: 'Ăn tối (tự chọn)', late: 'Ăn đêm (tự chọn)' }
+
+// The ways of an overloaded trip (src/planning/overload.py LABEL): the name a variant shows everywhere. A merged card keeps
+// the first direction's name; an older server joined them with " · ".
+export const WAY_NAME: Record<string, string> = { fit: 'Giữ nơi hợp gu nhất', travel: 'Di chuyển thuận lợi nhất', cost: 'Tiết kiệm nhất', most: 'Giữ nhiều nơi bạn chọn nhất' }
+export const wayName = (v: { id: string; label: string } | null | undefined) => (v ? WAY_NAME[v.id] ?? v.label.split(' · ')[0] : '')

@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useEffect, useState } from 'react'
-import { fmtMin, fmtVnd, info } from '../lib'
+import { fmtMin, fmtRange, fmtVnd, info, priceText } from '../lib'
 import { useDecision } from '../pd/decision'
 import type { Diff, PreviewVariant } from '../pd/types'
 import { PlacePhoto } from './common'
@@ -34,7 +34,8 @@ export function SelectedBar(_props: { onRelax?: () => void }) {
   }, [diff])
   if (!view || !f || !view.selected.length) return null
   const t = f.totals
-  const names = new Map([...view.groups.flatMap((g) => g.cards), ...view.unverified.cards].map((c) => [c.id, c.name]))
+  const cards = new Map([...view.groups.flatMap((g) => g.cards), ...view.unverified.cards].map((c) => [c.id, c]))
+  const names = new Map([...cards].map(([id, c]) => [id, c.name]))
   // A chosen place may sit outside the groups on screen (a stay, a place from chat): the corpus still knows its name.
   const nameOf = (id: string) => names.get(id) ?? info(id)?.name ?? ''
   // Lựa chọn never stops or nudges the user: too many or too few places is dealt with in Lịch trình.
@@ -49,15 +50,15 @@ export function SelectedBar(_props: { onRelax?: () => void }) {
         {error && <p className="tg-diff is-bad" role="alert"><Icon name="warn" size={15} />{error}</p>}
         <div className={`tg-bar is-${level}`} role="region" aria-label="Đã chọn">
           <button type="button" className="tg-bar__main" onClick={() => setOpen(true)} aria-haspopup="dialog">
-            <span className="tg-bar__status"><i />Đã chọn {view.selected.length} nơi</span>
+            <span className="tg-bar__status"><i />{view.selected.length} nơi</span>
             {level === 'building' ? (
               <span className="tg-bar__skel" aria-busy="true"><span className="tg-skel" style={{ width: 120 }} /><span className="tg-skel" style={{ width: 90 }} /><span className="tg-skel" style={{ width: 110 }} /></span>
             ) : (
+              // Only what decides "is this enough": time on the places and the money. The road is a guess until the days are laid out
+              // (the open panel and Lịch trình say it), and "một phần chưa có giá" overflowed the bar: a "+" after the sum says it.
               <span className="tg-bar__stats">
-                <span><b className="tg-mono">{t.places}</b> nơi</span>
-                <span><b className="tg-mono">{fmtMin(t.visit)}</b> tham quan</span>
-                <span>≈ <b className="tg-mono">{fmtMin(best ? best.metrics.travel_min : t.travel)}</b> đi lại</span>
-                {best && <span>{best.metrics.cost_vnd ? <>~<b className="tg-mono">{fmtVnd(best.metrics.cost_vnd)}</b>{best.metrics.cost_unknown > 0 && <em> · một phần chưa có giá</em>}</> : <em>Chưa có giá</em>}</span>}
+                <span><Icon name="clock" size={14} /><b className="tg-mono">{fmtMin(t.visit)}</b></span>
+                {best?.metrics.cost_vnd ? <span title={best.metrics.cost_unknown > 0 ? 'Một phần chưa có giá' : undefined}><b className="tg-mono">~{fmtVnd(best.metrics.cost_vnd)}{best.metrics.cost_unknown > 0 ? '+' : ''}</b></span> : null}
               </span>
             )}
             <Icon name="chevronUp" size={18} />
@@ -81,6 +82,13 @@ export function SelectedBar(_props: { onRelax?: () => void }) {
                   <li key={id}>
                     <PlacePhoto id={id} name={name} className="tg-listpanel__ph" />
                     <div><button type="button" className="tg-link tg-listpanel__name" onClick={() => { setOpen(false); openPlace(id) }}>{name}</button>
+                      {(() => {
+                        // What is worth knowing at a glance: the rating, what kind of place and where, how long it takes, what it costs.
+                        const c = cards.get(id), p = info(id)
+                        const kind = [p?.rating ? `★ ${p.rating.toFixed(1)}` : null, c?.category ?? p?.category, c?.area ?? p?.area].filter(Boolean).join(' · ')
+                        const facts = [c?.visit ? `≈ ${fmtRange(c.visit.short, c.visit.long)}` : null, c?.price ?? priceText(p?.price)].filter(Boolean).join(' · ')
+                        return <>{kind && <span className="tg-listpanel__meta">{kind}</span>}{facts && <span className="tg-listpanel__meta tg-mono">{facts}</span>}</>
+                      })()}
                       {view.chunks && view.chunks.length > 1 && <label className="tg-week-choice tg-faint">Tuần ghé <select aria-label={`Tuần ghé ${name}`} disabled={busy} value={view.chunk_assignments?.[id] ?? 0} onChange={(e) => act({ type: 'move_chunk', place_id: id, chunk: Number(e.target.value) })}>{view.chunks.map((chunk) => <option key={chunk.id} value={chunk.id}>Tuần {chunk.id + 1} · ngày {chunk.start_day}–{chunk.end_day} · {chunk.places.length} nơi</option>)}</select></label>}
                     </div>
                     <button type="button" className={`tg-icon-btn ${isLocked ? 'is-on' : ''}`} disabled={busy} onClick={() => act({ type: isLocked ? 'unlock' : 'lock', place_id: id })} aria-pressed={isLocked} aria-label={isLocked ? 'Bỏ khóa' : 'Khóa'}><Icon name={isLocked ? 'lock' : 'unlock'} size={18} /></button>

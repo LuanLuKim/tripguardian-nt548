@@ -39,7 +39,7 @@ ENTRY = re.compile(r"/api/harness/me/profile/entries/([0-9a-f]{12})")  # one pro
 AVATAR = re.compile(r"/api/harness/avatars/([0-9a-f]{32})")
 SESSION = re.compile(BASE + r"/([0-9a-f]{12})")
 REQUEST = re.compile(BASE + r"/([0-9a-f]{12})/request")
-READ = re.compile(BASE + r"/([0-9a-f]{12})/read/(?:(decision|planning)/(compare|why-not|evidence|lodging|variants|page|search|suggestions|preview-act|routes)|(trip)/(readback|stage))")
+READ = re.compile(BASE + r"/([0-9a-f]{12})/read/(?:(decision|planning)/(compare|why-not|evidence|lodging|variants|page|search|suggestions|preview-act|routes|summary)|(trip)/(readback|stage))")
 LODGING = re.compile(BASE + r"/([0-9a-f]{12})/planning/lodging/events")
 PREVIEW = re.compile(BASE + r"/([0-9a-f]{12})/preview")
 FEEDBACK = re.compile(BASE + r"/([0-9a-f]{12})/feedback")
@@ -134,7 +134,9 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
             if gate.allow(key, limit):
                 return False
             self.close_connection = True
-            self._send(429, b'{"error":"too many requests"}', "application/json", [("Retry-After", "60")])
+            wait = gate.wait(key)  # the page waits exactly this long and sends the call again (web/src/user/net.ts)
+            self._send(429, json.dumps({"error": "too many requests", "retry_after": wait}).encode(), "application/json",
+                       [("Retry-After", str(wait))])
             return True
 
         def _send(self, code, body: bytes, content_type, headers=()):
@@ -480,6 +482,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return self._call(lambda: harness.geo(query.get("q", "")))
             if path == "/api/harness/pulse":
                 return self._call(harness.pulse)
+            if path == "/api/harness/calendar":
+                return self._call(lambda: harness.calendar_days(query.get("from", ""), query.get("to", "")))
             if path == "/api/harness/tags/trending":
                 return self._call(harness.tags_trending)
             if path == "/api/harness/tags":
@@ -488,6 +492,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
                 return self._call(lambda: booking_routes.offers(query))
             if path == "/api/harness/journey":
                 return self._call(lambda: booking_routes.journey_options(query))
+            if path == "/api/harness/rides":
+                return self._call(lambda: booking_routes.rides(query))
             if path == "/api/harness/lodging/suggest":
                 return self._call(lambda: harness.lodging_suggest(query.get("q", ""), int(query["top"]) if query.get("top", "").isdigit() and len(query["top"]) < 3 else 0))
             if path == "/api/harness/trips":

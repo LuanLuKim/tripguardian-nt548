@@ -1,4 +1,3 @@
-from datetime import date
 
 from fixtures import MONDAY, si, srec
 

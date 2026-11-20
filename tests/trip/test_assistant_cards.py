@@ -37,6 +37,14 @@ def test_quick_replies_bounds(turn_tools):
     assert "error" not in t.run("quick_replies", {"options": ["Có", "Không"]})
 
 
+def test_word_cards_are_the_models_own_words(turn_tools):
+    t = turn_tools(assistant=True)
+    assert "error" in t.run("word_cards", {"question": "  "})
+    assert "error" in t.run("word_cards", {"question": "x" * 71})
+    assert "error" not in t.run("word_cards", {"question": " Chill ở Đà Lạt với bạn là ngồi nhìn sương? ", "why": "Bạn nhắc tới chill"})
+    assert t.words == {"question": "Chill ở Đà Lạt với bạn là ngồi nhìn sương?", "why": "Bạn nhắc tới chill", "header": ""}
+
+
 def test_display_tools_only_with_the_assistant(turn_tools):
     assert "show_places" not in turn_tools(assistant=False).tool_names()
 
@@ -157,3 +165,13 @@ def test_services_block_hides_unknown_fields():
                           "rows": [{"name": "ATM A", "kind": "ATM", "distance_km": 0.4, "address": "unknown", "phone": "0900", "website": "unknown"}]})
     assert out["rows"] == [{"name": "ATM A", "kind": "ATM", "distance_km": 0.4, "phone": "0900"}] and "anchor" not in out
     assert services_block({"rows": []}) is None
+
+
+def test_a_read_shows_as_running_before_it_finishes_and_ends_once(turn_tools):
+    t = turn_tools(assistant=True)
+    seen = []
+    t.on_trace = lambda trace: seen.append([(x["id"][:4], x["status"]) for x in trace["steps"]])
+    t.run("find_places", {"criteria": {"groups": ["cafe"]}})
+    assert seen[0] == [("find", "run")]  # announced before the wait
+    assert seen[-1] == [("find", "ok")]  # the same line finished, not a second one
+    assert [x["status"] for x in t.trace] == ["ok"]

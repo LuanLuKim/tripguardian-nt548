@@ -95,7 +95,7 @@ def test_real_overload_handoff_offers_tradeoffs_and_confirms_only_valid_drafts(t
     v = run(h, v, 'advance', 'to-overloaded-planning')
     assert {p['id'] for p in v['outputs']['decision']['confirmed']} == set(original)
     pv = v['result']['view']
-    assert {p['id'] for p in pv['variants']} == {'cost', 'fit', 'travel'}  # the 3 fixed drop-order trade-offs
+    assert {p['id'] for p in pv['variants']} == {'cost', 'fit', 'most'}  # the 3 fixed drop-order trade-offs
     v = run(h, v, 'recommend', 'automatic-proposal')
     assert v['result']['view']['state']['chosen_variant'] is None
     assert not pv['needs_hotel']  # a plan without a lodging is offered, never refused

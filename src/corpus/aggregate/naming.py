@@ -19,6 +19,14 @@ _TRIM_START = " \t\r\n,;:.-–—|/"
 _CUT = re.compile(r"\s[-–—|/•·:]\s|\s[-–—](?=\S)|(?<=\S)[-–—]\s|\s:|:\s|\|")
 _SPACE_DOT = re.compile(r"\s\.(?=[^\W\d_])")
 _ACRONYM = re.compile(r"^[A-Z]{2,4}$|[0-9]")
+_NO_VOWEL = re.compile(r"^[B-DF-HJ-NP-TV-XZ]{2,4}$")  # NVN, BBQ, KDL, TP: an acronym even inside an all-caps name
+# A branch after the separator is part of the name: two branches must not get one name.
+_BRANCH = re.compile(r"^(chi nhánh|cơ sở|cn|cs|branch)\s*\d+\b", re.I)
+# Words that only say what kind of place it is: a head made of these alone is a tagline, the name comes after it
+# ("MASSAGE TRỊ LIỆU ĐÀ LẠT - LALITA SPA" -> "Lalita Spa").
+GENERIC = frozenset("""massage trị liệu spa gội đầu dưỡng sinh chăm sóc món thái hàn nhật việt quán ăn nhà hàng khách sạn
+homestay hostel villa cà phê cafe coffee lẩu nướng cho thuê xe máy đà lạt dalat da lat tiệm chợ shop cửa ẩm thực đặc sản
+và & tại ở sân tập golf trong ngoài""".split())
 
 
 def _non_latin(ch: str) -> bool:
@@ -45,13 +53,15 @@ def _is_lower(s: str) -> bool:
 
 
 def _cap(w: str) -> str:
-    return w[:1].upper() + w[1:] if w else w
+    """Capital first letter, after any opening quote or bracket ('"bear's' -> '"Bear's')."""
+    i = next((k for k, ch in enumerate(w) if ch.isalpha()), None)
+    return w if i is None else w[:i] + w[i].upper() + w[i + 1:]
 
 
 def _title(s: str) -> str:
     out = []
     for i, w in enumerate(re.split(r"(\s+)", s)):
-        if i % 2 or re.search(r"[0-9]|\.", w):
+        if i % 2 or re.search(r"[0-9]|\.", w) or _NO_VOWEL.match(w):
             out.append(w)
         elif i > 0 and w.lower() in _LOWER_WORDS:
             out.append(w.lower())
@@ -90,7 +100,17 @@ def display_name(raw: str) -> str:
         s = bare
     m = _CUT.search(s)
     if m and m.start() > 2:
-        s = s[:m.start()]
+        head, tail = s[:m.start()], s[m.end():].strip()
+        words = re.findall(r"[^\W\d_]+|&", head.casefold())
+        if words and all(w in GENERIC for w in words) and len(_letters(tail)) >= 3:
+            s = tail  # the head only names the kind of place
+            m = _CUT.search(s)
+            if m and m.start() > 2:
+                head, tail = s[:m.start()], s[m.end():].strip()
+            else:
+                head, tail = s, ""
+        branch = _BRANCH.match(tail)
+        s = f"{head} {branch.group(0)}" if branch else head
     dot = _dot_cut(s)
     if dot > 2:
         s = s[:dot]
@@ -106,3 +126,25 @@ def display_name(raw: str) -> str:
         at = s.rfind(" ", 0, MAX)
         s = s[:at if at > 12 else MAX - 1].rstrip(_TRIM_END) + "…"
     return s
+
+
+_FLATTEN = re.compile(r"\s*[-–—|/•·:]\s+|\s+[-–—|/•·:]\s*|[()\[\],]")
+
+
+def distinct_names(raws: dict[str, str]) -> dict[str, str]:
+    """{id: name} for every place: display_name, except where two places with different Google names would get the
+    same one (branches: "Nature Hotel - Phan Bội Châu", "Nature Hotel - Lê Đại Hành"); those keep the words that tell
+    them apart, joined without the separator ("Nature Hotel Phan Bội Châu"), which display_name leaves as it is."""
+    short = {pid: display_name(raw) for pid, raw in raws.items()}
+    groups: dict[str, list[str]] = {}
+    for pid, name in short.items():
+        groups.setdefault(name.casefold(), []).append(pid)
+    out = dict(short)
+    for ids in groups.values():
+        if len({raws[p] for p in ids}) < 2:
+            continue
+        for pid in ids:
+            long = display_name(re.sub(r"\s+", " ", _FLATTEN.sub(" ", raws[pid])).strip())
+            if display_name(long) == long:
+                out[pid] = long
+    return out

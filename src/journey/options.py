@@ -154,10 +154,28 @@ def _flight_leg(leg: Leg, flights: list) -> Leg:
     return replace(leg, minutes=minutes, source="gflights", fetched_at=seen)
 
 
+def _with_rides(opts: tuple[Option, ...], day: date | None) -> tuple[tuple[Option, ...], dict | None]:
+    """Every transfer leg (home <-> airport or coach station, airport <-> lodging) with its ride-hailing quotes, priced
+    from the leg's first point to its last; the table missing leaves the legs as they are."""
+    from . import rides
+    try:
+        table = rides.load()
+    except (OSError, ValueError, KeyError):
+        return opts, None
+    out = []
+    for o in opts:
+        legs = tuple(replace(leg, rides=rides.leg_quote(leg.distance_km, leg.minutes, tuple(leg.coords[0]),
+                                                        tuple(leg.coords[-1]), day, table))
+                     if leg.kind == "transfer" and leg.coords and leg.distance_km else leg for leg in o.legs)
+        out.append(replace(o, legs=legs))
+    return tuple(out), rides.brands(table)
+
+
 def options(origin: Point, day: date | None, dest: Point | None = None, way: str = "inbound", cfg: Settings | None = None,
-            route=None, offers=None) -> Journey:
+            route=None, offers=None, with_rides: bool = False) -> Journey:
     """The ways from `origin` to `dest` (the lodging; None -> city centre) on `day`; way = inbound (home -> city) |
-    outbound (city -> home). `route` / `offers` replace OSRM and booking.offers (tests)."""
+    outbound (city -> home). `with_rides` prices each transfer leg by ride-hailing (the Web's door-to-door total; the
+    Trip assistant does not ask for it). `route` / `offers` replace OSRM and booking.offers (tests)."""
     if way not in booking.WAYS:
         raise ValueError(f"way must be inbound or outbound, not {way!r}")
     cfg = cfg or load()
@@ -172,4 +190,8 @@ def options(origin: Point, day: date | None, dest: Point | None = None, way: str
             _drive("motorbike", origin, dest, way, label, route, lcfg, cfg),
             _bus(origin, dest, day, way, label, route, offers_fn, lcfg, cfg),
             _plane(origin, dest, day, way, label, route, offers_fn, lcfg, cfg))
-    return Journey(origin=origin, dest=dest, dest_is_centre=centre, way=way, day=day.isoformat() if day else None, options=opts)
+    brands = None
+    if with_rides:
+        opts, brands = _with_rides(opts, day)
+    return Journey(origin=origin, dest=dest, dest_is_centre=centre, way=way, day=day.isoformat() if day else None,
+                   options=opts, ride_brands=brands)

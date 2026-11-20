@@ -1,6 +1,7 @@
 import type { LodgingCandidate } from '../planning/types'
 import type { Action, ActResult, Card, CompareResult, PlanPreview, SearchResult, TripSummary, TurnHandlers, View, WhyNot } from './types'
 import { setScenePhotos } from '../../data/store'
+import { FORGET_EVENT } from '../account'
 import { acceptsRevision, json, loadJourney, mutateJourney, readJourney, resumeJourney, type JourneyView } from '../journey'
 export { JourneyError as DecisionError } from '../journey'
 // Cards bring their scene photos (no people, one per scene); every list the screens read goes through here, so PlacePhoto,
@@ -13,7 +14,7 @@ export const withPhotos = <T extends { view?: View; cards?: Card[] }>(r: T): T =
 // Understand starts the first read of this stage the moment it has advanced, so the screen finds it on arrival instead of
 // asking after the route changed. A journey that has just advanced has nothing to recover, so that step is skipped too.
 const primed = new Map<string, Promise<JourneyView>>()
-export const primeDecision = (id: string, view?: JourneyView) => {
+export const primeDecision = (id: string, view?: JourneyView | Promise<JourneyView>) => {
   const read = view ? Promise.resolve(view) : loadJourney(id, 'decision')
   read.catch(() => {})
   primed.set(id, read)
@@ -55,5 +56,9 @@ export async function sendText(id: string, text: string, h: TurnHandlers): Promi
 // Every served stay, one page at a time (`total` of them): those around the chosen places first.
 export const lodgingOptions = (id: string, offset = 0) => readJourney<{ status: 'empty' | 'ready' | 'unavailable'; candidates: LodgingCandidate[]; total?: number }>(id, `decision/lodging?offset=${offset}`)
 export const previewPlan = (id: string) => fetch(`/api/harness/sessions/${id}/preview`).then(json<PlanPreview>)
-export const deleteTrip = (id: string) => fetch(`/api/harness/sessions/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(json<{ deleted: boolean }>)
-export const tripSummaries = () => fetch('/api/harness/trips').then(json<TripSummary[]>)
+// The last list the server gave, so the chat history and the calendar paint at once on every visit and refresh behind it.
+let kept: TripSummary[] | null = null
+export const keptTripSummaries = () => kept
+if (typeof window !== 'undefined') addEventListener(FORGET_EVENT, () => { kept = null })
+export const deleteTrip = (id: string) => fetch(`/api/harness/sessions/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(json<{ deleted: boolean }>).then((r) => { kept = kept?.filter((t) => t.id !== id) ?? null; return r })
+export const tripSummaries = () => fetch('/api/harness/trips').then(json<TripSummary[]>).then((l) => (kept = l))

@@ -5,11 +5,12 @@ Code gọi model theo **vai trò**, không gọi thẳng một model cố địn
 | Vai trò | Dùng ở | Model hiện tại | Đường mạng |
 |---|---|---|---|
 | ASR | `corpus` (TikTok) | ChunkFormer trên GPU local; ASR2 PhoWhisper-medium | Local |
-| Extractor | `corpus` (observe, filter, qc, kiểm span, `asr_check`, `place_verify`, audit Gemma, `style_observe`, `local extract`); `photo_rank` (chấm ảnh gallery cho web, `web/scripts/pick_covers.py`); `trip` `photo_cues` (đọc dấu hiệu trong ảnh user gửi, luồng thẻ) và `photo_read` (trợ lý: loại cảnh, dấu hiệu, có phải ảnh chụp màn hình không, chữ đọc được và tên nơi viết trong ảnh; chữ là dữ liệu không tin cậy, ảnh không lưu; `places_in_view` đếm số thẻ nơi trên màn hình: từ 2 thẻ (hoặc loại "danh sách / lưới / carousel") thì ảnh chụp màn hình không bao giờ gọi tên một nơi, chỉ đưa ứng viên để hỏi lại; `docs/TRIP_UNDERSTANDING.md` §20) | Gemma 4 trên host LAN (nhận ảnh); UIT API dự phòng | Mạng nội bộ |
+| Extractor | `corpus` (observe, filter, qc, kiểm span, `asr_check`, `place_verify`, audit Gemma, `style_observe`, `local extract`); `photo_rank` (chấm ảnh gallery cho web, `web/scripts/pick_covers.py`); `trip` `photo_cues` (đọc dấu hiệu trong ảnh user gửi, luồng thẻ) và `photo_read` (trợ lý: loại cảnh, dấu hiệu, có phải ảnh chụp màn hình không, chữ đọc được và tên nơi viết trong ảnh; chữ là dữ liệu không tin cậy, ảnh không lưu; `places_in_view` đếm số thẻ nơi trên màn hình: từ 2 thẻ (hoặc loại "danh sách / lưới / carousel") thì ảnh chụp màn hình không bao giờ gọi tên một nơi, chỉ đưa ứng viên để hỏi lại; `docs/TRIP_UNDERSTANDING.md` §20) | Gemma 4 trên UIT API (nhận ảnh; từ 15/11/2026, `EXTRACTOR_PARALLEL=36`, chung key 40 call với Judge); host LAN `192.168.20.150` là dự phòng | Mạng UIT |
 | Embedder | `corpus index` (offline, 8 GPU), `trip` (câu / ảnh của user, GPU `online_device`) | SigLIP2 so400m (ảnh + chữ ngắn), bge-m3 (span); trọng số ở `.cache/hf`, cấu hình `config/index.yaml` | Local |
 | Judge | `corpus` (`judge audit / status / dedup`, kiểm địa điểm của `qc`); `trip profile-audit` (`PROFILE_AUDIT`, kiểm mục hồ sơ, `docs/TRIP_UNDERSTANDING.md` §17) | Gemma 4 trên UIT API, 38 call đồng thời cho corpus | Mạng UIT |
 | Judge mạnh | giá trị cho phép, quyết định đóng cửa / gộp nơi | như Judge | Mạng UIT |
 | Agent | `trip` (vòng tool, function calling gốc), `decision` (lượt chữ), `planning` (proposal nội bộ) | `cx/gpt-6.1-terra` qua 9router (từ 29/10/2026; trước đó `cx/gpt-6.1-sol`), reasoning `low` (`AGENT_REASONING_EFFORT`); Trip cần model có `tools: true` trong `GET /v1/models` | Local 9router (`127.0.0.1:20128`) |
+| Writer | `corpus intro build` (giới thiệu mỗi nơi, chỉ từ bằng chứng; Judge Gemma kiểm từng câu) | `cx/gpt-6.1-sol` qua 9router, reasoning `medium`, 6 call song song (`config/intro.yaml` `writer`; key / endpoint `WRITER_*`, trống thì của Agent); schema đặt trong prompt vì 9router không ép schema | Local 9router (`127.0.0.1:20128`) |
 | Navigator | `corpus navigate plan` (một call mỗi thành phố: bản đồ khai thác + kiến thức chung, từ tên thành phố + `area`, không xem kho) | cùng đường với Agent (`cx/gpt-6.1-sol`, reasoning `low`) trừ khi `NAVIGATOR_*` đặt khác | Local 9router (`127.0.0.1:20128`) |
 
 Judge khác họ model với Extractor (GPT / Claude / Gemini so với Gemma) nên lỗi hai bên độc lập.
@@ -28,7 +29,7 @@ Judge thứ hai **chỉ cho chấm tag/ảnh bìa offline của track tags-v2**:
 
 ## Host LAN (Extractor)
 
-Server tương thích OpenAI trong mạng nội bộ, `http://192.168.20.150:8899/v1`, model `gemma-4-26b` (cùng model với UIT, nhận ảnh). Mọi task nhiều call và dài của corpus chạy ở đây; UIT giữ cho Agent và làm dự phòng (đổi lại ba biến Extractor trong `.env`).
+Server tương thích OpenAI trong mạng nội bộ, `http://192.168.20.150:8899/v1` (`:8900`), model `gemma-4-26b` (cùng model với UIT, nhận ảnh). Từ 15/11/2026 host không phản hồi nên `.env` trỏ Extractor sang UIT (`LLM_API_KEY` = key UIT, `EXTRACTOR_BASE_URL=https://llm.uit.edu.vn/gemma/v1`, `EXTRACTOR_PARALLEL=36`); host chạy lại thì đổi lại ba biến này. Harness prod đọc `.env` lúc khởi động: đổi xong chạy `./run.sh prod-restart`. Extractor và Judge giờ chung key 40 call: không chạy `gmaps observe` (36) cùng lúc với `corpus events` / Judge.
 
 Số call đồng thời: **`EXTRACTOR_PARALLEL=38`** (người dùng chốt 256 ngày 2026-10-06, hạ 218, 128, 64, 48 rồi 38 ngày 2026-10-07: host nghẽn, và ưu tiên chất lượng hơn tốc độ — xem "Sức chứa thật" dưới). Mọi task Extractor không tự đặt `parallel` dùng số này; `gmaps observe` lấy nó làm số slot tối đa. Đo 2026-10-06 (`logs/llm_probe.py`, client `max_retries=2`, 0 lỗi ở mọi mức):
 
@@ -182,7 +183,7 @@ Cấu hình nằm trong `.env` ở root repo (đã gitignore), tạo từ mẫu 
 
 `ASR_MODEL`: model ASR (Hugging Face id, hiện `khanhld/chunkformer-ctc-large-vie`), tải về lần đầu dùng. `ASR_ALT_MODEL`: ASR thứ hai, chỉ cho segment ASR chính sai (`asr_alt`, hiện `vinai/PhoWhisper-medium`).
 
-Extractor gọi host LAN, Agent gọi 9router local, ASR và Embedder trên GPU local, Judge gọi UIT (38 call). Agent cần function calling nên không chạy trên UIT (vLLM ở đó trả 400 cho tool call); việc Extractor chạy lâu mà không cần tool (như `style_observe`) chuyển sang UIT bằng `EXTRACTOR_ON_UIT=1` để host LAN còn chỗ cho lượt chat, nhưng chung key 40 call với Judge: chạy cùng Judge thì 429, làm lại phần lỗi trên host LAN với `EXTRACTOR_PARALLEL` thấp.
+Extractor gọi UIT (host LAN khi chạy lại), Agent gọi 9router local, ASR và Embedder trên GPU local, Judge gọi UIT (38 call). Agent cần function calling nên không chạy trên UIT (vLLM ở đó trả 400 cho tool call); việc Extractor chạy lâu mà không cần tool (như `style_observe`) chuyển sang UIT bằng `EXTRACTOR_ON_UIT=1` để host LAN còn chỗ cho lượt chat, nhưng chung key 40 call với Judge: chạy cùng Judge thì 429, làm lại phần lỗi trên host LAN với `EXTRACTOR_PARALLEL` thấp.
 
 Task `decision_turn` trả update `select | drop | lock | travel | crowd | price | trip | visited`; gu và mong muốn về chuyến luôn là `trip` (đi sang Trip Understanding qua harness), không có op gu riêng ở Decision. Task `trip_turn` nhận thêm `compared_places` trong `CURRENT CONTEXT` (nơi người dùng so sánh "giống X" kèm nét nổi bật lấy từ catalog) và chỉ được viết soft `inferred` từ đúng các nét đó (`docs/TRIP_UNDERSTANDING.md` §4).
 

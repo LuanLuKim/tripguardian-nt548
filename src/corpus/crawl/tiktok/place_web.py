@@ -40,6 +40,7 @@ from .. import gsearch
 from ..common.files import append_jsonl, data_dir, listed, load_config, log_error, now
 from ..common.files import slug as fold_slug
 from .place_verify import evidence_pairs
+from .frames import saved
 from .poi_crawl import GENERIC
 
 BASE_URL = "http://127.0.0.1:8888/search"
@@ -171,7 +172,7 @@ def targets(city: str) -> list[dict]:
     f = data_dir() / "gmaps" / "list" / f"{city}_stay.json"
     if f.exists():
         stay = {r["fid"] for r in json.loads(f.read_text(encoding="utf-8"))["items"]}
-    has = {fid for video_id, fid in evidence_pairs() if (data_dir() / "tiktok" / "videos" / video_id / "video.mp4").exists()}
+    has = {fid for video_id, fid in evidence_pairs() if saved(data_dir() / "tiktok" / "videos" / video_id)}
     asked = {r["fid"] for r in read(tried_path(city))}
     rows = [r for r in listed(city) or [] if r.get("fid") and r.get("name") and r["fid"] not in has
             and r["fid"] not in asked and distinctive(r["name"])]

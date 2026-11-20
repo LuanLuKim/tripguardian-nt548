@@ -13,6 +13,8 @@ const queues = new Map<string, Promise<unknown>>()
 const revisions = new Map<string, number>()
 const stageEntries = new Map<string, Stage>()
 export function requestStageEntry(id: string, stage: Stage) { stageEntries.set(id, stage) }
+// Read without clearing: a screen that mounts twice (React StrictMode, a quick remount) must see the request both times.
+export const peekStageEntry = (id: string) => stageEntries.get(id)
 export function consumeStageEntry(id: string) {
   const stage = stageEntries.get(id)
   stageEntries.delete(id)
@@ -113,7 +115,14 @@ async function stageReady(id: string, stage: Stage, render = false) {
   let current = await loadJourneyState(id)
   let hasView = false
   while (current.stage !== stage) {
-    if (current.stage === 'trip' || (current.stage === 'decision' && stage === 'planning')) throw new JourneyError(409, 'Advance this journey explicitly first')
+    // A journey still in the chat while the user stands on a later screen (they came back to edit, then used the sidebar)
+    // moves on when they ask for the next step: Lập lịch is not refused. The server still gates it (trip_incomplete).
+    if (current.stage === 'trip') {
+      current = await execute(id, { request_id: crypto.randomUUID(), stage: 'trip', operation: 'advance', expected_revision: current.revision, payload: {} })
+      hasView = true
+      continue
+    }
+    if (current.stage === 'decision' && stage === 'planning') throw new JourneyError(409, 'Advance this journey explicitly first')
     current = await execute(id, { request_id: crypto.randomUUID(), stage: current.stage, operation: 'back', expected_revision: current.revision, payload: {} })
     hasView = true
   }

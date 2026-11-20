@@ -10,7 +10,7 @@ import { Icon } from './icons'
 // removing the frame frees the GPU. The tab exists only for a place in /space3d/index.json.
 
 let models: Promise<Record<string, string>> | undefined
-const loadModels = () => (models ??= fetch('/space3d/index.json').then((r) => r.json() as Promise<Record<string, string>>).catch(() => ({} as Record<string, string>)))
+export const loadModels = () => (models ??= fetch('/space3d/index.json').then((r) => r.json() as Promise<Record<string, string>>).catch(() => ({} as Record<string, string>)))
 
 // The model of this place, or null while unknown and for a place without one. A place with one gets its viewer script,
 // data and poster fetched at once (into the HTTP cache: the script is immutable, the rest revalidates in the background),
@@ -28,7 +28,7 @@ export function useSpace3d(id: string): string | null {
 }
 
 let viewerScript: Promise<void> | undefined
-function prefetch(slug: string) {
+export function prefetch(slug: string) {
   viewerScript ??= fetch('/space3d/viewer.html')
     .then((r) => r.text())
     .then((html) => { const src = html.match(/src="(viewer-[\w-]+\.js)"/)?.[1]; if (src) void fetch(`/space3d/${src}`) })

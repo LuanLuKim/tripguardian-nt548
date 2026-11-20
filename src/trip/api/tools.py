@@ -4,7 +4,7 @@ import copy
 import hashlib
 import json
 import threading
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -100,6 +100,11 @@ class Tools:
                 raise ValueError("text must be 1-1000 characters")
             self.engine.refine(sid, text.strip(), self._emit(emit))
             return self.load(sid)
+        if operation == "new_chat":  # the chat's "Trò chuyện mới" (Engine.new_chat)
+            if payload:
+                raise ValueError("new_chat takes no payload")
+            self.engine.new_chat(sid)
+            return self.load(sid)
         if operation != "turn":
             raise ValueError(f"trip does not accept {operation}")
         permit_tool(self.skill, "trip.turn")
@@ -126,6 +131,10 @@ class Tools:
     def places(self, query: str) -> list[dict]:
         return self.engine.places(query)
 
+    def calendar_days(self, first: date, last: date) -> dict:
+        """Holiday, lunar day and forecast of each day in a range (Engine.calendar_days)."""
+        return self.engine.calendar_days(first, last)
+
     def tag(self, ref: str) -> dict:
         """One home-page tag split into subtags with the place cards (Engine.tag_view)."""
         return self.engine.tag_view(ref)
@@ -142,6 +151,12 @@ class Tools:
 
     def note_acts(self, user_id: str, sid: str, acts: list[dict]) -> bool:
         return self.engine.note_acts(user_id, sid, acts)
+
+    def remember(self, snapshot: dict) -> bool:
+        """The Agent's memo of a saved chat for its user's next trips (Engine.remember): from the snapshot, so it does
+        not need the chat in memory. One model call when the chat has new turns and its user agreed; True when written."""
+        data = Snapshot.model_validate(_upgrade(snapshot))
+        return self.engine.remember(data.id, data.state, list(data.transcript))
 
     def edit_entry(self, user_id: str, eid: str, patch: dict) -> dict:
         return self.engine.edit_entry(user_id, eid, patch)
@@ -242,10 +257,12 @@ def warm_assistant(engine: Engine) -> None:
 
 
 def drill_key(engine: Engine) -> str:
-    """What the saved photo-card scores depend on: the corpus release and index, the variants, the places."""
+    """What the saved photo-card scores depend on: the corpus release and index, the variants, the places (not a card's
+    words: rewording a header does not throw the scores away)."""
     b = engine.corpus_binding
-    raw = json.dumps([b.release_id, b.manifest_sha256, b.index_version, engine.cfg.drills, len(engine.catalog.places)]
-                     if b else [None, engine.cfg.drills, len(engine.catalog.places)], ensure_ascii=False, sort_keys=True)
+    variants = {topic: spec.get("variants") for topic, spec in engine.cfg.drills.items()}
+    raw = json.dumps([b.release_id, b.manifest_sha256, b.index_version, variants, len(engine.catalog.places)]
+                     if b else [None, variants, len(engine.catalog.places)], ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

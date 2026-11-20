@@ -122,6 +122,28 @@ class Store:
         mine = [jid for jid, j in known.items() if j.user_id == owner]
         return sorted(mine, key=lambda jid: order.get(jid, -1))[:limit]
 
+    def release(self, jid: str, owner: str) -> bool:
+        """Takes the journey off `owner` without reading it as a Journey: an envelope written by an older build may no
+        longer validate, and an account must still be able to remove it. False when the journey is missing or is not
+        owner's."""
+        with self.lock(jid):
+            path = self.root / f"{jid}.json" if self.root else None
+            if path and path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if data.get("user_id") != owner:
+                    return False
+                data["user_id"] = None
+                tmp = path.with_suffix(".json.tmp")
+                tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+                tmp.replace(path)
+                self._mem.pop(jid, None)
+                return True
+            held = self._mem.get(jid)
+            if held is None or held.user_id != owner:
+                return False
+            held.user_id = None
+            return True
+
     def updated_at(self, jid: str) -> str | None:
         """UTC ISO time of the journey's last save (its file's modified time); None when nothing is saved to disk."""
         if not self.root or not SID.fullmatch(jid):

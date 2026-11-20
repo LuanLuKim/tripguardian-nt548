@@ -62,18 +62,18 @@ def gmaps_place(fid: str) -> dict:
     return read(p) if p.exists() else {}
 
 
-CLIPS = DATA / "tiktok" / "clips" / "dalat.json"  # `python -m corpus tiktok clips`: verified clips on our server
+CLIPS = DATA / "tiktok" / "clips" / "dalat.json"  # `python -m corpus tiktok clips`: verified clips of each place
 _clips: dict = {}
 
 
 def videos_for(fid: str) -> list[dict]:
-    """The place's verified clips on our server (local: played from /media/tiktok), else its caption-matched TikTok
-    videos (played in TikTok's embed)."""
+    """The place's verified clips, else its caption-matched TikTok videos; both play in TikTok's embedded player (our server
+    keeps only a clip's frames, the poster)."""
     if not _clips:
         _clips["places"] = read(CLIPS)["places"] if CLIPS.exists() else {}
     if _clips["places"].get(fid):
         return [{"id": v["video_id"], "url": v["url"], "handle": v.get("author_id"),
-                 "desc": (v.get("desc") or "").strip()[:220], "local": True} for v in _clips["places"][fid]]
+                 "desc": (v.get("desc") or "").strip()[:220]} for v in _clips["places"][fid]]
     p = DATA / "tiktok" / "place_filter" / f"{fid_dir(fid)}.json"
     if not p.exists():
         return []
@@ -140,7 +140,9 @@ def slim_details(node, quotes: dict):
         return node
     out = {}
     for k, v in node.items():
-        if k == "evidence":
+        if k == "intro":  # a short text with its own sources: shown whole (corpus intro)
+            out[k] = v
+        elif k == "evidence":
             out["quotes"] = [quotes[i] for i in v if i in quotes and quotes[i]["text"]][:DETAIL_QUOTES]
         else:
             out[k] = slim_details(v, quotes)
@@ -150,7 +152,7 @@ def slim_details(node, quotes: dict):
 def has_details(d: dict) -> bool:
     """Anything to show: a headline, a list, a cost, a time, a verdict, a look-alike or a walk."""
     t = d.get("timing") or {}
-    return bool((d.get("known_for") or {}).get("headline") or d.get("cost") or d.get("fit")
+    return bool((d.get("known_for") or {}).get("headline") or d.get("cost") or d.get("fit") or d.get("intro")
                 or any(d.get(k) for k in ("order", "avoid", "activity", "photo_spot", "access", "booking", "bring", "situation"))
                 or any(t.get(k) for k in ("best_months", "avoid_months", "schedule", "last_entry"))
                 or any((t.get(w) or {}).get("items") for w in ("best_time", "avoid_time"))
@@ -234,6 +236,29 @@ def recent_errors(limit: int = 40) -> list[dict]:
                         "ref": e.get("id") or e.get("place"), "error": (e.get("error") or "")[:200]})
     out.sort(key=lambda e: e["at"] or "", reverse=True)
     return out[:limit]
+
+
+OVERVIEW_STATUSES = ("VERIFIED", "UNCERTAIN", "OUTDATED", "NEEDS_REVIEW")
+
+
+def admin_overview(snap: dict) -> dict:
+    """What the Admin overview (web/src/admin/screens/Dashboard.tsx) draws, a few hundred KB instead of the 40 MB
+    admin snapshot: counts over the places, the build and system blocks, and the review items without their value
+    text, with the name of each place they sit on."""
+    experience = [p for p in snap["places"] if p["kind"] == "experience"]
+    features = [f for p in experience for f in p["features"]]
+    names = {p["id"]: p["name"] for p in snap["places"]}
+    review = [{k: r[k] for k in ("id", "kind", "placeId", "feature")} for r in snap["review"]]
+    return {"asOf": snap["asOf"], "build": snap["build"], "system": snap["system"],
+            "counts": {"places": len(snap["places"]), "experience": len(experience), "features": len(features),
+                       "withVideos": sum(1 for p in snap["places"] if p["videos"]),
+                       "byStatus": {s: sum(1 for f in features if f["status"] == s) for s in OVERVIEW_STATUSES}},
+            "review": review, "placeNames": {r["placeId"]: names[r["placeId"]] for r in review if r["placeId"] in names}}
+
+
+def write_admin_overview(snap: dict, destination: Path) -> None:
+    destination.write_text(json.dumps(admin_overview(snap), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"admin overview -> {destination} ({destination.stat().st_size // 1024} KB)")
 
 
 def main(view: str = "serving") -> None:
@@ -328,13 +353,20 @@ def main(view: str = "serving") -> None:
             "build": json.loads((release / "intel" / "summary.json").read_text(encoding="utf-8")),
             "corpusReleaseId": release.name if release != DATA else None, "view": view}
     destination.write_text(json.dumps(snap, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    if view == "admin":
+        write_admin_overview(snap, destination.with_name("admin-overview.json"))
     print(f"{len(places)} places ({len(intel_ids)} with evidence, {inventory} inventory), {len(review)} review items -> {destination}")
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--view", choices=("serving", "admin", "both"), default="both")
+    parser.add_argument("--view", choices=("serving", "admin", "both", "overview"), default="both",
+                        help="overview: rebuild only admin-overview.json from the existing snapshot-admin.json")
     args = parser.parse_args()
+    if args.view == "overview":
+        admin = OUT.with_name("snapshot-admin.json")
+        write_admin_overview(json.loads(admin.read_text(encoding="utf-8")), admin.with_name("admin-overview.json"))
+        raise SystemExit
     for view in ("serving", "admin") if args.view == "both" else (args.view,):
         main(view)

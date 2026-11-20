@@ -31,6 +31,7 @@ class WebHit(_Frozen):
     title: str
     domain: str
     snippet: str
+    image: str = ""  # the result's thumbnail when the search engine gives one (https only)
 
 
 class WebPage(_Frozen):
@@ -38,6 +39,7 @@ class WebPage(_Frozen):
     title: str
     domain: str
     text: str
+    image: str = ""  # the page's own picture (og:image) when it declares one (https only)
 
 
 class SearchResult(_Frozen):
@@ -60,7 +62,7 @@ class SearchPage(_Frozen):
 
 
 class WebDocument(_Frozen):
-    """A page as text with its `#` headings kept (docs/CORPUS.md §Nguồn: input to local knowledge, not evidence)."""
+    """A page as text with its `#` headings kept (docs/CORPUS.md §Nguồn và mỗi nguồn chứng minh điều gì: input to local knowledge, not evidence)."""
     url: str
     title: str
     domain: str
@@ -284,11 +286,13 @@ class Web:
                 raise WebError("web request failed") from exc
         raise WebError("too many redirects")
 
-    def search(self, query: str, k: int = 5) -> list[WebHit]:
+    def search(self, query: str, k: int = 5, per_domain: int = 1) -> list[WebHit]:
+        """The first `k` results, at most `per_domain` from one site (a news roundup and a social post of the same site
+        can both carry what is asked)."""
         query = query.strip()
         if not 1 <= len(query) <= 200:
             raise ValueError("query must contain 1 to 200 characters")
-        key = json.dumps([query, k], ensure_ascii=False)
+        key = json.dumps([query, k] if per_domain == 1 else [query, k, per_domain], ensure_ascii=False)
         cached = self._cached("search", key)
         if cached is not None:
             try:
@@ -305,7 +309,7 @@ class Web:
         results = payload.get("results") if isinstance(payload, dict) else None
         if not isinstance(results, list):
             raise WebError("invalid search response")
-        hits, seen_urls, seen_domains = [], set(), set()
+        hits, seen_urls, seen_domains = [], set(), {}
         for result in results:
             if not isinstance(result, dict):
                 continue
@@ -313,16 +317,49 @@ class Web:
             if not isinstance(url, str) or urlsplit(url).scheme.lower() not in ("http", "https") or not urlsplit(url).hostname:
                 continue
             domain = _domain(url)
-            if url in seen_urls or domain in seen_domains:
+            if url in seen_urls or seen_domains.get(domain, 0) >= per_domain:
                 continue
             seen_urls.add(url)
-            seen_domains.add(domain)
+            seen_domains[domain] = seen_domains.get(domain, 0) + 1
             hits.append(WebHit(url=url, title=_squash(str(result.get("title") or "")), domain=domain,
-                               snippet=_squash(str(result.get("content") or result.get("snippet") or ""))[:300]))
+                               snippet=_squash(str(result.get("content") or result.get("snippet") or ""))[:300],
+                               image=_https(result.get("thumbnail") or result.get("img_src"))))
             if len(hits) >= max(0, k):
                 break
         self._store("search", key, [hit.model_dump() for hit in hits])
         return hits
+
+    def images(self, query: str, k: int = 30) -> list[dict]:
+        """The first `k` image results of one SearXNG query (`categories=images`), each {img_src, url, title, resolution}
+        as the engines give them; the caller decides which picture stands (corpus.events.picture). An empty answer is
+        not cached, so the next run asks again."""
+        query = query.strip()
+        if not 1 <= len(query) <= 200:
+            raise ValueError("query must contain 1 to 200 characters")
+        key = json.dumps([query, k], ensure_ascii=False)
+        cached = self._cached("images", key)
+        if isinstance(cached, list):
+            return cached
+        self._spend()
+        try:
+            _, _, _, body = self._get(self.base_url + "/search", {
+                "q": query, "format": "json", "language": "vi-VN", "safesearch": 1, "categories": "images",
+            })
+        finally:
+            self._last_end = self._clock()
+        try:
+            payload = json.loads(body)
+        except ValueError as exc:
+            raise WebError("invalid search response") from exc
+        results = payload.get("results") if isinstance(payload, dict) else None
+        if not isinstance(results, list):
+            raise WebError("invalid search response")
+        rows = [{"img_src": str(r.get("img_src") or ""), "url": str(r.get("url") or ""),
+                 "title": _squash(str(r.get("title") or "")), "resolution": str(r.get("resolution") or "")}
+                for r in results if isinstance(r, dict) and r.get("img_src")][:max(0, k)]
+        if rows:
+            self._store("images", key, rows)
+        return rows
 
     def search_page(self, query: str) -> SearchPage:
         """Every result of one SearXNG query (no domain dedupe) with its engines. A blocked page (no result, some
@@ -478,16 +515,17 @@ class Web:
             except (ValidationError, TypeError):
                 pass
         final, media_type, content = self._fetch_page(url)
-        title = ""
+        title, image = "", ""
         if media_type == "text/html":
             extracted = trafilatura.extract(content, include_comments=False, include_tables=False)
             title = _page_title(content)
+            image = _https(getattr(trafilatura.extract_metadata(content), "image", None))
             text = _squash(extracted or "")
         else:
             text = _squash(content)
         if not text:
             raise WebError("empty page")
-        page = WebPage(url=final, title=title, domain=_domain(final), text=text[:max_chars])
+        page = WebPage(url=final, title=title, domain=_domain(final), text=text[:max_chars], image=image)
         self._store("read", key, page.model_dump())
         return page
 
@@ -538,6 +576,12 @@ def _merge(first: tuple[SearchResult, ...], second: tuple[SearchResult, ...]) ->
         else:
             rows[r.url] = r
     return tuple(rows.values())
+
+
+def _https(url) -> str:
+    """An absolute https picture URL, else "" (a page served over https may not show an http picture)."""
+    url = str(url or "").strip()
+    return url if url.lower().startswith("https://") and urlsplit(url).hostname and len(url) <= 2000 else ""
 
 
 def _page_title(content: str) -> str:

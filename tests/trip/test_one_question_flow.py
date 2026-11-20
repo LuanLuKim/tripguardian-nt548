@@ -36,7 +36,7 @@ def test_chat_refuses_optional_topic_and_gate_does_not_require_it(catalog, cfg, 
     card = run(e, sid, kind="text", text="đi với người yêu")[-1][1]
     assert card["qid"] == "conversation"
     assert "ask_required" not in chat.seen[0][1]
-    assert {t.qid for t in deck.build(e.store.get(sid).state, catalog, cfg, at="gate").tabs} == {"trip", "care"}
+    assert not deck.build(e.store.get(sid).state, catalog, cfg, at="gate").tabs  # nothing is asked before planning (owner 2026-11-18)
 
 
 def test_ask_required_refuses_a_topic_that_is_not_needed(catalog, cfg, tmp_path):
@@ -150,7 +150,6 @@ def test_a_card_shows_the_three_best_options_of_each_group_and_keeps_other(catal
     trip = deck.build(TripState(), catalog, cfg, ask="trip").tabs[0]
     ids = [o.id for o in trip.options]
     assert sum(i.startswith("start.") for i in ids) == 3 and sum(i.startswith("end.") for i in ids) == 3
-    assert len(deck.build(TripState(), catalog, cfg, at="gate").tabs[1].options) > 5  # the gate keeps every option
 
 
 def test_plain_words_that_are_also_a_place_name_are_not_a_named_place():
@@ -260,7 +259,7 @@ def test_a_required_card_put_off_in_words_moves_on_like_its_skip(catalog, cfg, t
     card = run(e, sid, kind="text", text="mình chưa chốt ngày nha, bỏ qua đi")[-1][1]
     assert card["qid"] == "conversation"
     assert "trip" in e.store.get(sid).state.meta.declined
-    assert "trip" in e._readback(e.store.get(sid).state)["missing"]
+    assert e._readback(e.store.get(sid).state)["missing"] == []  # nothing is asked before planning (owner 2026-11-18)
 
 
 def test_record_fact_reads_the_users_own_date_words_with_no_date_tool_first(catalog):
@@ -351,7 +350,7 @@ def test_the_app_opens_a_missing_topic_when_the_agent_asks_nothing_but_never_a_s
         card = run(e, sid, kind="text", text=text)[-1][1]
         assert card["qid"] == "conversation"
     assert not e.store.get(sid).state.meta.nudged
-    assert e._readback(e.store.get(sid).state)["missing"] == ["trip", "care"]
+    assert e._readback(e.store.get(sid).state)["missing"] == []  # nothing is asked before planning (owner 2026-11-18)
 
 
 def test_the_app_does_not_open_a_topic_while_the_user_asks_a_question(catalog, cfg, tmp_path):

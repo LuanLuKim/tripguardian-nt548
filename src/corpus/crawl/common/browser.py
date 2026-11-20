@@ -35,6 +35,9 @@ STATE = os.environ.get("CORPUS_PROFILE_STATE") == "1"
 # DevTools URL of a login window that is still open (`corpus login`): crawl inside that browser instead of a copy of its
 # cookies. Google ends a session whose cookies moved to another browser within minutes (2026-10-07)
 ATTACH_URL = os.environ.get("CORPUS_ATTACH_URL")
+# `corpus login` with a DevTools port: keep the browser after its login tab closes (a person closing the tab in
+# chrome://inspect must not end the session the nightly crawls attach to); cookies are still saved every STATE_SAVE_S
+KEEP = os.environ.get("CORPUS_LOGIN_KEEP") == "1"
 
 
 async def _user_agent(p, headless: bool) -> str | None:
@@ -306,6 +309,11 @@ async def login(source: str, profile: str | None = None) -> None:
     async with open_profile(profile or source, headed=not DEBUG_PORT) as ctx:
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         await page.goto(LOGIN_URL[source])
+        if DEBUG_PORT and KEEP:  # the window crawls attach to (CORPUS_ATTACH_URL): it outlives its login tab
+            print(f"Log in to {source} through chrome://inspect (port {DEBUG_PORT}); leave the tab or close it, the "
+                  f"browser stays for crawls (CORPUS_ATTACH_URL=http://127.0.0.1:{DEBUG_PORT}) until this process is killed.",
+                  flush=True)
+            await asyncio.Event().wait()
         if DEBUG_PORT:  # a headless context cannot be closed by hand: closing the tab ends the login
             print(f"Log in to {source} through chrome://inspect (port {DEBUG_PORT}), then close that tab.")
             await page.wait_for_event("close", timeout=0)

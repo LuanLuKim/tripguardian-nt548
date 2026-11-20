@@ -244,7 +244,15 @@ export interface TagsBlock { kind: 'tags'; level?: 'tags' | 'subtags'; title?: s
 // One card of the tag stage (src/trip/api/engine.py tag_stage): a tag, a subtag, the "Xem tất cả" of a level, or a place.
 export interface TagNode { ref: string; kind: 'tag' | 'subtag' | 'all' | 'place'; label: string; count: number; cover: string | null; has_children: boolean; wished?: boolean; id?: string; card?: ChatPlace }
 export interface TagLevel { sig: string; ref: string; label: string; count: number; wished: boolean; nodes: TagNode[] }
-export type ResultBlock = DishBlock | ServicesBlock | TagsBlock
+// What is on and in season (src/trip/api/blocks.py trends_block), only the sections the question asked for. A row has a
+// corpus place (id: its card is in cards), an event's own day (on) and picture, or a season; source = its page.
+export interface TrendRow { title: string; text: string; meta?: string; hot?: string; id?: string; on?: string; image?: string; image_from?: string; see?: string[]; source?: WebSource }
+export interface TrendSection { kind: 'event' | 'season' | 'places'; heading: string; rows: TrendRow[] }
+export interface TrendsBlock { kind: 'trends'; as_of: string; sections: TrendSection[]; cards: ChatPlace[] }
+// Travellers' TikTok clips the assistant picked (src/trip/api/blocks.py clips_block): each with its place; cards = those places.
+export interface BlockClip { video_id: string; url: string; handle: string | null; caption: string; posted: string | null; place_id: string; place: string; matched: boolean }
+export interface ClipsBlock { kind: 'clips'; title: string; about: string; clips: BlockClip[]; cards: ChatPlace[] }
+export type ResultBlock = DishBlock | ServicesBlock | TagsBlock | TrendsBlock | ClipsBlock
 
 export interface ChatPlaces { ids: string[]; why: string; cards: ChatPlace[] }
 
@@ -324,7 +332,7 @@ export interface SearchInput {
 }
 
 export type TurnInput =
-  | { kind: 'deck'; answers: DeckAnswers; at?: 'gate' | 'plan' }
+  | { kind: 'deck'; answers: DeckAnswers; at?: 'gate' | 'plan'; text?: string } // text: the words typed under "Khác, tự gõ"
   | { kind: 'drop'; target: string }
   | { kind: 'readback_ok'; value: string }
   | { kind: 'text'; text: string; soft_only?: boolean }
@@ -334,6 +342,7 @@ export type TurnInput =
   | { kind: 'image'; value: string; text?: string } // value: a data URL of the photo, ≤ ~45 KB (harness body limit)
   | { kind: 'like'; target: string; value: 'on' | 'off'; qid?: 'stage' } // Thích on a chat place card; qid 'stage' = a place the tag stage listed
   | { kind: 'wish'; qid: string; target: string; value: 'on' | 'off' } // Thích cả kiểu on a tag stage card (qid = the tags block, target = the node path)
+  | { kind: 'explored'; qid?: string; chips: string[] } // Xong on a tag stage with picks (chips = "place:<id>" and kind labels): the agent reads the taste and opens a new direction
   | { kind: 'tag'; target: string } // legacy: a tap on a tag card (target = "axis:key"); the tag stage reads nodes instead
 
 export interface Handlers {

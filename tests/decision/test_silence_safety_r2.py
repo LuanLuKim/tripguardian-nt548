@@ -8,11 +8,9 @@ from corpus.snapshot import Region
 from corpus.snapshot.tables import tables
 from decision import Data, Engine, Store, load_settings, run_pipeline
 from decision.fit import details_fit
-from decision.frame import _generic, fit_table, roles, score_table, screen_table
-from decision.model import Cand
+from decision.frame import _generic
 from decision.rank import preference
 from decision.session import Session, State
-from decision.trip_days import trip_days
 from requirements import allowed, hard_result
 
 

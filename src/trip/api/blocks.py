@@ -6,7 +6,9 @@ sent (the reply says there is no data)."""
 
 from __future__ import annotations
 
+import re
 import time
+from urllib.parse import urlsplit
 from typing import Callable
 
 from corpus import tags as corpus_tags
@@ -105,13 +107,32 @@ def services_block(result: dict) -> dict | None:
             "sources": result.get("sources") or [], **({"crawled": result["crawled"]} if _known(result.get("crawled")) else {})}
 
 
+def clips_block(result: dict, heading: str, cards_of: Callable) -> dict | None:
+    """The clips place_clips picked (trip/infrastructure/reads.Reads.clips), for the chat's clip stage: each with its place;
+    `cards` = the cards of those places (name, photo, liked). `title` = the assistant's heading, else the place and what
+    was asked ("Đồi Đa Phú · mây buổi sáng") when a clip matched it, else the place. None without clips."""
+    clips = [c for c in result.get("_clips") or () if c.get("video_id")]
+    if not clips:
+        return None
+    places = [p for p in result.get("places") or () if p.get("clips")]
+    about = str(result.get("about") or "").strip()
+    names = [p["name"] for p in places]
+    named = " và ".join(names) if len(names) <= 2 else f"{names[0]}, {names[1]} và {len(names) - 2} nơi khác"
+    title = heading or (f"{about[:1].upper()}{about[1:]} · {named}" if about and any(p.get("matched") for p in places) else named)
+    return {"kind": "clips", "title": title, "about": about,
+            "clips": [{k: c.get(k) for k in ("video_id", "url", "handle", "caption", "posted", "place_id", "place", "matched")} for c in clips],
+            "cards": cards_of(list(dict.fromkeys(c["place_id"] for c in clips)))}
+
+
 def block_of(tools, name: str, args: dict, result, cards_of: Callable) -> dict | None:
     if not isinstance(result, dict) or "error" in result:
         return None
     if name == "find_services":
         return services_block(result)
     if name == "browse_tags":
-        return tags_block(result, cards_of)
+        return tags_block(result, cards_of, title=str(args.get("question") or "").strip() or None)
+    if name == "place_clips":
+        return clips_block(result, str(args.get("heading") or "").strip(), cards_of)
     if name == "find_dishes":
         return dish_block(tools, str(args.get("dish") or result.get("dish") or ""), list(result.get("ranked") or ()), cards_of)
     if name == "record_fact" and args.get("field") == "dish" and tools.knowledge is not None:
@@ -171,3 +192,76 @@ def watch(tools, emit: Callable, cards_of: Callable) -> None:
             tools.timings.append(f"t_block name={name} seconds={time.monotonic() - started:.3f}")
 
     tools.model_called = called
+
+
+# What a trends question asks about, on the accent-folded message: the sections that answer it (an events question gets
+# the events and the places people go to now; a season question the seasons, each with where to see it)
+EVENT_ASK = re.compile(r"\b(su kien|le hoi|festival|show|concert|dem nhac|hoa nhac|trien lam|giai chay|marathon|expo)\b")
+SEASON_ASK = re.compile(r"\b(mua|san may|no hoa|hoa gi|co hong|da quy|thoi tiet)\b")
+SECTIONS = {"event": "Sự kiện sắp diễn ra", "season": "Đang vào mùa", "places": "Nơi đang được nhắc nhiều"}
+PLACE_KINDS = ("trend", "hot", "top")
+ROWS = {"event": 5, "season": 6, "places": 6}  # places: the stage shows them all (owner 2026-11-17: not cut to 4)
+
+
+def trend_kinds(folded_text: str) -> tuple[str, ...]:
+    """The sections a trends question asks for, in the order shown."""
+    if EVENT_ASK.search(folded_text):
+        return ("event", "places")  # what is on, then where people go now (owner 2026-11-15)
+    if SEASON_ASK.search(folded_text):
+        return ("season",)          # "mùa hoa gì": the seasons, each with where to see it; events are another question
+    return ("event", "season", "places")
+
+
+def _source(it: dict) -> dict | None:
+    s = next((x for x in it.get("sources") or () if str(x.get("url") or "").startswith(("https://", "http://"))), None)
+    return {"url": s["url"], "title": s.get("label") or "", "domain": (urlsplit(s["url"]).hostname or "").removeprefix("www.")} if s else None
+
+
+def trends_block(rows: dict, sections: tuple[str, ...], cards_of: Callable) -> dict | None:
+    """The chat's trends block (web screens/understand/Trends.tsx): numbered sections of rows from the Nhịp items
+    (Knowledge.trend_rows), each row a picture, a title, one short line, a sentence and its page. No model writes it:
+    an event's line and sentence are the dated event's own (corpus.events), a season's sentence is a page's own quote,
+    a place's sentence is its checked intro; an event's or season's picture is the one corpus.events found by its name.
+    A season named only by its months ("Tháng 10 - 12") is left out. None when no section has a row."""
+    if not rows:
+        return None
+    out, seen = [], set()
+    for kind in sections:
+        want = PLACE_KINDS if kind == "places" else (kind,)
+        found = []
+        for it in rows["items"]:
+            if it["kind"] not in want or it["name"] in seen:
+                continue
+            if kind == "event" and not it.get("days"):
+                continue  # a month-only claim or a holiday: no day to show
+            if kind == "season" and (squash(it["name"]).startswith("thang") or it.get("place_id")):
+                continue
+            if kind == "places" and not it.get("place_id"):
+                continue
+            seen.add(it["name"])
+            row = {"title": it["name"][:1].upper() + it["name"][1:], **({"hot": it["hot_note"]} if it.get("hot") else {})}
+            if kind == "event":
+                row.update(meta=it["text"].split(" · " + it["summary"])[0] if it.get("summary") else it["text"],
+                           text=it.get("summary") or "", on=it["on"])
+            elif kind == "season":
+                months = re.search(r"\((tháng [^)]*)\)", it["text"])
+                row.update(meta=f"Đang vào mùa · {months[1]}" if months else "Đang vào mùa", text=it.get("summary") or "")
+            if kind in ("event", "season") and it.get("see"):
+                row["see"] = list(it["see"])[:3]    # a season's places to see it at, an event's venue: they open as cards
+            if kind in ("event", "season") and it.get("image"):
+                # a picture found by its name (corpus.events.picture), credited to the page it is on
+                row.update(image=it["image"], **({"image_from": it["image_from"]["domain"]} if it.get("image_from") else {}))
+            else:
+                row.update(id=it["place_id"], text=it.get("intro") or "")
+            if src := _source(it):
+                row["source"] = src
+            found.append(row)
+            if len(found) >= ROWS[kind]:
+                break
+        if found:
+            out.append({"kind": kind, "heading": SECTIONS[kind], "rows": found})
+    if not out:
+        return None
+    ids = list(dict.fromkeys([*(r["id"] for s in out for r in s["rows"] if r.get("id")),
+                              *(x for s in out for r in s["rows"] for x in r.get("see", ()))]))
+    return {"kind": "trends", "as_of": rows["as_of"], "sections": out, "cards": cards_of(ids) if ids else []}

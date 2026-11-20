@@ -2,7 +2,7 @@ import asyncio
 from datetime import date
 
 import pytest
-from trip_fixtures import ScriptedChat, call, fact, reply, say
+from trip_fixtures import ScriptedChat, fact, reply, say
 
 from trip.agent import AgentError, TurnTools, run_loop
 from trip.infrastructure.settings import Settings

@@ -265,8 +265,9 @@ def test_a_broad_taste_gets_its_photo_card_from_config_and_it_comes_before_the_a
     engine.turn(sid, TurnInput(kind="text", text="muốn săn mây"), lambda ev, d: events.append((ev, d)))
     card = events[-1][1]
     tab = card["tabs"][0]
-    # built by code from the config variants and real photos: one model call, the agent wrote no variant
-    assert card["kind"] == "deck" and tab["qid"] == "drill.săn mây" and tab["question"] == "Săn mây kiểu nào?"
+    # built by code from the config variants and real photos: one model call, the agent wrote no variant; the card
+    # carries no stock question (the config's is never shown): only the agent words it, with word_cards
+    assert card["kind"] == "deck" and tab["qid"] == "drill.săn mây" and tab["question"] == ""
     assert len(tab["options"]) == 5 and all(o.get("photo") for o in tab["options"][:3]) and chat.calls == 1
     s = engine.store.get(sid)
     assert ("say", {"replace": ""}) in events  # its question in words gives way to the photos

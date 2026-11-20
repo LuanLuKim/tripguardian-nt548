@@ -15,6 +15,18 @@ def test_rate_window_is_bounded_and_expired_clients_can_retry():
     assert gate.allow("a", 2) and gate.allow("c", 2)
 
 
+def test_a_limited_caller_is_told_when_its_next_call_fits():
+    from harness.protection import RateGate
+    now = [0.0]
+    gate = RateGate(max_keys=5, clock=lambda: now[0])
+    assert gate.allow("a", 2)
+    now[0] = 20
+    assert gate.allow("a", 2) and not gate.allow("a", 2)
+    assert gate.wait("a") == 40  # the call at 0 s leaves the window at 60 s
+    now[0] = 59.5
+    assert gate.wait("a") == 1
+
+
 def test_rate_limit_is_atomic_under_concurrent_requests():
     from harness.protection import RateGate
     gate = RateGate(max_keys=10)
@@ -55,7 +67,7 @@ def test_http_chat_limit_returns_429_before_harness_runs(monkeypatch):
         connection.request("POST", path, json.dumps(body), headers(**{"X-Forwarded-For": "1.2.3.4"}))
         response = connection.getresponse()
         assert response.status == 429 and response.getheader("Retry-After") == "60"
-        response.read()
+        assert json.loads(response.read())["retry_after"] == 60
         assert tools["trip"].calls == 1
     finally:
         connection.close()

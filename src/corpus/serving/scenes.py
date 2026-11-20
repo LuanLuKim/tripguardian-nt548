@@ -151,7 +151,9 @@ def candidates(doc: dict | None, category_group: str | None = None, cfg: dict | 
     """The photos a card of this place may show (see the module doc), in the scene order of the place's kind (less those
     the model scored under `min_shows` for shows_place: a hair dryer, a hand with a glass), then the
     `off_kind` photos the model scored at least `off_kind_min_shows` for shows_place (a stay's breakfast, a shop's sign);
-    a place still short of `min_photos` adds the `with_people` photos the model scored as high."""
+    a place still short of `min_photos` adds its `with_people` photos (owner 2026-11-16: a place short of photos may show
+    one with people; unscored ones count, the ones the model scored under `min_shows` do not). They carry
+    `with_people: True`, and `pick` shows them only after every person-free photo, the ones with the least of the frame taken by people first (`shows_place`)."""
     if not doc:
         return []
     cfg = cfg or config()
@@ -164,14 +166,14 @@ def candidates(doc: dict | None, category_group: str | None = None, cfg: dict | 
     ok = sorted((e for e in ok if on_topic(e)), key=lambda e: rank[e["scene"]]) \
         + [e for e in off_kind(doc, category_group, cfg) if shows(e)]
     if len(ok) < cfg["min_photos"]:
-        ok += [e for e in with_people(doc, cfg) if shows(e)]
+        ok += [{**e, "with_people": True} for e in with_people(doc, cfg) if on_topic(e)]
     return ok
 
 
 def with_people(doc: dict | None, cfg: dict | None = None) -> list[dict]:
     """A visitor's photos that may show a person (label yes / unknown / doubtful no) but are otherwise clean, fresh and
-    not a crowd: card photos of a place short of `min_photos` when the model says they show the place (owner
-    2026-10-30); never in the gallery lists."""
+    not a crowd: card photos of a place short of `min_photos` (owner 2026-10-30, widened 2026-11-16 to photos the
+    model has not scored); never in the gallery lists."""
     if not doc:
         return []
     cfg = cfg or config()
@@ -202,8 +204,15 @@ def pick(doc: dict | None, category_group: str | None = None, cfg: dict | None =
     while left and len(picked) < cfg["show"]:
         fresh = {e["scene"] for e in left if not e.get("old")}
         repeats = collections.Counter(e["scene"] for e in picked)
-        best = max((e for e in left if not (e.get("old") and e["scene"] in fresh)),
-                   key=lambda e: score(e, appeal) - cfg["repeat_penalty"] * repeats[e["scene"]])
+        free = any(not e.get("with_people") for e in left)  # a photo with people waits for every person-free one
+        # Among photos with people the one where they take the least of the frame comes first: the model's `shows_place`
+        # already gives "a person filling the frame" 1, so it leads the order there (owner 2026-11-16); unscored ones last.
+        fresh_first = [e for e in left if not (e.get("old") and e["scene"] in fresh)]
+        # the two waits can empty the list (a fresh photo with people, and the only person-free one is old, in the same scene): then the people wait is dropped
+        eligible = [e for e in fresh_first if not (free and e.get("with_people"))] or fresh_first
+        best = max(eligible,
+                   key=lambda e: ((appeal.get(e["photo_id"]) or {}).get("shows_place", 0) if e.get("with_people") else 0,
+                                  score(e, appeal) - cfg["repeat_penalty"] * repeats[e["scene"]]))
         picked.append(best)
         left.remove(best)
     d = f"gmaps/places/{safe_name(doc['place_fid'])}/" if doc else ""

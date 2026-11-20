@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "docs/design/mock/designs/search-blog/index.html"
+        ],
+        "createdAt": "2026-11-12T09:49:19.409Z",
+        "reason": "false positive: img src is set by the embedded script at load (data-i); measured 0 broken images in headless Chromium"
+      }
+    ]
+  }
+}

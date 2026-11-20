@@ -51,6 +51,7 @@ addEventListener('wheel', (event) => {
 }, { capture: true, passive: false })
 
 function scrollStep(now) {
+  controls.enabled = !flight?.walk // a drag on the walk is a look round (freeLook), not an orbit
   const gap = now - scroll.lastFrame
   const elapsed = Math.min(gap, 100)
   scroll.lastFrame = now
@@ -85,3 +86,42 @@ function scrollStep(now) {
 }
 window.__tourBusy = () => Boolean(flight)
 window.__viewState = () => camera.position.toArray().map((v) => Math.round(v * 100) / 100)
+
+// Free look on the walk. While the camera walks the arrows the orbit controls step aside and a drag turns the head instead:
+// yaw without limit, pitch within a quarter turn. The walk keeps going under the gaze; when it ends the gaze eases back to
+// the stop's own view, so the camera never jumps to the destination because someone touched the mouse.
+const look = { yaw: 0, pitch: 0, drag: null, last: 0 }
+const LOOK_RATE = .0042 // radians per pixel
+const walking = () => Boolean(flight?.walk)
+renderer.domElement.addEventListener('pointerdown', (event) => {
+  if (!walking() || event.button !== 0) return
+  look.drag = { x: event.clientX, y: event.clientY, id: event.pointerId }
+  renderer.domElement.setPointerCapture?.(event.pointerId)
+})
+renderer.domElement.addEventListener('pointermove', (event) => {
+  if (!look.drag || event.pointerId !== look.drag.id) return
+  look.yaw -= (event.clientX - look.drag.x) * LOOK_RATE
+  look.pitch = THREE.MathUtils.clamp(look.pitch - (event.clientY - look.drag.y) * LOOK_RATE, -1.2, 1.2)
+  look.drag.x = event.clientX
+  look.drag.y = event.clientY
+})
+const endLook = (event) => { if (look.drag && event.pointerId === look.drag.id) look.drag = null }
+renderer.domElement.addEventListener('pointerup', endLook)
+renderer.domElement.addEventListener('pointercancel', endLook)
+const lookQuaternion = new THREE.Quaternion(), lookUp = new THREE.Vector3(0, 1, 0)
+function freeLook(now) {
+  const elapsed = Math.min(now - (look.last || now), 100)
+  look.last = now
+  if (!walking() && !look.drag && (look.yaw || look.pitch)) {
+    look.yaw = Math.atan2(Math.sin(look.yaw), Math.cos(look.yaw)) // the short way back
+    const keep = Math.exp(-elapsed / 240)
+    look.yaw *= keep
+    look.pitch *= keep
+    if (Math.abs(look.yaw) < 1e-3) look.yaw = 0
+    if (Math.abs(look.pitch) < 1e-3) look.pitch = 0
+  }
+  if (!look.yaw && !look.pitch) return
+  camera.quaternion.premultiply(lookQuaternion.setFromAxisAngle(lookUp, look.yaw))
+  camera.quaternion.multiply(lookQuaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), look.pitch))
+  camera.updateMatrixWorld()
+}

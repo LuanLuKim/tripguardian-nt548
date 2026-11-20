@@ -48,26 +48,28 @@ try {
       await page.goto(`http://127.0.0.1:5494/fixture.html?case=${state}`)
       await page.locator('.tg-pc').waitFor({ timeout: 15000 })
       const card = page.locator('.tg-pc')
+      // The card shows short lợi / hại tags (CardTags): pet policy is never a hại, only a lợi (allowed) or a grey note.
+      const tags = card.locator('.tg-ctag')
       if (state === 'allowed' || state === 'not_allowed') {
-        const text = state === 'allowed' ? 'Cho mang thú cưng, theo 7 người' : 'Không cho mang thú cưng, theo 4 người'
-        const fact = card.getByText(text, { exact: true })
+        const fact = tags.filter({ hasText: state === 'allowed' ? 'Cho mang thú cưng' : 'Không cho mang thú cưng' })
         assert.equal(await fact.count(), 1)
-        assert.equal(await card.locator('.tg-pc__why, .tg-pc__trade, .tg-pc__alert').filter({ hasText: /thú cưng/ }).count(), 0)
-        assert.equal(await fact.locator('..').getAttribute('data-sid'), 'pets')
-        await fact.focus()
-        await page.keyboard.press('Enter')
-        await card.getByText(state === 'not_allowed' ? 'Quán không cho mang thú cưng vào.' : 'Quán cho mang thú cưng vào ngồi cùng.', { exact: true }).waitFor({ timeout: 1500 })
-      } else if (state !== 'other') {
-        assert.equal(await card.getByText('Chưa rõ có cho mang thú cưng không', { exact: true }).count(), 1)
-        assert.equal(await card.locator('.tg-pc__trade, .tg-pc__alert').filter({ hasText: /thú cưng/ }).count(), 0)
+        assert.equal(await card.locator('.tg-ctag.is-con').filter({ hasText: /thú cưng/ }).count(), 0)
+        assert.match(await fact.getAttribute('class'), state === 'allowed' ? /is-pro/ : /is-note/)
+        assert.doesNotMatch(await fact.innerText(), /người/) // the count of people is in the tooltip, not the tag
+        await fact.hover()
+        await page.locator('.tg-pop').getByText('Cho mang thú cưng').or(page.locator('.tg-pop').getByText('Không cho mang thú cưng')).waitFor({ timeout: 1500 })
+        assert.doesNotMatch(await page.locator('.tg-pop').innerText(), /người/) // no head-counts in the tooltip either
+      } else if (state === 'unknown') { // no hại to show: the grey pet note takes the second place
+        assert.equal(await tags.filter({ hasText: 'Chưa rõ cho mang thú cưng' }).count(), 1)
+        assert.equal(await card.locator('.tg-ctag.is-con').filter({ hasText: /thú cưng/ }).count(), 0)
       }
       if (state === 'other') {
-        assert.match(await card.locator('.tg-pc__trade').innerText(), /Đánh đổi:.*Cuối tuần đông/)
-        assert.match(await card.locator('.tg-pc__alert').innerText(), /Không hợp điều kiện của bạn: Có chỗ đỗ xe: không/)
+        assert.match(await card.locator('.tg-ctag.is-con').first().innerText(), /Cuối tuần đông/)
+        assert.equal(await tags.count(), 2) // one line: the first lợi and the first hại, nothing more
+        assert.equal(await card.locator('.tg-ctag.is-con').count(), 1)
       }
-      if (state === 'mixed') assert.match(await card.locator('.tg-pc__trade').innerText(), /Không hợp điều kiện của bạn: Có chỗ đỗ xe: không/)
-      assert.equal(await card.locator('.tg-pc__why').innerText(), 'Không gian yên tĩnh')
-      const select = card.getByRole('button', { name: 'Thêm vào chuyến', exact: true })
+      if (state === 'mixed') assert.match(await card.locator('.tg-ctag.is-con').first().innerText(), /Không hợp: Có chỗ đỗ xe: không/)
+      const select = card.getByRole('button', { name: 'Thêm', exact: true })
       assert.equal(await select.isEnabled(), true)
       await select.click()
       assert.deepEqual(await page.evaluate(() => window.__selected), { type: 'select', place_id: 'fixture' })

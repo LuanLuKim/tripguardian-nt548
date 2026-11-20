@@ -11,7 +11,7 @@ from trip.domain.patterns import Summary, detect, seed, votes_from_state
 from trip.infrastructure.profile import ProfileStore
 from trip.infrastructure.sessions import SessionStore
 from trip.infrastructure.settings import PatternSettings
-from trip.domain.state import Evidence, TripState, Update, apply, settle, with_meta
+from trip.domain.state import Evidence, TripState, Update, apply, settle
 
 TODAY = date(2026, 10, 2)
 PCFG = PatternSettings(enabled=True, min_sessions=3, window=8, agreement=0.75, stale_days=365, max_places=2)

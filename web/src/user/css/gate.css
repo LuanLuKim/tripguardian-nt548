@@ -285,3 +285,23 @@
   .tg-gt__foot-r { width: 100%; }
   .tg-gt__hint { display: none; }
 }
+
+/* Trip summary in the last step before planning: what was written down, a chip for where each line came from. */
+.tg-gt__sum { display: flex; flex-direction: column; min-height: 0; margin-top: 8px; animation: tg-gt-up 520ms var(--gt-ease) 200ms both; }
+.tg-gt__sum dl { margin: 0; padding: 0 6px 0 0; max-height: min(380px, calc(100dvh - 340px)); overflow-y: auto; border-top: 1px solid rgba(43, 39, 32, 0.12); }
+.tg-gt__sum dl > div { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: baseline; gap: 4px 16px; padding: 14px 4px; border-bottom: 1px solid rgba(43, 39, 32, 0.12); }
+.tg-gt__sum dt { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gt-soft); }
+.tg-gt__sum dd { margin: 0; display: grid; gap: 4px; font-size: 1.02rem; line-height: 1.45; color: var(--gt-ink); }
+.tg-gt__sum dd span { display: block; }
+.tg-gt__sum dd svg { margin-right: 6px; vertical-align: -2px; color: var(--gt-warn); }
+.tg-gt__sum dl > div.is-check dd { color: var(--gt-ink); }
+.tg-gt__sum-edit { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 12px; border-radius: 999px; border: 1.5px solid rgba(43, 39, 32, 0.2); font-size: 0.85rem; font-weight: 600; color: var(--gt-ink); transition: background 160ms; }
+.tg-gt__sum-edit:hover:not(:disabled) { background: rgba(43, 39, 32, 0.07); }
+.tg-gt__sum dl > div.is-editing { background: rgba(255, 255, 255, 0.7); border-radius: 12px; }
+.tg-gt__sum-editor { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; margin: 6px 0 2px; padding: 12px 0 0; border: 0; border-top: 1px dashed rgba(43, 39, 32, 0.18); }
+.tg-gt__sum-editor .tg-full__edit { display: grid; gap: 10px; }
+.tg-gt__sum-editor .tg-input, .tg-gt__sum-editor .tg-line-input { min-height: 40px; }
+@media (max-width: 560px) { .tg-gt__sum dl > div { grid-template-columns: 1fr auto; } .tg-gt__sum dd { grid-column: 1 / -1; grid-row: 2; } }
+
+.tg-gt__type { width: 100%; margin-top: 10px; padding: 10px 14px; border-radius: 14px; border: 1.5px solid rgba(43, 39, 32, 0.22); background: rgba(255, 255, 255, 0.85); font: inherit; font-size: 0.98rem; line-height: 1.45; color: var(--gt-ink); resize: vertical; }
+.tg-gt__type:focus { outline: none; border-color: var(--gt-ink); }

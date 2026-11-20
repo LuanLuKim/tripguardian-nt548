@@ -1,6 +1,6 @@
 """Trip redesign part 5c: the understanding view says what the new Hiểu chuyến board reads.
 
-The board (web/src/user/screens/understand/Board.tsx) counts the seven required answers of the gate and shows the
+The trip bar and ticket (web/src/user/screens/understand/TripBar.tsx, ui/Ticket.tsx) count the seven required answers of the gate and shows the
 day's hours. V1: arrival and departure live in `frame.arrive` / `frame.leave` since part 1 and never reached the view.
 V2: every required key has its group, done or not, so the board and the gate at "Lập lịch" can never disagree.
 """
@@ -73,6 +73,6 @@ def test_v3_each_required_group_has_the_designs_short_name(catalog, cfg):
 
 def test_v3_deck_tabs_use_the_same_names_as_the_board(catalog, cfg):
     from trip.domain import deck
-    tabs = deck.build(TripState(), catalog, cfg, at="gate").tabs
+    tabs = deck.build(TripState(), catalog, cfg, ask="trip").tabs
     names = {g["key"]: g["title"] for g in view(TripState(), catalog, cfg)["required"]}
     assert tabs and all(t.header == names[t.qid] for t in tabs if t.kind == "required")

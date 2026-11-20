@@ -18,8 +18,20 @@ test('a tagline, a hashtag and a copy in another script are dropped', () => {
   assert.equal(displayName('Mộc Hương spa - Dưỡng sinh & chăm sóc sức khỏe'), 'Mộc Hương spa')
   assert.equal(displayName('CÁ TẦM CÂY ĐÀO QUÁN : Lẩu_Nướng. Gà Đồi_ Cơm Lam - quán cá tầm'), 'Cá Tầm Cây Đào Quán')
   assert.equal(displayName('Windy Valley 1- Homestay Đà Lạt'), 'Windy Valley 1')
-  assert.equal(displayName('Massage Đà Lạt & Gội Đầu Dưỡng Sinh - MEM SPA (샴푸와 컨디셔너, 마사지)'), 'Massage Đà Lạt & Gội Đầu Dưỡng Sinh')
-  assert.equal(displayName('실내 스크린 골프 & 연습장 / 달랏(Đà Lạt) sân tập golf trong nhà / LUIS GOLF CLUB'), 'Sân Tập Golf Trong Nhà')
+  assert.equal(displayName('Massage Đà Lạt & Gội Đầu Dưỡng Sinh - MEM SPA (샴푸와 컨디셔너, 마사지)'), 'Mem Spa')
+  assert.equal(displayName('실내 스크린 골프 & 연습장 / 달랏(Đà Lạt) sân tập golf trong nhà / LUIS GOLF CLUB'), 'Luis Golf Club')
+})
+
+test('a head that only names the kind of place gives way; a branch stays; acronyms stay', () => {
+  assert.equal(displayName('MASSAGE TRỊ LIỆU ĐÀ LẠT - LALITA SPA'), 'Lalita Spa')
+  assert.equal(displayName('Món Thái - Khap Bun Kha'), 'Khap Bun Kha')
+  assert.equal(displayName('Quán Xưa - Lẩu Bò Atiso'), 'Quán Xưa')
+  assert.equal(displayName('Lẩu gà lá é Hạnh - Chi nhánh 2'), 'Lẩu gà lá é Hạnh Chi nhánh 2')
+  assert.equal(displayName('Bánh căn Lệ - CS2'), 'Bánh căn Lệ CS2')
+  assert.equal(displayName('NVN ĐÀ LẠT'), 'NVN Đà Lạt')
+  assert.equal(displayName('LẨU BBQ HÀN QUỐC'), 'Lẩu BBQ Hàn Quốc')
+  assert.equal(displayName('NHÀ CỦA GẤU "BEAR\'S HOUSE"'), 'Nhà của Gấu "Bear\'s House"')
+  assert.equal(displayName('Nature Hotel Phan Bội Châu'), 'Nature Hotel Phan Bội Châu')
 })
 
 test('acronyms and dotted names stay; long names stop at a word', () => {

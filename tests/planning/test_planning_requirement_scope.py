@@ -1,4 +1,3 @@
-from dataclasses import replace
 
 import pytest
 
@@ -63,7 +62,7 @@ def test_raw_scope_cannot_bypass_physical_or_diet_checks():
 @pytest.mark.parametrize("diet,confirmable", [("no", False), ("yes", True)])
 def test_swap_keeps_eating_activity_for_cafe_and_revalidates_diet(diet, confirmable):
     from plan_fixtures import FakeLive, fake_matrix, no_geocode
-    from planning.engine import Engine, NotConfirmable
+    from planning.engine import Engine
     from planning.session import Store
 
     records = [rec("meal", 11.94, 108.45, group="restaurant", usable=("meal", "backup"),

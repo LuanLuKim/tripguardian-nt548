@@ -23,7 +23,7 @@ def test_a_full_session_from_create_to_confirm():
     variant_id = e.variants(sid)[0]["id"]
     e.act(sid, {"type": "pick_variant", "id": variant_id})
 
-    first_day_before = e.load(sid)["view"]  # just confirms load() works post pick_variant; no field asserted here
+    e.load(sid)  # load() still works after pick_variant
 
     e.act(sid, {"type": "pick_lodging", "id": "h1"})
     e.act(sid, {"type": "lock_slot", "place": "c1"})

@@ -74,7 +74,7 @@ def test_two_optional_skips_suppress_the_rest_but_required_skip_waits_for_gate(c
     s2.card = deck.build(s2.state, catalog, cfg)
     e2.turn(sid2, TurnInput(kind="deck", answers={"trip": ["skip"]}), lambda *_: None)
     assert s2.state.meta.soft_skips == 0 and "trip" not in [t.qid for t in s2.card.tabs]
-    assert "trip" in [t.qid for t in deck.build(s2.state, catalog, cfg, at="gate").tabs]
+    assert "trip" not in [t.qid for t in deck.build(s2.state, catalog, cfg, at="gate").tabs]  # nothing is asked before planning (owner 2026-11-18)
 
 
 def test_a_known_soft_answer_cannot_be_reasked(catalog, cfg):

@@ -31,6 +31,7 @@ const P: Record<string, string> = {
   sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2.5v2M12 19.5v2M4.5 12h-2M21.5 12h-2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4',
   cloud: 'M7 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 8.5a4.75 4.75 0 0 1 0 9.5H7Z',
   rain: 'M7 14a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 4.5a4.75 4.75 0 0 1 0 9.5H7ZM8 17.5l-1 2.5M12 17.5l-1 2.5M16 17.5l-1 2.5',
+  storm: 'M7 14a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 4.5a4.75 4.75 0 0 1 0 9.5h-1M12.5 11l-2.5 4h3l-2 4.5',
   coffee: 'M5 9h11v5a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5V9ZM16 10h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2.5M12 3.5v2.5',
   tree: 'M12 3l5 7h-3l4 6h-5v5h-2v-5H6l4-6H7l5-7Z',
   utensils: 'M7 3v8a2 2 0 0 0 2 2h0V21M5 3v6M9 3v6M17 21V3c-2.5 1.5-3.5 4-3.5 7 0 2 1 3 3.5 3',
@@ -42,6 +43,7 @@ const P: Record<string, string> = {
   chevronDown: 'M6 9l6 6 6-6',
   chevronLeft: 'M15 6l-6 6 6 6',
   chevronRight: 'M9 6l6 6-6 6',
+  chevronsRight: 'M6 6l6 6-6 6M13 6l6 6-6 6',
   turn: 'M3 12c0 2.8 4 5 9 5s9-2.2 9-5-4-5-9-5M3 12l2.4-2.6M3 12l3.2.6M12 7l-2.2-2M12 7l-2.2 2',
   chevronUp: 'M6 15l6-6 6 6',
   grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
@@ -72,6 +74,7 @@ const P: Record<string, string> = {
   shield: 'M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3ZM9 12l2 2 4-4',
   logout: 'M10 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4M15 8l4 4-4 4M19 12H9',
   grid: 'M4 4h6v6H4V4ZM14 4h6v6h-6V4ZM4 14h6v6H4v-6ZM14 14h6v6h-6v-6Z',
+  rows: 'M4 6h16M4 12h16M4 18h16',
   car: 'M5 16l1.5-5.5A2 2 0 0 1 8.4 9h7.2a2 2 0 0 1 1.9 1.5L19 16M4 16h16v3H4v-3ZM7.5 19v1.5M16.5 19v1.5',
   phone: 'M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3ZM11 18h2',
   laptop: 'M5 6a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v9H5V6ZM3 15h18l-1.5 3.5h-15L3 15Z',
@@ -85,6 +88,7 @@ const P: Record<string, string> = {
   mouse: 'M12 3a5 5 0 0 1 5 5v8a5 5 0 0 1-10 0V8a5 5 0 0 1 5-5ZM12 7v3',
   flame: 'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4.1 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5Z',
   trendUp: 'M3 17l6-6 4 4 7-8M15 7h5v5',
+  article: 'M6 4h12a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1ZM8.5 9h7M8.5 12.5h7M8.5 16h4',
   star: 'M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.7l5.9-.9L12 3.5Z',
 }
 
@@ -100,13 +104,13 @@ export const HeartFill = ({ size = 20 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path d={P.heart} fill="currentColor" stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" /></svg>
 )
 // The assistant's face in the chat: the logo's pine, round, with two eyes, and the sun as its spark. Tokens only.
-// The generated mascot (web/scripts/gen_ui_images.py bot-avatar, 160 px) replaces the drawing once that file exists.
+// The chat bunny with a headset (web/scripts/gen_mascot_moods.py chat_head, cropped to gen/bot-chat.webp, 160 px + @2x) replaces the drawing once that file exists.
 let botImage = true
 export function BotAvatar({ size = 32, live = false }: { size?: number; live?: boolean }) {
   const [img, setImg] = useState(botImage)
   return (
     <span className={`tg-bot ${live ? 'is-live' : ''}`} style={{ width: size, height: size }} aria-hidden="true">
-      {img ? <img src="/img/gen/bot-avatar.webp" alt="" width={size} height={size} onError={() => { botImage = false; setImg(false) }} /> : <svg viewBox="0 0 32 32" width={size} height={size}>
+      {img ? <img src="/img/gen/bot-chat.webp?v=3" srcSet="/img/gen/bot-chat@2x.webp?v=3 2x" alt="" width={size} height={size} onError={() => { botImage = false; setImg(false) }} /> : <svg viewBox="0 0 32 32" width={size} height={size}>
         <circle cx="16" cy="16" r="16" style={{ fill: 'var(--tg-pine, #111111)' }} />
         <path d="M16 6.5l6.2 8.3h-3.4l4.7 6.7H8.5l4.7-6.7H9.8L16 6.5Z" style={{ fill: '#fff' }} />
         <rect x="14.6" y="21.5" width="2.8" height="3.6" rx="1" style={{ fill: '#fff' }} />
@@ -118,8 +122,10 @@ export function BotAvatar({ size = 32, live = false }: { size?: number; live?: b
   )
 }
 
-// The brand logo (web/public/img/brand/cat-full.webp, cut from the supplied logo, background transparent): the cat, the wordmark and "since 2026".
+// The brand logo, transparent, from frontend_images/LOGO-wordmark.png (web/scripts/make_logo.py): by default the map pin with a running rabbit, no lettering
+// (brand/tripguardian.webp, 0.79 aspect: narrow rail, auth, footer); `full` is the whole lockup with the "trip guardian" lettering
+// (brand/tripguardian-full.webp, 2.12 aspect: wide, light places such as the landing nav). `size` is the height in px.
 // The old cloud (brand/mark.webp) stays only as the landing scene's mascot.
-export function Logo({ size = 28, dark = false }: { size?: number; dark?: boolean }) {
-  return <img className={`tg-logo${dark ? ' is-dark' : ''}`} src="/img/brand/cat-full.webp" width={size * 4} height={size * 1.5} alt="TripGuardian" />
+export function Logo({ size = 40, full = false }: { size?: number; full?: boolean }) {
+  return <img className="tg-logo" src={`/img/brand/${full ? 'tripguardian-full' : 'tripguardian'}.webp?v=2`} width={Math.round(size * (full ? 2.12 : 0.79))} height={size} alt="TripGuardian" />
 }

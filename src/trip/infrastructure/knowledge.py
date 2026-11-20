@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Callable, Sequence
 
 from corpus.retrieval import read_span
 
 from ..domain.coverage import admissible
 from ..domain.state import TripState
+from ..domain.text import squash
 from ..domain.vibes import media_url
 from .browse import Browse
 from .catalog import Catalog
@@ -22,6 +23,7 @@ SIMILAR_MAX = 4  # places a similar_places call averages
 SIMILAR_POOL = 120  # nearest places taken before the criteria and the limit are applied
 FIND_ALL = 500  # find asked for every place that passes (a filter over a similar list)
 FIND_POOL = 40  # places asked of corpus.retrieval before the hard filters keep `limit` of them
+ONE_KIND_LIMIT = 8  # trends items when one kind is asked (config/pulse.yaml season.max_items)
 WEATHER_KEYS = ("rain_prob", "rain_mm", "tmin_c", "tmax_c", "gust_kmh", "storm", "source", "fetched_at")
 EARTH_KM = 6371.0088
 
@@ -119,7 +121,8 @@ class Knowledge:
     def trends(self, state: TripState, kind: str | None = None, month: int | None = None, limit: int = 3) -> dict:
         """What the Nhịp Đà Lạt snapshot says is hot now, each item with its words, date and sources; a place of it passes
         the trip's hard filters (fail-closed) and carries `id`. {"error": "trends unavailable"} when the job never ran."""
-        out = self.pulse(kind=kind, month=month, limit=limit) if self.pulse else None
+        # one kind asked ("mùa hoa gì"): its whole short list, so a flower season sixth in the list is not left out
+        out = self.pulse(kind=kind, month=month, limit=max(limit, ONE_KIND_LIMIT) if kind else limit) if self.pulse else None
         if out is None:
             return {"error": "trends unavailable"}
         items = []
@@ -130,9 +133,57 @@ class Knowledge:
             # sources: the site or kind and the date only. Their URLs carry long digit ids that would fill the 300 numbers
             # a reply may say (Meta.told_numbers), and the agent does not read links
             srcs = [{k: x[k] for k in ("label", "date") if x.get(k)} for x in it["sources"]]
-            items.append({**({"id": pid} if pid is not None else {}),
-                          **{k: v for k, v in it.items() if k not in ("place_id", "sources")}, "sources": srcs})
+            # a season or event named after a corpus place ("Làng hoa Vạn Thành"): that place may be named in the reply
+            # (agents/assistant/turn.remember keeps every place id a result holds), never shown as a card from here
+            names = self._names_in(it["name"], state) if pid is None else []
+            # where a season is seen (corpus.pulse see_places) and where an event is held: places the reply may name
+            see = [{"id": x, "name": self.catalog.by_id[x].name} for x in self._see(it, state)]
+            items.append({**({"id": pid} if pid is not None else {}), **({"names_place": names} if names else {}),
+                          **{k: v for k, v in it.items() if k not in ("place_id", "sources", "image", "image_from", "see")},
+                          **({"see_at" if it["kind"] == "season" else "held_at": see} if see else {}), "sources": srcs})
         return {**out, "items": items}
+
+    def _names_in(self, name: str, state: TripState) -> list[str]:
+        """The admissible corpus places whose whole name (two words or more) is inside `name`."""
+        words = f" {squash(name)} "
+        return sorted({pid for key, pid in self.catalog.name_keys
+                       if len(key.split()) >= 2 and f" {key} " in words and self._admissible(pid, state)})
+
+    def _see(self, it: dict, state: TripState) -> list[str]:
+        """A season's places to see it at (the Nhịp item's `see`), or the corpus place an event is held at (its venue,
+        the second part of its line "13–15/11 · Quảng trường Lâm Viên"); admissible places of the catalog only."""
+        if it["kind"] == "season":
+            ids = list(it.get("see") or ())
+        elif it["kind"] == "event" and it.get("days"):
+            parts = it["text"].split(" · ")
+            ids = self._names_in(parts[1], state) if len(parts) > 1 else []
+        else:
+            ids = []
+        return [x for x in ids if x in self.catalog.by_id and self._admissible(x, state)][:3]
+
+    def trend_rows(self, state: TripState, kinds: tuple[str, ...], limit: int = 6) -> dict:
+        """The Nhịp items of `kinds` for the chat's trends block (api/blocks.trends_block), with what the agent does not
+        read: the sources' links and an event's picture; `see` = a season's places to see it at, an event's venue.
+        Places pass the trip's hard filters, as in `trends`.
+        {as_of, items[]} or {} when the job never ran."""
+        out, as_of = [], None
+        for kind in kinds:
+            got = self.pulse(kind=kind, limit=limit) if self.pulse else None
+            if not got:
+                continue
+            as_of = got["as_of"]
+            for it in got["items"]:
+                pid = it["place_id"]
+                if pid is not None and not self._admissible(pid, state):
+                    continue
+                out.append({**it, "intro": self._intro(pid) if pid else None, "see": self._see(it, state)})
+        return {"as_of": as_of, "items": out} if as_of else {}
+
+    def _intro(self, pid: str) -> str | None:
+        """The first sentence of the place's checked introduction (corpus.intro), None when it has none."""
+        intro = ((self.retrieval.get_place(pid) or {}).get("details") or {}).get("intro") or {}
+        first = next(iter(intro.get("summary") or ()), None)
+        return first.get("text") if isinstance(first, dict) else None
 
     def weather(self, day: date) -> dict:
         """Rain chance for `day` at the city centre; {"error": "weather unavailable"} when live gives nothing."""
@@ -155,6 +206,44 @@ class Knowledge:
             except Exception:  # no climate feed: the rain figures alone
                 pass
         return out
+
+    def month_days(self, first: date, last: date) -> dict:
+        """What the home calendar draws on each day of `first`..`last` (at most 62 days): the public holiday from the
+        CalendarDay view, and the forecast while Open-Meteo has one (16 days from today). A day with no figure for a
+        thing simply lacks it: beyond the forecast there is no `weather`; such a day carries `normal` instead, the month's
+        long-run figures (ClimateNormal), a separate key so a long-run average is never passed off as a forecast."""
+        if last < first or (last - first).days >= 62:
+            raise ValueError("the range must be 1 to 62 days, oldest first")
+        out: dict[str, dict] = {}
+        feed = self.more.feeds.calendar() if self.more.feeds.calendar else None
+        for d in feed or ():
+            if first.isoformat() <= d["date"] <= last.isoformat():
+                if d.get("holiday"):
+                    out[d["date"]] = {"holiday": d["holiday"]}
+        days = [(first + timedelta(days=i)).isoformat() for i in range((last - first).days + 1)]
+        try:
+            got = self.live.weather(self.center[1], self.center[2], days) if self.live.weather else {}
+        except Exception:  # live.Unavailable or a timeout: the calendar still has its holidays
+            got = {}
+        for iso, w in (got or {}).items():
+            if not isinstance(w, dict) or w.get("source") != "open-meteo" or w.get("rain_prob") is None:
+                continue
+            out.setdefault(iso, {})["weather"] = {k: (round(w[k]) if k in ("tmin_c", "tmax_c", "gust_kmh") and w.get(k) is not None else w.get(k))
+                                                  for k in ("rain_prob", "rain_mm", "tmin_c", "tmax_c", "gust_kmh", "storm")}
+        normals: dict[int, dict | None] = {}  # month -> the month's long-run figures, or None when the climate feed has none
+        for iso in days:
+            if "weather" in out.get(iso, {}):
+                continue
+            m = int(iso[5:7])
+            if m not in normals:
+                try:
+                    c = self.more.climate(m)
+                    normals[m] = {k: (round(c[k]) if k in ("tmax_c", "tmin_c") else c[k]) for k in ("tmax_c", "tmin_c", "rain_prob", "years") if c.get(k) is not None} or None
+                except Exception:  # no climate feed or no row for the month: the day just has no figures
+                    normals[m] = None
+            if normals[m]:
+                out.setdefault(iso, {})["normal"] = normals[m]
+        return {"from": first.isoformat(), "to": last.isoformat(), "days": dict(sorted(out.items()))}
 
     def _point(self, ref: str) -> tuple[str, tuple[float, float]]:
         if ref == "center":

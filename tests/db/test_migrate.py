@@ -32,3 +32,19 @@ def test_failed_migration_records_nothing(pg_url, tmp_path):
     with psycopg.connect(pg_url) as conn:
         assert conn.execute("SELECT to_regclass('half')").fetchone()[0] is None
         assert not conn.execute("SELECT 1 FROM schema_migrations WHERE version = '001_bad'").fetchone()
+
+
+def test_legacy_guests_become_guests_and_the_role_check_is_restored(pg_url):
+    # Prod before 009: role check widened by hand, a pre-`kind` guest stored as role 'guest'.
+    with psycopg.connect(pg_url, autocommit=True) as conn:
+        conn.execute("ALTER TABLE users DROP CONSTRAINT users_role_check")
+        conn.execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin', 'guest'))")
+        conn.execute("INSERT INTO users (role) VALUES ('guest')")
+        conn.execute("INSERT INTO users (email, role) VALUES ('a@gmail.com', 'admin')")
+        conn.execute("DELETE FROM schema_migrations WHERE version = '009_legacy_guests'")
+    assert migrate(pg_url) == ["009_legacy_guests"]
+    with psycopg.connect(pg_url, autocommit=True) as conn:
+        rows = conn.execute("SELECT kind, role FROM users ORDER BY email NULLS FIRST").fetchall()
+        assert rows == [("guest", "user"), ("user", "admin")]
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute("INSERT INTO users (role) VALUES ('guest')")

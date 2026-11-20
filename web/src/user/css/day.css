@@ -171,3 +171,55 @@
 .tg .tg-it-add:focus-visible { outline: 2px solid var(--tg-pine); outline-offset: 2px; }
 .tg .tg-it-add:disabled { opacity: 0.5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .tg .tg-it-add, .tg .tg-it-add__ic, .tg .tg-it-add > svg { transition: none; } }
+
+.tg .tg-ghost--stay > header .tg-link { margin-left: 4px; font-size: 0.8rem; }
+
+/* A day's empty slot (GhostSlot.tsx): the row of cards, then a round "+" that opens the list of places for the day. */
+.tg .tg-gdisc__row { display: flex; align-items: center; gap: 10px; }
+.tg .tg-gdisc__row > .tg-ghost__fan { flex: 1; min-width: 0; }
+.tg .tg-gdisc .tg-ghost__fan > li:not(.is-front) .tg-ghost__txt { opacity: 0.85; }
+.tg .tg-gdisc__plus { display: grid; place-items: center; flex: none; width: 48px; height: 48px; border-radius: 50%; background: var(--tg-ink); color: #fff; box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.55); transition: transform 260ms var(--tg-ease); }
+.tg .tg-gdisc__plus:hover:not(:disabled) { transform: rotate(90deg); }
+.tg .tg-gdisc__plus:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 3px; }
+.tg .tg-gdisc__plus:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .tg .tg-gdisc__plus { transition: none; } }
+
+/* Thêm / Đổi trải nghiệm (Find.tsx): the old search screen, laid over the map so the day stays in sight on the left */
+.tg .tg-it-day__map.has-side { isolation: isolate; }
+.tg .tg-it-day__map.has-side > .tg-it-find.is-pane { position: absolute; inset: 0; z-index: 20; padding-right: 84px !important; width: auto; margin: 0; padding: 20px 24px 40px; overflow-y: auto; overscroll-behavior: contain; background: var(--tg-bg); font-size: 0.95rem; border-left: 1px solid var(--tg-line); animation: tg-find-in 260ms var(--tg-ease) both; }
+@keyframes tg-find-in { from { opacity: 0; transform: translateX(24px); } }
+.tg .tg-it-find__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.tg .tg-it-find__head p { margin: 0 0 4px; font: 700 0.7rem/1 var(--tg-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tg-brand); }
+.tg .tg-it-find__head h2 { margin: 0; font: 600 1.6rem/1.2 var(--tg-display); }
+.tg .tg-it-find__head h2 em { font-style: italic; }
+.tg .tg-it-find__head .tg-icon-btn { flex: none; width: 40px; height: 40px; }
+.tg .is-pane .tg-it-search { height: 58px; margin-bottom: 12px; padding: 0 12px 0 22px; }
+.tg .is-pane .tg-it-search input { font-size: 1.05rem; }
+.tg .is-pane .tg-it-search input::-webkit-search-cancel-button { display: none; }
+.tg .tg-it-search__x { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--tg-line); }
+.tg .is-pane .tg-it-find__ctx { margin-bottom: 14px; font-size: 0.9rem; }
+.tg .is-pane .tg-it-find__cols { grid-template-columns: 230px minmax(0, 1fr); gap: 18px; }
+.tg .is-pane .tg-it-filters { top: 0; gap: 12px; }
+.tg .is-pane .tg-it-fcard { padding: 14px 15px; border-radius: 18px; }
+.tg .is-pane .tg-it-fcard h3 { font-size: 0.95rem; }
+.tg .is-pane .tg-it-fcard label { padding: 6px 0; font-size: 0.9rem; }
+.tg .is-pane .tg-it-frow { margin-bottom: 10px; padding-bottom: 10px; }
+.tg .is-pane .tg-it-frow b { font-size: 0.92rem; }
+.tg .is-pane .tg-it-results { gap: 12px; }
+.tg .is-pane .tg-it-result { gap: 16px; padding: 12px; border-radius: 22px; }
+.tg .is-pane .tg-it-result__ph { width: 150px; height: 136px; border-radius: 16px; }
+.tg .is-pane .tg-it-result__copy h3 { margin: 0; font: 600 1.3rem/1.2 var(--tg-display); }
+.tg .is-pane .tg-it-result__copy > p { font-size: 0.88rem; }
+.tg .is-pane .tg-it-result__meta { margin: 4px 0; font-size: 0.86rem; }
+.tg .tg-it-result__warn { display: flex; align-items: flex-start; gap: 5px; margin: 0; font-size: 0.8rem; line-height: 1.35; color: #8a5a00; }
+.tg .tg-it-result__warn svg { flex: none; margin-top: 2px; }
+@media (max-width: 1240px) {
+  .tg .is-pane .tg-it-find__cols { grid-template-columns: minmax(0, 1fr); }
+  .tg .is-pane .tg-it-filters { position: static; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .tg .is-pane .tg-it-filters .tg-it-small { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { .tg .tg-it-day__map.has-side > .tg-it-find.is-pane { animation: none; } }
+.tg .is-pane .tg-it-filters { position: static; }
+.tg .is-pane .tg-it-fcard.is-long { max-height: 380px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.tg .is-pane .tg-it-fcard.is-long h3 { position: sticky; top: -14px; z-index: 1; margin: -14px -15px 6px; padding: 14px 15px 6px; background: var(--tg-surface); }
+.tg .tg-it-find__more { justify-self: center; min-height: 40px; }

@@ -106,8 +106,12 @@ def check(questions, state: TripState, catalog, cfg, looks=None) -> tuple[Tab, .
                 continue
         if redundant or len(options) < 2 or len(set(pools)) < 2:
             continue
+        # A taste question always takes several answers (owner 2026-11-16: never bind the user to one), as long as
+        # no two options set the same soft feature (two of them would just overwrite each other).
+        keys = [w.value[0] for o in options for w in o.writes if w.field == "soft"]
+        taste = all(w.field in ("soft", "liked_groups") for o in options for w in o.writes) and len(keys) == len(set(keys))
         out.append(Tab(qid=qid, kind="agent", header=header, question=question, why=why,
-                       multi=bool(q.get("multi")), options=tuple(options) + exits()))
+                       multi=bool(q.get("multi")) or taste, options=tuple(options) + exits()))
     return tuple(out)
 
 

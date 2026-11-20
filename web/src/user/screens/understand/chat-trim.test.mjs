@@ -32,12 +32,17 @@ try {
       await page.goto(`http://127.0.0.1:5443/chat-trim.html?case=${name}`)
       await page.locator(name === 'dish' ? '.tg-cx-dish' : '.tg-cx__m').waitFor()
       if (name === 'completed') {
-        assert.equal(await page.locator('.tg-cx__think').count(), 0)
-        assert.doesNotMatch(await page.locator('body').innerText(), /Đã xử lý|Ghi nhận phương tiện|Tách các ý/)
+        // a finished turn folds to one quiet line; its steps open on a click
+        assert.equal(await page.locator('.tg-cx__think').count(), 1)
+        assert.equal(await page.locator('.tg-cx__think.is-open').count(), 0)
+        assert.match(await page.locator('.tg-cx__think-h').innerText(), /Đã xử lý trong/)
       } else if (name === 'waiting') {
         assert.equal(await page.locator('[aria-busy="true"]').count(), 1)
+        // a running turn shows what it is doing, and its steps are open: nobody waits on a blank screen (owner 2026-11-17)
         assert.equal(await page.getByRole('status').count(), 1)
-        assert.doesNotMatch(await page.locator('body').innerText(), /Ghi nhận phương tiện|Tách các ý/)
+        assert.equal(await page.locator('.tg-cx__think.is-open').count(), 1)
+        assert.match(await page.locator('.tg-cx__think-h').innerText(), /Đang soạn câu trả lời/)
+        assert.match(await page.locator('.tg-cx__steps').innerText(), /Ghi nhận phương tiện/)
       } else {
         assert.equal(await page.locator('.tg-cx-dish').getAttribute('aria-label'), 'Quán có món Lẩu Gà Lá É')
         assert.equal(await page.locator('.tg-cx-dish q, .tg-cx-dish__list').count(), 0)

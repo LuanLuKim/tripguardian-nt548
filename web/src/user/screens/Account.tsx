@@ -3,27 +3,71 @@ import { deleteAccount, refreshAccount, signOut, updateProfile, uploadAvatar, us
 import { calendarDisconnect } from '../today'
 import { track } from '../events'
 import { enablePush, notificationLabel, loadPrefs, pushSupported, savePrefs, type Prefs } from '../notify'
-import { placeById, useDetail } from '../../data/store'
+import { placeById, useDetail, useSnapshot } from '../../data/store'
 import { featureLabel } from '../../data/labels'
-import { dateRange, info } from '../lib'
-import { deleteTrip, tripSummaries } from '../pd/api'
+import { dateRange, info, priceText } from '../lib'
+import { deleteTrip, keptTripSummaries, tripSummaries } from '../pd/api'
 import { useDecision } from '../pd/decision'
 import { useFriends } from '../social'
 import type { TripSummary } from '../pd/types'
 import { toast, toggleSaved, useUi } from '../store'
 import { useTrip } from '../trip'
-import { ArtCup, ArtHills, ArtRoute, Busy, Empty, go, Link, placeHref, PlacePhoto } from '../ui/common'
+import { ArtCup, ArtHills, ArtRoute, Busy, Empty, go, Link, PlacePhoto } from '../ui/common'
 import { Icon, type IconName } from '../ui/icons'
 import { Page, useTitle } from '../ui/Shell'
+import { openPlace } from '../ui/PlaceSheet'
 import { openShare } from '../home/dialogs'
 import { GuestNotice } from './Guest'
 import { TourButton } from '../tour'
 
-type Kind = 'confirmed' | 'done'
-const STATUS: Record<Kind, string> = { confirmed: 'Đã chốt', done: 'Đã đi' }
+type Kind = 'planning' | 'confirmed' | 'done'
+const OPEN: Record<Kind, string> = { planning: 'Tiếp tục lên kế hoạch', confirmed: 'Xem lịch', done: 'Xem lại lịch' }
+type Tone = 'soon' | 'near' | 'far' | 'now' | 'draft' | 'idle'
+const DAY = 86_400_000
 
-// Only a trip with a locked schedule is a trip here; a chat that never got one stays in the chat history.
+// The pill on a trip card. A locked trip counts the days down: red inside a week, amber inside three, green beyond.
+function pillOf(t: TripSummary, k: Kind): { text: string; tone: Tone } {
+  if (k === 'planning') return { text: 'Chưa chốt lịch', tone: 'draft' }
+  if (k === 'done') return { text: 'Đã đi', tone: 'idle' }
+  const start = t.start_date ? new Date(t.start_date + 'T00:00') : null
+  if (!start || Number.isNaN(start.getTime())) return { text: 'Chưa chọn ngày', tone: 'idle' }
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const left = Math.round((start.getTime() - today.getTime()) / DAY)
+  if (left <= 0) return { text: 'Đang diễn ra', tone: 'now' }
+  if (left === 1) return { text: 'Ngày mai', tone: 'soon' }
+  return { text: `Còn ${left} ngày`, tone: left <= 7 ? 'soon' : left <= 21 ? 'near' : 'far' }
+}
+
+// The places on a trip card's photo mosaic: up to three, one of each kind first (sight, food, shop…) so the card shows
+// the range of the trip. Before the snapshot lands the kinds are unknown and the first three go in.
+function mosaicIds(ids: string[]): string[] {
+  const kinds = new Set<string>()
+  const out: string[] = []
+  for (const id of ids) {
+    const g = info(id)?.group ?? id
+    if (out.length < 3 && !kinds.has(g)) { kinds.add(g); out.push(id) }
+  }
+  for (const id of ids) if (out.length < 3 && !out.includes(id)) out.push(id)
+  return out
+}
+
+// One big photo and two small ones; fewer places make fewer tiles, none the hero art.
+function TripMosaic({ ids }: { ids: string[] }) {
+  useSnapshot() // each place's kind is known once the snapshot lands
+  const shown = mosaicIds(ids)
+  return (
+    <div className={`tg-trip__mos is-${Math.max(1, shown.length)}`}>
+      {shown.length ? shown.map((id) => <div key={id} className="tg-trip__t"><PlacePhoto id={id} /></div>) : <div className="tg-trip__t"><div className="tg-hero__img" aria-hidden="true" /></div>}
+    </div>
+  )
+}
+
+// A trip that went on to choosing places or to a schedule but is not locked yet is a plan in progress; a chat that never got
+// that far, or has not picked a single place, stays in the chat history.
+const inProgress = (t: TripSummary) => !t.confirmed && t.stage !== 'trip' && t.places.length > 0
 function kindOf(t: TripSummary): Kind {
+  if (inProgress(t)) return 'planning'
   if (!t.start_date) return 'confirmed'
   const end = new Date(t.start_date + 'T00:00')
   end.setDate(end.getDate() + (t.days ?? 1))
@@ -34,21 +78,26 @@ function kindOf(t: TripSummary): Kind {
 export function Trips() {
   useTitle('Chuyến của tôi')
   const { trip, dispatch } = useTrip()
-  const [list, setList] = useState<TripSummary[] | null>(null)
+  const shownOf = (all: TripSummary[]) => all.filter((t) => t.confirmed || inProgress(t))
+  const firstTab = (l: TripSummary[]): Kind => { const has = (k: Kind) => l.some((t) => kindOf(t) === k); return has('planning') ? 'planning' : has('confirmed') ? 'confirmed' : has('done') ? 'done' : 'confirmed' }
+  // The list of the last visit shows at once; the server's answer replaces it.
+  const [list, setList] = useState<TripSummary[] | null>(() => { const k = keptTripSummaries(); return k ? shownOf(k) : null })
   const [err, setErr] = useState(false)
-  const [tab, setTab] = useState<Kind>('confirmed')
+  const [tab, setTab] = useState<Kind>(() => { const k = keptTripSummaries(); return k ? firstTab(shownOf(k)) : 'planning' })
   const account = useAccount()
   const member = !!account && !account.guest
   useEffect(() => {
     tripSummaries().then((all) => {
-      const l = all.filter((t) => t.confirmed)
+      const l = shownOf(all)
       setList(l)
-      if (!l.some((t) => kindOf(t) === 'confirmed') && l.some((t) => kindOf(t) === 'done')) setTab('done')
-    }, () => setErr(true))
+      setTab((t) => (list ? t : firstTab(l))) // a visit that started from the kept list keeps the tab the person is on
+    }, () => { if (!list) setErr(true) })
   }, [])
   const open = (t: TripSummary, to: string) => {
     dispatch({ type: 'reset' })
-    dispatch({ type: 'set', patch: { journeyId: t.id, decisionId: t.id, planningId: t.id } })
+    // A plan in progress opens at the step it stopped on; a locked one has all its steps.
+    const locked = t.confirmed
+    dispatch({ type: 'set', patch: { journeyId: t.id, decisionId: t.id, planningId: locked || t.stage === 'planning' ? t.id : null } })
     go(to)
   }
   const [asking, setAsking] = useState<string | null>(null) // the trip waiting for the user's yes to be removed
@@ -65,34 +114,43 @@ export function Trips() {
   }
   const shown = (list ?? []).filter((t) => kindOf(t) === tab)
   return (
-    <Page>
+    <Page className="tg-lib">
       <GuestNotice />
       <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Chuyến của tôi</p><h1>Chuyến đi của bạn</h1><p>Các chuyến của tài khoản này, mở được trên mọi máy.</p></div></header>
-      <div className="tg-tabs" role="tablist" aria-label="Trạng thái chuyến">
-        {([['confirmed', 'Sắp đi'], ['done', 'Đã hoàn thành']] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className="tg-tab" onClick={() => setTab(k)}>{l}{list && <b>{list.filter((t) => kindOf(t) === k).length}</b>}</button>)}
+      <div className="tg-utab" role="tablist" aria-label="Trạng thái chuyến">
+        {([['planning', 'Đang lên kế hoạch'], ['confirmed', 'Sắp đi'], ['done', 'Đã hoàn thành']] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className="tg-utab__b" onClick={() => setTab(k)}>{l}{list && <b>{list.filter((t) => kindOf(t) === k).length}</b>}</button>)}
       </div>
       {err ? <Empty art={<ArtHills />} title="Chưa tải được danh sách chuyến" body="Máy chủ hành trình chưa trả lời. Thử lại sau ít phút." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => location.reload()}>Thử lại</button>} />
         : !list ? <Busy text="Đang tải các chuyến…" />
         : shown.length === 0 ? (
-          <Empty art={tab === 'done' ? <ArtCup /> : <ArtRoute />} title={tab === 'confirmed' ? 'Chưa có chuyến nào có lịch trình' : 'Chưa có chuyến nào hoàn thành'} body={tab === 'done' ? 'Đi xong chuyến đầu, nó sẽ nằm ở đây.' : 'Chốt lịch một chuyến, nó sẽ nằm ở đây. Các cuộc trò chuyện dang dở vẫn ở Lịch sử chat.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/')}>Về Khám phá</button>} />
+          <Empty art={tab === 'done' ? <ArtCup /> : <ArtRoute />} title={tab === 'planning' ? 'Chưa có chuyến nào đang lên kế hoạch' : tab === 'confirmed' ? 'Chưa có chuyến nào có lịch trình' : 'Chưa có chuyến nào hoàn thành'} body={tab === 'done' ? 'Đi xong chuyến đầu, nó sẽ nằm ở đây.' : tab === 'planning' ? 'Chuyến đã chọn nơi hoặc đã xếp lịch nhưng chưa chốt sẽ nằm ở đây. Các cuộc trò chuyện chưa chọn nơi vẫn ở Lịch sử chat.' : 'Chốt lịch một chuyến, nó sẽ nằm ở đây. Các cuộc trò chuyện dang dở vẫn ở Lịch sử chat.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/')}>Về Khám phá</button>} />
         ) : (
           <div className="tg-trips">
             {shown.map((t) => {
               const k = kindOf(t)
+              const pill = pillOf(t, k)
+              const name = `Đà Lạt${t.days ? ` ${t.days} ngày` : ''}`
               return (
                 <article key={t.id} className="tg-trip">
-                  {t.places[0] ? <PlacePhoto id={t.places[0]} className="tg-trip__ph" /> : <div className="tg-trip__ph tg-hero__img" aria-hidden="true" />}
+                  <TripMosaic ids={t.places} />
                   <div className="tg-trip__body">
-                    <span className="tg-tag">{STATUS[k]}</span>
-                    <h2>Đà Lạt{t.days ? ` ${t.days} ngày` : ''}</h2>
-                    <p className="tg-mono tg-muted">{[dateRange(t.start_date, t.days) ?? 'Chưa chọn ngày', t.people ? `${t.people} người` : null, `${t.places.length} nơi`].filter(Boolean).join(' · ')}</p>
-                    <div className="tg-trip__act">
-                      {k === 'confirmed' && <><button type="button" className="tg-btn tg-btn--primary tg-btn--sm" onClick={() => open(t, '/plan')}>Xem lịch</button><button type="button" className="tg-link" onClick={() => open(t, '/plan')}>Sửa lại</button></>}
-                      {k === 'done' && <><button type="button" className="tg-btn tg-btn--ghost tg-btn--sm" onClick={() => open(t, '/plan')}>Xem lại lịch</button><button type="button" className="tg-link" onClick={() => open(t, '/done')}>Phản hồi</button></>}
-                      {member && <button type="button" className="tg-link" onClick={() => openShare(t)}><Icon name="send" size={14} /> Gửi cho bạn bè</button>}
-                      {asking === t.id ? (
-                        <span className="tg-trip__ask" role="alertdialog" aria-label="Xóa chuyến này?">Xóa chuyến này?<button type="button" className="tg-btn tg-btn--sm tg-del__yes" disabled={removing} onClick={() => remove(t)}>{removing ? 'Đang xóa…' : 'Xóa'}</button><button type="button" className="tg-link" disabled={removing} onClick={() => setAsking(null)}>Giữ lại</button></span>
-                      ) : <button type="button" className="tg-trip__del" aria-label="Xóa chuyến này" title="Xóa chuyến này" onClick={() => setAsking(t.id)}><Icon name="trash" size={15} /></button>}
+                    <div className="tg-trip__row">
+                      <h2><button type="button" className="tg-trip__go" aria-label={`${OPEN[k]}: ${name}`} onClick={() => open(t, k === 'planning' && t.stage !== 'planning' ? '/explore' : '/plan')}>{name}</button></h2>
+                      <span className={`tg-pill is-${pill.tone}`}>{k === 'planning' && <Icon name="edit" size={12} />}{pill.text}</span>
+                    </div>
+                    <div className="tg-trip__facts">
+                      <span className="tg-trip__fact"><Icon name="calendar" size={15} />{dateRange(t.start_date, t.days) ?? 'Chưa chọn ngày'}</span>
+                      {t.people ? <span className="tg-trip__fact"><Icon name="users" size={15} />{t.people} người</span> : null}
+                    </div>
+                    <div className="tg-trip__foot">
+                      <span className="tg-trip__sum"><b>{t.places.length} nơi</b> {k === 'planning' ? 'đã chọn' : 'trong lịch'}</span>
+                      <span className="tg-trip__tools">
+                        {k === 'done' && <button type="button" className="tg-link" onClick={() => open(t, '/done')}>Phản hồi</button>}
+                        {member && <button type="button" className="tg-trip__ico" aria-label="Gửi cho bạn bè" title="Gửi cho bạn bè" onClick={() => openShare(t)}><Icon name="send" size={18} /></button>}
+                        {asking === t.id ? (
+                          <span className="tg-trip__ask" role="alertdialog" aria-label="Xóa chuyến này?">Xóa chuyến này?<button type="button" className="tg-btn tg-btn--sm tg-del__yes" disabled={removing} onClick={() => remove(t)}>{removing ? 'Đang xóa…' : 'Xóa'}</button><button type="button" className="tg-link" disabled={removing} onClick={() => setAsking(null)}>Giữ lại</button></span>
+                        ) : <button type="button" className="tg-trip__ico" aria-label="Xóa chuyến này" title="Xóa chuyến này" onClick={() => setAsking(t.id)}><Icon name="trash" size={18} /></button>}
+                      </span>
                     </div>
                   </div>
                 </article>
@@ -104,7 +162,8 @@ export function Trips() {
   )
 }
 
-const GROUPS: [string, string][] = [['all', 'Tất cả'], ['sight', 'Tham quan & thiên nhiên'], ['food', 'Ăn uống & cà phê'], ['shop', 'Mua sắm']]
+const GROUPS: [string, string][] = [['sight', 'Tham quan & thiên nhiên'], ['food', 'Ăn uống & cà phê'], ['shop', 'Mua sắm'], ['other', 'Khác']]
+const GROUP_ICON: Record<string, IconName> = { sight: 'tree', food: 'utensils', shop: 'wallet', other: 'sparkle' }
 
 // Up to three things many people vouch for at this place, as short tags: served features (verified, 2+ voices) that
 // read as a plus. Anything that is a downside or a neutral fact is left out.
@@ -126,38 +185,51 @@ export function Saved() {
   const [f, setF] = useState('all')
   useDetail(saved) // the tags come from the evidence, which lands after the first paint
   const cards = new Map(view?.groups.flatMap((g) => g.cards).map((c) => [c.id, c]) ?? [])
-  const items = saved.filter((id) => f === 'all' || info(id)?.group === f)
-  const count = (k: string) => saved.filter((id) => k === 'all' || info(id)?.group === k).length
+  const count = (k: string) => saved.filter((id) => k === 'all' || (info(id)?.group ?? 'other') === k).length
+  // Only the groups that hold something saved get a tab, so the tabs always match the list (a place outside the three named groups is "Khác").
+  const tabs: [string, string][] = [['all', 'Tất cả'], ...GROUPS.filter(([k]) => count(k) > 0)]
+  const at = tabs.some(([k]) => k === f) ? f : 'all' // the last place of a group was removed: back to everything
+  const items = saved.filter((id) => at === 'all' || (info(id)?.group ?? 'other') === at)
   const unsave = (id: string, name?: string) => { toggleSaved(id, name); toast('Đã xóa khỏi yêu thích') }
   return (
-    <Page>
-      <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Đã lưu</p><h1>Địa điểm bạn đã lưu</h1><p>Lưu theo tài khoản, mở được trên mọi máy. Nơi đã lưu không tự vào lịch; thêm vào chuyến khi cần.</p></div></header>
-      <div className="tg-tabs" role="tablist" aria-label="Nhóm">
-        {GROUPS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={f === k} className="tg-tab" onClick={() => setF(k)}>{l}<b>{count(k)}</b></button>)}
+    <Page className="tg-lib">
+      <header className="tg-head" data-tour="page-head"><div><p className="tg-kicker">Đã lưu</p><h1>Địa điểm yêu thích</h1><p>Lưu theo tài khoản, mở được trên mọi máy. Nơi đã lưu không tự vào lịch; thêm vào chuyến khi cần.</p></div></header>
+      <div className="tg-tbox" role="tablist" aria-label="Nhóm">
+        {tabs.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={at === k} className="tg-tbox__b" onClick={() => setF(k)}>{l}<b>{count(k)}</b></button>)}
       </div>
       {items.length === 0 ? <Empty art={<ArtCup />} title="Chưa lưu nơi nào" body="Bấm trái tim trên thẻ địa điểm để lưu lại, rồi thêm vào chuyến khi cần." action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go(view ? '/explore' : '/')}>{view ? 'Xem gợi ý' : 'Về Khám phá'}</button>} /> : (
-        <div className="tg-saved">
+        <ul className="tg-favs">
           {items.map((id) => {
             const p = info(id)
             const c = cards.get(id)
-            const tags = tagsOf(id)
+            const price = priceText(p?.price)
+            const tag = tagsOf(id)[0]
             return (
-              <article key={id} className="tg-sv">
-                <div className="tg-sv__ph">
-                  <Link to={placeHref(id)} aria-label={p?.name}><PlacePhoto id={id} /></Link>
-                  {p?.category && <span className="tg-tag tg-tag--dark tg-sv__cat">{p.category}</span>}
-                  <button type="button" className="tg-sv__del" onClick={() => unsave(id, p?.name)} aria-label={`Xóa khỏi yêu thích: ${p?.name ?? ''}`} title="Xóa khỏi yêu thích"><Icon name="trash" size={16} /></button>
-                </div>
-                <div className="tg-sv__b">
-                  <h3>{p?.name ?? 'Nơi không còn trong dữ liệu'}</h3>
-                  <p className="tg-sv__meta">{[p?.area, p?.rating ? `★ ${p.rating.toFixed(1)}` : null].filter(Boolean).join(' · ')}</p>
-                  {tags.length > 0 && <ul className="tg-sv__tags" aria-label="Điểm nổi bật">{tags.map((t) => <li key={t}>{t}</li>)}</ul>}
-                  {c && <div className="tg-sv__act"><button type="button" className={`tg-btn tg-btn--sm ${c.chosen ? 'tg-btn--soft' : 'tg-btn--ghost'}`} disabled={busy || c.chosen} onClick={() => act({ type: 'select', place_id: id })}>{c.chosen ? <><Icon name="check" size={15} /> Trong chuyến</> : <><Icon name="plus" size={15} /> Thêm vào chuyến</>}</button></div>}
-                </div>
-              </article>
+              <li key={id} className="tg-fav">
+                <button type="button" className="tg-fav__open" onClick={(e) => openPlace(id, e.currentTarget.querySelector('figure'))}>
+                  <span className="tg-fav__ph">
+                    <PlacePhoto id={id} name={p?.name} />
+                    {p?.area && <span className="tg-fav__chip"><Icon name="pin" size={13} /><span>{p.area}</span></span>}
+                  </span>
+                  <span className="tg-fav__b">
+                    <span className="tg-fav__row">
+                      <b>{p?.name ?? 'Nơi không còn trong dữ liệu'}</b>
+                      {p?.rating ? <span className="tg-pill is-star">★ {p.rating.toFixed(1)}</span> : null}
+                    </span>
+                    {p?.category && <span className="tg-fav__meta"><Icon name={GROUP_ICON[p.group] ?? 'pin'} size={14} />{p.category}</span>}
+                    {p?.hours && <span className="tg-fav__meta"><Icon name="clock" size={14} />{p.hours}</span>}
+                    {tag && <span className="tg-fav__meta"><Icon name="sparkle" size={14} />{tag}</span>}
+                    {price && <span className="tg-fav__sum"><b>{price}{p?.price?.per === 'person' ? '/người' : ''}</b> giá tham khảo</span>}
+                  </span>
+                </button>
+                <span className="tg-fav__act">
+                  {c && <button type="button" className="tg-fav__btn" disabled={busy || c.chosen} onClick={() => act({ type: 'select', place_id: id })} aria-label={c.chosen ? 'Đã trong chuyến' : `Thêm vào chuyến: ${p?.name ?? ''}`} title={c.chosen ? 'Đã trong chuyến' : 'Thêm vào chuyến'}><Icon name={c.chosen ? 'check' : 'plus'} size={16} /></button>}
+                  <button type="button" className="tg-fav__btn" onClick={() => unsave(id, p?.name)} aria-label={`Xóa khỏi yêu thích: ${p?.name ?? ''}`} title="Xóa khỏi yêu thích"><Icon name="trash" size={16} /></button>
+                </span>
+              </li>
             )
           })}
-        </div>
+        </ul>
       )}
     </Page>
   )

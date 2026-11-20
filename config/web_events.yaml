@@ -1,0 +1,15 @@
+# Upcoming events from the web (docs/CORPUS.md §Sự kiện sắp tới): python -m corpus events --city dalat, every night before
+# pulse (scripts/trends_daily.sh). Not config/events.yaml: that is the hand-entered crowd periods planning reads.
+# {city}, {month}, {year} (this month) and {next_month}, {next_year} are filled in at run time.
+queries:
+  - "lịch sự kiện lễ hội {city} tháng {month} {year}"
+  - "{city} sự kiện tháng {month} {year}"
+  - "festival {city} {year}"
+  - "chương trình nghệ thuật âm nhạc {city} tháng {month} {year}"
+  - "lịch sự kiện lễ hội {city} tháng {next_month} {next_year}"
+results_per_query: 10   # SearXNG results kept per query, at most 2 of one site
+pages: 14               # pages read in full (the best-ranked first); every other result is read as its title + snippet
+page_chars: 12000       # of each page, sent to the Extractor
+social: [facebook.com, tiktok.com, instagram.com, youtube.com, x.com, threads.net]  # behind a login: snippet only
+horizon_days: 60        # an event starting later than this is left for a later night
+keep_snapshots: 14

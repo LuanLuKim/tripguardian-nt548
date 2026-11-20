@@ -253,3 +253,25 @@ def test_consecutive_skips_are_shorter_and_do_not_open_required_topics(catalog, 
     engine.turn(session.id, TurnInput(kind="deck", answers={"mobility": ["skip"]}), lambda *_: None)
     assert len(session.transcript[-1]["text"]) < len(first)
     assert session.card.qid == "conversation" and chat.calls == 0
+
+
+def test_a_taste_question_always_takes_several_answers(catalog, cfg):
+    from trip.domain import ask
+    engine, session, chat = make_engine(catalog, cfg)
+
+    def tab(pairs, multi=None):
+        q = {"header": "Kiểu quán", "question": "Bạn thích quán kiểu nào?", "options": [
+            {"label": label, "writes": [{"field": "soft", "op": "add", "value": value}]} for label, value in pairs]}
+        if multi is not None:
+            q["multi"] = multi
+        return ask.check([q], session.state, catalog, cfg)[0]
+
+    assert tab((("Yên tĩnh", "noise=quiet:love"), ("Nhạc sống", "live_music=present:love")), multi=False).multi
+    t = tab((("Yên tĩnh", "noise=quiet:love"), ("Nhạc sống", "live_music=present:love")))
+    session.card = deck.build(session.state, catalog, cfg, agent=(t,))
+    qid = session.card.tabs[0].qid
+    picked = [o.id for o in t.options if o.id not in ("other", "skip")]
+    events = []
+    engine.turn(session.id, TurnInput(kind="deck", answers={qid: picked}), lambda *e: events.append(e))
+    assert not any(ev == "deck_issues" for ev, _ in events)
+    assert {"noise=quiet", "live_music=present"} <= set(session.state.soft)

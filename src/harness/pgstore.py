@@ -118,6 +118,17 @@ class PgStore(Store):
                 self._lines[r["id"]] = (r["updated_at"], out[r["id"]])
         return out
 
+    def release(self, jid: str, owner: str) -> bool:
+        with self.lock(jid):
+            with self.pool.connection() as conn:
+                done = conn.execute(
+                    "UPDATE journeys SET user_id = NULL, envelope = jsonb_set(envelope, '{user_id}', 'null'::jsonb), "
+                    "updated_at = now() WHERE id = %s AND user_id = %s", (jid, owner)).rowcount
+            self._mem.pop(jid, None)
+            self._rev.pop(jid, None)
+            self._lines.pop(jid, None)
+            return bool(done)
+
     def updated_at(self, jid: str) -> str | None:
         with self.pool.connection() as conn:
             row = conn.execute("SELECT updated_at FROM journeys WHERE id = %s", (jid,)).fetchone()

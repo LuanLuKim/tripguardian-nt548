@@ -167,7 +167,7 @@ def test_keep_all_is_retired_and_an_overfull_edit_is_confirmed_with_a_warning():
     assert any(w.get('code') == 'picks_left_out' for w in out['warnings'])
 
 
-@pytest.mark.parametrize('preset', ['cost', 'fit', 'travel'])
+@pytest.mark.parametrize('preset', ['cost', 'fit', 'most'])
 @pytest.mark.parametrize('kind', ['swap', 'add_from_backup'])
 def test_backup_preview_apply_metrics_and_replay_preserve_selection_value(preset, kind):
     e, sid = overloaded_started(preset, backup=True)
@@ -222,3 +222,20 @@ def test_make_room_requires_exact_current_preview_and_replays_atomically():
     e._base.clear()
     e._schedules.clear()
     assert e.load(sid)['view']['state'] == applied['state']
+
+
+def test_confirm_before_a_direction_is_picked_is_refused_not_a_server_error():
+    """An overloaded trip has several directions; confirm without picking one is a 409 (NotConfirmable), never an
+    AttributeError the server turns into a 500, and never the first card picked for the user."""
+    from planning.engine import NotConfirmable
+    records = [spot(f'p{i}', CENTRE, i % 7, price={'typical_vnd': 10000}, group=f'kind-{i % 4}') for i in range(8)]
+    output = decision([r['id'] for r in records], days=1, leave_at='21:00')
+    output['feasibility'] = {'status': 'infeasible', 'totals': {'needed': 1000, 'available': 600},
+                             'conflicts': [{'check': 'time', 'id': 'time'}]}
+    engine = Engine(records + LODGING, cfg=CFG, live_cfg=FakeLive(), store=Store(None), geocode_fn=no_geocode,
+                    matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), background=False)
+    created = engine.create(output, None)
+    assert len(created['view']['variants']) > 1
+    with pytest.raises(NotConfirmable):
+        engine.confirm(created['id'])
+    assert engine.store.get(created['id']).output is None

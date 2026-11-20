@@ -18,6 +18,7 @@ class Leg:
     source: str | None = None
     fetched_at: str | None = None
     via: str | None = None  # the pass a drive leg comes in by (config/journey.yaml entry_roads); None when unknown
+    rides: dict | None = None  # a transfer leg's ride-hailing quotes (journey.rides.leg_quote), when asked for
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,11 @@ class Journey:
     way: str
     day: str | None
     options: tuple[Option, ...]
+    ride_brands: dict | None = None  # where the transfer legs' ride quotes come from (journey.rides.brands)
 
     def as_dict(self) -> dict:
-        return {"origin": list(self.origin), "dest": list(self.dest), "dest_is_centre": self.dest_is_centre,
-                "way": self.way, "day": self.day, "options": [o.as_dict() for o in self.options]}
+        d = {"origin": list(self.origin), "dest": list(self.dest), "dest_is_centre": self.dest_is_centre,
+             "way": self.way, "day": self.day, "options": [o.as_dict() for o in self.options]}
+        if self.ride_brands is not None:
+            d["ride_brands"] = self.ride_brands
+        return d

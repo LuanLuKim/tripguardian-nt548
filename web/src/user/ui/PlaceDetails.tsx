@@ -110,6 +110,36 @@ function Amenities({ p }: { p: Place }) {
   )
 }
 
+// The guide's introduction (corpus intro): the short summary, then the story when `open`, then where it comes from.
+// Null when the corpus has none; the caller then shows About.
+export function Intro({ p, open = true }: { p: Place; open?: boolean }) {
+  const it = p.details?.intro
+  if (!it?.summary.length) return null
+  const lines = open ? [...it.summary, ...it.story] : it.summary
+  const sites = new Map<string, string | null>()
+  let reviews = 0
+  for (const l of lines) for (const s of l.sources) {
+    if (s.source === 'review') reviews += s.n ?? 1
+    else if (s.domain && !sites.has(s.domain)) sites.set(s.domain, s.url)
+  }
+  return (
+    <div className="tg-ps__intro">
+      <p className="tg-ps__intro-sum">{it.summary.map((l) => l.text).join(' ')}</p>
+      {open && it.story.length > 0 && <p className="tg-ps__intro-story">{it.story.map((l) => l.text).join(' ')}</p>}
+      {open && (sites.size > 0 || reviews > 0) && (
+        <small className="tg-ps__intro-src">
+          Nguồn: {[...sites].slice(0, 5).map(([d, url], i) => (
+            <span key={d}>{i > 0 && ' · '}{url ? <a href={url} target="_blank" rel="noreferrer noopener">{d}</a> : d}</span>
+          ))}
+          {reviews > 0 && <span>{sites.size > 0 && ' · '}{reviews} đánh giá Google</span>}
+        </small>
+      )}
+    </div>
+  )
+}
+
+export const hasIntro = (p: Place) => Boolean(p.details?.intro?.summary.length)
+
 // "Nổi tiếng vì …" under the name.
 export function KnownFor({ p }: { p: Place }) {
   const h = p.details?.known_for?.headline
@@ -226,6 +256,7 @@ function Similar({ p, onOpen }: { p: Place; onOpen: (id: string) => void }) {
 export function DetailsOverview({ p, trip, area, onOpen }: { p: Place; trip: string[]; area?: string; onOpen: (id: string) => void }) {
   return (
     <div className="tg-ps__details">
+      <Intro p={p} />
       <About p={p} area={area} />
       <Cost p={p} />
       <Eat p={p} />

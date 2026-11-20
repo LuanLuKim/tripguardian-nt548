@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { openCreate, openTheme, setFamiliar, useFamiliar } from '../home/dialogs'
+import { useState, type CSSProperties } from 'react'
+import { openCreate, openTheme } from '../home/dialogs'
 import { MiniCalendar } from '../home/MiniCalendar'
 import { Pulse, usePulse } from '../home/Pulse'
 import { Who } from '../home/Who'
+import { PostSearch } from '../community/Search'
 import { useSnapshot } from '../../data/store'
 import { HOME_THEMES, matches, THEMES } from '../home/themes'
-import { toast } from '../store'
 import { hasTrip, useTrip } from '../trip'
 import { Icon } from '../ui/icons'
 import { useTitle } from '../ui/Shell'
@@ -19,18 +19,8 @@ const TONES = ['#fbf6b8', '#d9f4ae', '#d2e5fb', '#fbdce5', '#e5def9']
 export function Discover() {
   useTitle('Dành cho bạn')
   const { trip } = useTrip()
-  const familiar = useFamiliar()
   const [q, setQ] = useState('')
   const [allThemes, setAllThemes] = useState(false)
-  const input = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      const el = document.activeElement
-      if (e.key === '/' && !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && !document.querySelector('[role="dialog"]')) { e.preventDefault(); input.current?.focus() }
-    }
-    addEventListener('keydown', key)
-    return () => removeEventListener('keydown', key)
-  }, [])
   const shown = THEMES.filter((t) => matches(t, q))
   const folded = !allThemes && !q.trim() && shown.length > HOME_THEMES // a search shows every match; otherwise "Xem thêm" opens the rest
   const listed = folded ? shown.slice(0, HOME_THEMES) : shown
@@ -41,12 +31,8 @@ export function Discover() {
     <div className="tg-hm">
       <div className="tg-hm__center">
         <header className="tg-hm__bar">
-          <form className="tg-hm__search" data-tour="search" role="search" onSubmit={(e) => { e.preventDefault(); openCreate(q.trim()) }}>
-            <Icon name="search" size={15} />
-            <label className="tg-sr" htmlFor="tg-hm-q">Bạn muốn đi đâu, làm gì?</label>
-            <input id="tg-hm-q" ref={input} value={q} maxLength={200} placeholder="Bạn muốn đi đâu, làm gì?" autoComplete="off" onChange={(e) => setQ(e.target.value)} />
-            <kbd aria-hidden="true">/</kbd>
-          </form>
+          <PostSearch className="is-home" tour="search" value={q} onType={setQ} onEnter={(v) => openCreate(v.trim())} placeholder="Kể mình nghe chuyến Đà Lạt bạn đang mơ tới…" />
+          <button type="button" className="tg-hm__go" data-tour="new-trip" onClick={() => openCreate()}><Icon name="compass" size={18} />Khám phá nơi muốn đến</button>
         </header>
 
         <section className="tg-hm__hero" data-tour="hero" aria-label="Gợi ý khám phá Đà Lạt">
@@ -69,7 +55,6 @@ export function Discover() {
               <p>{shown.length} chủ đề cho chuyến Đà Lạt</p>
             </div>
             <span className="tg-hm__headact">
-              {hasTrip(trip) && <button type="button" className="tg-hb-link" onClick={() => { setFamiliar(!familiar); toast(familiar ? 'Chuyến mới sẽ thử một hướng khác' : 'Chuyến mới sẽ theo gu quen thuộc') }}>{familiar ? 'Theo gu quen thuộc' : 'Lần này khác'}<Icon name="chevronRight" size={12} /></button>}
               {!q.trim() && shown.length > HOME_THEMES && <button type="button" className="tg-hm__more" aria-expanded={allThemes} aria-controls="tg-hm-cards" onClick={() => setAllThemes((v) => !v)}>{allThemes ? 'Thu gọn' : 'Xem thêm'}</button>}
             </span>
           </div>

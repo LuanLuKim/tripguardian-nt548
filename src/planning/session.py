@@ -206,6 +206,32 @@ def apply_act(state: State, action: dict, ctx: ActCtx) -> State:
             source = ctx.by_place.get(a)
             if source and source.activity:
                 s.activity_override[b] = source.activity
+    elif t == "optimize":
+        # "Tối ưu lịch" (optimize.py): the same places over the same days, re-split and re-ordered. Each place that
+        # changes day is placed there like a move; each day whose places or order changed keeps that order.
+        days = action.get("days")
+        if not isinstance(days, list) or len(days) != len(ctx.day_members) or \
+                any(not isinstance(ids, list) or not all(isinstance(p, str) for p in ids) for ids in days):
+            raise ActionError("optimize needs the places of every day")
+        if sorted(p for ids in days for p in ids) != sorted(p for ids in ctx.day_members for p in ids):
+            raise ActionError("optimize must keep exactly the places of the plan")
+        given_up = action.get("unpinned")
+        if given_up is not None and (not isinstance(given_up, list) or len(given_up) != len(days) or any(
+                not isinstance(pairs, list) or any(
+                    not isinstance(pair, list) or len(pair) != 2 or pair[0] not in ids or
+                    not isinstance(pair[1], list) or not all(isinstance(x, str) for x in pair[1]) for pair in pairs)
+                for pairs, ids in zip(given_up, days))):
+            raise ActionError("optimize: unpinned names, per day, places of that day and the reasons")
+        for k, ids in enumerate(days):
+            for pid in ids:
+                if pid not in ctx.day_members[k]:
+                    if pid in s.locked:
+                        raise ActionError(f"{pid!r} is locked to its day")
+                    _place(s, pid, k)
+        for k, ids in enumerate(days):
+            if list(ids) != list(ctx.day_members[k]) and len(ids) > 1:
+                s.order_override[k] = list(ids)
+                s.keep_order_days = [d for d in s.keep_order_days if d != k]
     elif t == "reoptimize":
         plan_dropped = action.get("_plan_dropped")
         if not isinstance(plan_dropped, list) or any(pid not in ctx.selection_ids for pid in plan_dropped):

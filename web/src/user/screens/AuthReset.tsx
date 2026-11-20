@@ -5,7 +5,7 @@ import { CALM, type Pet } from './AuthMascot'
 import { badPassword, BAD_EMAIL, Banner, chars, EMAIL, PASSWORD_MAX, PASSWORD_MIN } from './AuthEmailForm'
 
 // "Quên mật khẩu?" inside the sign-in card (docs/ACCOUNTS.md §2c): ask for a code by email, then type the 6-digit code
-// with a new password. Every state has its own words and mascot mood (docs/Role_Web_Functional_Design.md §Đăng nhập);
+// with a new password. Every state has its own words and mascot mood (docs/Role_Web_Functional_Design.md §2.1);
 // the server answers the same to every email, so the copy never says whether an account exists.
 
 type Step = 'ask' | 'code'

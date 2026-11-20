@@ -31,6 +31,7 @@ from .page import open_item
 from .place_filter import address
 from .place_poi import AREAS
 from . import place_web
+from .frames import saved
 from .poi_crawl import name_keys
 
 CANDIDATES = 3  # Maps places per unmapped poi, most shared name pairs first
@@ -160,7 +161,7 @@ async def run(city: str, headed: bool = False, profile_name: str | None = None, 
     for r in urls:
         vid = r["video_id"]
         new = [f for f in r["want"] if f in by_fid and f not in recorded.get(vid, set())]
-        if (root / "videos" / vid / "video.mp4").exists():
+        if saved(root / "videos" / vid):
             if new:
                 extra.append((r, new))  # on disk already: only record the new candidate place
         elif vid not in recorded or new:

@@ -9,7 +9,6 @@ import orjson
 import polars as pl
 import pyarrow as pa
 
-from ..crawl.common.files import data_dir
 from ..serving.record import config, feature
 from .tables import tables
 

@@ -1,4 +1,4 @@
-"""python -m corpus {login <source> | <source> <phase> | judge <phase> | navigate <plan|compare|seed> | local <extract|group> | review | aggregate | serving | snapshot | index | views <climate|calendar|restricted|all> | pulse} --city <key>
+"""python -m corpus {login <source> | <source> <phase> | judge <phase> | navigate <plan|compare|seed> | local <extract|group> | review | aggregate | serving | snapshot | index | views <climate|calendar|restricted|all> | events | pulse} --city <key>
 
 Phases per source, each reading only earlier phases' files: tiktok search -> list -> filter -> crawl, then per Maps
 place place_search -> place_filter -> place_crawl -> asr -> asr_check -> asr_alt -> (asr_check again) -> place_verify
@@ -17,7 +17,7 @@ from .aggregate import run as aggregate_run
 from .serving import run as serving_run
 from . import build, judge, navigate, pulse, views
 from .review import server as review_server
-from .crawl.gmaps import counts as gmaps_counts, crawl as gmaps_crawl, filter as gmaps_filter, listing as gmaps_list, qc as gmaps_qc, relevant as gmaps_relevant, extremes as gmaps_extremes, keywords as gmaps_keywords, visit as gmaps_visit, revisit as gmaps_revisit, services as gmaps_services, search as gmaps_search, stay_price as gmaps_stay_price, resolve as gmaps_resolve
+from .crawl.gmaps import counts as gmaps_counts, crawl as gmaps_crawl, filter as gmaps_filter, listing as gmaps_list, qc as gmaps_qc, relevant as gmaps_relevant, extremes as gmaps_extremes, keywords as gmaps_keywords, visit as gmaps_visit, revisit as gmaps_revisit, refresh as gmaps_refresh, services as gmaps_services, search as gmaps_search, stay_price as gmaps_stay_price, resolve as gmaps_resolve
 from .observe import gmaps as gmaps_observe
 from .observe.gmaps import photos as gmaps_photo_observe
 from .observe.gmaps import styles as gmaps_style_observe
@@ -38,7 +38,7 @@ from .crawl.tiktok import (asr as tiktok_asr, asr_alt as tiktok_asr_alt, asr_che
                            comments_crawl as tiktok_comments_crawl, crawl as tiktok_crawl,
                            filter as tiktok_filter, listing as tiktok_list, place_verify as tiktok_place_verify,
                            place_crawl as tiktok_place_crawl, place_filter as tiktok_place_filter, place_poi as tiktok_place_poi,
-                           poi_crawl as tiktok_poi_crawl, clips as tiktok_clips, web_videos as tiktok_web_videos, place_web as tiktok_place_web,
+                           poi_crawl as tiktok_poi_crawl, poi_refresh as tiktok_poi_refresh, clips as tiktok_clips, web_videos as tiktok_web_videos, place_web as tiktok_place_web,
                            place_search as tiktok_place_search, search as tiktok_search)
 
 PHASES = {  # source -> phase -> (run, needs a browser)
@@ -48,16 +48,16 @@ PHASES = {  # source -> phase -> (run, needs a browser)
                "asr": (tiktok_asr.run, False), "asr_check": (tiktok_asr_check.run, False),
                "asr_alt": (tiktok_asr_alt.run, False),
                "place_verify": (tiktok_place_verify.run, False), "place_poi": (tiktok_place_poi.run, False),
-               "poi_crawl": (tiktok_poi_crawl.run, True), "web_videos": (tiktok_web_videos.run, True),
+               "poi_crawl": (tiktok_poi_crawl.run, True), "poi_refresh": (tiktok_poi_refresh.run, True), "web_videos": (tiktok_web_videos.run, True),
                "place_web": (tiktok_place_web.run, False),
-               "clips": (tiktok_clips.run, False),
+               "clips": (lambda city: (tiktok_clips.run(city), _publish_clips(city))[0], False),
                "comments_crawl": (tiktok_comments_crawl.run, True),
                "observe": (tiktok_observe.run, False)},
     "gmaps": {"search": (gmaps_search.run, True), "stay_search": (gmaps_search.run_stay, True), "resolve": (gmaps_resolve.run, True), "filter": (gmaps_filter.run, False), "counts": (gmaps_counts.run, True),
               "list": (gmaps_list.run, False), "svc_search": (gmaps_services.run_search, True), "svc_list": (gmaps_services.run_list, False), "svc_place": (gmaps_services.run_place, True), "stay_price": (gmaps_stay_price.run, True),
               "crawl": (gmaps_crawl.run, True), "relevant": (gmaps_relevant.run, True), "extremes": (gmaps_extremes.run, True),
               "keywords": (gmaps_keywords.run, True), "visit": (gmaps_visit.run, True), "revisit": (gmaps_revisit.run, True),
-              "photos": (gmaps_photos.run, True), "menu": (gmaps_menu.run, True), "qc": (gmaps_qc.run, False),
+              "refresh": (gmaps_refresh.run, True), "photos": (gmaps_photos.run, True), "menu": (gmaps_menu.run, True), "qc": (gmaps_qc.run, False),
               "observe": (gmaps_observe.run, False), "photo_observe": (gmaps_photo_observe.run, False),
               "style_observe": (gmaps_style_observe.run, False), "photo_scenes": (gmaps_photo_scenes.run, False), "photo_appeal": (gmaps_photo_appeal.run, False),
               "menu_read": (gmaps_menu_read.run, False), "dish_check": (gmaps_dish_check.run, False),
@@ -71,18 +71,19 @@ PHASES = {  # source -> phase -> (run, needs a browser)
 }
 
 
+NOT_IN_ALL = {("gmaps", "refresh")}  # a nightly job of its own (docs/CORPUS.md §Nhịp), not a step of the first crawl
 SHARDABLE = {"place_search", "place_crawl", "comments_crawl"}  # tiktok phases that split their todo list by --shard for a second account
 
 
 def run(source: str, phase: str, city: str, headed: bool, limit: int | None = None, wait_relevant: bool = False,
         profile: str | None = None, shard: tuple[int, int] | None = None, place_web: dict | None = None) -> None:
-    for p in PHASES[source] if phase == "all" else (phase,):
+    for p in [q for q in PHASES[source] if (source, q) not in NOT_IN_ALL] if phase == "all" else (phase,):
         fn, browser_phase = PHASES[source][p]
         if browser_phase and source == "tiktok":
             out = fn(city, headed, profile_name=profile, **({"shard": shard} if p in SHARDABLE else {}),
-                     **({"limit": limit} if p in ("place_crawl", "poi_crawl", "web_videos") else {}))
-        elif source == "gmaps" and p in ("crawl", "relevant", "extremes", "keywords", "photos", "menu", "visit", "revisit", "svc_search", "svc_place"):
-            out = fn(city, headed, **({"limit": limit} if p in ("extremes", "keywords", "photos", "menu", "visit", "revisit", "svc_search", "svc_place") else {}),
+                     **({"limit": limit} if p in ("place_crawl", "poi_crawl", "poi_refresh", "web_videos") else {}))
+        elif source == "gmaps" and p in ("crawl", "relevant", "extremes", "keywords", "photos", "menu", "visit", "revisit", "refresh", "svc_search", "svc_place"):
+            out = fn(city, headed, **({"limit": limit} if p in ("extremes", "keywords", "photos", "menu", "visit", "revisit", "refresh", "svc_search", "svc_place") else {}),
                      shard=shard, profile_name=profile)
         elif browser_phase and p in ("photos", "extremes", "keywords", "visit", "pages", "stay_price", "price", "resolve", "offers"):
             out = fn(city, headed, limit=limit)
@@ -108,6 +109,12 @@ def run(source: str, phase: str, city: str, headed: bool, limit: int | None = No
             asyncio.run(out)
 
 
+def _publish_clips(city: str) -> None:
+    """After `tiktok clips` the chat's clip stage reads the new list: data/serving/clips/<city>.json follows it."""
+    from .serving import clips
+    print(f"serving clips {city}: {clips.publish(city)}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="python -m corpus")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -129,10 +136,12 @@ def main() -> None:
     vp = sub.add_parser("views", help="global views for a city: climate (Open-Meteo), calendar (holidays + lunar), restricted (Overpass) -> data/<city>/views/")
     vp.add_argument("view", choices=[*views.VIEWS, "all"])
     vp.add_argument("--city", default="dalat")
+    sub.add_parser("events", help="this month's and next month's events from the web, with their days -> data/<city>/events/ (every night, before pulse)").add_argument("--city", default="dalat")
     sub.add_parser("pulse", help="Nhịp Đà Lạt: dated signals of the crawled data -> data/<city>/pulse/ (run every 24 h)").add_argument("--city", default="dalat")
     sub.add_parser("aggregate", help="every source's observations -> data/intel/places/").add_argument("--city", default="dalat")
     sub.add_parser("serving", help="intel -> data/serving/places.json for Place Decision").add_argument("--city", default="dalat")
     sub.add_parser("stay_prices", help="newest dated lodging prices -> data/serving/stay_prices/<city>.json").add_argument("--city", default="dalat")
+    sub.add_parser("clips", help="verified TikTok clips with their words for the chat's clip stage -> data/serving/clips/<city>.json").add_argument("--city", default="dalat")
     sub.add_parser("flight_offers", help="newest crawled flights -> data/serving/flight_offers/<city>.json").add_argument("--city", default="dalat")
     sub.add_parser("snapshot", help="data/serving/places.json -> data/snapshot/<version>/ (what online reads)").add_argument("--city", default="dalat")
     np = sub.add_parser("normalize", help="normalize saved inputs; optionally build and publish an offline release")
@@ -160,6 +169,11 @@ def main() -> None:
     lcp.add_argument("--parallel", type=int, help="extract / verify: concurrent Extractor calls (default: extract 4, verify config/local.yaml verify.parallel)")
     lcp.add_argument("--map", type=pathlib.Path, help="group: a mining map file for sol's general claims (default: the latest)")
     lcp.add_argument("--out", type=pathlib.Path, help="verify / group: keep verified.jsonl / write the claim files here instead of data/<city>/local/ (a scratch run)")
+    inp = sub.add_parser("intro", help="each serving place's introduction: evidence (code) -> Writer -> gate (code) -> Judge -> data/<city>/intro/")
+    inp.add_argument("phase", choices=["build", "posts"], help="build: every place's introduction; posts: editorial posts about the 3D places")
+    inp.add_argument("--city", default="dalat")
+    inp.add_argument("--only", nargs="*", help="place ids (fid); the other places keep their last introduction")
+    inp.add_argument("--limit", type=int, help="only the first N serving places")
     gp = sub.add_parser("gsearch", help="Google web search through the browser -> data/gsearch/<city>/")
     gp.add_argument("phase", choices=["run", "places", "observe"])
     gp.add_argument("--kind", choices=["panel", "fee", "hours"], default="panel", help="places: which query of each place")
@@ -229,6 +243,9 @@ def main() -> None:
             review_server.run(args.city, args.port)
         elif args.cmd == "views":
             views.run(args.view, args.city)
+        elif args.cmd == "events":
+            from . import events
+            events.run(args.city)
         elif args.cmd == "pulse":
             pulse.run(args.city)
         elif args.cmd == "aggregate":
@@ -245,6 +262,9 @@ def main() -> None:
                 print(json.dumps({"normalization_id": result.id, "summary": result.manifest["summary"]}, ensure_ascii=False))
         elif args.cmd == "serving":
             serving_run(args.city)
+        elif args.cmd == "clips":
+            from .serving import clips
+            print(clips.publish(args.city))
         elif args.cmd == "stay_prices":
             from .serving import stay_prices
             print(stay_prices.publish(args.city)["stats"])
@@ -278,6 +298,12 @@ def main() -> None:
                 if not queries:
                     ap.error("gsearch run needs --query or --from-file")
                 gsearch.run(args.city, queries, args.pages, args.headed, args.profile)
+        elif args.cmd == "intro":
+            from . import intro
+            if args.phase == "posts":
+                asyncio.run(intro.build_posts(args.city, only=args.only))
+            else:
+                asyncio.run(intro.build(args.city, only=args.only, limit=args.limit))
         elif args.cmd == "local":
             from . import local
             if args.phase == "extract":

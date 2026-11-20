@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from trip import TripState, compile_search_input, plan_digest
+from trip import compile_search_input, plan_digest
 from trip.api.engine import Engine, TurnInput
 from trip.domain import readiness
 from trip.domain.prepass import prepass

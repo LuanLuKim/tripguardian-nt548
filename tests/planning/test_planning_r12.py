@@ -2,7 +2,6 @@
 
 import pytest
 
-from agents import ToolError
 from plan_fixtures import CFG, CENTRE, FakeLive, decision, fake_matrix, no_geocode, spot, stay, prepared
 from planning import Tools
 from planning.engine import Engine

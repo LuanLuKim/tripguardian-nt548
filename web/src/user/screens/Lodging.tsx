@@ -7,12 +7,13 @@ import type { Action, LodgingChoice } from '../pd/types'
 import type { LodgingCandidate } from '../planning/types'
 import { toggleSaved, useUi } from '../store'
 import { useTrip } from '../trip'
+import { CardTags, stayTags } from '../ui/CardTags'
 import { PlacePhoto, Trust } from '../ui/common'
 import { Pager } from '../ui/Pager'
+import { lodgingSuggest } from '../tu/api'
+import type { LodgingHit } from '../tu/types'
 import { HeartFill, Icon } from '../ui/icons'
 import { openPlace } from '../ui/PlaceSheet'
-import { Contact } from '../ui/contact'
-import { placeById } from '../../data/store'
 
 // The "Chỗ ở" tab of Lựa chọn: every served stay as a grid like the other groups, nothing asked of the user (Lịch trình
 // suggests stays when the trip still has none). Planning orders them: around the chosen places first (taste, then
@@ -174,54 +175,98 @@ function day(iso: string) {
 // it swaps.
 export function LodgingCard({ c, order, top, on, swap, busy, onPick }: { c: LodgingCandidate; order: number; top: boolean; on: boolean; swap: boolean; busy: boolean; onPick: () => void }) {
   const p = info(c.id) // in the snapshot: photos and a detail sheet
-  const snap = placeById(c.id) // phone and website come from the same served record
   const saved = useUi((u) => u.saved.includes(c.id))
   const rating = p?.rating ?? c.rating
   const trade = c.tradeoffs?.[0]?.text ?? (c.unverified?.length ? `Chưa xác minh: ${c.unverified.join(', ')}` : null)
   const alerts = (c.tradeoffs ?? []).slice(1).map((t) => t.text)
   const loc = c.location
+  const near = loc?.minutes != null ? `≈ ${loc.minutes}′ từ ${loc.center}` : c.avg_min != null ? `≈ ${fmtMin(c.avg_min)} tới các nơi đã chọn` : null
   return (
-    <article className={`tg-pc ${on ? 'is-sel' : ''} is-stay`} style={{ '--i': order } as CSSProperties} data-place={c.id}>
+    <article className={`tg-pc tg-pc--lite ${on ? 'is-sel' : ''} is-stay`} style={{ '--i': order } as CSSProperties} data-place={c.id}>
       <div className="tg-pc__media">
         <button type="button" className="tg-pc__open" disabled={!p} onClick={(e) => openPlace(c.id, e.currentTarget.querySelector('figure'))} aria-label={p ? `Xem chi tiết ${c.name}` : undefined}>
-          {p ? <PlacePhoto id={c.id} name={c.name} /> : <figure className="tg-lod__ph is-blank" aria-hidden="true"><Icon name="bed" size={32} /></figure>}
+          {p ? <PlacePhoto id={c.id} name={c.name} credit /> : <figure className="tg-lod__ph is-blank" aria-hidden="true"><Icon name="bed" size={32} /></figure>}
           <span className="tg-pc__shade" />
         </button>
-        {c.category && <span className="tg-tag tg-tag--dark tg-pc__cat">{c.category}</span>}
+        {on && <span className="tg-pc__chk" aria-hidden="true"><Icon name="check" size={14} strokeWidth={2.4} /></span>}
         {top && <span className="tg-tag tg-pc__top" title="Hợp gu bạn nhất trong các chỗ ở">Hợp nhất</span>}
         <button type="button" className={`tg-pc__save ${saved ? 'is-on' : ''}`} onClick={() => toggleSaved(c.id, c.name)} aria-pressed={saved} aria-label={saved ? `Bỏ lưu ${c.name}` : `Lưu ${c.name}`}>{saved ? <HeartFill size={18} /> : <Icon name="heart" size={18} />}</button>
-        {p?.photos[0]?.credit && <span className="tg-pc__credit">Ảnh: {p.photos[0].credit}</span>}
       </div>
       <div className="tg-pc__body">
-        <div className="tg-pc__title">
-          <h3>{c.name}</h3>
-          <p className="tg-faint">{p?.area ?? c.area}{rating ? <> · <span className="tg-mono">★ {rating.toFixed(1)}</span></> : null}</p>
-        </div>
-        {c.why?.length ? (
-          <ul className="tg-pc__why" aria-label="Vì sao phù hợp">
-            {c.why.slice(0, 3).map((r) => <li key={r.text}><Icon name="check" size={15} />{r.text}</li>)}
-          </ul>
-        ) : <p className="tg-faint">Chưa có lý do rõ.</p>}
-        {trade ? <p className="tg-pc__trade"><Icon name="warn" size={15} /><span><b>Đánh đổi:</b> {trade}</span></p> : <p className="tg-faint">Chưa thấy điều gì đáng ngại.</p>}
-        {alerts.slice(0, 2).map((n) => <p key={n} className="tg-pc__alert"><Icon name="warn" size={14} />{n}</p>)}
-        <div className="tg-pc__facts">
-          {c.price_vnd ? <span className="tg-mono">{fmtVnd(c.price_vnd)}/đêm</span> : <span className="tg-faint">Chưa có giá</span>}
-          {c.price_vnd && priceNote(c) && <small className="tg-faint tg-pc__pricenote">{priceNote(c)}</small>}
-          {loc?.minutes != null && <span className="tg-mono" title="Ước tính">≈ {loc.minutes}′ từ {loc.center}</span>}
-          {c.avg_min != null && <span className="tg-mono" title="Ước tính">≈ {fmtMin(c.avg_min)} tới các nơi đã chọn</span>}
-          {c.confidence && <Trust level={TRUST[c.confidence.level]} why={c.confidence.reason} />}
-          <Contact id={c.id} phone={snap?.phone} website={snap?.website} />
-        </div>
+        <p className="tg-pc__meta tg-faint">
+          <span className="tg-pc__area"><Icon name="pin" size={13} /><span className="tg-pc__t">{p?.area ?? c.area ?? 'Đà Lạt'}</span></span>
+          {rating ? <span className="tg-pc__rate tg-mono" title="Điểm trên Google Maps"><Icon name="star" size={13} />{rating.toFixed(1)}</span> : null}
+        </p>
+        <h3 className="tg-pc__name" title={c.name}>{c.name}</h3>
+        <p className="tg-pc__sub tg-faint">
+          <span className="tg-pc__t" title={c.category ?? undefined}>{c.category ?? 'Nơi lưu trú'}</span>
+          {near && <span className="tg-pc__t2" title={near}><Icon name="walk" size={13} /><span className="tg-pc__t">{near}</span></span>}
+        </p>
+        <CardTags tags={stayTags([trade, ...alerts])} />
         <div className="tg-pc__act">
+          <span className="tg-pc__price" title={c.price_vnd ? priceNote(c) : undefined}>
+            {c.price_vnd && <><b className="tg-mono">{fmtVnd(c.price_vnd)}</b><small>/đêm</small></>}
+            {c.confidence && <Trust compact level={TRUST[c.confidence.level]} why={c.confidence.reason} />}
+          </span>
           {on ? (
             <button type="button" className="tg-btn tg-btn--sm tg-btn--soft" disabled aria-pressed="true"><Icon name="check" size={16} /> Đã chọn</button>
           ) : swap ? (
-            <button type="button" className="tg-btn tg-btn--sm tg-btn--ghost" disabled={busy} onClick={onPick} aria-pressed="false"><Icon name="swap" size={16} /> Đổi sang chỗ này</button>
+            <button type="button" className="tg-btn tg-btn--sm tg-btn--ghost" disabled={busy} onClick={onPick} aria-pressed="false" title="Đổi sang chỗ ở này"><Icon name="swap" size={16} /> Đổi</button>
           ) : (
             <button type="button" className="tg-btn tg-btn--sm tg-btn--primary" disabled={busy} onClick={onPick} aria-pressed="false"><Icon name="plus" size={16} /> Thêm</button>
           )}
         </div>
       </div>
     </article>
+  )
+}
+
+// The stay cards of the "Tất cả" grid: one pick/replace flow (and its question) shared by every card.
+export function useStayCards() {
+  const { busy } = useDecision()
+  const { current, chosen, booked, change, dialog } = useLodgingChange()
+  const render = (c: LodgingCandidate, i: number) => (
+    <LodgingCard key={c.id} c={c} order={i % 18} top={false} on={(chosen ? chosen.id : booked?.id) === c.id} swap={Boolean(current)} busy={busy}
+      onPick={() => change({ type: 'set_lodging', lodging: { kind: 'corpus', id: c.id } }, c.name)} />
+  )
+  return { render, dialog }
+}
+
+// The search box on the stay tab looks among the stays (the other tabs' search never sees them): name or address, best first.
+// A stay is picked from here the same way as from the grid, with the same question before it replaces another.
+export function LodgingSearchResults({ q, onClear }: { q: string; onClear: () => void }) {
+  const { busy } = useDecision()
+  const { chosen, booked, current, change, dialog } = useLodgingChange()
+  const [got, setGot] = useState<{ q: string; hits: LodgingHit[] } | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    const ctl = new AbortController()
+    setFailed(false)
+    const t = setTimeout(() => {
+      lodgingSuggest(q, ctl.signal).then((hits) => setGot({ q, hits }), (e) => { if (e?.name !== 'AbortError') { setFailed(true); setGot({ q, hits: [] }) } })
+    }, 250)
+    return () => { clearTimeout(t); ctl.abort() }
+  }, [q])
+  if (!got || got.q !== q) return <p className="tg-busy" role="status"><i /> Đang tìm “{q}”…</p>
+  const hits = got.hits
+  const pick = (h: LodgingHit) => change({ type: 'set_lodging', lodging: h.kind === 'corpus' && h.id ? { kind: 'corpus', id: h.id } : { kind: h.kind === 'corpus' ? 'live' : h.kind, id: h.id, text: h.text, lat: h.lat, lng: h.lng } }, h.text)
+  const onId = chosen ? chosen.id : booked?.id
+  return (
+    <section className="tg-xfound" aria-live="polite">
+      <p className="tg-xfound__head">{failed ? 'Chưa tìm được lúc này, bạn thử lại sau ít phút.' : hits.length ? <><b>{hits.length} nơi lưu trú</b> khớp “{q}”.</> : <>Không thấy nơi lưu trú nào khớp “{q}”. Thử tên ngắn hơn, bỏ dấu, hoặc gõ tên đường.</>} <button type="button" className="tg-link" onClick={onClear}>Xóa tìm kiếm</button></p>
+      {hits.length > 0 && <ul className="tg-lodfound">
+        {hits.map((h) => {
+          const on = !!h.id && h.id === onId
+          const p = h.id ? info(h.id) : null
+          return <li key={h.id ?? `${h.lat},${h.lng}`} className={on ? 'is-sel' : ''}>
+            {p && h.id ? <PlacePhoto id={h.id} name={h.text} className="tg-lodfound__ph" /> : <span className="tg-lodfound__ph is-blank" aria-hidden="true"><Icon name="bed" size={22} /></span>}
+            <div><b>{h.text}</b><small className="tg-faint">{[h.rating ? `★ ${h.rating.toFixed(1)}` : null, h.address].filter(Boolean).join(' · ')}</small></div>
+            {on ? <button type="button" className="tg-btn tg-btn--sm tg-btn--soft" disabled><Icon name="check" size={16} /> Đã chọn</button>
+              : <button type="button" className={`tg-btn tg-btn--sm ${current ? 'tg-btn--ghost' : 'tg-btn--primary'}`} disabled={busy} onClick={() => pick(h)}><Icon name={current ? 'swap' : 'plus'} size={16} /> {current ? 'Đổi sang chỗ này' : 'Thêm'}</button>}
+          </li>
+        })}
+      </ul>}
+      {dialog}
+    </section>
   )
 }

@@ -4,7 +4,7 @@ Script chạy tay hoặc từ cron, luôn từ gốc repo. Cách dùng chi tiế
 
 | Nhóm | Script | Tài liệu |
 |---|---|---|
-| Vận hành prod (cron) | `keepalive.py`, `disk_guard.sh`, `pg_backup_nas.sh`, `pulse_daily.sh`, `prewarm_transit.py` (qua `./run.sh prewarm`) | `docs/OPERATIONS.md` §4–5 |
+| Vận hành prod (cron) | `keepalive.py`, `disk_guard.sh`, `pg_backup_nas.sh`, `pulse_daily.sh`, `trends_daily.sh`, `prewarm_transit.py` (qua `./run.sh prewarm`) | `docs/OPERATIONS.md` §4–5 |
 | Thiết lập máy, dữ liệu | `osrm_setup.sh`, `pack_data.py` | `README.md` §Thiết lập |
 | Host model tự chạy | `models_ctl.sh` (điều phối), `model_gateway.py`, `clef_server.py`, `gemma_server.sh`, `vllm_server.sh`, `vllm_patch_sm75.py` | `docs/LLM_PROVIDER.md` |
 | Chuỗi corpus | `gmaps_runner.py`, `photo_targets.py`, `free_tiktok_clips.py`, `tiktok_place_loop.sh`, `rerun_observe.sh` (cổng: `observe_prompt_eval.py`), `observe_places_eval.py` | `docs/CORPUS.md` §CLI, §Vòng lặp tự động |

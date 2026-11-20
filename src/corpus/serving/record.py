@@ -13,6 +13,7 @@ from functools import cache
 
 import yaml
 
+from ..aggregate.naming import display_name
 from ..crawl.common.files import ROOT
 from ..ontology import load
 from .details import place_block
@@ -152,11 +153,13 @@ def build(intel: dict, built: date | None = None, judged: str | None = None, qua
     usable = [u for u in est.get("usable_as_default") or [] if u != "experience" or coverage.get("experience") != "NONE"]
     price = op.get("price_range")
     status, reason = place_status(closure, judged)
+    raw_name = intel.get("place_name_raw") or intel.get("place_name")
+    name = display_name(raw_name) if raw_name else None  # the same tidy name, even from intel built before naming.py
     return {
         "id": intel["place_fid"],
         "status": status,
         "status_reason": reason,
-        "identity": {"name": intel.get("place_name"), "kind": "POI", "category": ident.get("category"),
+        "identity": {"name": name, **({"name_raw": raw_name} if raw_name and raw_name != name else {}), "kind": "POI", "category": ident.get("category"),
                      "category_group": est.get("category_group"), "lat": ident.get("lat"), "lng": ident.get("lng"),
                      "address": ident.get("address"), "phone": ident.get("phone"),
                      "website": ident.get("website"), "area": None,

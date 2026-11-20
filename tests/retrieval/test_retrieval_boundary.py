@@ -8,22 +8,13 @@ Invariants checked (from the plan):
   - Feature-aware boost does not elevate vector hit to VERIFIED.
 """
 
-import json
-import threading
-from dataclasses import dataclass, field
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
-import pytest
 
-from corpus.index.query import Index, PhotoHit, SpanHit, TextVec
+from corpus.index.query import Index, TextVec
 from corpus.retrieval.engine import (
-    CoverageReport,
-    EvidenceHit,
-    NameHit,
     RetrievalEngine,
-    SemanticHit,
-    SimilarHit,
     _match_ontology,
 )
 

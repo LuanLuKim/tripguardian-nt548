@@ -138,6 +138,7 @@
       },
       {
        "buffer_min": 20,
+       "distance_km": 0.9,
        "end": "09:52",
        "from": "s1",
        "kind": "travel",
@@ -169,6 +170,7 @@
       },
       {
        "buffer_min": 12,
+       "distance_km": 0.4,
        "end": "12:48",
        "from": "s3",
        "kind": "travel",
@@ -220,6 +222,7 @@
       },
       {
        "buffer_min": 20,
+       "distance_km": 1.3,
        "end": "09:53",
        "from": "c1",
        "kind": "travel",
@@ -243,6 +246,7 @@
       },
       {
        "buffer_min": 20,
+       "distance_km": 0.9,
        "end": "11:30",
        "from": "c4",
        "kind": "travel",
@@ -261,6 +265,7 @@
       },
       {
        "buffer_min": 20,
+       "distance_km": 1.3,
        "end": "12:53",
        "from": "c2",
        "kind": "travel",
@@ -663,7 +668,7 @@
  "warnings": [
   {
    "code": "base_unknown",
-   "text": "Chưa biết nơi ở: mỗi ngày bắt đầu và kết thúc ở địa điểm đầu / cuối."
+   "text": "Chưa chọn chỗ ở: đường đi mỗi ngày tính từ nơi đầu tiên đến nơi cuối cùng. Chọn chỗ ở để tính cả đường đi về."
   },
   {
    "code": "weather_unknown",

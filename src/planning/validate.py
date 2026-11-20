@@ -1,4 +1,4 @@
-"""Final check (docs/ARCHITECTURE.md §11): the only place that decides whether a plan passes.
+"""Final check (docs/PLANNING.md §ⓔ Kiểm tra cuối): the only place that decides whether a plan passes.
 
 It re-derives every check from the finished timeline instead of trusting what simulate() noticed, so a bug in the
 scheduler cannot also hide from the check. Fail-closed: a violation is reported, never repaired here.

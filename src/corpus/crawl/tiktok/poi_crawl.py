@@ -24,6 +24,7 @@ from ..common.browser import LoginRequired, open_sessions, pause
 from ..common.files import data_dir, load_config, log_error, now, safe_name, slug, write_json
 from ..common.throttle import Throttle
 from .crawl import download_video, video_doc
+from .frames import saved, seeable
 from .page import collect, is_block
 
 PLACE_URL = "https://www.tiktok.com/place/x-{poi}"  # any slug works: TikTok reads the id at the end
@@ -99,7 +100,7 @@ async def list_place(ctx: BrowserContext, poi_id: str, limit: int, keys: set[str
 
 async def _save(ctx: BrowserContext, row: dict, root, downloads: asyncio.Semaphore) -> None:
     d = root / "videos" / row["video_id"]
-    if (d / "video.mp4").exists():
+    if saved(d) and seeable(d):  # a deleted clip whose frames are kept is not downloaded again
         return
     item = row["item"]
     async with downloads:

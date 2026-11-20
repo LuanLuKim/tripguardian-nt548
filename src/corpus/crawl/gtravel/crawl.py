@@ -11,7 +11,6 @@ cookie-less context, 2 tabs at most. A captcha waits for a person in a headed ru
 import asyncio
 import time
 from dataclasses import replace
-from datetime import UTC, datetime
 
 from ..common import lodging
 from ..common.browser import LoginRequired, is_captcha, open_sessions, pause, wait_for_person

@@ -7,13 +7,13 @@ LANDING = ROOT / "web/src/user/screens/Landing.tsx"
 STYLES = ROOT / "web/src/user/css/landing.css"
 
 
-def test_landing_uses_six_chapter_sticky_3d_story() -> None:
+def test_landing_uses_five_chapter_sticky_3d_story() -> None:
     source = LANDING.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
 
     assert "const BEATS = 6" in source
     assert 'className="tg-l3__chs"' in source
-    assert len(re.findall(r'className="tg-l3__ch(?: |")', source)) == 6
+    assert len(re.findall(r'className="tg-l3__ch(?: |")', source)) == 5  # six camera beats; Lựa chọn and its "vì sao" card share one chapter
     assert "scrollTrigger: { trigger: sec" in source
     assert ".tg-l3 { position: relative; height: 640vh; }" in styles
     assert ".tg-l3__stage { position: sticky;" in styles

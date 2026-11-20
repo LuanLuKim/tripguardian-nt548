@@ -81,6 +81,7 @@ def _dependencies(root: Path, normalization: dict) -> list[dict]:
     paths.update(p.relative_to(root).as_posix() for p in (root / "gmaps" / "places").glob("*/place.json"))
     paths.update(p.relative_to(root).as_posix() for p in root.glob("*/local/local_claims.json"))  # corpus.local
     paths.update(p.relative_to(root).as_posix() for p in root.glob("*/local/poi_claims.json"))  # corpus.local -> aggregate details
+    paths.update(p.relative_to(root).as_posix() for p in root.glob("*/intro/intros.json"))  # corpus.intro -> details.intro
     saved = {i["path"]: i["sha256"] for i in normalization["inputs"] + normalization.get("source_refs", [])
              + normalization["dependencies"] if not i["path"].startswith("config/") and i.get("sha256")}
     rows = [{"path": p, "sha256": saved.get(p) or _hash(root / p)} for p in sorted(paths)]

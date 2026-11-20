@@ -9,9 +9,21 @@
     <meta property="og:title" content="TripGuardian Đà Lạt" />
     <meta property="og:description" content="Đà Lạt có cả nghìn chỗ đẹp. Chuyến này của bạn cần mấy chỗ?" />
     <meta property="og:image" content="/img/share.webp" />
-    <link rel="icon" type="image/png" href="/img/favicon.png" />
-    <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+    <link rel="icon" href="/favicon.ico?v=2" sizes="any" />
+    <link rel="icon" type="image/png" href="/img/favicon.png?v=2" />
+    <link rel="apple-touch-icon" href="/img/apple-touch-icon.png?v=2" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      // /admin: the three reads its first screen needs start now, beside the scripts, not after them (admin/prefetch.ts
+      // hands the answers over). Only the file names and the cookie are involved; nothing here is secret.
+      if (location.pathname === '/admin' || location.pathname.indexOf('/admin/') === 0) {
+        window.__adminPre = {}
+        ;['me:/api/analytics/me', 'overview:/data/admin-overview.json', 'today:/api/analytics/today'].forEach(function (e) {
+          var i = e.indexOf(':')
+          window.__adminPre[e.slice(0, i)] = fetch(e.slice(i + 1)).catch(function () {})
+        })
+      }
+    </script>
     <script>
       // Landing on a desktop: find out whether this machine can draw the 3D model well (a real GPU), then start the
       // landscape download and the poster before any script has loaded. No WebGL or a software renderer (SwiftShader,

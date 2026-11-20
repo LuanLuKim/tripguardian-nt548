@@ -103,7 +103,7 @@ Mọi ngưỡng nằm trong `config/`, không trong code:
 | `decision.yaml` | decision | trọng số xếp hạng, cỡ shortlist, ngưỡng sàng |
 | `planning.yaml` | planning | nhịp độ, ngày, mục tiêu, độ vững, dự phòng, chỗ ở |
 | `live.yaml`, `climate.yaml`, `holidays.yaml`, `events.yaml`, `advisories.yaml`, `airports.yaml` | live | endpoint và TTL nguồn live; khí hậu, lễ, sự kiện, cảnh báo thiên tai, sân bay (nhập tay; không có dòng ≠ an toàn) |
-| `booking.yaml`, `journey.yaml` | booking, journey | tham số nhà cung cấp, tuổi giá phòng; ngưỡng chọn cách đi (`docs/BOOKING.md`) |
+| `booking.yaml`, `journey.yaml`, `rides.yaml` | booking, journey | tham số nhà cung cấp, tuổi giá phòng; ngưỡng chọn cách đi; bảng giá gọi xe Grab / Be / Xanh SM (`docs/BOOKING.md`) |
 | `companion.yaml`, `notifications.yaml`, `mail.yaml` | companion, notify, mailer | gợi ý tại chỗ; loại thông báo, mẫu câu, giờ yên lặng; thư đi (bí mật ở `.env`) |
 | `eval_trips.yaml`, `bench_*.yaml`, `prod_journey_cases.yaml` | decision, planning, bench | chuyến ẩn, ca đo trợ lý, ma trận kịch bản prod |
 
@@ -135,12 +135,12 @@ Decision ước lượng **thô** để chọn nhanh, Planning tính **thật** 
 ```text
 web (Vite :5173)  /        landing
                   /app     User Web (Google hoặc khách) → /api/auth/*, /api/harness/* → harness :8769
-                  /admin   Admin Web → review :8765, analytics :8770 (private, chỉ đọc)
+                  /admin   Admin Web (đăng nhập) → review :8765, analytics :8770 (chỉ đọc)
 notify worker     python -m notify run (không cổng) → Postgres, web push
 Postgres          127.0.0.1:5433
 ```
 
-Bản public (`web/server.mjs` :28899 sau Cloudflare tunnel) chỉ mở `/api/harness/*`, `/api/auth/*`; `/admin`, analytics, mọi `/api` khác trả 404. Prod chạy bản đông cứng `.prod_src/` (`docs/OPERATIONS.md`). Màn theo vai trò: `docs/Role_Web_Functional_Design.md`; hệ thị giác: `docs/UX_Design_Brief.md`; bảo mật: `docs/SECURITY.md`.
+Bản public (`web/server.mjs` :28899 sau Cloudflare tunnel) mở `/api/harness/*`, `/api/auth/*` và Admin Web `/admin` (bắt đăng nhập, `docs/SECURITY.md` §1); mọi `/api` khác trả 404. Prod chạy bản đông cứng `.prod_src/` (`docs/OPERATIONS.md`). Màn theo vai trò: `docs/Role_Web_Functional_Design.md`; hệ thị giác: `docs/UX_Design_Brief.md`; bảo mật: `docs/SECURITY.md`.
 
 ## 8. Quyết định thiết kế chính
 

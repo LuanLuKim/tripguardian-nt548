@@ -1,0 +1,85 @@
+/* Hành trình (plan/Journey.tsx): the trip as a route infographic, in the colours of the itinerary screens (grey page, white cards with a
+   thin line, ink for the day marks, --tg-brand for the route and the stop numbers). One white panel per day, the stops hung as photo
+   cards above and below a dashed route, dashed links through each night. Every x / y comes from Journey.tsx (pixels of the route). */
+.tg-jx { max-width: 1040px; }
+.tg-jx__stage { position: relative; padding: 8px 0 4px; }
+
+.tg-jx__head { display: grid; justify-items: center; gap: 8px; margin-bottom: 22px; text-align: center; }
+.tg-jx__head h1 { margin: 0; font: 600 clamp(1.7rem, 3.4vw, 2.4rem)/1.15 var(--tg-display); }
+.tg-jx__head p { margin: 0; font-size: 0.76rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--tg-ink-3); }
+.tg-jx__facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.tg-jx__facts li { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 999px; background: var(--tg-surface); box-shadow: inset 0 0 0 1px var(--tg-line); font-size: 0.9rem; }
+
+.tg-jx__flow { position: relative; display: flex; flex-direction: column; }
+.tg-jx__block { display: flex; flex-direction: column; }
+
+/* the two ends of the trip */
+.tg-jx__end { display: flex; align-items: center; justify-content: center; gap: 12px; align-self: center; max-width: 100%; padding: 10px 22px 10px 12px; border-radius: 999px; background: var(--tg-surface); box-shadow: 0 0 0 1px var(--tg-line), var(--tg-sh-1); text-align: left; }
+.tg-jx__end div { display: grid; gap: 1px; min-width: 0; }
+.tg-jx__end b { font-size: 0.98rem; font-weight: 650; }
+.tg-jx__end small { font-size: 0.8rem; color: var(--tg-ink-3); }
+.tg-jx__ic { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--tg-ink); color: #fff; }
+
+/* links: dashed, on the page, between panels */
+.tg-jx__link { position: relative; flex: none; }
+.tg-jx__link > svg { position: absolute; inset: 0; overflow: visible; }
+.tg-jx__dash { fill: none; stroke: var(--tg-brand); stroke-width: 2.5; stroke-dasharray: 8 8; opacity: 0.85; } /* one dash for the route, the link and the line through a panel, so a day runs into the next */
+.tg-jx__through { position: absolute; top: 0; left: 0; z-index: 0; overflow: visible; pointer-events: none; }
+.tg-jx__night, .tg-jx__link .tg-jx__leg { position: absolute; z-index: 1; transform: translate(-50%, -50%); }
+.tg-jx__night { display: inline-flex; align-items: center; gap: 7px; margin: 0; padding: 8px 16px; border-radius: 999px; background: var(--tg-ink); color: #fff; font-size: 0.9rem; font-weight: 600; white-space: nowrap; box-shadow: 0 12px 24px -16px rgba(0, 0, 0, 0.6); }
+.tg-jx__leg { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; background: var(--tg-surface); box-shadow: 0 0 0 1px var(--tg-line), 0 6px 14px -10px rgba(0, 0, 0, 0.35); color: var(--tg-ink-2); font-size: 0.74rem; font-weight: 600; white-space: nowrap; }
+.tg-jx__route .tg-jx__leg { position: absolute; z-index: 3; transform: translate(-50%, -50%); }
+
+/* a day */
+.tg-jx__panel { position: relative; padding: 22px var(--pad) 18px; border-radius: 22px; background: var(--tg-surface); color: var(--tg-ink); border: 1px solid var(--tg-line); box-shadow: var(--tg-sh-1); }
+.tg-jx__phead { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 4px; }
+.tg-jx__phead h2 { margin: 0; font: 600 1.7rem/1.15 var(--tg-display); }
+.tg-jx__phead p { margin: 2px 0 0; font-size: 0.9rem; color: var(--tg-ink-2); }
+.tg-jx__phead ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.tg-jx__phead li { padding: 4px 11px; border-radius: 999px; background: var(--tg-bg); font-size: 0.8rem; color: var(--tg-ink-2); white-space: nowrap; }
+.tg-jx__free { margin: 18px 0 8px; padding: 18px; border: 1.5px dashed var(--tg-line-2); border-radius: 16px; text-align: center; color: var(--tg-ink-2); }
+
+.tg-jx__route { position: relative; margin: 6px 0 0; }
+.tg-jx__route > svg { position: absolute; top: -20px; left: -60px; overflow: visible; pointer-events: none; }
+.tg-jx__route ol { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; }
+.tg-jx__draw { fill: none; stroke: #fff; stroke-width: 10; stroke-dasharray: 1; stroke-dashoffset: 0; }
+.tg-jx__dot { position: absolute; z-index: 2; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--tg-brand); color: #fff; font: 700 0.72rem/1 var(--tg-sans); box-shadow: 0 0 0 4px var(--tg-surface), 0 6px 12px -6px rgba(0, 0, 0, 0.45); transform: translate(-50%, -50%); }
+.tg-jx__dot.is-point { background: var(--tg-ink); }
+.tg-jx__dot.is-block { width: 14px; height: 14px; background: var(--tg-surface); box-shadow: 0 0 0 2px var(--tg-brand), 0 0 0 5px var(--tg-surface); }
+.tg-jx__card.is-point { display: grid; gap: 1px; padding: 8px 10px; }
+.tg-jx__card.is-point small { font-size: 0.72rem; color: var(--tg-ink-3); }
+.tg-jx__card.is-point time { font-size: 0.72rem; font-weight: 600; color: var(--tg-brand); }
+.tg-jx__card.is-point b { font-size: 0.82rem; }
+.tg-jx__area { position: absolute; z-index: 1; max-width: 120px; overflow: hidden; font-size: 0.76rem; color: var(--tg-ink-3); text-align: center; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); }
+
+/* a stop: a photo card in the itinerary's card style */
+.tg-jx__slot { position: absolute; z-index: 1; display: flex; transform: translateX(-50%); }
+.tg-jx__slot.is-up { align-items: flex-end; }
+.tg-jx__slot.is-down { align-items: flex-start; }
+.tg-jx__card { display: grid; gap: 2px; width: 100%; padding: 6px 6px 8px; border-radius: 16px; background: var(--tg-surface); text-align: center; border: 1px solid var(--tg-line); box-shadow: var(--tg-sh-1); }
+.tg-jx__ph { display: block; width: 100%; height: 76px; margin: 0 0 4px; overflow: hidden; border-radius: 11px; }
+.tg-jx__ph img, .tg-jx__ph.tg-photo img { width: 100%; height: 100%; object-fit: cover; }
+.tg-jx__card b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding: 0 2px; font-size: 0.86rem; line-height: 1.25; font-weight: 650; }
+.tg-jx__card time { font-size: 0.74rem; font-weight: 600; color: var(--tg-brand); }
+.tg-jx__card small { font-size: 0.72rem; color: var(--tg-ink-3); }
+.tg-jx__card.is-block { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 8px; padding: 8px 10px; background: transparent; box-shadow: none; border: 1.5px dashed var(--tg-line-2); color: var(--tg-ink-2); }
+.tg-jx__card.is-block b { padding: 0; font-size: 0.82rem; font-weight: 600; }
+
+.tg-jx__foot { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 18px 0 20px; background: linear-gradient(to bottom, transparent, var(--tg-bg) 35%); }
+
+/* drawing in as it scrolls to (Journey.tsx adds .is-live, then .is-in per panel / link) */
+.tg-jx__flow.is-live .tg-jx__seen:not(.is-in) { opacity: 0; transform: translateY(20px); }
+.tg-jx__flow.is-live .tg-jx__seen { transition: opacity 520ms var(--tg-ease), transform 520ms var(--tg-ease); }
+.tg-jx__flow.is-live .tg-jx__panel:not(.is-in) .tg-jx__draw { stroke-dashoffset: 1; }
+.tg-jx__flow.is-live .tg-jx__panel .tg-jx__draw { transition: stroke-dashoffset 1500ms cubic-bezier(0.4, 0, 0.2, 1) 200ms; }
+.tg-jx__flow.is-live .tg-jx__panel:not(.is-in) .tg-jx__route li > * { opacity: 0; }
+.tg-jx__flow.is-live .tg-jx__route li > * { transition: opacity 420ms var(--tg-ease); transition-delay: calc(var(--k) * 150ms + 250ms); }
+
+@media (max-width: 760px) {
+  .tg-jx__panel { padding-top: 18px; border-radius: 18px; }
+  .tg-jx__ph { height: 62px; }
+  .tg-jx__card b { font-size: 0.8rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tg-jx__flow .tg-jx__seen, .tg-jx__flow .tg-jx__draw, .tg-jx__flow .tg-jx__route li > * { transition: none; opacity: 1; transform: none; stroke-dashoffset: 0; }
+}

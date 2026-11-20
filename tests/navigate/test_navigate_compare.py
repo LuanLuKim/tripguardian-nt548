@@ -100,7 +100,7 @@ def test_maybe_is_listed_not_queued(data):
 
 def test_report_is_written_and_nothing_else_is(data):
     m = the_map(aspect("night_cycling", "đạp xe đêm", nominees=["Xe Đạp Đêm"]))
-    r = run(m, data)
+    run(m, data)
     out = data / "dalat" / "navigate"
     assert (out / "compare_20261028T110000Z.json").exists()
     assert json.loads((out / "compare_20261028T110000Z.json").read_text(encoding="utf-8"))["city"] == "dalat"

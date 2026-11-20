@@ -1,0 +1,65 @@
+/* Thông tin chuyến / Phương tiện lên Đà Lạt / Điểm xuất phát rows (screens/plan/fill.tsx): answers open in the row. Tokens only. */
+.tg .tg-it-transit.tg-fill, .tg .tg-it-transit.tg-origin { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 0; }
+.tg-fill__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.tg-fill__top > span { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.tg-fill__top > span > svg { align-self: center; }
+.tg-fill__q { font-size: 0.84rem; color: var(--tg-ink-3); opacity: 0; transition: opacity 180ms var(--tg-ease); }
+.tg-fill__busy { font-size: 0.84rem; color: var(--tg-ink-3); }
+
+/* the answers fold open on hover or keyboard focus; touch screens have no hover, so there they stay open */
+.tg-fill__opts { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 220ms var(--tg-ease), opacity 180ms, margin 220ms var(--tg-ease); }
+.tg-fill__opts > div { overflow: hidden; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tg-fill:hover .tg-fill__opts, .tg-fill:focus-within .tg-fill__opts { grid-template-rows: 1fr; opacity: 1; margin-top: 14px; }
+.tg-fill:hover .tg-fill__q, .tg-fill:focus-within .tg-fill__q { opacity: 1; }
+@media (hover: none) {
+  .tg-fill__opts { grid-template-rows: 1fr; opacity: 1; margin-top: 12px; }
+  .tg-fill__q { opacity: 1; }
+}
+.tg-fill.has-opts:hover { border-color: var(--tg-ink-3); }
+
+.tg-fill__chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--tg-line); background: var(--tg-surface); font: 500 0.9rem var(--tg-sans); color: var(--tg-ink); cursor: pointer; transition: border-color 140ms, background 140ms; }
+.tg-fill__chip:hover:not(:disabled) { border-color: var(--tg-brand); background: var(--tg-brand-soft); }
+.tg-fill__chip:disabled { opacity: 0.5; cursor: default; }
+.tg-fill__chip small { font-size: 0.74rem; color: var(--tg-ink-3); }
+.tg-fill__chip.is-on, .tg-fill__chip.is-on:hover:not(:disabled) { background: var(--tg-ink); border-color: var(--tg-ink); color: var(--tg-surface); cursor: default; }
+.tg-fill__chosen { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; background: var(--tg-pine-soft); color: var(--tg-pine); font: 600 0.82rem var(--tg-sans); font-style: normal; }
+.tg-fill__chip.is-guess { border-style: dashed; }
+.tg-fill__chip.is-go { background: var(--tg-ink); border-color: var(--tg-ink); color: var(--tg-surface); }
+.tg-fill__amount { display: inline-flex; align-items: center; gap: 6px; }
+.tg-fill__amount .tg-input { width: 190px; height: 36px; border-radius: 999px; padding: 0 14px; }
+
+.tg-origin__in { display: grid; gap: 6px; margin-top: 14px; }
+.tg-origin__in small { font-size: 0.82rem; }
+.tg-origin__in { animation: tg-pop 180ms var(--tg-ease); }
+/* the search box: a roomy card with a round pin badge; it floats up under the pointer and rings when typed in */
+.tg-origin .tg-pin .tg-input { min-height: 60px; padding: 0 52px 0 64px; border: 1.5px solid var(--tg-line-2); border-radius: 18px; background: var(--tg-surface); box-shadow: var(--tg-sh-1); font-size: 1.05rem; transition: transform 180ms var(--tg-ease), box-shadow 180ms var(--tg-ease), border-color 180ms; }
+.tg-origin .tg-pin .tg-input::placeholder { color: var(--tg-ink-3); }
+.tg-origin .tg-pin__in > svg { z-index: 1; left: 14px; box-sizing: content-box; width: 18px; height: 18px; padding: 8px; border-radius: 50%; background: var(--tg-pine-soft); color: var(--tg-pine); }
+.tg-origin .tg-pin .tg-input:hover { transform: translateY(-2px); box-shadow: var(--tg-sh-2); border-color: var(--tg-ink-3); }
+.tg-origin .tg-pin .tg-input:focus { transform: translateY(-2px); border-color: var(--tg-pine); box-shadow: 0 0 0 4px var(--tg-pine-soft), var(--tg-sh-2); outline: none; }
+.tg-origin .tg-pin__list { top: calc(100% + 10px); padding: 8px; border-radius: 18px; }
+@media (max-width: 640px) { .tg-fill__amount .tg-input { width: 150px; } }
+@media (prefers-reduced-motion: reduce) { .tg-fill__opts, .tg-fill__q, .tg-fill__chip, .tg-origin .tg-pin .tg-input { transition: none; } .tg-origin__in { animation: none; } }
+
+/* the lodging row opens its search and suggestions on hover or focus; touch screens have no hover, so they stay open there */
+.tg-reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms var(--tg-ease), opacity 200ms; }
+.tg-reveal > div { overflow: hidden; min-height: 0; }
+.tg-it-row__body:hover .tg-reveal, .tg-it-row__body:focus-within .tg-reveal { grid-template-rows: 1fr; opacity: 1; }
+.tg-reveal .tg-pin { margin: 0 0 12px; }
+.tg-reveal .tg-pin .tg-input { min-height: 56px; border-radius: 16px; box-shadow: var(--tg-sh-1); transition: transform 180ms var(--tg-ease), box-shadow 180ms var(--tg-ease); }
+.tg-reveal .tg-pin .tg-input:hover, .tg-reveal .tg-pin .tg-input:focus { transform: translateY(-2px); box-shadow: var(--tg-sh-2); }
+.tg-reveal .tg-pin__list { z-index: 30; }
+@media (hover: none) { .tg-reveal { grid-template-rows: 1fr; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tg-reveal { transition: none; } }
+.tg-it-row__body:hover .tg-reveal > div, .tg-it-row__body:focus-within .tg-reveal > div { overflow: visible; }
+.tg-reveal .tg-pin__in > svg { z-index: 1; }
+.tg-fill__peek { margin-top: 12px; }
+.tg-fill__peek .tg-wy { margin: 0; }
+
+/* a typed search: its result rows carry the stay's photo, and the suggestions under it blur away so the eye stays on them */
+.tg-pin__list li > i.has-photo { width: 56px; height: 56px; border-radius: 12px; overflow: hidden; }
+.tg-pin__list li > i.has-photo .tg-photo, .tg-pin__list li > i.has-photo img { width: 100%; height: 100%; object-fit: cover; }
+.tg-pin__list li[role='option']:has(i.has-photo) { grid-template-columns: 56px minmax(0, 1fr) auto; min-height: 68px; }
+.tg-staygrid > ul, .tg-staygrid > p { transition: filter 220ms var(--tg-ease), opacity 220ms var(--tg-ease); }
+.tg-staygrid.is-searching > ul, .tg-staygrid.is-searching > p { filter: blur(6px); opacity: 0.35; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .tg-staygrid > ul, .tg-staygrid > p { transition: none; } }

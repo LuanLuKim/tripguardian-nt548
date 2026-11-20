@@ -3,14 +3,13 @@
 Nothing here crawls: a source that is missing gives an empty signal, never an invented one."""
 
 import json
+import re
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from .. import data_root
-from ..views import calendar_days
 
 SERVING = ("serving", "places.json")
-CLOSED = "Bị đóng vĩnh viễn"
 
 
 def _read(path: Path):
@@ -43,48 +42,84 @@ def tagged(root: Path) -> list:
 
 
 def tiktok_videos(root: Path, fids: set, tz_h: int) -> dict:
-    """{fid: [{id, url, author, date, text}]} from data/tiktok/poi_crawl (created_at = the video's own epoch)."""
+    """{fid: [{id, url, author, date, text}]} from data/tiktok/poi_crawl and the nightly re-listing poi_recent
+    (created_at = the video's own epoch); a video both list counts once."""
     tz = timezone(timedelta(hours=tz_h))
-    out = {}
-    for f in (root / "tiktok" / "poi_crawl").glob("*.json"):
-        d = _read(f)
-        if not d or d.get("fid") not in fids:
-            continue
-        rows = [{"id": str(v["video_id"]), "url": v.get("url") or "", "author": v.get("author_id") or "",
-                 "date": datetime.fromtimestamp(v["created_at"], UTC).astimezone(tz).date().isoformat(), "text": v.get("desc") or ""}
-                for v in d.get("videos", []) if v.get("video_id") and v.get("created_at") and v.get("author_id")]
-        if rows:
-            out[d["fid"]] = rows
-    return out
+    out: dict[str, dict] = {}
+    for sub in ("poi_crawl", "poi_recent"):
+        for f in (root / "tiktok" / sub).glob("*.json"):
+            d = _read(f)
+            if not d or d.get("fid") not in fids:
+                continue
+            for v in d.get("videos", []):
+                if v.get("video_id") and v.get("created_at") and v.get("author_id"):
+                    out.setdefault(d["fid"], {})[str(v["video_id"])] = {
+                        "id": str(v["video_id"]), "url": v.get("url") or "", "author": v.get("author_id") or "",
+                        "date": datetime.fromtimestamp(v["created_at"], UTC).astimezone(tz).date().isoformat(),
+                        "text": v.get("desc") or ""}
+    return {fid: list(rows.values()) for fid, rows in out.items()}
+
+
+def maps_recent(root: Path, fid: str) -> dict | None:
+    """The place's newest reviews from `gmaps refresh` (data/gmaps/reviews_recent/), None when never refreshed."""
+    return _read(root / "gmaps" / "reviews_recent" / f"{_safe(fid)}.json")
 
 
 def maps_reviews(root: Path, fids: set) -> dict:
-    """{fid: [{date, author, stars}]} from data/gmaps/observations (the date is the crawl's reading of 'x trước')."""
+    """{fid: [{date, author, stars}]} from data/gmaps/observations (the date is the crawl's reading of 'x trước') and
+    the reviews `gmaps refresh` read since; one row per author (Maps keeps one review per person), the later reading
+    winning."""
     out = {}
     for fid in fids:
         d = _read(root / "gmaps" / "observations" / f"{_safe(fid)}.json")
-        rows = [{"date": r["observed_at"][:10], "author": r["author"], "stars": r["stars"]}
-                for r in (d or {}).get("ratings", []) if r.get("observed_at") and r.get("author") and r.get("stars") is not None]
+        rows = {r["author"]: {"date": r["observed_at"][:10], "author": r["author"], "stars": r["stars"]}
+                for r in (d or {}).get("ratings", []) if r.get("observed_at") and r.get("author") and r.get("stars") is not None}
+        recent = maps_recent(root, fid) or {}
+        for r in recent.get("reviews") or ():
+            day, s = observed_at(r.get("published_text"), recent["at"]), stars(r.get("rating"))
+            if day and s and r.get("author_hash"):
+                rows[r["author_hash"]] = {"date": day, "author": r["author_hash"], "stars": s}
         if rows:
-            out[fid] = rows
+            out[fid] = list(rows.values())
     return out
 
 
-def maps_places(root: Path, fids: set, tz_h: int) -> tuple[dict, dict]:
-    """(review_totals {fid: n} for served places, status {fid: {name, status, as_of, reviews}} of every permanently
-    closed place Maps lists) from data/gmaps/places/*/place.json; as_of = the day that file was written."""
-    totals, status = {}, {}
-    tz = timezone(timedelta(hours=tz_h))
+def maps_totals(root: Path, fids: set) -> dict:
+    """{fid: review count Maps shows} for served places, from data/gmaps/places/*/place.json (the count the last refresh saw, when there was one)."""
+    totals = {}
     for f in (root / "gmaps" / "places").glob("*/place.json"):
         d = _read(f)
-        if not d or not d.get("fid"):
+        if not d or not d.get("fid") or d["fid"] not in fids:
             continue
-        if d["fid"] in fids and isinstance(d.get("reviews"), int):
-            totals[d["fid"]] = d["reviews"]
-        if d.get("status") == CLOSED:
-            as_of = datetime.fromtimestamp(f.stat().st_mtime, UTC).astimezone(tz).date().isoformat()
-            status[d["fid"]] = {"name": d.get("name") or "", "status": CLOSED, "as_of": as_of, "reviews": d.get("reviews") or 0}
-    return totals, status
+        recent = maps_recent(root, d["fid"]) or {}
+        now_count = _count(recent.get("review_count"))
+        if now_count or isinstance(d.get("reviews"), int):
+            totals[d["fid"]] = now_count or d["reviews"]
+    return totals
+
+
+_AGE = re.compile(r"(một|\d+) (phút|giờ|ngày|tuần|tháng|năm) trước")   # as corpus.observe.gmaps.prep, which pulls the
+_DAYS = {"phút": 0, "giờ": 0, "ngày": 1, "tuần": 7, "tháng": 30, "năm": 365}  # Extractor in: online reads this module
+
+
+def observed_at(published_text: str | None, fetched_at: str) -> str | None:
+    """The day Maps' "3 tuần trước" means, read at fetched_at."""
+    m = _AGE.search(published_text or "")
+    if not m:
+        return None
+    days = (1 if m.group(1) == "một" else int(m.group(1))) * _DAYS[m.group(2)]
+    return (datetime.fromisoformat(fetched_at).date() - timedelta(days=days)).isoformat()
+
+
+def stars(rating: str | None) -> int | None:
+    m = re.match(r"\s*([1-5])", rating or "")
+    return int(m.group(1)) if m else None
+
+
+def _count(text) -> int | None:
+    """Number in a Maps label ("1.701 bài đánh giá" -> 1701)."""
+    digits = re.sub(r"\D", "", str(text or "").split(" ")[0])
+    return int(digits) if digits else None
 
 
 def web_domains(root: Path, city: str, fids: set) -> dict:
@@ -101,15 +136,29 @@ def local_claims(root: Path, city: str) -> list:
     return (_read(root / city / "local" / "local_claims.json") or {}).get("claims", [])
 
 
-def holidays(city: str) -> list:
-    return [{"date": d["date"], "name": d["holiday"]} for d in (calendar_days(city) or []) if d.get("holiday")]
+def web_documents(root: Path, city: str) -> dict:
+    """{doc_id: the page's text} of the web Documents the local claims were read from (data/web/<city>/documents/):
+    where a season is seen is in the page around its name, not in the claim's one-sentence quote."""
+    out = {}
+    for path in sorted((root / "web" / city / "documents").glob("*.json")):
+        d = _read(path) or {}
+        if d.get("doc_id"):
+            out[d["doc_id"]] = " ".join(f"{s.get('heading') or ''} {s.get('text') or ''}" for s in d.get("sections") or ()
+                                        if isinstance(s, dict))
+    return out
+
+
+def web_events(root: Path, city: str) -> dict | None:
+    """The newest dated-events snapshot (data/<city>/events/latest.json, corpus.events), or None when never built."""
+    return _read(root / city / "events" / "latest.json")
 
 
 def load(city: str, tz_h: int, root: Path | None = None) -> dict:
     root = root or data_root()
     places = served(root)
     fids = set(places)
-    totals, status = maps_places(root, fids, tz_h)
+    totals = maps_totals(root, fids)
     return {"places": places, "videos": tiktok_videos(root, fids, tz_h), "reviews": maps_reviews(root, fids),
-            "review_totals": totals, "web": web_domains(root, city, fids), "status": status,
-            "claims": local_claims(root, city), "holidays": holidays(city)}
+            "review_totals": totals, "web": web_domains(root, city, fids),
+            "claims": local_claims(root, city), "events": web_events(root, city),
+            "documents": web_documents(root, city)}

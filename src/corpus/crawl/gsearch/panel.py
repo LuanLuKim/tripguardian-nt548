@@ -99,12 +99,6 @@ def _admissions(box) -> tuple[Admission, ...]:
     return tuple(out)
 
 
-def _free_box(box) -> bool:
-    """The box of a place that lists "Miễn phí" as its only price (a free place Google knows the entry of)."""
-    prices = [_text(s) for s in box.xpath(".//span[contains(@class,'oKZEk')]")]
-    return bool(prices) and all(re.fullmatch(r"Miễn phí", p, re.I) for p in prices)
-
-
 def parse(html: str) -> Panel:
     root = lxml.html.fromstring(html or "<html></html>")
     title = _attr(root, "title")

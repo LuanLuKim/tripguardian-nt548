@@ -1,263 +1,99 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
-import { tidyText } from '../../data/placeName'
-import { info } from '../lib'
-import { whyNot } from '../pd/api'
-import { useDecision } from '../pd/decision'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { usePlanning } from '../planning/planning'
-import type { ChangedDay } from '../planning/types'
-import { clearMsgs, editMsg, dismissNudge, openAssistant, pinAssistant, pushMsg, toggleSaved, toast, useUi } from '../store'
-import { mutateJourney } from '../journey'
-import { useTrip } from '../trip'
-import { searchPlaces } from '../tu/api'
-import type { ChatPlaces } from '../tu/types'
-import { PlaceStage } from '../screens/understand/Places'
+import { dismissNudge, openAssistant, pinAssistant, useUi } from '../store'
+import { TripChat } from './TripChat'
 import { onAsk as onAsk_, takeAsk } from './askAssistant'
-import { PlacePhoto } from './common'
 import '../css/fixes.css'
-import { openPlace } from './PlaceSheet'
-import { Icon } from './icons'
+import { BotAvatar, Icon } from './icons'
 import '../css/plan-chat.css'
 
-// The assistant of each stage keeps its own conversation: the chat log is one list, a message belongs to the stage that sent it
-// (a message nobody tagged, such as the place sheet's "why not", is Lựa chọn's).
+// THE chat (TripChat) in the panel: Lựa chọn and the home page (decision), Lịch trình (planning). The stage only picks the header line
+// and where the panel may stand (pinned beside the grid on Lựa chọn; on the footer bar on Lịch trình).
 export type AssistantStage = 'decision' | 'planning'
-const tag = (id: number, stage: AssistantStage) => { editMsg(id, { stage }); return id }
-
-// The assistant's face: a soft, slowly turning orb (CSS only).
-function Orb({ size = 36 }: { size?: number }) {
-  return <span className="tg-orb" style={{ '--orb': `${size}px` } as CSSProperties} aria-hidden="true"><i /></span>
-}
-const HELLO: Record<AssistantStage, string> = { decision: 'Bạn muốn làm gì tiếp?', planning: 'Bạn muốn sửa gì trong lịch?' }
 
 const SUB: Record<AssistantStage, string> = { decision: 'Tìm thêm, gợi ý, lọc bớt', planning: 'Hỏi, đổi chỗ, thêm nơi' }
-const PLAN_CHIPS = ['Dời sang ngày khác', 'Thêm chỗ ăn trưa', 'Vì sao xếp như vậy?']
-const CHIPS = ['Yên tĩnh hơn', 'Tìm thêm quán cà phê', 'Vì sao không có Langbiang?']
-// "vì sao không gợi ý X" is answered from the data (why-not), not by the agent.
-const WHY_NOT = /(?:vì sao|tại sao|sao)\s+(?:không|chưa)\s+(?:gợi ý|thấy|có)\s+(.+?)\s*\??$/i
 
-// The place cards of a reply (the backend's `places` event), by message: the chat log itself keeps text and ids only.
-const cardsOf = new Map<number, ChatPlaces>()
-const cardSubs = new Set<() => void>()
-let cardsVersion = 0
-function setCards(msg: number, d: ChatPlaces) {
-  cardsOf.set(msg, d)
-  cardsVersion++
-  cardSubs.forEach((l) => l())
-}
-// The days a Lịch trình turn changed (the backend's `diff.days`), by message.
-const daysOf = new Map<number, ChangedDay[]>()
-function setDays(msg: number, d: ChangedDay[]) {
-  daysOf.set(msg, d)
-  cardsVersion++
-  cardSubs.forEach((l) => l())
-}
-function useCards() {
-  useSyncExternalStore((l) => { cardSubs.add(l); return () => { cardSubs.delete(l) } }, () => cardsVersion)
-  return cardsOf
-}
-function useCardsVersion() {
-  return useSyncExternalStore((l) => { cardSubs.add(l); return () => { cardSubs.delete(l) } }, () => cardsVersion)
-}
-
-function useDecisionSend() {
-  const { say, view, act } = useDecision()
-  const { trip } = useTrip()
-  const send = async (text: string) => {
-    tag(pushMsg({ role: 'user', text }), 'decision')
-    const why = WHY_NOT.exec(text)
-    if (why && trip.decisionId) {
-      const bot = tag(pushMsg({ role: 'bot', text: 'Mình tra trong dữ liệu…' }), 'decision')
-      try {
-        const hits = await searchPlaces(why[1])
-        if (!hits.length) return editMsg(bot, { text: `Mình không thấy "${why[1]}" trong dữ liệu Đà Lạt của mình, nên không gợi ý được. Mình không đoán nơi khi chưa có dữ liệu.` })
-        await explain(bot, hits[0].id, hits[0].name)
-      } catch {
-        editMsg(bot, { text: 'Chưa tra được, bạn thử lại sau nhé.' })
-      }
-      return
-    }
-    const bot = tag(pushMsg({ role: 'bot', text: '' }), 'decision')
-    // The grid shows what changed; places a tool returned and the reply names come as cards.
-    let last = ''
-    await say(text, (soFar) => { last = soFar; editMsg(bot, { text: soFar }) }, (d) => { setCards(bot, d); editMsg(bot, { text: last }) })
-  }
-  // Why a place is not in the list, from the data (the place sheet asks this by id, the typed question by name).
-  const explain = async (bot: number, id: string, fallback: string) => {
-    const r = await whyNot(trip.decisionId!, id)
-    const shown = view?.groups.some((g) => g.cards.some((c) => c.id === id))
-    const name = r.name ?? fallback
-    editMsg(bot, {
-      text: shown ? `${name} đang có trong danh sách gợi ý.` : r.listed ? `${name}: ${r.reasons.join(' ')}.` : r.reasons.length ? `${name}: ${r.reasons.join(' ')} Mình không tự bỏ giới hạn; muốn thì bạn nới ở vé chuyến, mình nói rõ cái giá.` : `${name} chưa có lý do rõ để loại; có thể nó chỉ xếp sau những nơi hợp hơn.`,
-      places: [id],
-    })
-  }
-  const askWhyNot = async (id: string, name: string) => {
-    if (!trip.decisionId) return
-    tag(pushMsg({ role: 'user', text: `Vì sao không gợi ý ${name}?` }), 'decision')
-    const bot = tag(pushMsg({ role: 'bot', text: 'Mình tra trong dữ liệu…' }), 'decision')
-    try { await explain(bot, id, name) } catch { editMsg(bot, { text: 'Chưa tra được, bạn thử lại sau nhé.' }) }
-  }
-  const like = (id: string) => { act({ type: 'wishlist', place_id: id }) }
-  return Object.assign(send, { askWhyNot, like })
-}
-
-// Lịch trình: one typed message goes to the planning assistant; the plan it leaves is shown by the screen itself (the provider
-// accepts the new version), so the chat only carries the reply, the place cards and the days that changed.
-function usePlanningSend() {
-  const { say, busy } = usePlanning()
-  const send = async (text: string) => {
-    tag(pushMsg({ role: 'user', text }), 'planning')
-    const bot = tag(pushMsg({ role: 'bot', text: '' }), 'planning')
-    let last = ''
-    const diff = await say(text, (soFar) => { last = soFar; editMsg(bot, { text: soFar }) }, (d) => { setCards(bot, d); editMsg(bot, { text: last }) })
-    if (diff?.days?.length) setDays(bot, diff.days)
-    if (!diff && !last) editMsg(bot, { text: 'Chưa trả lời được lượt này, lịch giữ nguyên. Bạn thử lại nhé.' })
-  }
-  return Object.assign(send, { busy })
-}
-
-interface BodyProps {
-  stage: AssistantStage
-  pinned: boolean
-  inDialog?: boolean
-  busy: boolean
-  send: (text: string) => void | Promise<void>
-  chips: string[]
-  intro: string
-  placeholder: string
-  onLike: (id: string) => void
-  canPin: boolean
-  onOpenDay?: (day: number) => void
-  onAsk?: (id: string, name: string) => void
-}
-
-export function Body({ stage, pinned, inDialog = false, busy: stageBusy, send, chips, intro, placeholder, onLike, canPin, onOpenDay, onAsk }: BodyProps) {
-  const [sending, setSending] = useState(false)
-  const sendingRef = useRef(false)
-  const busy = stageBusy || sending
-  const run = async (task: () => void | Promise<void>) => {
-    if (sendingRef.current || resettingRef.current || stageBusy) return
-    sendingRef.current = true
-    setSending(true)
-    try { await task() } finally { sendingRef.current = false; setSending(false) }
-  }
-  const all = useUi((u) => u.assistant.msgs)
-  const msgs = useMemo(() => all.filter((m) => (m.stage ?? 'decision') === stage), [all, stage])
-  const { trip } = useTrip()
-  const [resetting, setResetting] = useState(false)
-  const resettingRef = useRef(false)
-  const newChat = async () => {
-    const id = stage === 'decision' ? trip.decisionId : trip.planningId
-    if (!id || busy || sendingRef.current || resettingRef.current || !msgs.length) return
-    resettingRef.current = true
-    setResetting(true)
-    try {
-      await mutateJourney(id, stage, 'new_chat', { messages: msgs.map(({ role, text }) => ({ role, text })) })
-      clearMsgs(stage)
-      for (const m of msgs) { cardsOf.delete(m.id); daysOf.delete(m.id) }
-      setText('')
-    } catch { toast('Chưa mở được cuộc trò chuyện mới, bạn thử lại nhé.') }
-    finally { resettingRef.current = false; setResetting(false) }
-  }
-  const cards = useCards()
-  const shown = useCardsVersion() // the place cards and changed days of a reply land after its text
-  const [text, setText] = useState('')
-  const endRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [msgs, shown])
-  // A place sheet asked "why not" about a place: answer it as soon as this chat is open.
-  const ask = useRef(onAsk)
-  ask.current = onAsk ? (id, name) => run(() => onAsk(id, name)) : undefined
+// Lựa chọn and the home page: THE chat (TripChat), under the same header as Lịch trình's. The place sheet's "Vì sao không gợi ý?" is asked in it.
+export function DecisionBody({ pinned, inDialog, home = false }: { pinned: boolean; inDialog?: boolean; home?: boolean }) {
+  const [ask, setAsk] = useState<{ text: string; n: number } | null>(null)
   useEffect(() => {
-    if (!ask.current) return
-    const take = () => { const r = takeAsk(); if (r) ask.current?.(r.id, r.name) }
+    const take = () => { const r = takeAsk(); if (r) setAsk({ text: `Vì sao không gợi ý ${r.name}?`, n: Date.now() }) }
     take()
     return onAsk_(take)
   }, [])
-  const submit = (t: string) => {
-    if (!t.trim() || busy || resettingRef.current) return
-    void run(() => send(t.trim()))
-    setText('')
-  }
   return (
     <>
-      <header className="tg-asst__head">
-        <Orb size={34} />
-        <div className="tg-asst__who">{inDialog ? <Dialog.Title>Hỏi TripGuardian</Dialog.Title> : <h2>Hỏi TripGuardian</h2>}<small>{SUB[stage]}</small></div>
-        <div className="tg-asst__ops">
-          <button type="button" className="tg-asst__ic" disabled={busy || resetting || !msgs.length} onClick={() => { void newChat() }} aria-label="Cuộc trò chuyện mới" title="Cuộc trò chuyện mới"><Icon name="edit" size={18} /></button>
-          {canPin && <button type="button" className="tg-asst__ic" onClick={() => pinAssistant(!pinned)} aria-pressed={pinned} aria-label={pinned ? 'Bỏ ghim' : 'Ghim cạnh danh sách'} title={pinned ? 'Bỏ ghim' : 'Ghim cạnh danh sách'}><Icon name="thumbtack" size={18} /></button>}
-          <button type="button" className="tg-asst__ic" onClick={() => openAssistant(false)} aria-label="Thu lại" title="Thu lại"><Icon name="x" size={18} /></button>
-        </div>
-      </header>
-      <div className="tg-asst__log" role="log" aria-live="polite">
-        {msgs.length === 0 && <div className="tg-asst__hello">
-          <Orb size={76} />
-          <h3>{HELLO[stage]}</h3>
-          {intro && <p className="tg-asst__intro">{intro}</p>}
-          <div className="tg-asst__quick" role="group" aria-label="Gợi ý câu hỏi">{chips.map((c) => <button key={c} type="button" className="tg-qchip" disabled={busy} onClick={() => submit(c)}>{c}</button>)}</div>
-        </div>}
-        {msgs.map((m) => (
-          <div key={m.id} className={`tg-msg is-${m.role}`}>
-            <p>{(m.text && tidyText(m.text)) || (m.role === 'bot' ? <span className="tg-typing" role="status" aria-label="Đang trả lời"><i /><i /><i /></span> : '')}</p>
-            {cards.get(m.id) && <PlaceStage row={cards.get(m.id)!} busy={busy} autoOpen={stage === 'decision'} onLike={(id) => onLike(id)} />}
-            {daysOf.get(m.id) && onOpenDay && (
-              <ul className="tg-msg__days" aria-label="Các ngày đã đổi">
-                {daysOf.get(m.id)!.map((d) => (
-                  <li key={d.day}>
-                    <button type="button" className="tg-chday" onClick={() => onOpenDay(d.day)}>
-                      <span className="tg-chday__head"><b>Ngày {d.day} đã đổi</b><span>Xem ngày này</span></span>
-                      {d.stops.length ? <ol>{d.stops.map((st) => <li key={st.id}><time>{st.start}</time><span>{st.name}</span></li>)}</ol> : <span className="tg-chday__empty">Ngày này giờ không còn nơi nào.</span>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {m.places && !cards.get(m.id) && <div className="tg-msg__chips">{m.places.map((id) => <button key={id} type="button" className="tg-pchip" onClick={() => openPlace(id)}>{!!info(id)?.photos?.length && <PlacePhoto id={id} className="tg-pchip__ph" />}{info(id)?.name ?? 'Xem nơi này'}</button>)}</div>}
-          </div>
-        ))}
-        <div ref={endRef} />
-      </div>
-      {msgs.length > 0 && <div className="tg-asst__chips" role="group" aria-label="Gợi ý câu hỏi">{chips.map((c) => <button key={c} type="button" className="tg-chip" disabled={busy} onClick={() => submit(c)}>{c}</button>)}</div>}
-      <form className={`tg-asst__in ${busy ? 'is-busy' : ''}`} onSubmit={(e) => { e.preventDefault(); submit(text) }}>
-        <label className="tg-sr" htmlFor="tg-asst-in">Nói với mình</label>
-        <input id="tg-asst-in" className="tg-line-input" value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} placeholder={placeholder} autoComplete="off" />
-        <button type="submit" className="tg-send" disabled={busy || !text.trim()} aria-label="Gửi"><Icon name="send" size={18} /></button>
-      </form>
+      <TripChat ask={ask} placeholder={home ? 'Ví dụ: tháng này có lễ hội gì?' : 'Ví dụ: yên tĩnh hơn đi'}
+        head={(onNew) => <Head stage="decision" pinned={pinned} inDialog={inDialog} canPin={!home} sub={home ? 'Hỏi gì về Đà Lạt cũng được' : undefined} onNew={onNew} />} />
     </>
   )
 }
 
-function DecisionBody({ pinned, inDialog }: { pinned: boolean; inDialog?: boolean }) {
-  const { busy } = useDecision()
-  const send = useDecisionSend()
-  return <Body stage="decision" pinned={pinned} inDialog={inDialog} busy={busy} send={send} chips={CHIPS} onLike={send.like} canPin onAsk={send.askWhyNot}
-    intro=''
-    placeholder="Ví dụ: yên tĩnh hơn đi" />
+// Every chat panel's header: "Trò chuyện mới" (greyed while the chat is empty or answering), pin (Lựa chọn), close.
+function Head({ stage, pinned, inDialog, canPin, sub, onNew }: { stage: AssistantStage; pinned: boolean; inDialog?: boolean; canPin: boolean; sub?: string; onNew: (() => void) | null }) {
+  return (
+    <header className="tg-asst__head">
+      <BotAvatar size={40} />
+      <div className="tg-asst__who">{inDialog ? <Dialog.Title>Hỏi TripGuardian</Dialog.Title> : <h2>Hỏi TripGuardian</h2>}<small>{sub ?? SUB[stage]}</small></div>
+      <div className="tg-asst__ops">
+        <button type="button" className="tg-asst__new" onClick={onNew ?? undefined} disabled={!onNew} title="Trò chuyện mới: chuyến đi, nơi đã chọn và lịch trình vẫn giữ nguyên"><Icon name="plus" size={16} strokeWidth={2.2} /><span>Trò chuyện mới</span></button>
+        {canPin && <button type="button" className="tg-asst__ic" onClick={() => pinAssistant(!pinned)} aria-pressed={pinned} aria-label={pinned ? 'Bỏ ghim' : 'Ghim cạnh danh sách'} title={pinned ? 'Bỏ ghim' : 'Ghim cạnh danh sách'}><Icon name="thumbtack" size={18} /></button>}
+        <button type="button" className="tg-asst__ic" onClick={() => openAssistant(false)} aria-label="Thu lại" title="Thu lại"><Icon name="x" size={18} /></button>
+      </div>
+    </header>
+  )
 }
 
-// The heart on a place card in Lịch trình saves the place to the user's list, the same list the place sheet's heart uses.
+// Lịch trình: THE chat too (TripChat in plan mode): typed edits go to the schedule's assistant, discovery to Trip, all in one conversation.
 function PlanningBody({ inDialog, onOpenDay }: { inDialog?: boolean; onOpenDay?: (day: number) => void }) {
-  const send = usePlanningSend()
-  return <Body stage="planning" pinned={false} inDialog={inDialog} busy={send.busy} send={send} chips={PLAN_CHIPS} canPin={false} onLike={(id) => { void toggleSaved(id) }} onOpenDay={onOpenDay}
-    intro=''
-    placeholder="Ví dụ: thêm một quán cà phê chiều" />
+  const { chat } = usePlanning()
+  return (
+    <>
+      <TripChat plan={{ chat, onOpenDay }} placeholder="Ví dụ: thêm một quán cà phê chiều"
+        head={(onNew) => <Head stage="planning" pinned={false} inDialog={inDialog} canPin={false} onNew={onNew} />} />
+    </>
+  )
 }
 
 export function AssistantPinned() {
   return <aside className="tg-asst is-pinned" aria-label="Trợ lý"><DecisionBody pinned /></aside>
 }
 
-const FAB = {
-  decision: { label: 'Hỏi TripGuardian · tìm, gợi ý, lọc nơi', aria: 'Hỏi TripGuardian: tìm thêm, gợi ý hoặc lọc bớt địa điểm' },
-  planning: { label: 'Hỏi TripGuardian · hỏi, sửa lịch', aria: 'Hỏi TripGuardian: hỏi, sửa hoặc thêm nơi vào lịch trình' },
+const BAR = {
+  decision: { label: 'Hỏi TripGuardian', aria: 'Hỏi TripGuardian: tìm thêm, gợi ý hoặc lọc bớt địa điểm' },
+  planning: { label: 'Hỏi TripGuardian', aria: 'Hỏi TripGuardian: hỏi, sửa hoặc thêm nơi vào lịch trình' },
 } as const
 
-// Lựa chọn pins the chat beside the grid; Lịch trình has no side column, so there it always floats.
-export function AssistantFloat({ stage = 'decision', onOpenDay }: { stage?: AssistantStage; onOpenDay?: (day: number) => void }) {
+// The chat stands on the bottom edge in the right corner: a slim tab (the bunny and its name). Pointing at it
+// (or focusing it) unrolls a small chat upwards from the edge; clicking the tab, typing in the chat or `/` keeps it open until it is closed.
+// Lựa chọn can pin the chat beside the grid instead (then this tab folds away); Lịch trình has no side column, so there it always drops.
+export function AssistantFloat({ stage = 'decision', onOpenDay, pinAllowed = true, home = false }: { stage?: AssistantStage; onOpenDay?: (day: number) => void; pinAllowed?: boolean; home?: boolean }) {
   const a = useUi((u) => u.assistant)
-  const fab = FAB[stage]
-  const float = stage === 'planning' || !a.pinned
+  const bar = BAR[stage]
+  const [hover, setHover] = useState(false)
+  const timer = useRef(0)
+  const root = useRef<HTMLDivElement>(null)
+  const pinnedHere = stage === 'decision' && !home && a.open && a.pinned && pinAllowed
+  const shown = !pinnedHere && (a.open || hover)
+  const point = useCallback((on: boolean) => {
+    clearTimeout(timer.current)
+    if (on) setHover(true)
+    else timer.current = window.setTimeout(() => setHover(false), 380)
+  }, [])
+  useEffect(() => () => clearTimeout(timer.current), [])
+  // Lịch trình has a fixed footer along the bottom: the tab stands on top of it.
+  const [lift, setLift] = useState(0)
+  useEffect(() => {
+    if (stage !== 'planning') return
+    const read = () => setLift(document.querySelector<HTMLElement>('.tg-it-foot')?.offsetHeight ?? 0)
+    read()
+    const t = window.setInterval(read, 600)
+    addEventListener('resize', read)
+    return () => { clearInterval(t); removeEventListener('resize', read) }
+  }, [stage])
+  useEffect(() => { if (!a.open) setHover(false) }, [a.open]) // closed from inside the chat: fold up now
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
@@ -266,23 +102,36 @@ export function AssistantFloat({ stage = 'decision', onOpenDay }: { stage?: Assi
     addEventListener('keydown', on)
     return () => removeEventListener('keydown', on)
   }, [])
-  return (
-    <>
-      {!a.open && (
-        <div className="tg-asst-fab">
-          {a.nudge && <div className="tg-nudge" role="status"><span>{a.nudge}</span><button type="button" className="tg-link" onClick={() => openAssistant(true)}>Xem</button><button type="button" className="tg-icon-btn" onClick={dismissNudge} aria-label="Tắt gợi ý"><Icon name="x" size={16} /></button></div>}
-          <button type="button" className="tg-fab" onClick={() => openAssistant(true)} aria-keyshortcuts="/" aria-label={fab.aria} title={`${fab.aria}  ( / )`}><Orb size={40} /><Icon name="sparkle" size={18} /><span className="tg-fab__label">{fab.label}</span>{a.nudge && <i className="tg-fab__dot" aria-hidden="true" />}</button>
+  // Opened to stay (click, `/`, the place sheet's "why not"): the cursor goes to the message box.
+  useEffect(() => { if (a.open && !pinnedHere) window.setTimeout(() => document.getElementById('tg-asst-in')?.focus({ preventScroll: true }), 120) }, [a.open, pinnedHere])
+  if (pinnedHere) return null
+  const keep = () => { if (!a.open) openAssistant(true) }
+  return createPortal(
+    <div
+      ref={root}
+      className={`tg tg-drop ${shown ? 'is-open' : ''} ${home ? 'is-home' : ''}`}
+      style={lift ? { '--tg-drop-bottom': `${lift}px` } as CSSProperties : undefined}
+      onPointerEnter={() => point(true)}
+      onPointerLeave={() => point(false)}
+      onFocus={() => setHover(true)}
+      onBlur={(e) => { if (!a.open && !e.currentTarget.contains(e.relatedTarget as Node | null)) point(false) }}
+      onKeyDown={(e) => { if (e.key === 'Escape' && shown) { openAssistant(false); setHover(false) } }}
+    >
+      <button type="button" className="tg-drop__bar" aria-expanded={shown} aria-controls="tg-drop-panel" aria-keyshortcuts="/" aria-label={bar.aria} title={`${bar.aria}  ( / )`} onClick={() => { if (a.open) { openAssistant(false); setHover(false) } else openAssistant(true) }}>
+        <BotAvatar size={28} />
+        <span className="tg-drop__label">{bar.label}</span>
+        <Icon name="chevronUp" size={16} strokeWidth={2.4} />
+        {a.nudge && !shown && <i className="tg-drop__dot" aria-hidden="true" />}
+      </button>
+      {a.nudge && !shown && <div className="tg-nudge tg-drop__nudge" role="status"><span>{a.nudge}</span><button type="button" className="tg-link" onClick={() => openAssistant(true)}>Xem</button><button type="button" className="tg-icon-btn" onClick={dismissNudge} aria-label="Tắt gợi ý"><Icon name="x" size={16} /></button></div>}
+      <div className="tg-drop__body" inert={!shown}>
+        <div className="tg-drop__clip">
+          <section id="tg-drop-panel" className="tg-asst tg-drop__panel" aria-label="Hỏi TripGuardian" onFocusCapture={keep} onPointerDownCapture={keep}>
+            {stage === 'planning' ? <PlanningBody onOpenDay={onOpenDay} /> : <DecisionBody pinned={false} home={home} />}
+          </section>
         </div>
-      )}
-      {a.open && float && (
-        <Dialog.Root open modal={false} onOpenChange={(o) => !o && openAssistant(false)}>
-          <Dialog.Portal>
-            <Dialog.Content className="tg tg-asst is-float" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()} onOpenAutoFocus={(e) => { e.preventDefault(); document.getElementById('tg-asst-in')?.focus() }}>
-              {stage === 'planning' ? <PlanningBody inDialog onOpenDay={onOpenDay} /> : <DecisionBody pinned={false} inDialog />}
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-      )}
-    </>
+      </div>
+    </div>,
+    document.body,
   )
 }

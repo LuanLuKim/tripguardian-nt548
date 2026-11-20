@@ -12,7 +12,6 @@ Model mistakes stay refused: a field name that does not exist ("서_date"), an o
 """
 
 import asyncio
-import json
 from datetime import date
 
 import pytest

@@ -1,4 +1,4 @@
-"""Reputation score: Maps rating and review count on one pool scale (docs/CORPUS.md §serving)."""
+"""Reputation score: Maps rating and review count on one pool scale (docs/CORPUS.md §5. Aggregate)."""
 
 import json
 import math

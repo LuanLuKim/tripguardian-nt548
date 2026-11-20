@@ -12,7 +12,6 @@ from paths import DATA, REPO
 import asyncio
 import base64
 import io
-import os
 import json
 
 ROOT = REPO

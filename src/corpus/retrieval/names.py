@@ -15,6 +15,7 @@ class NameRecord:
     place_id: str
     name: str
     category_group: str | None = None
+    raw: str | None = None  # Google's name when the tidy one differs (serving identity.name_raw): searched too
 
 
 @dataclass(frozen=True)
@@ -58,12 +59,17 @@ def search_names(query: str, records: Iterable[NameRecord], *, within: set[str],
     for record in records:
         if record.place_id not in within:
             continue
-        fn = _name(record.name)
-        prefix = fn.startswith(fq)
-        score = name_score(query, record.name) + (0.3 if prefix else 0)
+        best = None
+        for text in (record.name, record.raw) if record.raw else (record.name,):
+            fn = _name(text)
+            prefix = fn.startswith(fq)
+            score = name_score(query, text) + (0.3 if prefix else 0)
+            match = "exact" if fq == fn else "prefix" if prefix else "contains" if fq in fn else "tokens"
+            if best is None or score > best[0]:
+                best = (score, match)
+        score, match = best
         if score <= 0.2:
             continue
-        match = "exact" if fq == fn else "prefix" if prefix else "contains" if fq in fn else "tokens"
         hit = NameHit(record.place_id, record.name, record.category_group, match, release_id)
         ranked.append((score, record.place_id, hit))
     return [hit for _, _, hit in sorted(ranked, key=lambda row: (-row[0], row[1]))[:limit]]

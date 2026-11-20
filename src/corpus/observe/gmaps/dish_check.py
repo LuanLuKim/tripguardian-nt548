@@ -11,7 +11,6 @@ only about new observations. Offline writes Place Intelligence; serving.dishes d
 import asyncio
 import collections
 import json
-import re
 from pathlib import Path
 
 from ...crawl.common.files import append_jsonl, data_dir, load_config, now, write_json

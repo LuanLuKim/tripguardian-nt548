@@ -123,13 +123,10 @@ def test_skipped_lodging_counts_as_resolved(catalog, cfg):
     assert readiness.missing(st) == []
 
 
-def test_gate_deck_only_has_dates_and_care_without_optional_confirmations(catalog, cfg):
+def test_gate_deck_is_empty_without_an_open_health_hint(catalog, cfg):
     from trip.domain import deck
-    st = TripState()
-    d = deck.build(st, catalog, cfg, at="gate")
-    assert [t.qid for t in d.tabs] == ["trip", "care"]
-    assert d.tabs[0].inputs == ("dates",)
-    assert not any(o.id == "skip" for t in d.tabs for o in t.options)
+    d = deck.build(TripState(), catalog, cfg, at="gate")
+    assert d.tabs == ()  # nothing is asked before planning (owner 2026-11-18)
     d = deck.build(build(drop=("lodging",)), catalog, cfg, at="gate")
     assert d.tabs == ()
 

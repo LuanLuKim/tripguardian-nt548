@@ -36,3 +36,31 @@ def test_routes_are_none_when_the_routing_source_is_down():
 
     e, sid = engine(down)
     assert all(d["route"] is None for d in e.routes(sid)["days"])
+
+
+def test_summary_names_the_planned_stops_and_keeps_an_agent_answer_per_itinerary(monkeypatch):
+    from planning import summary
+
+    asked = []
+
+    async def agent(plan):
+        asked.append(plan)
+        return {"title": "Một vòng Đà Lạt", "text": "Các ngày đi qua những nơi đã chọn."}
+
+    monkeypatch.setattr(summary, "_ask", agent)
+    e, sid = engine(lambda *a: None)
+    first = e.summary(sid)
+    assert first["source"] == "agent" and e.summary(sid) == first and len(asked) == 1
+    names = {s["name"] for d in asked[0] for s in d["stops"]}
+    assert names and names <= {it["name"] for d in e.load(sid)["view"]["itinerary"] for it in d["items"] if it["kind"] == "visit"}
+
+
+def test_summary_is_plain_and_not_kept_when_the_agent_fails(monkeypatch):
+    from planning import summary
+
+    async def down(plan):
+        raise RuntimeError("no key")
+
+    monkeypatch.setattr(summary, "_ask", down)
+    e, sid = engine(lambda *a: None)
+    assert e.summary(sid)["source"] == "plain" and not e._summaries

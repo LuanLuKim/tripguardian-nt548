@@ -242,13 +242,13 @@ export function useAllReviews(id: string): Quote[] | null {
   return reviewFiles.get(id) ?? null
 }
 
-export function useSnapshot() {
+export function useSnapshot(enabled = true) {
   const [snap, setSnap] = useState<Snapshot | null>(ready)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    if (ready) return
+    if (ready || !enabled) return
     loadSnapshot().then(setSnap, (e) => setError(String(e)))
-  }, [])
+  }, [enabled])
   return { snap, error }
 }
 
@@ -407,3 +407,6 @@ export function mapsRouteEmbed(stops: { lat: number; lng: number }[]) {
 export function mapsRouteLink(stops: { lat: number; lng: number }[]) {
   return `https://www.google.com/maps/dir/${stops.map((s) => `${s.lat},${s.lng}`).join('/')}`
 }
+
+// Every place of the loaded snapshot (Thêm trải nghiệm › Nguồn › Tất cả): empty until loadSnapshot has resolved.
+export const allPlaceIds = () => [...byId.keys()]

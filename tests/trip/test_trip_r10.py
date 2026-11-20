@@ -6,7 +6,7 @@ from trip_fixtures import ScriptedChat, say, served
 
 from trip import TripState, compile_search_input
 from trip.agent.tools import TurnTools, lookups
-from trip.api.engine import Engine, TurnInput
+from trip.api.engine import Engine
 from trip.domain.guard import record_fact
 from trip.infrastructure.catalog import Catalog
 from trip.infrastructure.sessions import SessionStore
@@ -227,7 +227,6 @@ def test_model_promise_without_exclusion_write_is_not_shown(places):
 
 
 def test_mock_model_partial_answer_and_name_omission_reach_final_reply(make_assistant, food_catalog):
-    from trip_fixtures import call, reply
     from test_assistant_turn import last_say, run_turn
     partial = make_assistant(ScriptedChat(say('Khí hậu tháng này chưa rõ. Ăn bánh căn có thể tiết kiệm.')))
     session = run_turn(partial, MULTI)

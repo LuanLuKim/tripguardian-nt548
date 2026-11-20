@@ -62,17 +62,28 @@
 @keyframes tg-qa-row { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---------- photo stage ---------- */
-.tg-stage__reopen { display: flex; align-items: center; gap: 12px; max-width: 520px; padding: 8px 14px 8px 8px; border: 1px solid var(--tg-line); border-radius: 18px; background: var(--tg-surface); box-shadow: var(--tg-sh-1); text-align: left; color: var(--tg-ink); animation: tg-qa-in 0.32s var(--tg-ease) both; transition: border-color 0.16s ease, transform 0.16s var(--tg-ease); }
-.tg-stage__reopen:hover:not(:disabled) { border-color: var(--tg-ink); transform: translateY(-1px); }
-.tg-stage__reopen:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
-.tg-stage__reopen b { display: block; font-weight: 600; }
-.tg-stage__reopen small { display: block; font-size: 0.88rem; color: var(--tg-ink-3); }
-.tg-stage__thumbs { display: flex; padding-left: 10px; }
-.tg-stage__thumbs img, .tg-stage__thumbs i { width: 44px; height: 44px; margin-left: -10px; border: 2px solid var(--tg-surface); border-radius: 12px; object-fit: cover; background: var(--tg-pine-soft); }
+/* The one line the chat keeps for a photo list (places, kinds of place, events): a small stack of tilted photos that spreads on hover,
+   the title in the display face, a count chip, and a round arrow. It reads as "a handful of real photos behind this", not as a menu row. */
+.tg-stage__reopen { position: relative; display: flex; align-items: center; gap: 16px; width: min(100%, 540px); padding: 12px 14px 12px 12px; border: 1px solid #e8e2d9; border-radius: 24px; background: linear-gradient(180deg, #fffdf9, #fbf8f2); box-shadow: 0 14px 30px -22px rgba(60, 40, 15, 0.5), 0 1px 0 #fff inset; text-align: left; color: var(--tg-ink); animation: tg-qa-in 0.32s var(--tg-ease) both; transition: border-color 0.2s ease, transform 0.2s var(--tg-ease), box-shadow 0.2s ease; }
+.tg-stage__reopen:hover:not(:disabled) { border-color: #cfc6b8; transform: translateY(-2px); box-shadow: 0 20px 34px -22px rgba(60, 40, 15, 0.55), 0 1px 0 #fff inset; }
+.tg-stage__reopen:active:not(:disabled) { transform: translateY(0); }
+.tg-stage__reopen:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 3px; }
+.tg-stage__reopen:disabled { cursor: wait; opacity: 0.7; }
+.tg-stage__reopen b { display: block; font: 600 1.06rem/1.3 var(--tg-display); letter-spacing: -0.005em; }
+.tg-stage__reopen > span:not(.tg-stage__thumbs) { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.tg-stage__reopen small { display: block; font-size: 0.86rem; color: var(--tg-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-stage__reopen > svg:last-child { flex: none; box-sizing: content-box; width: 16px; height: 16px; padding: 9px; border-radius: 50%; background: var(--tg-ink); color: #fff; transition: transform 0.2s var(--tg-ease); }
+.tg-stage__reopen:hover:not(:disabled) > svg:last-child { transform: translateX(2px); }
+.tg-stage__thumbs { flex: none; display: flex; padding: 4px 8px 4px 14px; }
+.tg-stage__thumbs img, .tg-stage__thumbs i { width: 54px; height: 62px; margin-left: -18px; border: 3px solid #fff; border-radius: 14px; object-fit: cover; background: var(--tg-pine-soft); box-shadow: 0 6px 14px -6px rgba(0, 0, 0, 0.4); transform: rotate(var(--tilt, 0deg)); transition: transform 0.28s var(--tg-ease), margin 0.28s var(--tg-ease); }
+.tg-stage__thumbs > :nth-child(1) { --tilt: -7deg; position: relative; z-index: 1; }
+.tg-stage__thumbs > :nth-child(2) { --tilt: 2deg; position: relative; z-index: 2; translate: 0 -3px; }
+.tg-stage__thumbs > :nth-child(3) { --tilt: 8deg; position: relative; z-index: 3; }
+.tg-stage__reopen:hover:not(:disabled) .tg-stage__thumbs img, .tg-stage__reopen:hover:not(:disabled) .tg-stage__thumbs i { margin-left: -10px; }
 
 .tg-stage-overlay { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; }
 .tg-stage__veil { position: absolute; inset: 0; background: color-mix(in srgb, var(--tg-night) 46%, transparent); animation: tg-veil-in 0.36s ease-out both; }
-html.tg-stage-open #root { filter: blur(14px) saturate(0.85); transition: filter 0.3s ease-out; }
+html.tg-stage-open #root, html.tg-stage-open .tg-drop { filter: blur(14px) saturate(0.85); transition: filter 0.3s ease-out; } /* the chat column is a portal outside #root: it blurs with the page */
 .tg-stage__panel { position: relative; display: grid; justify-items: center; gap: 18px; width: min(1040px, 100%); outline: none; animation: tg-stage-in 0.42s var(--tg-ease) both; }
 .tg-stage__head { position: relative; display: grid; justify-items: center; gap: 8px; width: 100%; max-width: 680px; padding: 0 56px; text-align: center; color: var(--tg-surface); }
 .tg-stage__kicker { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid color-mix(in srgb, var(--tg-surface) 28%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--tg-surface) 14%, transparent); font-size: 0.82rem; font-weight: 600; }
@@ -161,3 +172,58 @@ html.tg-stage-open #root { filter: blur(14px) saturate(0.85); transition: filter
 .tg-lc__none { font-size: 0.9rem; color: var(--tg-ink-3); }
 .tg-lc__own { padding-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .tg-lc__card, .tg-lc__card:hover { animation: none; transition: none; transform: none; } }
+
+/* ---------- the open question as a sheet (AskSheet) ----------
+   It docks over the composer of the chat column; the chat behind is blurred, not the whole app, so the user still
+   sees where they are. "Để sau" folds it to one line in the chat. */
+.tg-asks__dock { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 24px 18px 16px; pointer-events: none; }
+.tg-asks__dock:empty { display: none; }
+.tg-asks__veil { position: absolute; inset: 0; background: color-mix(in srgb, var(--tg-surface) 40%, transparent); -webkit-backdrop-filter: blur(7px) saturate(0.9); backdrop-filter: blur(7px) saturate(0.9); pointer-events: auto; animation: tg-veil-in 0.28s ease-out both; }
+.tg-asks__veil.is-leaving { animation: tg-veil-out 0.18s ease-in forwards; }
+.tg-asks { position: relative; width: min(680px, 100%); max-height: min(100%, 680px); flex: none; overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 10px; border: 1px solid var(--tg-line); border-radius: 26px; background: var(--tg-surface); box-shadow: 0 24px 60px -18px rgba(20, 20, 20, 0.35), 0 2px 8px rgba(20, 20, 20, 0.06); pointer-events: auto; outline: 0; scrollbar-width: thin; animation: tg-asks-in 0.34s var(--tg-ease) both; }
+.tg-asks.is-leaving { animation: tg-asks-out 0.18s ease-in forwards; }
+.tg-asks__top { display: flex; align-items: center; gap: 10px; padding: 2px 4px 0 6px; }
+.tg-asks__chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px 0 10px; border-radius: 999px; background: var(--tg-pine-soft); font-size: 0.86rem; font-weight: 600; color: var(--tg-ink); }
+.tg-asks__hint { font-size: 0.84rem; color: var(--tg-ink-3); }
+.tg-asks__later { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; min-height: 32px; padding: 0 10px 0 12px; border-radius: 999px; font-size: 0.88rem; color: var(--tg-ink-3); transition: background-color 0.16s ease, color 0.16s ease; }
+.tg-asks__later:hover { background: var(--tg-pine-soft); color: var(--tg-ink); }
+.tg-asks__later:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg-asks__q { margin: 12px 8px 4px; font: 600 1.22rem/1.35 var(--tg-display); letter-spacing: -0.005em; color: var(--tg-ink); text-wrap: balance; }
+.tg-asks__why { margin: 0 8px 4px; font-size: 0.9rem; line-height: 1.45; color: var(--tg-ink-3); }
+.tg-qa.is-bare { max-width: none; margin-top: 6px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; animation: none; }
+.tg-qa.is-bare .tg-qa__foot { position: sticky; bottom: -10px; margin: 8px -14px -10px; padding: 10px 14px 12px; background: var(--tg-surface); }
+.tg-asks__pill { display: flex; align-items: center; gap: 10px; max-width: 560px; min-height: 44px; padding: 8px 10px 8px 14px; border: 1px dashed var(--tg-line-2); border-radius: 16px; background: var(--tg-surface); text-align: left; color: var(--tg-ink-2); animation: tg-qa-in 0.26s var(--tg-ease) both; transition: border-color 0.16s ease, transform 0.16s var(--tg-ease); }
+.tg-asks__pill:hover { border-style: solid; border-color: var(--tg-ink); transform: translateY(-1px); }
+.tg-asks__pill:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg-asks__pill > svg { flex: none; color: var(--tg-ink-3); }
+.tg-asks__pill > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.93rem; }
+.tg-asks__pill b { margin-right: 6px; font-weight: 600; color: var(--tg-ink); }
+.tg-asks__pill em { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 5px 10px; border-radius: 999px; background: var(--tg-ink); font-style: normal; font-size: 0.84rem; font-weight: 600; color: var(--tg-surface); }
+@keyframes tg-asks-in { from { opacity: 0; transform: translateY(18px) scale(0.98); } }
+@keyframes tg-asks-out { to { opacity: 0; transform: translateY(14px) scale(0.985); } }
+@media (max-width: 650px) {
+  .tg-asks__dock { padding: 0 8px 8px; }
+  .tg-asks { border-radius: 22px; padding: 12px 10px 8px; }
+  .tg-asks__hint { display: none; }
+  .tg-qa.is-bare .tg-qa__foot { margin: 8px -10px -8px; padding: 10px 10px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tg-asks, .tg-asks__veil, .tg-asks__pill { animation: none; }
+}
+
+/* ---------- a chat that is being opened, and the moment it arrives ---------- */
+.tg-cx__loading { display: grid; gap: 14px; width: 100%; max-width: 780px; margin: 0 auto; padding: 28px 8px; }
+.tg-cx__loading > span { display: block; width: 72%; height: 54px; border-radius: 18px; background: rgba(17, 17, 17, 0.06); animation: tg-history-pulse 1.4s ease-in-out infinite; }
+.tg-cx__loading > span.is-me { justify-self: end; width: 46%; height: 40px; }
+.tg-cx__loading > span.is-short { width: 38%; }
+.tg-cx__log.is-arriving { animation: tg-cx-arrive 0.22s ease-out both; }
+@keyframes tg-cx-arrive { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .tg-cx__loading > span, .tg-cx__log.is-arriving { animation: none; } }
+
+/* Event cards on the photo stage (understand/Events.tsx): the poster slot holds another site's picture, the venue's photo, or a warm calendar tile. */
+.tg-evc__cal { display: grid; place-items: center; align-content: center; gap: 6px; width: 100%; height: 100%; background: linear-gradient(180deg, #fff3d6, #f6dcae); color: #8a5a00; }
+.tg-evc__cal b { font: 600 1.7rem/1 var(--tg-display); letter-spacing: -0.01em; }
+.tg-evc__credit { position: absolute; left: 10px; bottom: 8px; max-width: calc(100% - 20px); padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.5); color: #fff; font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-stage__badge.is-hot { background: #ffe9dc; color: #b34a12; }
+.tg-stage__body small.tg-evc__left { color: #8a5a00; font-weight: 600; }
+.tg-stage__body small.tg-evc__sum { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; line-height: 1.4; }

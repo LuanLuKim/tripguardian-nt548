@@ -21,7 +21,7 @@ export function worstStatus(p: Place): Status | null {
 export type Risk = 'Cao' | 'Vừa' | 'Thấp'
 const SAFETY = new Set(['kids', 'elderly', 'steep_or_stairs', 'rough_road_access', 'tourist_trap', 'weather_exposed', 'long_walk'])
 
-export function riskOf(r: ReviewItem): Risk {
+export function riskOf(r: Pick<ReviewItem, 'kind' | 'feature'>): Risk {
   if (r.kind === 'permissive_check' || r.kind === 'conflict') return 'Cao'
   if (r.kind === 'proposed_feature') return 'Thấp'
   return SAFETY.has(r.feature) ? 'Cao' : 'Vừa'
@@ -53,7 +53,7 @@ export function signalOf(r: ReviewItem): { place: Place | undefined; signal: Sig
   return { place, signal: place?.features.find((f) => f.id === r.feature) }
 }
 
-export const itemTitle = (r: ReviewItem) => (r.kind === 'proposed_feature' ? r.feature : featureLabel(r.feature))
+export const itemTitle = (r: Pick<ReviewItem, 'kind' | 'feature'>) => (r.kind === 'proposed_feature' ? r.feature : featureLabel(r.feature))
 
 export const fmtAgo = (iso: string | null | undefined) => {
   if (!iso) return '—'

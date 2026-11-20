@@ -10,7 +10,6 @@ A page whose offers are not drawn yet is "pending": wait, do not guess.
 
 import re
 from dataclasses import dataclass
-from datetime import date
 
 from ..common.lodging import Stay
 

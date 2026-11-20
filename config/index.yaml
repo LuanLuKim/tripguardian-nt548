@@ -5,6 +5,8 @@ embedder:
   text_model: BAAI/bge-m3                         # multilingual text: span <-> text
   online_device: cuda:0                           # where the harness embeds the user's text / photo; "cpu" works, slower
   online_text_device: cuda:1                      # bge-m3 on its own GPU when the harness sees two (HARNESS_GPU=0,1); else cuda:0 (prod: HARNESS_GPU=1, one visible)
+  idle_park_s: 180                                # online: no call for this long -> encoders wait in RAM (fp16), the GPU is free; the next call brings them back (a copy, ~1-2 s). 0 = never
+  gpu_lease: /tmp/tripguardian-gpu.lease          # while another job holds this flock (scripts/gpu_lease.sh) the encoders sit in RAM and answer on the CPU
   batch: 48                                       # images per forward pass offline (one RTX 2080 Ti, fp16)
   text_batch: 256
 gpus: [0]                                        # offline jobs: one process per entry, places split between them. The team sees GPUs 0 and 1 only

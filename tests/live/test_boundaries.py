@@ -9,7 +9,7 @@ import live
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "live"
 CORPUS_DIRS = ("data/intel", "data/serving", "data/gmaps", "data/tiktok", "data/review",
-               "data\intel", "data\serving", "data\gmaps")
+               r"data\intel", r"data\serving", r"data\gmaps")
 OTHER_PACKAGES = {"corpus", "decision", "trip", "planning"}
 CORPUS_EXCEPTION = {"corpus"}  # live/lodging, live/flights reuse corpus.crawl's public API (docs/PLANNING.md §Live Context)
 

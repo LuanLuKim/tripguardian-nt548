@@ -757,3 +757,33 @@ def test_alone_on_a_card_is_one_person(make):
     st = e.store.get(sid).state
     assert st.companions.value == frozenset({"solo"}) and st.people.value == 1
     assert "companions" not in [m["target"] for m in e.load(sid)["understanding"]["missing"]]
+
+
+def test_new_chat_starts_the_screen_and_the_model_history_again_but_keeps_the_trip(make):
+    from trip_fixtures import say as model_says
+    chat = ScriptedChat(model_says('Ok, 3 ngày nhé.'), model_says('Chào bạn, hỏi gì cũng được.'))
+    e = make(chat=chat)
+    sid = e.create('first', 'nothing')['id']
+    run(e, sid, kind='text', text='Mình đi 3 ngày, thích săn mây')
+    kept = e.store.get(sid).state
+    e.new_chat(sid)
+    view = e.load(sid)
+    assert view['transcript'] == []  # the screen opens on the welcome again
+    assert e.store.get(sid).state == kept  # what the user told stays on the trip
+    assert any(t.get('text') == 'Mình đi 3 ngày, thích săn mây' for t in e.store.get(sid).transcript)  # kept for the record
+    run(e, sid, kind='text', text='Có quán cà phê nào đẹp?')
+    sent = [m['content'] for m in chat.seen[-1][0] if m['role'] in ('user', 'assistant')]
+    # the old talk is not sent to the model as chat history (the trip state, which the context carries, still knows it)
+    assert 'Mình đi 3 ngày, thích săn mây' not in sent and 'Ok, 3 ngày nhé.' not in sent
+    assert sent[-1] == 'Có quán cà phê nào đẹp?' or 'Có quán cà phê nào đẹp?' in str(sent[-1])
+    assert [t['text'] for t in e.load(sid)['transcript'] if t['role'] == 'user'] == ['Có quán cà phê nào đẹp?']
+
+
+def test_new_chat_keeps_an_open_health_hint(make, monkeypatch):
+    e = make()
+    sid = e.create('first', 'nothing')['id']
+    s = e.store.get(sid)
+    card = s.card
+    monkeypatch.setattr(e, '_readback', lambda state: {'missing': ['care']})
+    e.new_chat(sid)
+    assert e.store.get(sid).card == card

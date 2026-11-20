@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime, timedelta
 from ..common.browser import LoginRequired, is_captcha, open_sessions, pause, wait_for_person
 from ..common.files import append_jsonl, data_dir, load_config, log_error, now
 from ..common.throttle import Throttle
-from .parser import Flight, flight_numbers, parse_list
+from .parser import flight_numbers, parse_list
 
 SOURCE = "gflights"
 URL = "https://www.google.com/travel/flights?q={q}&hl=vi&curr=VND"

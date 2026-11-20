@@ -1,0 +1,54 @@
+/* The chat's clip stage (screens/understand/Clips.tsx): TikTok-like, on the photo stage's blurred screen. Owner 20/11/2026. */
+.tg-cs { --h: min(calc(100vh - 270px), 720px); --peek: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 280px) auto minmax(0, 280px); align-items: center; gap: 28px; padding: 0 72px; }
+.tg-cs__feed { grid-column: 2; }
+.tg-cs__info { grid-column: 3; }
+.tg-cs__feed { position: relative; height: calc(var(--h) + 2 * var(--peek)); aspect-ratio: auto; width: calc(var(--h) * 9 / 16); overflow: hidden;
+  -webkit-mask-image: linear-gradient(rgba(0, 0, 0, 0.25), #000 var(--peek), #000 calc(100% - var(--peek)), rgba(0, 0, 0, 0.25)); mask-image: linear-gradient(rgba(0, 0, 0, 0.25), #000 var(--peek), #000 calc(100% - var(--peek)), rgba(0, 0, 0, 0.25)); }
+.tg-cs__slot { position: absolute; left: 0; top: var(--peek); width: 100%; height: var(--h); overflow: hidden; border-radius: 18px; background: #000; box-shadow: var(--tg-sh-2);
+  transform: translateY(calc(var(--d) * (var(--h) + 14px))) scale(calc(1 - 0.06 * var(--a))); opacity: calc(1 - 0.45 * var(--a)); transition: transform 420ms var(--tg-ease), opacity 420ms var(--tg-ease); pointer-events: none; }
+.tg-cs__slot.is-on { pointer-events: auto; }
+.tg-cs__slot .tg-cv__frame { pointer-events: auto; }
+.tg-cs__slot.is-ready .tg-cv__frame { opacity: 1; }
+/* the clips peeking above and below show their own frame, not a paused black player */
+.tg-cs__slot:not(.is-on) .tg-cv__frame { opacity: 0; }
+/* the tap layer covers the clip but TikTok's own bar along its bottom edge (time, sound, full screen) */
+.tg-cs__tap { position: absolute; left: 0; right: 0; top: var(--peek); height: calc(var(--h) - 64px); display: grid; place-items: center; border: 0; border-radius: 18px 18px 0 0; background: transparent; cursor: pointer; }
+.tg-cs__tap:focus-visible { outline: 2px solid var(--tg-surface); outline-offset: -4px; }
+.tg-cs__paused { display: grid; place-items: center; width: 76px; height: 76px; border-radius: 50%; background: rgba(0, 0, 0, 0.42); color: #fff; }
+.tg-cs__peek { position: absolute; left: 0; right: 0; height: var(--peek); border: 0; background: transparent; cursor: pointer; }
+.tg-cs__peek.is-up { top: 0; }
+.tg-cs__peek.is-down { bottom: 0; }
+.tg-cs__info { display: grid; gap: 12px; align-content: end; align-self: end; padding-bottom: calc(var(--peek) + 12px); color: var(--tg-surface); }
+.tg-cs__place { display: inline-flex; align-items: center; gap: 6px; justify-self: start; max-width: 100%; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--tg-surface) 28%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--tg-surface) 14%, transparent); color: var(--tg-surface); font: 600 1rem/1.25 var(--tg-sans); text-align: left; transition: background 160ms; }
+.tg-cs__place b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-cs__place:hover { background: color-mix(in srgb, var(--tg-surface) 24%, transparent); }
+.tg-cs__like { display: inline-flex; align-items: center; gap: 8px; justify-self: start; height: 40px; padding: 0 16px 0 12px; border: 0; border-radius: 999px; background: var(--tg-surface); color: var(--tg-ink); font: 600 0.86rem var(--tg-sans); box-shadow: var(--tg-sh-1); }
+.tg-cs__like > svg { color: var(--tg-brand); }
+.tg-cs__like.is-on { background: color-mix(in srgb, var(--tg-brand) 12%, var(--tg-surface)); }
+.tg-cs__who { display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
+.tg-cs__who i { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--tg-sun); color: #fff; font: 700 0.95rem var(--tg-sans); font-style: normal; }
+.tg-cs__desc { max-height: 26vh; overflow: auto; font-size: 0.9rem; line-height: 1.5; color: color-mix(in srgb, var(--tg-surface) 88%, transparent); overflow-wrap: anywhere; }
+.tg-cs__out { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: 38px; padding: 0 14px; border-radius: 999px; background: color-mix(in srgb, var(--tg-surface) 16%, transparent); color: var(--tg-surface); font-weight: 600; font-size: 0.84rem; }
+.tg-cs__out:hover { background: color-mix(in srgb, var(--tg-surface) 26%, transparent); }
+.tg-cs__nav { position: absolute; right: 0; top: 50%; translate: 0 -50%; display: grid; justify-items: center; gap: 10px; color: var(--tg-surface); font-size: 0.8rem; }
+.tg-cs__nav button { display: grid; place-items: center; width: 50px; height: 50px; border-radius: 50%; background: color-mix(in srgb, var(--tg-surface) 16%, transparent); color: var(--tg-surface); transition: background 160ms, opacity 160ms; }
+.tg-cs__nav button:hover:not(:disabled) { background: color-mix(in srgb, var(--tg-surface) 28%, transparent); }
+.tg-cs__nav button:disabled { opacity: 0.35; }
+@media (max-width: 760px) {
+  /* a phone: the clip fills the stage, a swipe moves on; the place and Thích stay in one row under it */
+  .tg-cs { --h: min(calc(100vh - 290px), 640px); --peek: 36px; grid-template-columns: 1fr; justify-items: center; gap: 8px; padding: 0; }
+  .tg-cs__feed, .tg-cs__info { grid-column: 1; }
+  .tg-cs__info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: min(92vw, 420px); padding-bottom: 0; }
+  .tg-cs__who, .tg-cs__desc, .tg-cs__nav { display: none; }
+  .tg-cs__place { flex: 1 1 auto; min-width: 0; }
+  .tg-cs__out { min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { .tg-cs__slot { transition: none; } }
+
+/* the clips a reply holds, as one line in the chat (like the photo stage's line): three posters, the heading, how many */
+.tg-clips__open .tg-stage__thumbs img { aspect-ratio: 9 / 16; height: 56px; width: auto; }
+/* "▶ N clip" on a place card of the photo stage */
+.tg-stage__clips { position: absolute; left: 10px; bottom: 10px; z-index: 2; display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px 0 9px; border: 0; border-radius: 999px; background: rgba(0, 0, 0, 0.58); color: #fff; font: 600 0.78rem var(--tg-sans); backdrop-filter: blur(6px); }
+.tg-stage__clips:hover { background: rgba(0, 0, 0, 0.74); }
+.tg-stage__clips:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.tg-stage__photo:has(> .tg-stage__clips) { position: relative; }

@@ -42,8 +42,10 @@ class Request(BaseModel):
 
     @model_validator(mode="after")
     def validate_payload(self):
-        if self.operation in {"advance", "back", "confirm", "recommend"} and self.payload:
+        if self.operation in {"advance", "back", "confirm"} and self.payload:
             raise ValueError(f"{self.operation} does not accept a client supplied payload")
+        if self.operation == "recommend" and self.payload not in ({}, {"scope": "keep_mine"}, {"scope": "all"}):
+            raise ValueError("recommend accepts only scope keep_mine | all")
         return self
 
 

@@ -20,12 +20,16 @@ import { Landing } from './screens/Landing'
 import { PlaceDetail } from './screens/PlaceDetail'
 import { Plan } from './screens/Plan'
 import { Inbox } from './screens/Inbox'
+import { Compose } from './community/Compose'
+import { Posts } from './community/Posts'
+import { Trending } from './home/Trending'
+import { PostPage } from './community/Reader'
 import { Today } from './screens/Today'
-import { Understand } from './screens/Understand'
 import { TripProvider, useTrip } from './trip'
 import { Busy, Empty, Loading, ArtHills, go, Toast } from './ui/common'
+import { openAssistant } from './store'
 import { PlaceSheet } from './ui/PlaceSheet'
-import { FlowSide, Frame } from './home/Frame'
+import { Frame, RailDock } from './home/Frame'
 import { Recent } from './screens/Recent'
 import { Support } from './screens/Support'
 import './css/tokens.css'
@@ -122,10 +126,11 @@ function Shell({ p, sheet }: { p: string; sheet: string | null }) {
     rail = false
   } else if (p === '/login' && guest) { screen = <Auth next="/app" />; rail = false } // a guest who wants to keep the trips
   else if (p === '/login') { screen = <div className="tg-page"><Busy text="Đang vào…" /></div>; rail = false }
-  else if (p === '/understand') { screen = <Understand />; rail = false } // talks to the harness only: never waits for the snapshot
+  else if (p === '/understand') { screen = <ToChat />; rail = false } // an old link to the chat screen: the chat is beside Lựa chọn now
   // These pages need none of the place data (Discover's place-count chip shows when it has loaded): they open at once.
   else if (p === '') screen = <Discover />
   else if (p === '/trips') screen = <Trips />
+  else if (p === '/trending') screen = <Trending />
   else if (p === '/support') screen = <Support />
   else if (p === '/inbox') screen = guest ? <GuestGate what="Thông báo" /> : <Inbox />
   else if (p === '/profile') screen = guest ? <GuestProfile /> : <Account />
@@ -141,6 +146,9 @@ function Shell({ p, sheet }: { p: string; sheet: string | null }) {
   else if ((m = match(p, '/explore/compare/:ids'))) { screen = <Compare ids={m.ids.split(',')} key={m.ids} />; rail = false; side = true }
   else if (p === '/plan') { screen = <Plan />; rail = false; side = true }
   else if (p === '/done') { screen = <Done />; rail = false; side = true }
+  else if (p === '/posts') screen = <Posts />
+  else if (p === '/posts/new') screen = <Compose />
+  else if ((m = match(p, '/posts/:id'))) screen = <PostPage id={m.id} key={m.id} />
   else if (p === '/today') screen = guest ? <GuestGate what="Hôm nay" /> : <Today />
   else if (p === '/saved') screen = <Saved />
   else if (p === '/recent') screen = <Recent />
@@ -152,7 +160,7 @@ function Shell({ p, sheet }: { p: string; sheet: string | null }) {
         <Frame path={p}><main id="tg-main" tabIndex={-1} key={p} className="tg-hf__main tg-flow"><Guard>{screen}</Guard></main></Frame>
       ) : (
         <div className={`tg-app ${side ? 'has-rail' : ''}`}>
-          {side && <FlowSide path={p} />}
+          {side && <RailDock path={p} />}
           <main id="tg-main" tabIndex={-1} key={p} className="tg-flow"><Guard>{screen}</Guard></main>
         </div>
       )}
@@ -162,6 +170,13 @@ function Shell({ p, sheet }: { p: string; sheet: string | null }) {
   )
   // The plan and the place snapshot are independent reads. Keep the provider mounted through snapshot loading.
   return signedIn && p === '/plan' ? <PlanningProvider>{content}</PlanningProvider> : content
+}
+
+// /app/understand from an old link or the browser's history: the trip's lists (or the home page) with the chat open.
+function ToChat() {
+  const { trip } = useTrip()
+  useEffect(() => { openAssistant(true); go(trip.decisionId || trip.journeyId ? '/explore' : '/', { replace: true }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  return <div className="tg-page"><Busy text="Đang mở trò chuyện…" /></div>
 }
 
 // A screen that fails to render shows a way out instead of a blank page; the trip itself is safe on the server.

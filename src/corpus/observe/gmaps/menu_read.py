@@ -12,7 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from ...crawl.common.files import append_jsonl, data_dir, load_config, now, safe_name, write_json
+from ...crawl.common.files import append_jsonl, data_dir, load_config, now, write_json
 from ...llm import MENU_READ, MENU_READ_AGAIN
 from ...serving import dishes
 

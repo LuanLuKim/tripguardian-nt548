@@ -163,3 +163,40 @@ def test_skip_stops_without_repeating_or_logistics(big, cfg, tmp_path):
     assert engine.load(sid)['card']['qid'] == 'conversation'
     assert chat.calls == calls
     assert next(d for d in engine.store.get(sid).state.drills if tab['qid'] == f'drill.{d.topic}').status == 'skipped'
+
+
+def test_the_next_photo_card_pairs_with_the_topic_just_chosen(big, cfg):
+    looks = discovery_looks(cfg)
+    state = drill.build(drill.note(TripState(), 'nhiều quán cà phê đẹp', 1, discovery=True), big, looks, cfg)
+    state = drill.discover(drill.finish(state, 'cà phê', 'done'), big, looks, cfg, 2)
+    upcoming = next(d for d in state.drills if d.status == 'pending' and d.tab)
+    assert upcoming.topic == drill.AFTER['cà phê'][0]  # the hills after a cafe, not the fixed first food card
+    assert upcoming.tab.question == ''  # no stock question: the agent words the card
+
+
+def test_a_photo_pick_reaches_the_agent_with_what_was_kept_and_the_card_its_reply_leads_into(big, cfg, tmp_path):
+    chat = ScriptedChat(say('Đà Lạt nhiều kiểu quán lắm, xem thử vài kiểu nhé.'), say('Ngồi vườn sáng sớm còn sương.'))
+    engine = Engine(big, cfg, SessionStore(tmp_path), chat, looks=discovery_looks(cfg))
+    sid = engine.create('first', 'nothing')['id']
+    engine.turn(sid, TurnInput(kind='text', text='Mình muốn sống chậm, nhiều quán cà phê đẹp'), lambda *_: None)
+    context = lambda call: '\n'.join(m['content'] for m in chat.seen[call][0] if m['role'] == 'user')  # noqa: E731
+    assert '"next_card"' in context(0) and '"about": "cà phê"' in context(0)  # the first reply knows the card under it
+    tab = engine.load(sid)['card']['tabs'][0]
+    options = [o for o in tab['options'] if o.get('photo')]
+    engine.turn(sid, TurnInput(kind='deck', answers={tab['qid']: [options[0]['id']]}), lambda *_: None)
+    picked = context(-1)
+    assert '"chosen"' in picked and options[0]['label'] in picked
+    assert '"not_chosen_this_time"' in picked and options[1]['label'] in picked
+    assert f'"about": "{drill.AFTER["cà phê"][0]}"' in picked  # and the next card it leads into
+    assert engine.load(sid)['card']['tabs'][0]['qid'] == f'drill.{drill.AFTER["cà phê"][0]}'
+
+
+def test_an_offer_of_the_next_card_keeps_its_question_and_the_card_waits_under_it_in_one_call(big, cfg, tmp_path):
+    chat = ScriptedChat(say('Đà Lạt nhiều kiểu quán lắm. Bạn muốn xem thử vài kiểu không?'))
+    engine = Engine(big, cfg, SessionStore(tmp_path), chat, looks=discovery_looks(cfg))
+    sid = engine.create('first', 'nothing')['id']
+    engine.turn(sid, TurnInput(kind='text', text='Mình muốn sống chậm, nhiều quán cà phê đẹp'), lambda *_: None)
+    reply = next(t['text'] for t in reversed(engine.load(sid)['transcript']) if t['role'] == 'agent' and t['text'])
+    tab = engine.load(sid)['card']['tabs'][0]
+    assert chat.calls == 1 and reply.endswith('xem thử vài kiểu không?')  # the offer is not dropped for the photos
+    assert tab['kind'] == 'drill' and tab['question'] == ''  # the card waits under it; no stock or borrowed heading

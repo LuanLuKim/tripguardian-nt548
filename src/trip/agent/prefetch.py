@@ -44,7 +44,7 @@ CENTER_WORDS = re.compile(r"\bchợ\b|trung tâm")
 TREND_WORDS = re.compile(r"đang hot|\bhot\b|xu hướng|dạo này|gần đây|sự kiện|lễ hội|festival|vào mùa|đang mùa|mùa hoa|mùa gì|"
                          r"mới mở|mới khai trương|nhiều người nhắc|được nhắc|đang được|đang nổi|nổi trên|tiktok|đóng cửa")
 TREND_KINDS = (("event", re.compile(r"sự kiện|lễ hội|festival")), ("season", re.compile(r"vào mùa|đang mùa|mùa hoa|mùa gì")),
-               ("new", re.compile(r"mới mở|mới khai trương")), ("closed", re.compile(r"đóng cửa")))
+               ("new", re.compile(r"mới mở|mới khai trương")))
 CENTER = "center"  # Knowledge.distance's name for the city centre (config/cities.yaml center)
 # words too common in place names to tell one place from another (kept with their accents)
 GENERIC = set("quán cà phê cafe coffee coffe đà lạt dalat nhà hàng restaurant homestay hotel khách sạn the vườn garden "

@@ -1,0 +1,99 @@
+# Vietnam's provinces for pricing rides (journey.areas, journey.tariffs; docs/BOOKING.md §Gọi xe).
+# Brands still price by the 63 provinces before the 01/07/2025 merger, often naming the new province and the old area
+# side by side ("Lâm Đồng | Đắk Nông"), so an area is an OLD province; `new` is the province it belongs to since 2025.
+# Boundaries: config/provinces.geojson (geoBoundaries VNM ADM1, public domain, one feature per key below).
+# `names`: every spelling a brand page uses for that old province (accents and case are folded when matching).
+version: 1
+areas:
+  ha_noi: {name: Hà Nội, new: Hà Nội, names: [Hà Nội, Ha Noi, Hanoi]}
+  ho_chi_minh: {name: TP. Hồ Chí Minh, new: TP. Hồ Chí Minh, names: [TP. Hồ Chí Minh, Hồ Chí Minh, TP.HCM, TPHCM, HCM, Ho Chi Minh, Sài Gòn, "Hồ Chí Minh cũ", "TP HCM cũ"]}
+  binh_duong: {name: Bình Dương, new: TP. Hồ Chí Minh, names: [Bình Dương, "Bình Dương cũ"]}
+  ba_ria_vung_tau: {name: Bà Rịa – Vũng Tàu, new: TP. Hồ Chí Minh, names: [Bà Rịa – Vũng Tàu, Bà Rịa - Vũng Tàu, Bà Rịa–Vũng Tàu, Vũng Tàu, BR-VT]}
+  con_dao: {name: Côn Đảo, new: TP. Hồ Chí Minh, names: [Côn Đảo]}
+  hai_phong: {name: Hải Phòng, new: Hải Phòng, names: [Hải Phòng]}
+  hai_duong: {name: Hải Dương, new: Hải Phòng, names: [Hải Dương]}
+  da_nang: {name: Đà Nẵng, new: Đà Nẵng, names: [Đà Nẵng, "Đà Nẵng cũ"]}
+  quang_nam: {name: Quảng Nam, new: Đà Nẵng, names: [Quảng Nam]}
+  can_tho: {name: Cần Thơ, new: Cần Thơ, names: [Cần Thơ, "Cần Thơ cũ"]}
+  soc_trang: {name: Sóc Trăng, new: Cần Thơ, names: [Sóc Trăng]}
+  hau_giang: {name: Hậu Giang, new: Cần Thơ, names: [Hậu Giang]}
+  an_giang: {name: An Giang, new: An Giang, names: [An Giang, "An Giang cũ"]}
+  kien_giang: {name: Kiên Giang, new: An Giang, names: [Kiên Giang, Rạch Giá]}
+  bac_ninh: {name: Bắc Ninh, new: Bắc Ninh, names: [Bắc Ninh, "Bắc Ninh cũ"]}
+  bac_giang: {name: Bắc Giang, new: Bắc Ninh, names: [Bắc Giang]}
+  thai_nguyen: {name: Thái Nguyên, new: Thái Nguyên, names: [Thái Nguyên, "Thái Nguyên cũ"]}
+  bac_kan: {name: Bắc Kạn, new: Thái Nguyên, names: [Bắc Kạn]}
+  ca_mau: {name: Cà Mau, new: Cà Mau, names: [Cà Mau, "Cà Mau cũ"]}
+  bac_lieu: {name: Bạc Liêu, new: Cà Mau, names: [Bạc Liêu]}
+  vinh_long: {name: Vĩnh Long, new: Vĩnh Long, names: [Vĩnh Long, "Vĩnh Long cũ"]}
+  ben_tre: {name: Bến Tre, new: Vĩnh Long, names: [Bến Tre]}
+  tra_vinh: {name: Trà Vinh, new: Vĩnh Long, names: [Trà Vinh]}
+  gia_lai: {name: Gia Lai, new: Gia Lai, names: [Gia Lai, "Gia Lai cũ"]}
+  binh_dinh: {name: Bình Định, new: Gia Lai, names: [Bình Định]}
+  dong_nai: {name: Đồng Nai, new: Đồng Nai, names: [Đồng Nai, "Đồng Nai cũ"]}
+  binh_phuoc: {name: Bình Phước, new: Đồng Nai, names: [Bình Phước]}
+  lam_dong: {name: Lâm Đồng, new: Lâm Đồng, names: [Lâm Đồng, "Lâm Đồng cũ"]}
+  dak_nong: {name: Đắk Nông, new: Lâm Đồng, names: [Đắk Nông, Đăk Nông]}
+  binh_thuan: {name: Bình Thuận, new: Lâm Đồng, names: [Bình Thuận]}
+  cao_bang: {name: Cao Bằng, new: Cao Bằng, names: [Cao Bằng]}
+  dak_lak: {name: Đắk Lắk, new: Đắk Lắk, names: [Đắk Lắk, Đăk Lăk, "Đắk Lắk cũ"]}
+  phu_yen: {name: Phú Yên, new: Đắk Lắk, names: [Phú Yên]}
+  dien_bien: {name: Điện Biên, new: Điện Biên, names: [Điện Biên]}
+  dong_thap: {name: Đồng Tháp, new: Đồng Tháp, names: [Đồng Tháp, "Đồng Tháp cũ"]}
+  tien_giang: {name: Tiền Giang, new: Đồng Tháp, names: [Tiền Giang]}
+  tuyen_quang: {name: Tuyên Quang, new: Tuyên Quang, names: [Tuyên Quang, "Tuyên Quang cũ"]}
+  ha_giang: {name: Hà Giang, new: Tuyên Quang, names: [Hà Giang]}
+  ninh_binh: {name: Ninh Bình, new: Ninh Bình, names: [Ninh Bình, "Ninh Bình cũ"]}
+  ha_nam: {name: Hà Nam, new: Ninh Bình, names: [Hà Nam]}
+  nam_dinh: {name: Nam Định, new: Ninh Bình, names: [Nam Định]}
+  ha_tinh: {name: Hà Tĩnh, new: Hà Tĩnh, names: [Hà Tĩnh]}
+  phu_tho: {name: Phú Thọ, new: Phú Thọ, names: [Phú Thọ, "Phú Thọ cũ"]}
+  vinh_phuc: {name: Vĩnh Phúc, new: Phú Thọ, names: [Vĩnh Phúc]}
+  hoa_binh: {name: Hòa Bình, new: Phú Thọ, names: [Hòa Bình, Hoà Bình]}
+  hung_yen: {name: Hưng Yên, new: Hưng Yên, names: [Hưng Yên, "Hưng Yên cũ"]}
+  thai_binh: {name: Thái Bình, new: Hưng Yên, names: [Thái Bình]}
+  khanh_hoa: {name: Khánh Hòa, new: Khánh Hòa, names: [Khánh Hòa, Khánh Hoà, Nha Trang, "Khánh Hòa cũ"]}
+  ninh_thuan: {name: Ninh Thuận, new: Khánh Hòa, names: [Ninh Thuận]}
+  quang_ngai: {name: Quảng Ngãi, new: Quảng Ngãi, names: [Quảng Ngãi, "Quảng Ngãi cũ"]}
+  kon_tum: {name: Kon Tum, new: Quảng Ngãi, names: [Kon Tum]}
+  lai_chau: {name: Lai Châu, new: Lai Châu, names: [Lai Châu]}
+  lang_son: {name: Lạng Sơn, new: Lạng Sơn, names: [Lạng Sơn]}
+  lao_cai: {name: Lào Cai, new: Lào Cai, names: [Lào Cai, "Lào Cai cũ"]}
+  yen_bai: {name: Yên Bái, new: Lào Cai, names: [Yên Bái]}
+  tay_ninh: {name: Tây Ninh, new: Tây Ninh, names: [Tây Ninh, "Tây Ninh cũ"]}
+  long_an: {name: Long An, new: Tây Ninh, names: [Long An]}
+  nghe_an: {name: Nghệ An, new: Nghệ An, names: [Nghệ An]}
+  quang_tri: {name: Quảng Trị, new: Quảng Trị, names: [Quảng Trị, "Quảng Trị cũ"]}
+  quang_binh: {name: Quảng Bình, new: Quảng Trị, names: [Quảng Bình]}
+  quang_ninh: {name: Quảng Ninh, new: Quảng Ninh, names: [Quảng Ninh]}
+  son_la: {name: Sơn La, new: Sơn La, names: [Sơn La]}
+  thanh_hoa: {name: Thanh Hóa, new: Thanh Hóa, names: [Thanh Hóa, Thanh Hoá]}
+  thua_thien_hue: {name: Huế, new: Huế, names: [Huế, TP Huế, TP. Huế, Thừa Thiên Huế, Thừa Thiên - Huế]}
+
+# Places a brand prices apart from the rest of their old province: a point inside `box` ([lat_min, lng_min, lat_max,
+# lng_max]) belongs to the sub-area first. A brand with no row for the sub-area falls back to its row for `parent`.
+subareas:
+  phu_quoc: {name: Phú Quốc, parent: kien_giang, box: [9.80, 103.80, 10.48, 104.12], names: [Phú Quốc]}
+  sa_pa: {name: Sa Pa, parent: lao_cai, box: [22.24, 103.74, 22.42, 103.93], names: [Sa Pa, Sapa]}
+  hoi_an: {name: Hội An, parent: quang_nam, box: [15.83, 108.26, 15.94, 108.42], names: [Hội An]}
+
+# A pickup point this close to a polygon (km) still belongs to it: the simplified coastline misses beach-front hotels.
+snap_km: 15
+
+# Airports a tariff names (airport fees, airport routes): a leg that starts or ends within `airport_km` of one is an
+# airport leg, priced in the airport's `area` (Nội Bài sits on the Hà Nội – Vĩnh Phúc line of the simplified outline).
+# Names are every way a brand page writes them.
+airport_km: 3
+airports:
+  SGN: {name: Tân Sơn Nhất, area: ho_chi_minh, lat: 10.8188, lng: 106.6520, names: [Tân Sơn Nhất, Tân Sân Nhất, Sân bay Tân Sơn Nhất, TSN]}
+  HAN: {name: Nội Bài, area: ha_noi, lat: 21.2212, lng: 105.8072, names: [Nội Bài, Sân bay Nội Bài]}
+  DAD: {name: Đà Nẵng, area: da_nang, lat: 16.0439, lng: 108.1992, names: [Sân bay Đà Nẵng]}
+  CXR: {name: Cam Ranh, area: khanh_hoa, lat: 11.9982, lng: 109.2193, names: [Cam Ranh, Sân bay Cam Ranh]}
+  PQC: {name: Phú Quốc, area: phu_quoc, lat: 10.1698, lng: 103.9931, names: [Sân bay Phú Quốc]}
+  DLI: {name: Liên Khương, area: lam_dong, lat: 11.7502, lng: 108.3672, names: [Liên Khương, Sân bay Liên Khương]}
+  HPH: {name: Cát Bi, area: hai_phong, lat: 20.8194, lng: 106.7247, names: [Cát Bi]}
+  VII: {name: Vinh, area: nghe_an, lat: 18.7376, lng: 105.6708, names: [Sân bay Vinh]}
+  THD: {name: Thọ Xuân, area: thanh_hoa, lat: 19.9017, lng: 105.4672, names: [Thọ Xuân]}
+  HUI: {name: Phú Bài, area: thua_thien_hue, lat: 16.4015, lng: 107.7026, names: [Phú Bài]}
+  VDH: {name: Đồng Hới, area: quang_binh, lat: 17.5150, lng: 106.5906, names: [Đồng Hới]}
+  VCA: {name: Cần Thơ, area: can_tho, lat: 10.0851, lng: 105.7119, names: [Sân bay Cần Thơ]}

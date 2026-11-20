@@ -38,6 +38,17 @@ def order_day(ids: list[str], ctx: DayCtx, seed: list[str] | None = None) -> Day
     return replace(_heuristic(ids, ctx, cache, seed), method="heuristic")
 
 
+def improve_order(ids: list[str], ctx: DayCtx, seed: list[str] | None = None) -> DayResult:
+    """2-opt + or-opt for every pass improve_passes allows, from the better of the seed and nearest neighbour: never
+    worse than either. For "Tối ưu lịch" (optimize.py) on days too long to try every order in time."""
+    ids = sorted(ids)
+    if len(ids) <= 1:
+        return simulate(ids, ctx)
+    if seed is not None and sorted(seed) != ids:
+        seed = None
+    return replace(_heuristic(ids, ctx, _SimulationCache(ids, ctx), seed), method="heuristic")
+
+
 def _orderable(r: DayResult, ids: list[str], ctx: DayCtx) -> bool:
     """Whether the day is a near miss that another order of the same stops may fit: it only runs late, and by no more
     than any order can save (its idle time and the road above the least any order needs: each stop reached by its

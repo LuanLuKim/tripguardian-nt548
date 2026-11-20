@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 from typing import TYPE_CHECKING
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from ..infrastructure.settings import Settings
 from .state import Base, Evidence, Transit, TripState, Update, apply, settle
@@ -46,11 +46,6 @@ def nearest_airport(origin: Base, cfg: Settings) -> dict | None:
     return min(cfg.airports, key=lambda a: (a["lat"] - origin.lat) ** 2 + ((a["lng"] - origin.lng) * math.cos(math.radians(origin.lat))) ** 2)
 
 
-def last_day(state: TripState) -> date | None:
-    start, days = state.start_date.value, state.days.value
-    return start + timedelta(days=days - 1) if start and days else None
-
-
 def route(state: TripState, cfg: Settings) -> tuple[str, str] | None:
     """(from, to) of the trip in: IATA codes for a flight, province names for a coach (its card also carries the
     origin's point, which src/live/buses prefers). None when unknown."""
@@ -63,12 +58,6 @@ def route(state: TripState, cfg: Settings) -> tuple[str, str] | None:
     if state.arrival_mode.value == "bus":
         return (origin.province or origin.text, "Lâm Đồng")
     return None
-
-
-def clock_after(t: str, minutes: int) -> str:
-    """HH:MM of the ISO time t, minutes later (earlier when negative)."""
-    x = datetime.fromisoformat(t) + timedelta(minutes=minutes)
-    return f"{x:%H:%M}"
 
 
 def travel_moments(state: TripState) -> tuple[Moment | None, Moment | None]:
@@ -125,7 +114,7 @@ def pick_transit(state: TripState, way: str, t: Transit, cfg: Settings, turn: in
     return settle(state)
 
 
-# ---------- trade-off sentences (docs/BOOKING.md §Đánh đổi) ----------
+# ---------- trade-off sentences (docs/BOOKING.md §Chọn chuyến, nhà, đèo, đánh đổi) ----------
 
 LONG_RIDE_MIN = 240  # a road or coach leg this long is a long sit for a small child
 

@@ -1,16 +1,10 @@
 .tg-robust { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font: 700 0.8rem var(--tg-sans) !important; }
 .tg-robust.is-hi { background: var(--tg-pine-soft); color: var(--tg-pine); }
 .tg-robust.is-mid { background: var(--tg-warn-bg); color: var(--tg-warn); }
+.tg-robust { border: 0; cursor: default; }
+button.tg-robust { cursor: pointer; }
+button.tg-robust:hover { filter: brightness(0.96); }
 .tg-robust.is-lo { background: var(--tg-danger-bg); color: var(--tg-danger); }
-.tg-trade__r:first-child { border-top: 0; }
-.tg-trade { display: grid; gap: 0; margin-bottom: 26px; border: 1px solid var(--tg-line); border-radius: 18px; background: var(--tg-surface); overflow: hidden; font-size: 0.9rem; }
-.tg-trade__r { display: grid; grid-template-columns: 170px repeat(3, 1fr); border-top: 1px solid var(--tg-line); }
-.tg-trade__r > * { padding: 12px 16px; }
-.tg-trade__r > span:first-child { color: var(--tg-ink-2); font-weight: 600; background: var(--tg-bg); }
-.tg-trade__h button { font-weight: 700; text-align: left; transition: background 150ms; }
-.tg-trade__h button:hover, .tg-trade__h button.is-on { background: var(--tg-pine-soft); color: var(--tg-pine); }
-.tg-trade .is-best { font-weight: 700; color: var(--tg-pine); }
-.tg-trade__note { padding: 10px 16px 14px; font-size: 0.78rem; }
 .tg-cond { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--tg-surface); border: 1px solid var(--tg-line); margin-bottom: 18px; font-size: 0.84rem; color: var(--tg-ink-2); }
 .tg-cond ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .tg-cond .tg-link { justify-self: start; margin-top: 2px; font-size: 0.82rem; font-weight: 600; color: var(--tg-ink-2); }
@@ -145,3 +139,95 @@
 
 .tg-lod__more { min-height: 48px; padding: 14px 0; text-align: center; color: var(--tg-ink-3); font-size: 0.86rem; }
 .tg-lod .tg-lod__other { margin: 0 0 16px; max-width: 520px; }
+
+/* The card that opens at the right on Lịch trình: a short question, or a list of places with search and tabs. It sizes to its
+   content like a search suggestion list (small photo, name, one line), never a full-height panel. */
+.tg-side { position: fixed; z-index: 61; top: 76px; right: 20px; display: flex; flex-direction: column; width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 100px); border-radius: 22px; background: var(--tg-surface); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.07), 0 22px 60px -12px rgba(0, 0, 0, 0.35); animation: tg-pop 180ms var(--tg-ease); overflow: hidden; }
+.tg-overlay:has(+ .tg-side) { background: rgba(0, 0, 0, 0.16); backdrop-filter: none; }
+.tg-side__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 18px 8px 20px; }
+.tg-side__head p { margin: 0 0 4px; font: 700 0.7rem/1 var(--tg-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tg-brand); }
+.tg-side__head h2 { margin: 0; font: 600 1.2rem/1.3 var(--tg-display); }
+.tg-side__head .tg-icon-btn { flex: none; width: 36px; height: 36px; }
+.tg-side__body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 4px 16px 16px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.tg-side__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 10px 16px 14px; border-top: 1px solid var(--tg-line); background: var(--tg-surface); }
+.tg-side__ctx, .tg-side__hint { margin: 0 4px; font-size: 0.88rem; line-height: 1.45; color: var(--tg-ink-3); }
+.tg-side__err { margin-right: auto; font-size: 0.9rem; color: var(--tg-danger); }
+.tg-side__field { display: grid; gap: 8px; }
+.tg-side__field h3 { margin: 0 4px; font-size: 0.95rem; }
+.tg-side__picked { display: inline-flex; align-items: center; gap: 6px; margin: 0 4px; color: #2f6b45; }
+/* answers as a vertical list of words */
+.tg-side__opts { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.tg-side__opts button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 48px; padding: 0 14px; border: 0; border-radius: 14px; background: transparent; font: 500 1rem var(--tg-sans); text-align: left; color: var(--tg-ink); transition: background 120ms; }
+.tg-side__opts button:hover:not(:disabled) { background: rgba(0, 0, 0, 0.05); }
+.tg-side__opts button.is-on { background: rgba(0, 0, 0, 0.07); font-weight: 650; }
+.tg-side__opts button small { margin-left: 8px; font-size: 0.78rem; opacity: 0.65; }
+.tg-side__opts i { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid rgba(0, 0, 0, 0.25); }
+.tg-side__opts button.is-on i { border-color: var(--tg-ink); background: var(--tg-ink); color: #fff; }
+/* a list of places */
+.tg-side__search { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 14px; border: 2px solid var(--tg-ink); border-radius: 999px; background: var(--tg-surface); }
+.tg-side__search:focus-within { box-shadow: 0 0 0 4px var(--tg-line); }
+.tg-side__search input { flex: 1; min-width: 0; min-height: 40px; border: 0; background: transparent; font-size: 0.98rem; color: var(--tg-ink); }
+.tg-side__search input:focus { outline: none; }
+.tg-side__search input::-webkit-search-cancel-button { display: none; }
+.tg-side__search button { display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 50%; background: var(--tg-line); }
+.tg-side__tabs { display: flex; gap: 6px; padding: 0 2px; }
+.tg-side__tabs button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; font-weight: 600; font-size: 0.9rem; color: var(--tg-ink-3); }
+.tg-side__tabs button[aria-selected='true'] { background: var(--tg-ink); color: #fff; }
+.tg-side__tabs b { font: 500 0.74rem var(--tg-mono); opacity: 0.7; }
+.tg-side__list ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.tg-side__list li { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 64px; padding: 6px 8px; border-radius: 16px; transition: background 120ms; }
+.tg-side__list li:hover { background: rgba(0, 0, 0, 0.05); }
+.tg-side__ph { width: 52px; height: 52px; padding: 0; border: 0; border-radius: 12px; overflow: hidden; background: var(--tg-line); display: grid; place-items: center; color: var(--tg-ink-3); }
+.tg-side__ph img, .tg-side__ph figure { width: 100%; height: 100%; margin: 0; object-fit: cover; }
+.tg-side__txt { display: grid; gap: 1px; min-width: 0; }
+.tg-side__txt b { overflow: hidden; font-size: 0.98rem; line-height: 1.3; white-space: nowrap; text-overflow: ellipsis; }
+.tg-side__txt small { overflow: hidden; color: var(--tg-ink-3); font-size: 0.83rem; white-space: nowrap; text-overflow: ellipsis; }
+.tg-side__txt span { overflow: hidden; font-size: 0.8rem; line-height: 1.35; white-space: nowrap; text-overflow: ellipsis; color: #2f6b45; }
+.tg-side__txt span svg { margin-right: 4px; vertical-align: -2px; }
+.tg-side__txt em { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.78rem; line-height: 1.3; font-style: normal; color: #8a5a00; }
+.tg-side__txt em.is-note { color: var(--tg-ink-3); }
+.tg-side__list li > .tg-btn { min-height: 36px; padding: 0 14px; white-space: nowrap; }
+.tg-side__empty { margin: 14px 0; text-align: center; color: var(--tg-ink-3); font-size: 0.92rem; }
+@media (max-width: 560px) { .tg-side { top: 12px; right: 12px; } }
+
+/* "Đề xuất tối ưu": a card in the middle, the verdict first */
+.tg-optim { position: fixed; z-index: 61; top: 50%; left: 50%; display: grid; justify-items: center; gap: 12px; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 34px 32px 28px; translate: -50% -50%; border-radius: 28px; background: var(--tg-surface); text-align: center; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28); animation: tg-pop 200ms var(--tg-ease); }
+.tg-optim__x { position: absolute; top: 14px; right: 14px; }
+.tg-optim__ic { display: grid; place-items: center; width: 62px; height: 62px; border-radius: 50%; background: #e7efe6; color: #2f6b45; }
+.tg-optim.is-info .tg-optim__ic, .tg-optim.is-wait .tg-optim__ic { background: #eceae6; color: var(--tg-ink-2); }
+.tg-optim.is-calm .tg-optim__ic { background: #e6edf3; color: #3a5f7d; }
+.tg-optim__tag { margin: 0; font: 700 0.74rem/1 var(--tg-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tg-ink-3); }
+.tg-optim h2 { margin: 0; font: 600 1.6rem/1.25 var(--tg-display); }
+.tg-optim__msg { margin: 0; max-width: 40ch; line-height: 1.55; color: var(--tg-ink-2); }
+.tg-optim__bars { display: grid; gap: 10px; width: 100%; margin-top: 6px; }
+.tg-optim__bars > div { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 12px; text-align: left; font-size: 0.92rem; }
+.tg-optim__bars span { color: var(--tg-ink-3); }
+.tg-optim__bars i { display: block; height: 14px; border-radius: 999px; background: #cfcbc2; }
+.tg-optim__bars .is-after i { background: #2f6b45; transition: width 600ms var(--tg-ease); }
+.tg-optim__bars b { min-width: 3.4em; text-align: right; }
+.tg-optim__save { margin: 0; font-size: 1rem; color: #2f6b45; }
+.tg-optim__why { display: grid; gap: 8px; width: 100%; margin: 4px 0 0; padding: 14px 16px; border-radius: 16px; background: #f5f3ee; list-style: none; text-align: left; font-size: 0.92rem; line-height: 1.45; }
+.tg-optim__why li { display: flex; align-items: flex-start; gap: 9px; }
+.tg-optim__why svg { flex: none; margin-top: 2px; color: #2f6b45; }
+.tg-optim__acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 10px; }
+
+/* Hành trình: the trip as one route, a card per day above and below a dashed line */
+.tg-jr { max-width: 1280px; }
+.tg-jr__head h1 { margin: 4px 0 12px; font: 600 2.2rem/1.2 var(--tg-display); }
+.tg-jr__facts { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 0; padding: 0; list-style: none; }
+.tg-jr__facts li { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 999px; background: var(--tg-surface); box-shadow: inset 0 0 0 1px var(--tg-line); font-size: 0.92rem; }
+.tg-jr__warn { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; padding: 12px 16px; border-radius: 14px; background: #fff3d6; color: #6b4a00; font-size: 0.92rem; }
+
+
+/* Stay suggestions on Tổng quan (LodgingGhost): cards across the whole frame, as many columns as fit */
+.tg .tg-staygrid > ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.tg .tg-staygrid li { display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 10px; border-radius: 16px; background: var(--tg-surface); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 10px 22px -16px rgba(0, 0, 0, 0.4); animation: tg-ghost-in 360ms var(--tg-ease) both; animation-delay: calc(var(--i) * 45ms); transition: box-shadow 200ms var(--tg-ease), transform 200ms var(--tg-ease); }
+.tg .tg-staygrid li:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 16px 28px -16px rgba(0, 0, 0, 0.45); }
+.tg .tg-staygrid__ph { display: block; width: 100%; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; border: 0; border-radius: 12px; background: var(--tg-line); }
+.tg .tg-staygrid__ph img, .tg .tg-staygrid__ph .tg-photo, .tg .tg-staygrid__ph .tg-photo img { width: 100%; height: 100%; object-fit: cover; }
+.tg .tg-staygrid__ph:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg .tg-staygrid__txt { display: grid; gap: 2px; flex: 1; min-width: 0; padding: 0 2px; }
+.tg .tg-staygrid__txt strong { overflow: hidden; font-size: 0.9rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.tg .tg-staygrid__txt small { overflow: hidden; font-size: 0.76rem; color: var(--tg-ink-3); white-space: nowrap; text-overflow: ellipsis; }
+.tg .tg-staygrid li > .tg-btn { align-self: flex-start; min-height: 36px; }
+@media (prefers-reduced-motion: reduce) { .tg .tg-staygrid li { animation: none; transition: none; } }

@@ -42,3 +42,16 @@ def test_quotes_come_from_every_source_folder(tmp_path, monkeypatch):
             encoding="utf-8")
     got = exp.evidence_quotes("0xF:0x1")
     assert set(got) == {"gmaps:R1:d0", "tiktok:v1:d0", "official:F:d0"} and got["gmaps:R1:d0"]["text"] == "vé 50k"
+
+
+def test_admin_overview_keeps_only_what_the_dashboard_draws():
+    place = lambda pid, kind, statuses, videos=(): {"id": pid, "name": f"Nơi {pid}", "kind": kind, "videos": list(videos),
+                                                    "features": [{"id": f"f{i}", "status": s} for i, s in enumerate(statuses)]}
+    snap = {"asOf": "2026-11-16", "build": {"at": "t"}, "system": {"errors": []},
+            "places": [place("a", "experience", ["VERIFIED", "OUTDATED"], ["v"]), place("b", "google", ["VERIFIED"])],
+            "review": [{"id": "a#x", "kind": "judge_flag", "placeId": "a", "feature": "x", "value": "long text", "sample": False}]}
+    out = exp.admin_overview(snap)
+    assert out["counts"] == {"places": 2, "experience": 1, "features": 2, "withVideos": 1,
+                             "byStatus": {"VERIFIED": 1, "UNCERTAIN": 0, "OUTDATED": 1, "NEEDS_REVIEW": 0}}
+    assert out["review"] == [{"id": "a#x", "kind": "judge_flag", "placeId": "a", "feature": "x"}]
+    assert out["placeNames"] == {"a": "Nơi a"}

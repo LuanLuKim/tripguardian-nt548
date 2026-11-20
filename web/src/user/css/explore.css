@@ -53,27 +53,22 @@
 .tg-pc__alert { display: flex; gap: 6px; align-items: center; font-weight: 600; font-size: 0.82rem; color: var(--tg-warn); }
 .tg-pc__facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 0.82rem; color: var(--tg-ink-2); margin-top: auto; padding-top: 4px; }
 .tg-pc__crowd { color: var(--tg-sun-ink); font-weight: 600; }
-.tg-pc__act { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+/* One line, one height: swapping "Thêm vào chuyến" for "Đã chọn", or an icon showing its label, must never wrap the row and push the cards below it down. */
+.tg-pc__act { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.tg-pc__act > .tg-btn { min-width: 0; white-space: nowrap; }
+.tg-pc__more { flex: none; }
 .tg-pc__more { display: flex; gap: 2px; opacity: 0; transform: translateX(6px); transition: opacity 200ms, transform 240ms var(--tg-ease); }
 .tg-pc:hover .tg-pc__more, .tg-pc:focus-within .tg-pc__more { opacity: 1; transform: none; }
 @media (hover: none) { .tg-pc__more { opacity: 1; transform: none; } }
 .tg-pc__ic { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 9px; border-radius: 10px; color: var(--tg-ink-2); font-size: 0.78rem; font-weight: 600; }
 .tg-pc__ic:hover { background: var(--tg-pine-soft); color: var(--tg-pine); }
 .tg-pc__ic.is-on { background: var(--tg-pine-soft); color: var(--tg-pine); }
-.tg-pc__ic span { display: none; }
-.tg-pc__ic:hover span, .tg-pc__ic:focus-visible span { display: inline; } /* one label at a time: all four together were wider than the card */
+.tg-pc__ic span { display: none; } /* the name is the button's title: a label that appeared on hover widened the row */
 
 /* ---- explore chrome ---- */
 .tg-xhead { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px; margin-bottom: 24px; }
 .tg-xhead h1 { margin-top: 10px; font-size: clamp(2rem, 3.4vw, 3rem); }
 .tg-xhead p { max-width: 62ch; margin-top: 10px; color: var(--tg-ink-2); }
-.tg-excl { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; min-height: 44px; padding: 8px 14px; border-radius: 12px; border: 1px solid var(--tg-line); background: var(--tg-surface); color: var(--tg-ink-2); font-size: 0.88rem; margin-bottom: 14px; }
-.tg-excl b { color: var(--tg-ink); font-weight: 600; }
-.tg-excl svg:last-child { margin-left: auto; transition: transform 200ms; }
-.tg-excl[aria-expanded='true'] svg:last-child { transform: rotate(180deg); }
-.tg-excl-list { display: grid; gap: 8px; padding: 12px 14px; margin: -8px 0 14px; border: 1px solid var(--tg-line); border-top: 0; border-radius: 0 0 12px 12px; background: var(--tg-surface); color: var(--tg-ink-2); font-size: 0.88rem; }
-.tg-excl-list li { display: flex; align-items: center; gap: 10px; }
-.tg-excl-list .tg-link { margin-left: auto; font-size: 0.85rem; }
 .tg-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
 .tg-tab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1.5px solid var(--tg-line-2); background: var(--tg-surface); font-weight: 600; font-size: 0.92rem; transition: all 150ms; }
 .tg-tab:hover { border-color: var(--tg-pine); }
@@ -129,18 +124,6 @@
 @media (max-width: 1180px) { .tg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tg-req { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .tg-grid, .tg-grid.is-two { grid-template-columns: 1fr; } .tg-xhead { grid-template-columns: 1fr; } }
 
-.tg-xhead__ops { position: relative; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
-
-/* the pointer under the Lưới / Đĩa xoay switch: a small dark bubble whose tip points at the switch */
-.tg-seghint { position: absolute; z-index: 5; top: calc(100% + 12px); right: 0; width: max-content; max-width: min(340px, 86vw); display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 16px; background: rgba(255, 255, 255, 0.92); border: 1px solid rgba(0, 0, 0, 0.08); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); color: var(--tg-ink); font-size: 0.86rem; line-height: 1.4; box-shadow: 0 16px 36px -16px rgba(0, 0, 0, 0.4); animation: tg-seghint 320ms var(--tg-ease) both; }
-.tg-xhead .tg-seghint { margin-top: 0; max-width: min(340px, 86vw); color: var(--tg-ink); } /* `.tg-xhead p` (ink-2, 62ch) outranks a bare .tg-seghint */
-.tg-seghint::before { content: ''; position: absolute; top: -6px; right: 52px; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.96); border-left: 1px solid rgba(0, 0, 0, 0.08); border-top: 1px solid rgba(0, 0, 0, 0.08); transform: rotate(45deg); border-radius: 3px 0 0 0; }
-.tg-seghint b { font-weight: 700; color: var(--tg-brand); }
-.tg-seghint button { flex: none; min-height: 32px; padding: 0 14px; border-radius: 999px; background: var(--tg-ink); color: #fff; font-weight: 500; font-size: 0.82rem; }
-.tg-seghint .tg-seghint__x { width: 32px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--tg-ink-3); }
-.tg-seghint .tg-seghint__x:hover { color: var(--tg-ink); }
-@keyframes tg-seghint { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .tg-seghint { animation: none; } }
 
 .tg-week-choice { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .tg-week-choice select { min-width: 0; max-width: 100%; padding: 6px; border: 1px solid var(--tg-pine-line); border-radius: 6px; background: var(--tg-surface); color: inherit; font: inherit; }
@@ -179,3 +162,202 @@
 .tg-xfilter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 0.88rem; color: var(--tg-ink-2); }
 .tg-xfilter b { color: var(--tg-ink); font-weight: 600; }
 .tg-xfilter .tg-link { margin-left: 4px; font-weight: 500; }
+
+/* Stay search results (the stay tab's own search) */
+.tg-lodfound { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.tg-lodfound li { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px 14px 10px 10px; border: 1px solid var(--tg-line); border-radius: 18px; background: var(--tg-surface); }
+.tg-lodfound li.is-sel { border-color: var(--tg-ink); }
+.tg-lodfound__ph { width: 76px; height: 60px; border-radius: 12px; overflow: hidden; background: var(--tg-line); display: grid; place-items: center; color: var(--tg-ink-3); }
+.tg-lodfound__ph img, .tg-lodfound__ph figure { width: 100%; height: 100%; object-fit: cover; margin: 0; }
+.tg-lodfound b { display: block; font-size: 1rem; }
+.tg-lodfound small { display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-tab svg { vertical-align: -2px; margin-right: 2px; }
+
+/* ---- Lựa chọn as a filter column + card grid ---- */
+.tg-xbrowse { display: grid; grid-template-columns: 252px minmax(0, 1fr); gap: 24px; align-items: start; }
+.tg-xbrowse__main { min-width: 0; }
+.tg-xbrowse .tg-grid, .tg-xbrowse .tg-grid.is-two { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 22px; }
+/* one white panel, sections divided by a hairline */
+.tg-xside { position: sticky; top: 16px; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; height: calc(100vh - var(--tg-bar, 72px) - 56px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 18px; border-radius: var(--tg-r-l); background: var(--tg-surface); border: 1px solid var(--tg-line); box-shadow: var(--tg-sh-1); }
+.tg-xside__box { min-width: 0; padding: 16px 0; }
+.tg-xside__box + .tg-xside__box { border-top: 1px solid var(--tg-line); }
+.tg-xside__h { margin: 0 0 12px; font: 600 0.95rem/1.2 var(--tg-sans); letter-spacing: 0; color: var(--tg-ink); }
+.tg-xside__list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.tg-xside__list.is-scroll { max-height: 200px; overflow-y: auto; scrollbar-width: thin; margin-right: -8px; padding-right: 8px; }
+.tg-xside__note { margin: 8px 0 0; font-size: 0.78rem; line-height: 1.4; }
+.tg-xside .tg-xsearch { min-height: 42px; margin: 0; padding: 0 8px 0 12px; border-width: 1px; border-color: var(--tg-line-2); background: var(--tg-bg); border-radius: 12px; color: var(--tg-ink-3); }
+.tg-xside .tg-xsearch input { min-height: 38px; font-size: 0.88rem; }
+.tg-xopt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 0 2px; border-radius: 8px; text-align: left; color: var(--tg-ink-2); font: 500 0.88rem/1.25 var(--tg-sans); transition: color 140ms; }
+.tg-xopt:hover { color: var(--tg-ink); }
+.tg-xopt[aria-selected='true'], .tg-xopt[aria-checked='true'] { color: var(--tg-ink); font-weight: 560; }
+.tg-xopt__t { flex: 1; min-width: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-xopt__n { flex: none; font: 600 0.74rem var(--tg-mono); color: var(--tg-ink-3); }
+.tg-xopt__mark { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--tg-line-2); background: var(--tg-surface); color: #fff; transition: background 140ms, border-color 140ms; }
+.tg-xopt__mark.is-round { border-radius: 50%; }
+.tg-xopt__mark i { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.tg-xopt[aria-selected='true'] .tg-xopt__mark, .tg-xopt[aria-checked='true'] .tg-xopt__mark { background: var(--tg-pine); border-color: var(--tg-pine); }
+.tg-xopt:focus-visible { outline: 2px solid var(--tg-pine); outline-offset: 1px; }
+.tg-xopt .tg-tab__new { flex: none; }
+.tg-xbar { margin-bottom: 16px; display: grid; gap: 12px; }
+.tg-xbar__row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.tg-xbar__n { margin: 0; color: var(--tg-ink-2); font-size: 0.92rem; }
+.tg-xbar__n b { color: var(--tg-ink); font: 600 1rem var(--tg-sans); }
+.tg-xbar__tools { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.tg-xbar__sort { display: inline-flex; align-items: center; gap: 4px; color: var(--tg-ink-3); font-size: 0.86rem; }
+.tg-xbar__chips { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.tg-xchip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px 0 14px; border-radius: 10px; border: 1px solid var(--tg-line-2); background: var(--tg-surface); color: var(--tg-ink); font: 500 0.84rem var(--tg-sans); transition: border-color 150ms; }
+.tg-xchip:hover { border-color: var(--tg-pine); }
+.tg-xchip svg { color: var(--tg-ink-3); }
+.tg-xbar__note { font-size: 0.8rem; }
+.tg-xbar__clear { margin-left: 4px; font-weight: 600; font-size: 0.84rem; }
+@media (max-width: 960px) {
+  .tg-xbrowse { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .tg-xside { position: static; height: auto; overflow: visible; }
+}
+
+/* the page title does not need to shout: the list is the page */
+.tg-xhead h1 { font-size: clamp(1.7rem, 2.6vw, 2.2rem); }
+.tg-xhead p { margin-top: 6px; font-size: 0.92rem; }
+
+/* card, a listing: photo, place and score, name, time, price; one line for the trade-off, nothing else */
+.tg-pc--lite { padding: 10px; border-width: 1px; border-radius: 18px; box-shadow: none; }
+.tg-pc--lite:hover, .tg-pc--lite:focus-within { transform: translateY(-2px); box-shadow: var(--tg-sh-1); }
+/* a picked card: the brand's terracotta, in a soft tint, a tick and a tinted button; every other card stays plain white */
+.tg-pc--lite.is-sel { border-color: color-mix(in srgb, var(--tg-brand) 34%, transparent); background: color-mix(in srgb, var(--tg-brand) 7%, var(--tg-surface)); box-shadow: none; }
+.tg-pc.is-sel .tg-btn--soft { background: color-mix(in srgb, var(--tg-brand) 15%, #fff); color: #8f3d1a; }
+.tg-pc__chk { position: absolute; z-index: 2; right: 8px; bottom: 8px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--tg-brand); color: #fff; box-shadow: 0 0 0 2px #fff; pointer-events: none; }
+.tg-pc--lite .tg-pc__media { aspect-ratio: 4 / 3; border-radius: 14px; }
+.tg-pc--lite .tg-pc__shade { height: 30%; }
+.tg-pc--lite .tg-pc__credit { left: 8px; bottom: 6px; font-size: 0.6rem; }
+.tg-pc--lite .tg-pc__top { left: 8px; top: 8px; padding: 3px 9px; font-size: 0.72rem; }
+.tg-pc--lite .tg-pc__lock { left: 8px; bottom: 22px; }
+.tg-pc--lite .tg-pc__save { right: 8px; top: 8px; width: 36px; min-height: 36px; height: 36px; padding: 0; justify-content: center; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); }
+.tg-pc--lite .tg-pc__save span { display: none; }
+.tg-pc--lite .tg-pc__body { gap: 8px; padding: 10px 6px 6px; }
+.tg-pc--lite .tg-pc__body { gap: 10px; padding: 14px 8px 8px; }
+.tg-pc__meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; font-size: 0.86rem; }
+.tg-pc__area { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.tg-pc__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-pc__area svg { flex: none; }
+.tg-pc__rate { display: inline-flex; align-items: center; gap: 4px; flex: none; font-weight: 600; color: var(--tg-ink); }
+.tg-pc__rate svg { color: #f2a900; fill: currentColor; } /* the Google score's star is yellow */
+.tg-pc--lite .tg-pc__name { font: 560 1.15rem/1.3 var(--tg-sans); letter-spacing: 0; margin: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-pc__sub { display: flex; align-items: center; gap: 14px; margin: 0; font-size: 0.9rem; min-width: 0; }
+.tg-pc__sub > .tg-pc__t { flex: 0 1 auto; }
+.tg-pc__t2 { display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; }
+.tg-pc__t2 svg { flex: none; }
+.tg-pc__t2:not(:has(.tg-pc__t)) { flex: none; white-space: nowrap; }
+/* one row for what to know before choosing: the trade-off and the pet note side by side, each on one line */
+.tg-pc__notes { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tg-pc__notes > .tg-pc__trade { flex: 1 1 0; min-width: 55%; }
+.tg-pc__notes > details { flex: 0 1 auto; min-width: 0; max-width: 40%; font-size: 0.82rem; }
+.tg-pc__notes > details > summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; padding: 6px 10px; border-radius: 10px; background: var(--tg-bg); }
+.tg-pc__notes > details[open] > ul, .tg-pc__notes > details[open] > p { position: absolute; z-index: 3; left: 0; right: 0; bottom: calc(100% + 4px); margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--tg-surface); box-shadow: var(--tg-sh-2); border: 1px solid var(--tg-line); }
+.tg-pc__notes > p.tg-faint { flex: 0 1 auto; max-width: 40%; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; padding: 6px 10px; border-radius: 10px; background: var(--tg-bg); }
+.tg-pc--lite .tg-pc__trade { padding: 6px 10px; font-size: 0.84rem; line-height: 1.3; }
+.tg-pc--lite .tg-pc__trade span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-pc--lite .tg-pc__trade svg { margin-top: 0; align-self: center; }
+/* the foot: price (and how sure we are) on the left, the one button on the right, a hairline above */
+.tg-pc--lite .tg-pc__act { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--tg-line); gap: 12px; min-height: 58px; }
+.tg-pc__price { display: inline-flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-width: 0; flex: 1; font-size: 0.94rem; color: var(--tg-ink-2); }
+.tg-pc__price small { font-size: 0.8rem; color: var(--tg-ink-3); }
+.tg-pc__price b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tg-ink); font-weight: 560; }
+.tg-pc__price small { flex: none; white-space: nowrap; }
+.tg-pc__price .tg-trust { flex: none; }
+.tg-pc__price .tg-trust { align-self: center; }
+.tg-pc--lite .tg-pc__act > .tg-btn { flex: none; justify-content: center; }
+/* the foot: the small actions (lock, compare, drop) on the left, the one main button on the right */
+.tg-pc--lite .tg-pc__more { position: static; opacity: 1; transform: none; flex-direction: row; gap: 2px; padding: 0; background: none; box-shadow: none; }
+.tg-pc--lite .tg-pc__ic { min-height: 38px; width: 38px; padding: 0; justify-content: center; border-radius: 50%; color: var(--tg-ink-3); }
+.tg-pc--lite .tg-pc__ic:hover { background: var(--tg-pine-soft); color: var(--tg-ink); }
+.tg-pc--lite .tg-pc__ic.is-on { background: var(--tg-pine-soft); color: var(--tg-pine); }
+.tg-pc__right { display: inline-flex; align-items: center; gap: 10px; flex: none; }
+
+
+/* the page runs edge to edge: the list and the filter column use the whole width */
+.tg-page.tg-page--bleed { max-width: none; margin: 0; padding: 18px 84px 99px 20px; } /* the right gutter is where the assistant's button sits, clear of the cards */
+.tg-xhead { margin-bottom: 14px; }
+.tg-xhead h1 { margin: 0; }
+.tg-xside__sub { display: block; margin-top: 3px; font: 500 0.78rem var(--tg-sans); color: var(--tg-ink-3); }
+.tg-xlim { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.tg-xlim li { display: flex; align-items: center; gap: 9px; min-height: 32px; font-size: 0.86rem; line-height: 1.3; color: var(--tg-ink-2); }
+.tg-xlim li > svg { flex: none; color: var(--tg-warn); }
+.tg-xlim li > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-xlim__go { display: inline-block; margin-top: 8px; font-size: 0.84rem; }
+
+.tg-pc--lite .tg-pc__act > .tg-btn { min-height: 40px; padding: 0 18px; font-size: 0.92rem; }
+.tg-pc--lite .tg-pc__top { padding: 4px 11px; font-size: 0.78rem; }
+
+/* lighter type on the cards: the strong words (a trade-off's label, the tag) stay medium, not bold */
+.tg-pc--lite b, .tg-pc--lite .tg-pc__trade b { font-weight: 560; }
+.tg-pc--lite .tg-tag { font-weight: 560; }
+.tg-xlim li > span, .tg-xopt { font-weight: 450; }
+.tg-xside__sub { font-weight: 450; }
+
+.tg-pc--lite .tg-pc__act { justify-content: space-between; }
+.tg-pc--lite .tg-pc__act > .tg-btn { min-width: 104px; }
+
+.tg-xmore { display: grid; justify-items: center; margin: 28px 0 8px; }
+.tg-xmore p { margin: 0; font-size: 0.9rem; }
+
+/* ---- the other frames of Lựa chọn, in the same listing look: white, 1px line, 18px corners, medium (not bold) type ---- */
+.tg-req { padding: 16px 18px; border-radius: 18px; background: var(--tg-surface); border: 1px solid var(--tg-line); grid-template-columns: 220px minmax(0, 1fr); }
+.tg-req h2 { font-weight: 600; }
+.tg-req__row { gap: 14px; overflow-x: auto; scrollbar-width: thin; }
+.tg-req__row .tg-photo { width: 96px; height: 72px; border-radius: 12px; }
+.tg-req__row b { font: 560 1rem var(--tg-sans); }
+.tg-req__row > span { min-width: 0; }
+.tg-req__row > span b, .tg-req__row > span small { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-narrow { border: 1px solid var(--tg-line); border-radius: 18px; }
+.tg-narrow b { font: 560 1.02rem var(--tg-sans); }
+.tg-unverified { border-radius: 18px; border-color: var(--tg-line); }
+.tg-unverified summary { font-weight: 560; }
+.tg-skel-card { padding: 10px; border-radius: 18px; }
+.tg-skel-card > .tg-skel:first-child { border-radius: 14px; }
+.tg-skel-card div { padding: 14px 6px 6px; }
+.tg-lodfound li { border-radius: 18px; }
+.tg-lodfound b { font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-lod__chosen { border-radius: 18px; }
+.tg-lod__chosen b { font-weight: 560; }
+.tg-xfound__out h3 { font-weight: 600; }
+
+/* every line in the filter column and the bar is one line: too long ends in "…" (the full text is the tooltip) */
+.tg-xside .tg-xsearch input { text-overflow: ellipsis; }
+.tg-xbar__n { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-xbar__sort { flex: none; }
+.tg-xchip { max-width: 100%; white-space: nowrap; }
+.tg-xside__h { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-xside__sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Sort as a menu of its own (ui/ExploreSide.tsx): one pill, the label quiet and the choice a step darker, the choices drop in a card */
+.tg-xsort { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border: 1px solid var(--tg-line-2); border-radius: 999px; background: var(--tg-surface); color: var(--tg-ink-3); font: 450 0.88rem var(--tg-sans); white-space: nowrap; transition: border-color 140ms, background 140ms; }
+.tg-xsort__l { color: var(--tg-ink-3); }
+.tg-xsort__v { color: var(--tg-ink); font-weight: 500; }
+.tg-xsort svg { flex: none; color: var(--tg-ink-3); }
+.tg-xsort > svg:last-child { transition: rotate 200ms var(--tg-ease); }
+.tg-xsort:hover, .tg-xsort[aria-expanded='true'] { border-color: var(--tg-ink-3); }
+.tg-xsort[aria-expanded='true'] > svg:last-child { rotate: 180deg; }
+.tg-xsort:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg-xmenu { z-index: 90; min-width: 212px; padding: 6px; border-radius: 16px; background: var(--tg-surface); border: 1px solid var(--tg-line); box-shadow: var(--tg-sh-2); animation: tg-pop 160ms var(--tg-ease); }
+.tg-xmenu__opt { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 42px; padding: 0 12px; border-radius: 10px; color: var(--tg-ink-2); font: 450 0.9rem var(--tg-sans); text-align: left; transition: background 120ms, color 120ms; }
+.tg-xmenu__opt:hover, .tg-xmenu__opt:focus-visible { background: color-mix(in srgb, var(--tg-ink) 6%, transparent); color: var(--tg-ink); outline: none; }
+.tg-xmenu__opt[aria-selected='true'] { color: var(--tg-ink); font-weight: 600; }
+
+/* Lợi / hại tags of a card (ui/CardTags.tsx): one line, one of each kind, the whole sentence in a light tooltip */
+.tg-ctags { display: flex; flex-wrap: nowrap; gap: 6px; min-width: 0; margin: 0; padding: 0; overflow: hidden; list-style: none; }
+.tg-ctags > li { flex: 0 1 auto; min-width: 0; }
+.tg-ctags > li:not(:only-child) { min-width: 38%; } /* each of the two keeps a share of the line */
+.tg-ctag { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-height: 26px; padding: 0 9px 0 7px; border-radius: 999px; font: 600 0.74rem/1 var(--tg-sans); cursor: default; white-space: nowrap; transition: filter 140ms; }
+.tg-ctag:hover { filter: brightness(0.96); }
+.tg-ctag > svg { flex: none; }
+.tg-ctag > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tg-ctag.is-pro { background: #e6f4ec; color: #1b6a43; }
+.tg-ctag.is-con { background: #fff0c9; color: #7a4d00; }
+.tg-ctag.is-note { background: color-mix(in srgb, var(--tg-ink) 6%, transparent); color: var(--tg-ink-2); }
+.tg-ctip { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.tg-ctip li { display: flex; gap: 8px; align-items: flex-start; }
+.tg-ctip svg { flex: none; margin-top: 2px; }
+.tg-ctip .is-pro svg { color: #1b6a43; }
+.tg-ctip .is-con svg { color: #b07200; }
+.tg-ctip .is-note svg { color: var(--tg-ink-3); }
+

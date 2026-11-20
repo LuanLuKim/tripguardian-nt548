@@ -9,9 +9,19 @@ const lowerWord = new Set(['và', 'của', 'cho', 'ở', 'tại', 'the', 'of', '
 const letters = (s: string) => s.replace(/[^\p{L}]/gu, '')
 const isUpper = (s: string) => { const l = letters(s); return l.length >= 3 && l === l.toLocaleUpperCase('vi-VN') }
 const isLower = (s: string) => { const l = letters(s); return l.length >= 3 && l === l.toLocaleLowerCase('vi-VN') }
-const cap = (w: string) => (w ? w.charAt(0).toLocaleUpperCase('vi-VN') + w.slice(1) : w)
+// Capital first letter, after any opening quote or bracket ('"bear's' -> '"Bear's').
+const cap = (w: string) => { const i = w.search(/\p{L}/u); return i < 0 ? w : w.slice(0, i) + w.charAt(i).toLocaleUpperCase('vi-VN') + w.slice(i + 1) }
+const NO_VOWEL = /^[B-DF-HJ-NP-TV-XZ]{2,4}$/ // NVN, BBQ, KDL, TP: an acronym even inside an all-caps name
+// A branch after the separator is part of the name: two branches must not get one name.
+const BRANCH = /^(chi nhánh|cơ sở|cn|cs|branch)\s*\d+(?![\p{L}\d])/iu
+// Words that only say what kind of place it is: a head made of these alone is a tagline, the name comes after it
+// ("MASSAGE TRỊ LIỆU ĐÀ LẠT - LALITA SPA" -> "Lalita Spa"). Same list as src/corpus/aggregate/naming.py.
+const GENERIC = new Set(`massage trị liệu spa gội đầu dưỡng sinh chăm sóc món thái hàn nhật việt quán ăn nhà hàng khách sạn
+homestay hostel villa cà phê cafe coffee lẩu nướng cho thuê xe máy đà lạt dalat da lat tiệm chợ shop cửa ẩm thực đặc sản
+và & tại ở sân tập golf trong ngoài`.split(/\s+/))
+const CUT = /\s[-–—|/•·:]\s|\s[-–—](?=\S)|(?<=\S)[-–—]\s|\s:|:\s|\|/u
 // Capitals and lower case words alike become Title Case; a token with a digit (CS2, 2B) or with dots (A.B) keeps its shape.
-const title = (s: string) => s.split(/(\s+)/).map((w, i) => (i % 2 || /\d|\./.test(w) ? w : (i > 0 && lowerWord.has(w.toLocaleLowerCase('vi-VN')) ? w.toLocaleLowerCase('vi-VN') : cap(w.toLocaleLowerCase('vi-VN'))))).join('')
+const title = (s: string) => s.split(/(\s+)/).map((w, i) => (i % 2 || /\d|\./.test(w) || NO_VOWEL.test(w) ? w : (i > 0 && lowerWord.has(w.toLocaleLowerCase('vi-VN')) ? w.toLocaleLowerCase('vi-VN') : cap(w.toLocaleLowerCase('vi-VN'))))).join('')
 
 // Two or more capital words in a row inside a mixed-case name ("Cá tầm Đà Lạt QUÁN ÁNH DƯƠNG") are shouting: Title Case them.
 // A short ASCII word (KDL, BBQ, VIP) or a token with a digit is an acronym and stays.
@@ -32,8 +42,19 @@ export function displayName(raw: string): string {
   const bare = s.replace(/\s*\([^)]*\)?/g, ' ')
   if (letters(bare).length >= 4) s = bare
   // A tagline after a separator is not the name: "Mộc Hương spa - Dưỡng sinh", "QUÁN : Lẩu Nướng", "A | B", "A / B", "A -B", "A- B".
-  const cut = s.search(/\s[-–—|/•·:]\s|\s[-–—](?=\S)|(?<=\S)[-–—]\s|\s:|:\s|\|/u)
-  if (cut > 2) s = s.slice(0, cut)
+  let m = CUT.exec(s)
+  if (m && m.index > 2) {
+    let head = s.slice(0, m.index)
+    let tail = s.slice(m.index + m[0].length).trim()
+    const words = head.toLocaleLowerCase('vi-VN').match(/[\p{L}]+|&/gu) ?? []
+    if (words.length && words.every((w) => GENERIC.has(w)) && letters(tail).length >= 3) {
+      s = tail // the head only names the kind of place
+      m = CUT.exec(s)
+      if (m && m.index > 2) { head = s.slice(0, m.index); tail = s.slice(m.index + m[0].length).trim() } else { head = s; tail = '' }
+    }
+    const branch = BRANCH.exec(tail)
+    s = branch ? `${head} ${branch[0]}` : head
+  }
   // A dot glued to the next word starts a new sentence: "CS2 .lẩu nướng", "tầm.Gà đồi", "stayDuong.dalat".
   const dot = s.search(/(?<=\p{Ll}{2})\.(?=\p{L})|\s\.(?=\p{L})/u)
   if (dot > 2) s = s.slice(0, dot)

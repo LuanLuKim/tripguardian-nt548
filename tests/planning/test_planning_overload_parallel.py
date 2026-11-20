@@ -14,6 +14,9 @@ def fork_only_for_scheduler_probes(monkeypatch, request):
     # These injected closures / short sleeps isolate search scheduling, not native-runtime initialization.
     if request.node.name != "test_spawn_search_works_with_an_open_parent_native_runtime":
         monkeypatch.setattr(overload, "_PROCESS_CONTEXT", "fork")
+    # an earlier test's standing spawn pool (its feeder threads and pipes) must not be forked into these probes
+    if overload._POOL is not None:
+        overload._drop_pool(overload._POOL)
 
 
 from plan_fixtures import CENTRE, decision, prepared, spot
@@ -226,6 +229,7 @@ def test_large_trip_payload_does_not_block_spawn_startup_past_deadline(monkeypat
     trip = a_little_short()
     trip = replace(trip, decision={**trip.decision, "startup_payload": "x" * 2_000_000},
                    cfg=replace(trip.cfg, realistic={**trip.cfg.realistic, "overload_deadline_s": 0.2}))
+    overload._drop_pool(overload._pool())      # a cold pool: its workers are still starting at the deadline
     started = time.monotonic()
     out = plan_or_directions(trip)
     assert time.monotonic() - started < 1.5

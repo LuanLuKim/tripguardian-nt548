@@ -1,10 +1,11 @@
 import { STATUS_LABEL } from '../../data/labels'
-import type { Snapshot, Status } from '../../data/types'
+import type { Status } from '../../data/types'
 import { navigate } from '../../router'
 import { Icon } from '../../ui/bits'
 import { useAnalytics, type Today } from '../analytics'
-import { useDecisions } from '../decisions'
-import { fmtAgo, riskOf, STATUS_COLOR, type Risk } from '../model'
+import { decide, useDecisions } from '../decisions'
+import { fmtAgo, itemTitle, KIND_LABEL, riskOf, STATUS_COLOR, type Risk } from '../model'
+import { useOverview, type Overview } from '../overview'
 
 const SHOWN: Status[] = ['VERIFIED', 'UNCERTAIN', 'OUTDATED', 'NEEDS_REVIEW']
 const ASPECTS: [string, string][] = [
@@ -21,13 +22,41 @@ const COVER = [
   ['NONE', 'Chưa có', 'var(--cov-none)'],
 ] as const
 const RISKS: Risk[] = ['Cao', 'Vừa', 'Thấp']
+const QUEUE_SHOWN = 8
 const PACE = 5 // items per minute, the review-queue target
 
-export function Dashboard({ snap }: { snap: Snapshot }) {
+// The overview file is small, so this screen draws without waiting for the admin snapshot; today's numbers come from
+// analytics and show as soon as they arrive.
+export function Dashboard() {
+  const { ov, error } = useOverview()
+  if (ov) return <DashboardBody snap={ov} />
+  return (
+    <div className="a-page">
+      <header className="a-head">
+        <div>
+          <h1>Tổng quan</h1>
+          <p>{error ? `Không tải được số liệu tổng quan (${error}).` : 'Việc cần làm trước, sức khỏe dữ liệu sau.'}</p>
+        </div>
+      </header>
+      <div className="dash-top" aria-hidden="true">
+        <i className="a-skel a-skel--todo" />
+        <i className="a-skel a-skel--todo" />
+      </div>
+      <TodayRow />
+      <div className="tiles" aria-hidden="true">
+        {[0, 1, 2, 3].map((i) => (
+          <i key={i} className="a-skel a-skel--tile" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DashboardBody({ snap }: { snap: Overview }) {
   const decisions = useDecisions()
-  const exp = snap.places.filter((p) => p.kind === 'experience')
-  const feats = exp.flatMap((p) => p.features)
-  const byStatus = Object.fromEntries(SHOWN.map((s) => [s, feats.filter((f) => f.status === s).length])) as Record<Status, number>
+  const exp = { length: snap.counts.experience }
+  const feats = { length: snap.counts.features }
+  const byStatus = snap.counts.byStatus as Record<Status, number>
   const open = snap.review.filter((r) => !decisions[r.id])
   const byRisk = Object.fromEntries(RISKS.map((k) => [k, open.filter((r) => riskOf(r) === k).length])) as Record<Risk, number>
   const obs = snap.system.observe
@@ -104,11 +133,13 @@ export function Dashboard({ snap }: { snap: Snapshot }) {
 
       <TodayRow />
 
+      <QueueCard snap={snap} />
+
       <div className="tiles">
-        <Tile n={exp.length} label="Địa điểm có bằng chứng" sub={`+ ${(snap.places.length - exp.length).toLocaleString('vi-VN')} chỉ có thông tin Google`} />
+        <Tile n={exp.length} label="Địa điểm có bằng chứng" sub={`+ ${(snap.counts.places - exp.length).toLocaleString('vi-VN')} chỉ có thông tin Google`} />
         <Tile n={byStatus.VERIFIED} label="Giá trị đã xác minh" sub={`${verifiedPct}% trên ${feats.length.toLocaleString('vi-VN')} giá trị`} />
         <Tile n={byStatus.OUTDATED} label="Giá trị quá hạn" sub="cần làm mới nguồn" tone={byStatus.OUTDATED ? 'warn' : undefined} />
-        <Tile n={snap.system.videos} label="Clip TikTok đã thu" sub={`${snap.places.filter((p) => p.videos.length).length} địa điểm có clip`} />
+        <Tile n={snap.system.videos} label="Clip TikTok đã thu" sub={`${snap.counts.withVideos} địa điểm có clip`} />
       </div>
 
       <div className="a-grid2">
@@ -188,6 +219,52 @@ export function Dashboard({ snap }: { snap: Snapshot }) {
         </section>
       </div>
     </div>
+  )
+}
+
+// The next items of the review queue, riskiest first. Low-risk ones can be accepted here; the rest open in the queue.
+function QueueCard({ snap }: { snap: Overview }) {
+  const decisions = useDecisions()
+  const rank = (r: Risk) => RISKS.indexOf(r)
+  const open = snap.review.filter((r) => !decisions[r.id]).sort((a, b) => rank(riskOf(a)) - rank(riskOf(b)) || a.placeId.localeCompare(b.placeId))
+  const next = open.slice(0, QUEUE_SHOWN)
+  return (
+    <section className="a-card dq" aria-label="Hàng đợi duyệt">
+      <h2>Hàng đợi duyệt</h2>
+      {next.length === 0 ? (
+        <p className="a-muted">Hết mục cần duyệt.</p>
+      ) : (
+        <ul className="dq__list">
+          {next.map((r) => {
+            const risk = riskOf(r)
+            return (
+              <li key={r.id}>
+                <span className={`risk risk--${risk}`}>{risk}</span>
+                <span className="dq__main">
+                  <b>{itemTitle(r)}</b>
+                  <small>{snap.placeNames[r.placeId] ?? r.placeId}</small>
+                </span>
+                <span className="dq__kind">{KIND_LABEL[r.kind]}</span>
+                {risk === 'Thấp' ? (
+                  <button className="a-btn" onClick={() => decide([r.id], 'accept')}>
+                    Chấp nhận
+                  </button>
+                ) : (
+                  <button className="a-btn" onClick={() => navigate('/admin/review')}>
+                    Duyệt
+                  </button>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {open.length > next.length && (
+        <button className="a-link" onClick={() => navigate('/admin/review')}>
+          Xem cả {open.length.toLocaleString('vi-VN')} mục <Icon name="next" size={13} />
+        </button>
+      )}
+    </section>
   )
 }
 

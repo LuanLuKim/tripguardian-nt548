@@ -55,7 +55,18 @@ def test_short_fields_for_events_and_others():
              "signals": {"source": "claim", "months": [11], "status": "unverified", "sources": 1}, "dates": {"from": "2026-11-01"}, "evidence": []}
     out = render.item(claim)
     assert (out["signal"], out["on"], out["reference"]) == ("Tháng 11 (tham khảo)", None, True)
-    closed = {"id": "closed:p3", "kind": "closed", "subject": {"type": "place", "id": "p3", "name": "Quán Ba"},
-              "signals": {}, "dates": {"checked": "2026-10-29"}, "evidence": []}
-    out = render.item(closed)
-    assert out["signal"] == "Đóng cửa vĩnh viễn" and out["place_id"] is None
+
+
+def test_a_hot_item_says_why_in_its_own_numbers_and_a_plain_one_has_no_hot_field():
+    from corpus.pulse import render
+    season = {"id": "season:x", "kind": "season", "subject": {"type": "season", "id": None, "name": "Hồng chín"}, "evidence": [],
+              "signals": {"months": [11], "sources": 9, "status": "kept", "latest_video": None,
+                          "hot": {"videos": 39, "authors": 34, "newest": "2026-11-15", "window_days": 30}}}
+    out = render.item(season)
+    assert out["hot"] is True and out["hot_note"] == "39 clip TikTok của 34 người trong 30 ngày" and "đang hot" in out["text"]
+    del season["signals"]["hot"]
+    assert "hot" not in render.item(season)
+    event = {"id": "event:x", "kind": "event", "subject": {"type": "event", "id": None, "name": "Festival Hoa"}, "evidence": [],
+             "signals": {"source": "web", "time": "", "venue": "", "summary": "", "image": "", "sources": 3, "status": "confirmed",
+                         "months": [12], "hot": {"sources": 3}}, "dates": {"from": "2026-12-19", "to": "2026-12-31"}}
+    assert render.item(event)["hot_note"] == "3 trang cùng đưa tin"

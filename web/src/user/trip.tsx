@@ -158,20 +158,19 @@ export function useTrip() {
   return c
 }
 
-// The three steps of the flow (top bar stepper, trip progress). Paths are relative to /app. /done (feedback) is no step.
+// The two steps of the flow (the chat is beside Lựa chọn, not a step). Paths are relative to /app. /done (feedback) is no step.
 export const STEPS = [
-  { id: 'understand', path: '/understand', label: 'Tìm hiểu' },
   { id: 'explore', path: '/explore', label: 'Lựa chọn' },
   { id: 'plan', path: '/plan', label: 'Lịch trình' },
 ] as const
 export type StepId = (typeof STEPS)[number]['id']
 
-// A trip exists once the understanding step has handed something on.
+// A trip exists once it has reached Lựa chọn (or kept what an older chat handed on).
 export const hasTrip = (t: TripState) => !!(t.decisionId || t.planningId || t.searchInput)
 
 // The step a trip stopped on: where "Đi tiếp" leads.
 export function stepOf(t: TripState) {
-  const i = t.planningId ? 2 : t.decisionId ? 1 : 0
+  const i = t.planningId ? 1 : 0
   return { index: i, ...STEPS[i] }
 }
 

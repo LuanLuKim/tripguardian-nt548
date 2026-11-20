@@ -191,29 +191,22 @@ export function Sheet({ open, onClose, children, label }: { open: boolean; onClo
   )
 }
 
-// Crawled clips play from our own copy (data/tiktok/videos, served at /media/tiktok);
-// without a local file they fall back to TikTok's embed. The creator is always credited.
-const clipSrc = (id: string, file: string) => `/media/tiktok/${id}/${file}`
-
+// Crawled clips play in TikTok's embedded player (our server keeps only their frames). The creator is always credited.
 // `poster` is a frame already checked for people (web/scripts/pick_covers.py); without one the tile stays plain.
 export function Clip({ video, poster: still = null }: { video: Video; poster?: string | null }) {
-  const [mode, setMode] = useState<'idle' | 'local' | 'embed'>('idle')
+  const [playing, setPlaying] = useState(false)
   const [poster, setPoster] = useState(!!still)
   return (
     <figure className="clip">
-      {mode === 'idle' && (
-        <button type="button" className="clip__frame clip__frame--idle" onClick={() => setMode('local')} aria-label={`Phát clip${video.handle ? ` của @${video.handle}` : ''}`}>
+      {playing ? (
+        <iframe className="clip__frame" src={`https://www.tiktok.com/player/v1/${video.id}?autoplay=1&rel=0&music_info=0&description=0`} title="Clip TikTok" allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
+      ) : (
+        <button type="button" className="clip__frame clip__frame--idle" onClick={() => setPlaying(true)} aria-label={`Phát clip${video.handle ? ` của @${video.handle}` : ''}`}>
           {poster && still && <img src={still} alt="" loading="lazy" decoding="async" onError={() => setPoster(false)} />}
           <span className="clip__play">
             <Icon name="play" size={22} />
           </span>
         </button>
-      )}
-      {mode === 'local' && (
-        <video className="clip__frame" src={clipSrc(video.id, 'video.mp4')} poster={poster && still ? still : undefined} controls autoPlay playsInline onError={() => setMode('embed')} />
-      )}
-      {mode === 'embed' && (
-        <iframe className="clip__frame" src={`https://www.tiktok.com/embed/v2/${video.id}?lang=vi-VN`} title="Clip TikTok" allow="encrypted-media; fullscreen" allowFullScreen loading="lazy" />
       )}
       <figcaption>
         <a href={video.url} target="_blank" rel="noreferrer">

@@ -1,6 +1,17 @@
 # Thiết kế: tái cấu trúc TripGuardian cho production
 
-Spec làm việc (`RULE.md` §0.1), 2026-11-20, chờ chủ dự án duyệt. Repo này là repo sản phẩm riêng, không theo khuôn đồ án.
+Trạng thái: mở. Chủ dự án đã duyệt 2026-11-20; tạm dừng tới khi hai phiên `tripguardian-02` (phim thủy mặc, giọng) và `tripguardian-5d` (corpus Vũng Tàu / HCM) xong. Repo này là repo sản phẩm riêng, không theo khuôn đồ án.
+
+## 0. Bàn giao (2026-11-20)
+
+| | |
+|---|---|
+| Đã xong | `ac7feb80` + tag `prod-2026-11-20` (src = `.prod_src` từng byte); `fd5e4699` (dọn code chết, `prod-boot`, `scripts/doc_refs.py`, README / `docs/SETUP.md`); crontab `@reboot` → `./run.sh prod-boot` (bản cũ `logs/run/crontab.before-20261120`); 6 plan nhom-44 chuyển sang `nhom44/_local/plans-from-tripguardian/`. Chưa push: chủ dự án push từ máy khác |
+| Còn lại của GĐ0 | Hai phiên trên tự commit path của họ (danh sách: `logs/run/hands_off-20261120.txt`). Sau đó `git status` chỉ còn file studio + `web/public/media/landing/langbiang.mp4` |
+| Bắt đầu lại từ | GĐ1 (release bất biến), làm và thử trên `scripts/local_stack.sh` trước; chỉ chuyển prod khi chủ dự án đồng ý. Rồi GĐ3 (studio + asset pack), GĐ2, GĐ4, GĐ5/5b, tài liệu theo `2026-11-11-docs-restructure-plan.md` §11.6 |
+| Trước khi làm | `ListAgents`: hai phiên kia còn chạy thì báo trước như lần này; `git status` + đọc lại danh sách chừa; chạy mốc test theo nhóm thư mục (pytest tuần tự > 40 phút, máy hay tải 40–80) |
+| Cảnh báo | Code ở tag `prod-2026-11-20` / `.prod_src`: `corpus gmaps observe --city <thành phố khác>` xóa observation Đà Lạt (5d đã sửa trong cây làm việc). Không chạy observe / aggregate Vũng Tàu, HCM bằng code đó. `prod-boot` chưa chạy thử thật: lần reboot đầu xem `logs/run/reboot.log` |
+| Test đỏ đã biết | Test đo thời gian (`agents/test_runtime`, `planning/test_planning_overload_parallel`, `decision/test_wish_speed`, …) đỏ khi máy tải cao, xanh khi chạy riêng → lý do của GĐ4 tách marker `perf` |
 
 ## 1. Hiện trạng: chỗ nào làm production yếu
 

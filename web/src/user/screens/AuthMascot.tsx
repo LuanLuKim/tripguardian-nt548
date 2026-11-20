@@ -1,7 +1,7 @@
 import type { PointerEvent } from 'react'
 import { Icon, Logo } from '../ui/icons'
 
-// How the bunny feels on the sign-in screen. The mood comes from what the visitor is doing (docs/Role_Web_Functional_Design.md §Đăng nhập):
+// How the bunny feels on the sign-in screen. The mood comes from what the visitor is doing (docs/Role_Web_Functional_Design.md §2.1):
 // idle (nothing special), wait (request in flight), shy / peek (password field focused / shown), curious (something is
 // missing or taken), sad (the server said no), happy (signed in), mail (a code was sent: holds an envelope). Each mood is its own picture of the same bunny
 // (public/img/bunny: idle, happy, wait, sad, curious are cut from the owner's sheet by web/scripts/cut_mascot_sheet.py, the rest made by web/scripts/gen_mascot_moods.py) that cross-fades in; the motion on top (sway, wobble,

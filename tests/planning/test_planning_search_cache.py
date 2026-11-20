@@ -1,9 +1,9 @@
 """The memos of one plan (Trip.routes) answer only the question they were asked: a plan does not depend on how many
-entries the memo holds or on which subset the overload search tried first (docs/PLANNING.md §Hiệu năng)."""
+entries the memo holds or on which subset the overload search tried first (docs/PLANNING.md §Tính lại và cache)."""
 
 from dataclasses import replace
 
-from plan_fixtures import CFG, decision, prepared, rec
+from plan_fixtures import decision, prepared, rec
 
 from planning.build import _seed_key, schedule_trip
 from planning.overload import plan_or_directions

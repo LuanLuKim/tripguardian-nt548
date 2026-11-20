@@ -22,7 +22,7 @@ group:
     experience: 0.95
     style: 0.9
 
-# When the chat shows tags, subtags or a plain list (src/trip/domain/tag_policy.py, docs/TRIP_UNDERSTANDING.md §Tag, subtag
+# When the chat shows tags, subtags or a plain list (src/trip/domain/tag_policy.py, docs/TRIP_UNDERSTANDING.md §19, tag, subtag
 # hay danh sách). The ask's own words decide, counted in "dimensions" it already fixes: a category group, a must feature,
 # a dish, a text. A prefer feature is a mood, not a dimension.
 policy:

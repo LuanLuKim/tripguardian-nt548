@@ -35,7 +35,7 @@ from pathlib import Path
 import yaml
 
 from corpus.ontology import load as load_ontology
-from corpus.serving import dishes, feature
+from corpus.serving import dishes
 from trip import SearchInput, squash
 
 from .engine import Engine

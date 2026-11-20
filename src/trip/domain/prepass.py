@@ -101,7 +101,7 @@ GROUPS = [
     (r"\b(thien nhien|rung thong|thac nuoc|cam trai|glamping|vuon hoa|doi hoa)\b", "nature"),
     (r"\b(tham quan|bao tang|di tich|nha tho|kien truc)\b", "sights"),
 ]
-# Minimal lexicon until the span lexicon exists (docs/TRIP_UNDERSTANDING.md §5.2): one key = a clear wish,
+# Minimal lexicon until the span lexicon exists (docs/TRIP_UNDERSTANDING.md §5): one key = a clear wish,
 # several = a subjective word to clarify.
 LEXICON = [
     (r"\b(chill|thu gian|thu thai)\b", ("long_stay_chill=present", "noise=quiet", "crowd=low", "scenic_view=present",

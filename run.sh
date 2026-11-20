@@ -8,6 +8,8 @@
 #                       and the public web server on :28899, notify worker, Cloudflare tunnel, then a smoke test
 #   ./run.sh prod-stop  stop the production stack (tunnel included)
 #   ./run.sh prod-restart   restart the production services on the frozen .prod_src as it is (no build, no freeze)
+#   ./run.sh prod-boot      after a machine reboot (cron @reboot): SearXNG, 9router, Clef, then prod-restart; never builds
+#                       or freezes the working tree
 #   ./run.sh prod-rollback  back to the frozen copy the last deploy replaced (.prod_src.prev), then restart
 #   ./run.sh prod-check     which release prod runs, and whether config/ still loads with its code (F004)
 #   ./run.sh prewarm    fill the coach / flight caches for the next weeks (cron, once a day; scripts/prewarm_transit.py)
@@ -343,6 +345,23 @@ prod_restart() {
   restart_services
 }
 
+# After a reboot: what prod needs around the frozen release, then the release as it is. The working tree may hold other
+# sessions' unfinished work, so a reboot must never freeze it (that is what `prod` does).
+prod_boot() {
+  # Postgres only up and ready, no migrate: migrations in the working tree may be unfinished work too.
+  if command -v docker >/dev/null 2>&1; then
+    docker start "$PG_CONTAINER" >/dev/null 2>&1 || echo "[db] could not start $PG_CONTAINER (docs/OPERATIONS.md §6)"
+    for _ in $(seq 1 60); do
+      docker exec "$PG_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -q 2>/dev/null && { echo "[db] ready"; break; }
+      sleep 1
+    done
+  fi
+  searx_start
+  router_start
+  clef_start
+  prod_restart
+}
+
 # Back to the copy the last deploy replaced (code only: web/dist, config/ and the database stay as they are).
 prod_rollback() {
   [ -d "$PROD_SRC.prev" ] || { echo "[rollback] no $PROD_SRC.prev to go back to"; exit 1; }
@@ -477,10 +496,11 @@ case "$1" in
   prod) prod ;;
   prod-stop) prod_stop ;;
   prod-restart) prod_restart ;;
+  prod-boot) prod_boot ;;
   prod-rollback) prod_rollback ;;
   prod-check) prod_check ;;
   prewarm) shift; exec $PYTHON -u scripts/prewarm_transit.py "$@" ;;
   db) db ;;
   db-backup) db_backup ;;
-  *) echo "usage: $0 {start|stop|prod|prod-stop|prod-restart|prod-rollback|prod-check|prewarm|db|db-backup}"; exit 2 ;;
+  *) echo "usage: $0 {start|stop|prod|prod-stop|prod-restart|prod-boot|prod-rollback|prod-check|prewarm|db|db-backup}"; exit 2 ;;
 esac

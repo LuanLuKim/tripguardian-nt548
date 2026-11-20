@@ -72,8 +72,6 @@ def test_recovery_never_offers_to_drop_a_trip_must_place():
 
 
 def test_invalid_edit_offers_a_verified_single_drop_recovery():
-    from planning.engine import NotConfirmable
-    import pytest
     recs = [spot('a', CENTRE, 0), spot('b', CENTRE, 1)]
     e = engine(recs)
     created = e.create(decision(['a', 'b'], days=2))

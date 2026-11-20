@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     l.add_argument("--out", type=Path, help="also write the full Plan Output as json")
     sv = sub.add_parser("serve", help="run the HTTP + SSE server")
     sv.add_argument("--port", type=int, default=8768)
-    ev = sub.add_parser("evaluate", help="offline Planning check: 30 hidden trips through Decision and Planning")
+    sub.add_parser("evaluate", help="offline Planning check: 30 hidden trips through Decision and Planning")
     sub.add_parser("bench", help="the Lịch trình chatbot on config/bench_planning_assistant.yaml (options: python -m planning bench -h)")
     args, rest = ap.parse_known_args(argv)
     if args.cmd == "bench":

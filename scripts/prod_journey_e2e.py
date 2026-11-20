@@ -23,7 +23,6 @@ import json
 import math
 import os
 import re
-import statistics
 import sys
 import threading
 import time
@@ -855,7 +854,7 @@ def run_case(case: prod_cases.Case, run_dir: Path) -> dict:
         for e in case.edits:
             cur_view = apply_edit(case, api, e, cur_view, rec, texts)
 
-        # --- confirm, reload, trips list. Violations are warnings, not a gate (docs/PLANNING.md §Validate, owner
+        # --- confirm, reload, trips list. Violations are warnings, not a gate (docs/PLANNING.md §ⓔ Kiểm tra cuối, owner
         # 2026-11-08): the web asks once ("Chốt kế hoạch còn cảnh báo?") and confirms, so the runner does the same and
         # lets the server refuse only what it really cannot lock.
         if not plan_ready(cur_view):
@@ -1032,10 +1031,6 @@ KNOWN = {"repeat_question": ["T4", "R4"], "start_hour": ["T12", "T11"], "chosen_
          "raw_text": ["T10", "R9"], "no_nudge_choose": ["T9"], "http_clean": ["N10", "T16"], "fake_place": ["T1", "T5"],
          "meal_timing": ["T14"], "facts_chat": ["R4"], "origin_recorded": ["N2"], "edit_applied": ["R7"], "trips_count": ["R3"],
          "balance": ["T11", "R8"], "opening_hours": ["T14"], "lodging_known": ["N6"], "hard_constraints": ["R8"], "load_plan_fast": ["N9", "R5"]}
-
-
-def violating_category(rec_, case_flags) -> str | None:
-    return None
 
 
 def ui_fact(value, field: str):
@@ -1384,11 +1379,10 @@ def check_all(case, rec: dict, texts: list[tuple[str, str]]) -> dict:
     # 19. every edit takes effect
     bad = [f"{e['op']}: {e['verified']['why']}" for e in rec["edits"] if e.get("applied") and e["verified"].get("ok") is False]
     bad += [f"{e['op']}: {e.get('detail') or e.get('say', '')[:100]} (not applied)" for e in rec["edits"] if e.get("applied") is False and not str(e.get("detail", "")).startswith("no target")]
-    asked = [e for e in rec["edits"] if e["op"] == "assistant"]
     put("edit_applied", "fail" if bad else ("pass" if rec["edits"] else "na"), "; ".join(bad[:3]) or "edits took effect")
 
     # 20. confirm, reload equals confirmed, trips list count
-    rl, ge = rec["plans"].get("reloaded"), final
+    rl = rec["plans"].get("reloaded")
     bad = []
     if rec.get("confirm_status") != 200:
         bad.append(f"confirm {rec.get('confirm_status')}")

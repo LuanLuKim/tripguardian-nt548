@@ -1,6 +1,6 @@
 # Vận hành production
 
-Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô tả deploy, vị trí file, sao lưu, cron và kiểm tra sức khỏe. Cách chạy dev và cổng từng dịch vụ: `README.md` §Chạy. Ranh giới bảo mật của bản public: `docs/SECURITY.md`.
+Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô tả deploy, vị trí file, sao lưu, cron và kiểm tra sức khỏe. Cách chạy dev và cổng từng dịch vụ: `docs/SETUP.md` §3. Ranh giới bảo mật của bản public: `docs/SECURITY.md`.
 
 ## 1. Deploy
 
@@ -8,6 +8,7 @@ Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô t�
 ./run.sh prod       # (backup + migrate db) song song với (thumbnail → build web vào web/.deploy-build) → chép web/dist → SearXNG → 9router → harness :8769 → web/server.mjs :28899 → worker thông báo → chờ harness warm-up → tunnel → smoke test
 ./run.sh prod-stop  # dừng tất cả (tunnel gồm cả), không đụng cron
 ./run.sh prod-restart   # khởi động lại dịch vụ prod trên .prod_src/ hiện có: không build, không đông cứng, không migrate
+./run.sh prod-boot      # sau khi máy khởi động lại: bật Postgres, SearXNG, 9router, Clef rồi prod-restart; không bao giờ đông cứng cây làm việc
 ./run.sh prod-rollback  # quay về bản đông cứng mà lần deploy trước thay ra (.prod_src.prev), rồi khởi động lại
 ./run.sh prod-check     # prod đang chạy bản nào, và config/ hiện tại có nạp được bằng code đó không
 ```
@@ -20,7 +21,7 @@ Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô t�
 - **Chỉ `src/` được đông cứng; `config/` và `data/` prod đọc thẳng từ repo.** Sửa một file `config/*.yaml` có hiệu lực ở lần nạp kế của prod (worker quá tải nạp lại mỗi lượt, các tiến trình khác lúc khởi động lại), không đợi deploy. Mọi loader đều từ chối khóa lạ (`Settings(**raw)`, pydantic `extra="forbid"`), nên một khóa YAML mà `.prod_src/` chưa biết làm prod lỗi khi nạp. Tham số mới: đặt default trong code, chỉ ghi vào YAML sau khi đã deploy bản code biết khóa đó. Kiểm trước và sau khi sửa config: `./run.sh prod-check` (nạp mọi file settings bằng code prod; venv cài `src/` dạng editable nên script báo lỗi nếu code không thật sự nạp từ `.prod_src/`).
 - `web/server.mjs` chỉ phục vụ phần public: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media` (jpg), thumbnail `/media/thumb` (WebP) và proxy `/api/harness/*`, `/api/auth/*` (keep-alive); `/admin` cùng các route admin sau đăng nhập (`/api/analytics/*`, review API, `/data/snapshot-admin.json`: `docs/SECURITY.md` §1); mọi `/api` khác và video khác trả 404. `./run.sh prod` chạy thêm analytics `:8770` và review `:8765` (từ `.prod_src/`); cần `ADMIN_EMAIL` / `ADMIN_PASSWORD` trong `.env`, thiếu thì không ai vào được. `/data/snapshot-admin.json` và `/data/admin-overview.json` được nén brotli / gzip sẵn lúc `server.mjs` khởi động (và khi file đổi), trình duyệt giữ bản dùng ngay 5 phút rồi cập nhật ngầm (`private, max-age=300, stale-while-revalidate`); xuất lại snapshot admin thì chạy `python web/scripts/export_snapshot.py --view overview` nếu không đi qua exporter. Cùng hostname và cổng 28899 với bản người dùng nên không phải đổi route Cloudflare. Cần Postgres đang chạy (`./run.sh db`).
 - Route hostname → cổng nằm trong dashboard Cloudflare của tunnel; `prod` in ra các route nhận được để thấy ngay khi token sai.
-- Tiến trình chạy bằng `nohup`; tiến trình chết giữa chừng không tự lên lại. Sau khi máy khởi động lại, cron `@reboot` (§4) chạy lại `prod`.
+- Tiến trình chạy bằng `nohup`; tiến trình chết giữa chừng không tự lên lại. Sau khi máy khởi động lại, cron `@reboot` (§4) chạy `prod-boot`: chạy lại đúng bản đã đông cứng, không lấy code dở trong cây làm việc.
 
 **Tốc độ.** `web/scripts/make_thumbs.py` tạo WebP rộng ≤ 480 px cho mọi ảnh bìa vào `data/thumbs/<nguồn>/` (chỉ ảnh mới). `npm run build:prod` = `vite build` + `web/scripts/prod_assets.mjs`: `dist/data/snapshot.json` chỉ giữ trường User Web đọc (27 → 16 MB; `public/data` vẫn đủ cho dev/admin) và mọi file văn bản có bản `.br` / `.gz` (cache theo hash ở `web/node_modules/.cache/tg-prod`). `server.mjs` gửi bản nén client nhận, gắn `ETag`; `/data` cache 5 phút + revalidate, `/media` 7 ngày, `/assets` immutable.
 
@@ -53,7 +54,7 @@ Từ 14/11/2026 NAS **chỉ** giữ `pg-backup/`. Bản sao `data/` (267 GB, ch�
 `crontab -e` của tài khoản chạy prod; giữ các job khác, mỗi job một nhãn để gỡ riêng:
 
 ```cron
-@reboot sleep 120; cd /data/work/luanhh/local/tripguardian && SKIP_CLEF=1 HARNESS_GPU=1 PATH=$HOME/node/bin:/usr/local/bin:/usr/bin:/bin ./run.sh prod >> logs/run/reboot.log 2>&1 # tripguardian-reboot
+@reboot sleep 120; cd /data/work/luanhh/local/tripguardian && SKIP_CLEF=1 PATH=$HOME/node/bin:/usr/local/bin:/usr/bin:/bin ./run.sh prod-boot >> logs/run/reboot.log 2>&1 # tripguardian-reboot
 * * * * * /usr/bin/python3 /data/work/luanhh/local/tripguardian/scripts/keepalive.py --base-url https://tripguardian.visioncare-host.uk >/dev/null 2>&1 # tripguardian-keepalive
 */10 * * * * /data/work/luanhh/local/tripguardian/scripts/disk_guard.sh # tripguardian-disk-guard
 30 2 * * * /data/work/luanhh/local/tripguardian/scripts/pg_backup_nas.sh # tripguardian-pg-backup
@@ -61,7 +62,7 @@ Từ 14/11/2026 NAS **chỉ** giữ `pg-backup/`. Bản sao `data/` (267 GB, ch�
 0 4 * * * /data/work/luanhh/local/tripguardian/scripts/trends_daily.sh dalat # tripguardian-trends
 ```
 
-- `@reboot`: Docker rootless tự lên (linger bật); 120 giây sau chạy lại toàn bộ `prod`, log `logs/run/reboot.log`. `SKIP_CLEF=1` vì GPU dùng chung với người khác; muốn Clef tự lên sau reboot thì bỏ biến này.
+- `@reboot`: Docker rootless tự lên (linger bật); 120 giây sau chạy `prod-boot` (không build, không migrate), log `logs/run/reboot.log`. `SKIP_CLEF=1` vì GPU dùng chung với người khác; muốn Clef tự lên sau reboot thì bỏ biến này.
 - `keepalive.py` (§5): ping đường public mỗi phút.
 - `disk_guard.sh`: ổ chứa Docker data-root còn dưới 5 GiB thì ghi `logs/disk_guard.log` và chạy `CHECKPOINT` trên Postgres.
 - `pg_backup_nas.sh`: §3, log `logs/pg_backup_nas.log`.

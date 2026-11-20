@@ -1,4 +1,4 @@
-"""ClimateNormal: per-month climate of a city from Open-Meteo's archive (docs/CORPUS.md §Views).
+"""ClimateNormal: per-month climate of a city from Open-Meteo's archive (docs/CORPUS.md §View toàn cầu).
 
 Daily values over start_year..end_year at the centre of the city's area -> per calendar month: median daily max / min
 temperature, share of rainy days, share of fog days (None when the source never reports fog at all). A figure the source does

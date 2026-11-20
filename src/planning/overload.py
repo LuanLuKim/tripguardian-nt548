@@ -295,7 +295,7 @@ def _file_child(tx, path) -> None:
 
 
 # The spawn workers stay up between searches: a fresh interpreter importing planning costs about a second, more than
-# most directions take (docs/PLANNING.md §Quá tải). Started on the first search, or ahead of it by warm().
+# most directions take (docs/PLANNING.md §Tính lại và cache). Started on the first search, or ahead of it by warm().
 POOL_WORKERS = 8
 _POOL: futures.ProcessPoolExecutor | None = None
 _POOL_LOCK = threading.Lock()

@@ -1,4 +1,4 @@
-"""Planning sessions for the web (docs/PLANNING.md §API và web): create (fast, anchor = base), act (chips,
+"""Planning sessions for the web (docs/PLANNING.md §CLI và API): create (fast, anchor = base), act (chips,
 no model), variants, lodging (crawled in the background), confirm. One lock per session; each committing act is one
 version that undo / redo moves between.
 """

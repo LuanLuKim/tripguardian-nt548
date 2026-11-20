@@ -1,8 +1,8 @@
 from datetime import date
 
-from trip import Catalog, TripState, compile_search_input, prepass
+from trip import Catalog, TripState, prepass
 from trip.domain.coverage import admissible, coverage, verdict
-from trip.domain.state import Evidence, Hard, Update, apply
+from trip.domain.state import Evidence, Hard
 from trip.domain.understanding import matching
 from trip_fixtures import rec
 

@@ -1,4 +1,4 @@
-"""How many candidates the corpus can actually check for a hard filter (docs/TRIP_UNDERSTANDING.md §5.4)."""
+"""How many candidates the corpus can actually check for a hard filter (docs/TRIP_UNDERSTANDING.md §5)."""
 
 from collections import Counter
 from dataclasses import dataclass

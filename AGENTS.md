@@ -4,7 +4,7 @@ Hệ thống place intelligence + lập lịch trình cá nhân hóa.
 
 **Bắt buộc tuân theo:** `RULE.md`. Rule thường trực chỉ nằm một chỗ ở đó; `CLAUDE.md` chỉ import file này.
 
-**Mục lục tài liệu, cách thiết lập, cách chạy, cách test:** `README.md`. Không chép danh sách tài liệu vào đây.
+**Mục lục tài liệu:** `README.md`. **Cách thiết lập, chạy, test:** `docs/SETUP.md`. Không chép danh sách tài liệu vào đây.
 
 ## Vào việc từ đâu
 

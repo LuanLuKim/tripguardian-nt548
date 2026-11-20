@@ -3,7 +3,7 @@
 from fixtures import feat, fit_entry, hard, love, si, srec
 
 from corpus.serving import dishes
-from decision.pipeline import Data, run, why_not
+from decision.pipeline import Data, run
 from decision.session import Session, State
 from decision.settings import default
 

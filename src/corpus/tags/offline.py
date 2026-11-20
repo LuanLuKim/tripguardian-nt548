@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 
-from ..llm import JUDGE, Role
+from ..llm import Role
 from ..serving import dishes as menu
 from . import vocab
 from .membership import _image_hash, definition_hash, digest, directory, record_hash

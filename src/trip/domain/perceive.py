@@ -7,7 +7,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Literal
-from urllib.parse import parse_qs, unquote_plus, urlsplit
+from urllib.parse import parse_qs, unquote_plus
 
 from corpus.crawl.web import validate_public_url
 

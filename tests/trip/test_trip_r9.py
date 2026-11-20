@@ -5,7 +5,7 @@ import pytest
 
 from trip import TripState, compile_search_input
 from trip.api.engine import Engine
-from trip.domain import diet, readiness
+from trip.domain import readiness
 from trip.domain.guard import record_fact
 from trip.domain.prepass import prepass
 from trip.domain.required import tabs

@@ -115,7 +115,7 @@ Mọi hàm trả `None` khi không có dữ liệu; không bịa. `src/live` kh�
 
 ### OSRM
 
-Thiết lập một lần mỗi máy, `scripts/osrm_setup.sh` + mục trong `README.md`: tải `vietnam-latest.osm.pbf` (Geofabrik) → `osrm-extract` (profile `car`) → `osrm-partition` → `osrm-customize` → `osrm-routed --max-table-size 300`.
+Thiết lập một lần mỗi máy, `scripts/osrm_setup.sh` + `docs/SETUP.md` §2: tải `vietnam-latest.osm.pbf` (Geofabrik) → `osrm-extract` (profile `car`) → `osrm-partition` → `osrm-customize` → `osrm-routed --max-table-size 300`.
 
 Mode: OSM không có profile xe máy chuẩn. Dùng profile `car` rồi nhân `mode_factor` (`config/live.yaml`: `car 1.0`, `motorbike 0.95`). Chặng ngắn hơn `walk_km` tính đi bộ bằng khoảng cách × `road_factor` ÷ tốc độ đi bộ. Mọi số này hiển thị là **ước lượng**, không nói là thời gian thật của một nhà cung cấp nào. Hình lộ trình (`/route`) gọi với `continue_straight=false` như ma trận `/table`: profile `car` mặc định cấm quay đầu tại điểm dừng, nên hình vẽ sẽ có vòng thừa mà ma trận không tính.
 
@@ -535,8 +535,6 @@ Plan Output
 `build` / `variants` / `lodging` / `evaluate` cần OSRM đang chạy để có số thật; không có thì rơi về ước lượng thô kèm cảnh báo (§Live Context).
 
 User Web gọi Planning qua harness (`docs/AGENT_HARNESS.md`), từ Decision Output server đã xác nhận. API độc lập `serve` bind `127.0.0.1:8768`; danh sách dưới đây thuộc API này, gồm `turn` không được router harness cung cấp.
-
-Harness **không** còn dùng hàm này cho đọc Planning (04/11: mỗi GET deep-copy session + lịch nhiều MB, 2–8 s): harness render trên engine writer ngoài journey lock (engine tự giữ khoá phiên) rồi kiểm lại revision + dấu runtime. Public `planning.fork_readonly(engine, sid)` chụp Session cùng runtime base/schedules, generation, epoch và token preview vào engine RAM riêng dưới khóa module. Caller gọi hàm này và `load(sid)`/`suggestions(sid)`/`variants(sid)`/`lodging(sid)` trên bản chụp ngoài khóa journey, rồi kiểm revision trước khi trả. Corpus/config/callback đọc dùng chung; không ghi Store của writer, không khởi chạy worker gợi ý trên bản chụp, trạng thái pending giữ như lúc chụp. Khi writer chưa có gợi ý sau restore, bước chụp đưa việc vào hàng đợi writer như `load`, không để bản chụp báo pending mà không có việc chạy. Token gợi ý giữ nguyên; token preview đã có được giữ trong runtime riêng. Không dùng fork để cấp token preview mới cho act của writer: `preview-act` vẫn phải qua đường writer.
 
 Factory capture hoặc nhận public corpus binding, mở đúng snapshot/version/region đó.
 Adapter kiểm binding của Decision Output trước create/preview/lodging/restore; Plan Output

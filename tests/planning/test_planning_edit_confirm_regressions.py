@@ -3,8 +3,8 @@
 import pytest
 
 from plan_fixtures import CENTRE, FakeLive, decision, fake_matrix, no_geocode, rec
-from planning.engine import Engine, NotConfirmable
-from planning.session import ActionError, Store
+from planning.engine import Engine
+from planning.session import Store
 from test_planning_assistant import Script, call, reply, say, tool_results, turn
 
 

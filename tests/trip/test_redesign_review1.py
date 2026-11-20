@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from trip_fixtures import ScriptedChat, say
 
-from trip import Catalog, TripState, compile_search_input
+from trip import TripState, compile_search_input
 from trip.agent import AgentError
 from trip.api.engine import Engine, TurnInput
 from trip.domain import readiness

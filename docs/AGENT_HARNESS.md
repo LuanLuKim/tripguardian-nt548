@@ -106,7 +106,7 @@ Khóa hành trình nằm trong một tiến trình; nhiều tiến trình cùng 
 python -m harness serve [--port 8769]
 ```
 
-Bind `127.0.0.1`; Vite proxy `/api/harness` và `/api/auth` đến cổng 8769 (`HARNESS_PORT` đổi được). Cần `DATABASE_URL`; `SMTP_*` + `MAIL_FROM` (hoặc `MAIL_DEV_OUTBOX=1` khi chạy thử, `docs/ACCOUNTS.md` §2c) bật "Quên mật khẩu". `./run.sh start` chạy harness, analytics, review và Web; thiết lập ở `README.md`.
+Bind `127.0.0.1`; Vite proxy `/api/harness` và `/api/auth` đến cổng 8769 (`HARNESS_PORT` đổi được). Cần `DATABASE_URL`; `SMTP_*` + `MAIL_FROM` (hoặc `MAIL_DEV_OUTBOX=1` khi chạy thử, `docs/ACCOUNTS.md` §2c) bật "Quên mật khẩu". `./run.sh start` chạy harness, analytics, review và Web; thiết lập ở `docs/SETUP.md`.
 
 **Quyền.** Mọi `/api/harness/*` cần phiên đăng nhập (cookie `tg_session`), thiếu thì 401; `/api/auth/*` là luồng đăng nhập (`docs/ACCOUNTS.md`). Mutation (POST / PATCH / DELETE) phải có header `Origin` khớp `APP_BASE_URL` hoặc khớp `Host`, sai thì 403. Hành trình của tài khoản khác trả 404 như không tồn tại. Ngoại lệ duy nhất: `POST /api/harness/events` nhận lô không phiên nhưng chỉ giữ `page_view` / `landing_cta` (landing public).
 

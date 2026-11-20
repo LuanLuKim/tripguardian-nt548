@@ -2,7 +2,6 @@
 
 from datetime import date
 
-import pytest
 
 from trip.domain.compile import compile_search_input
 from trip.domain.state import Base, Evidence, TripState, Update, apply, settle, unknown_fields

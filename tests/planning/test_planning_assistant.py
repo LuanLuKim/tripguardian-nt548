@@ -305,7 +305,6 @@ def test_the_session_keeps_the_typed_turns_for_the_next_prompt():
     e, sid = started(None)
     e.assistant = Script(say("Chào bạn, mình đang xem lịch."), say("Mình vẫn ở đây."))
     turn(e, sid, "chào")
-    chat = e.assistant
     e.assistant = second = Script(say("Mình vẫn ở đây."))
     turn(e, sid, "còn đó không")
     msgs = second.seen[0][0]

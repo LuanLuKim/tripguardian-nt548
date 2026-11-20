@@ -1,7 +1,6 @@
 """Navigation is not an edit: persisted schedules and summaries survive it."""
 from copy import deepcopy
 
-import pytest
 
 from test_dispatch import decision, make, run
 

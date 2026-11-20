@@ -1,6 +1,6 @@
 # Kế hoạch: tổ chức lại và viết lại tài liệu
 
-Spec làm việc (`RULE.md` §0.1), ngày 2026-11-11, chờ chủ dự án duyệt. Chưa sửa file nào ngoài file này.
+Spec làm việc (`RULE.md` §0.1), ngày 2026-11-11, chờ chủ dự án duyệt. **Cập nhật 2026-11-20 ở §11** (đi cùng `docs/plans/2026-11-20-production-restructure.md`): đọc §11 trước, nó sửa §3, §7, §8.
 
 ## 1. Vì sao phải làm
 
@@ -277,3 +277,71 @@ Mỗi bước là một commit, có kiểm chứng; viết xong mỗi stage thì
 ## 10. Phát hiện khi viết
 
 (Trống. Ghi các chỗ tài liệu cũ khác code trong lúc làm.)
+
+## 11. Cập nhật 2026-11-20
+
+### 11.1 Số đo lại
+
+| Thứ | 11-11 | 11-20 |
+|---|---|---|
+| `CORPUS.md` / `TRIP_UNDERSTANDING.md` / `PLANNING.md` / `PLACE_DECISION.md` | 202 / 131 / 108 / 72 KB | 225 / 142 / 118 / 72 KB: còn phình thêm |
+| `docs/log/DEV_LOG.md` | | 240 KB, 104 mục |
+| `LLM_PROVIDER.md`, `Role_Web_Functional_Design.md`, `UI_SPEC_USER_WEB.md` | | 41, 76, 53 KB |
+| Câu có ngày trong tài liệu chính thức | | CORPUS 33, TRIP 23, LLM_PROVIDER 21, PLANNING 20 |
+| Chỗ code trỏ vào `docs/*.md` | 427 | 487 |
+| `docs/plans/` | | 51 file, 27 bàn giao |
+| `docs/design/` | | 263 MB (story-paper 89, mock 55, desktop 40, mascot 29, brochure 28) |
+| Tài liệu mới từ 11-11 | | `LLM_ARCHITECTURE.md` (36 KB), `SETUP.md` |
+
+### 11.2 Sửa cây đích (§3)
+
+- **Tài liệu theo khuôn module.** `docs/<stage>/README.md` có bảng "tầng → thư mục code" khớp khuôn `domain/ app/ agent/ adapters/ api/ eval/` (`2026-11-20-production-restructure.md` §3b). Viết tài liệu một stage **cùng đợt** với áp khuôn code của stage đó, không viết hai lần.
+- **`agents/`** gộp `AGENT_HARNESS.md` + `LLM_ARCHITECTURE.md` (đang chồng nhau: harness, vòng tool, guard tả ở cả hai): `agents/README.md` (mẫu agent, vòng tool, skill, Clef), `agents/routing.md` (định tuyến hai tầng), `agents/harness.md` (journey, revision, HTTP/SSE). `LLM_PROVIDER.md` giữ, bỏ lịch sử đổi host có ngày (chuyển `docs/log/`).
+- **`ops/`** thay `OPERATIONS.md`: `ops/README.md` (release, switch, rollback, systemd, cron, sức khỏe), `ops/runbook.md` (sự cố thường gặp: triệu chứng → lệnh → cách sửa), `ops/store.md` (kho `tripguardian-store`, manifest). `SETUP.md` giữ cho dev.
+- **`space3d/` và `docs/design/` sang repo studio** cùng code của nó; repo sản phẩm giữ `docs/design/readme/` và token giao diện. Bỏ dòng `space3d/` khỏi §3.
+- **`DEV_LOG.md` thôi là nhật ký tay 240 KB.** Prod chạy theo tag, nên lịch sử là: commit message (đã có) + `CHANGELOG.md` mỗi release (sinh từ commit giữa hai tag, người sửa câu chữ). `DEV_LOG.md` đóng băng làm lưu trữ, không ghi thêm; `AGENTS.md` bỏ dòng trỏ nó.
+- **Câu có ngày** ("chủ dự án 04/11", "từ 13/11 …") trong tài liệu chính thức: quyết định → ADR; trạng thái máy (GPU nào, host nào tắt) → `ops/README.md` dạng hiện trạng, không ngày; còn lại xóa.
+
+### 11.3 Dọn `docs/plans/` (thay §7)
+
+Luật mới, ghi vào `RULE.md` §0.1: một việc một file; file bàn giao có dòng đầu `Trạng thái: mở | xong | bỏ`; việc xong thì gộp phần còn giá trị vào tài liệu chính thức và xóa file trong cùng commit. Áp ngay cho 51 file hiện có: đọc dòng đầu + đối chiếu code, xếp ba cột (gộp rồi xóa / giữ vì còn mở / sang repo studio: mọi bàn giao phim, 3D, pitch, brochure, nhom-44). Chủ dự án duyệt bảng xếp trước khi xóa.
+
+### 11.4 Viết sao cho dễ đọc
+
+- **Chủ dự án 2026-11-20: sơ đồ là nội dung chính, chữ ít nhất có thể; chỗ không cần chữ thì không viết.** Mỗi tài liệu kỹ thuật bắt đầu bằng sơ đồ; ngân sách §2 là trần, đích là càng ngắn càng tốt.
+- Theo skill `viet-docs` (`.agents/skills/viet-docs/SKILL.md`): câu ngắn, đoạn ≤ 4 dòng, số có đơn vị và nguồn, không giọng quảng cáo.
+- Mỗi file mở bằng ba dòng: **dành cho ai**, **đọc xong làm được gì**, **không nói gì** (trỏ file khác).
+- Sơ đồ mermaid trước, chữ sau; chữ không tả lại sơ đồ.
+- Ví dụ thật thay mô tả trừu tượng: một Search Input JSON, một lượt chat có trace.
+
+### 11.5 Máy kiểm thay người nhớ
+
+| Kiểm | Công cụ | Chạy |
+|---|---|---|
+| Chỗ trỏ `docs/X.md §Y` còn đúng | `scripts/doc_refs.py check` (§6) | test unit |
+| Đường dẫn file, lệnh, test nhắc trong tài liệu có thật | cùng script, quét chuỗi trong backtick có dạng path / `tests/...::test_` | test unit |
+| File trong ngân sách KB (§2) | cùng script | test unit, cảnh báo không chặn |
+| Không câu có ngày ngoài `log/`, `reports/`, `adr/` | regex ngày | test unit |
+| Bảng "tầng → thư mục" khớp thư mục thật | so với `src/<stage>/` | test unit |
+
+### 11.6 Thứ tự mới (thay §8)
+
+| Bước | Việc | Đi cùng |
+|---|---|---|
+| 0 | `doc_refs.py` + test; chạy trên hiện trạng, sửa chỗ trỏ hỏng sẵn | GĐ0 production (cây sạch) |
+| 1 | Dọn `docs/plans/` theo §11.3 | GĐ0 |
+| 2 | `ops/` (release, systemd, runbook, store) | GĐ1–2 production |
+| 3 | `agents/` (gộp AGENT_HARNESS + LLM_ARCHITECTURE) + ADR đầu | tách `chat_router` |
+| 4 | `decision/` → `planning/` → `trip/` → `corpus/`, mỗi stage một PR gồm code theo khuôn + tài liệu | GĐ5b |
+| 5 | `web/`, `GLOSSARY.md`, `ARCHITECTURE.md`, `README.md`, `AGENTS.md` | cuối |
+| 6 | Xóa file cũ đã tách hết; `DEV_LOG.md` đóng băng; `CHANGELOG.md` từ release đầu | GĐ1 |
+
+### 11.7 Bảng xếp `docs/plans/` (2026-11-20, chờ duyệt, chưa xóa gì)
+
+| Nhóm | File | Việc |
+|---|---|---|
+| **Sang repo studio** (phim, 3D, video, pitch) | `2026-11-09-3d-scale-{design,plan}`, `2026-11-10-3d-scale-HANDOFF`, `2026-11-10-space3d-tour-interior-HANDOFF`, `AUTO3D_WORKFLOW_HANDOFF`, `DIORAMA_BATCH_HANDOFF`, `SPACE_3D_HANDOFF`; `2026-11-16-{da-lat-intro,inkfilm,inkfilm-workflow,story-films,wan-local-compare}-*`; `2026-11-17-{ho-than-tho-kich-ban,ho-than-tho-paper,ho-than-tho-v3-HANDOFF,interactive-story-design}`; `2026-11-18-demo-video-kich-ban`; `2026-11-19-{h3-film-workflow-HANDOFF,san-may-da-lat-kich-ban,tripguardian-anime-kich-ban,video-du-thi-2-phut-kich-ban}`; `2026-11-20-{album-thuy-mac,phim-ke-chuyen-cach-lam-hay,voice-refs-HANDOFF}` | chuyển cùng code khi tách repo (GĐ3). Ba file 11-20 đang do phiên phim giữ |
+| **nhom-44** (đồ án, không liên quan repo này) | 6 file | **đã chuyển 2026-11-20** sang `nhom44/_local/plans-from-tripguardian/` |
+| **Mở, giữ** | `2026-11-20-production-restructure`, `2026-11-11-docs-restructure-plan`, `2026-11-20-hcm-vungtau-raw-crawl-HANDOFF` (phiên corpus giữ), `2026-11-20-scale-hcm-vungtau-extractor`, `2026-11-20-kaggle-gemma-HANDOFF`, `2026-11-18-planning-fast-optimal-HANDOFF`, `2026-11-18-optimize-user-view-HANDOFF`, `2026-11-17-rides-nationwide-HANDOFF`, `2026-11-18-landing-3d-films-HANDOFF`, `2026-11-11-web-3d-plan-page-HANDOFF`, `2026-11-15-trends-HANDOFF`, `2026-11-12-posts-content-HANDOFF`, `2026-11-10-system-review-HANDOFF` | thêm dòng `Trạng thái: mở`; khi gom commit (GĐ0) việc nào đã lên prod thì gộp vào tài liệu và xóa |
+| **Gộp rồi xóa** (đã làm hoặc bị thay) | `2026-11-09-repo-structure-proposal` (thay bởi production-restructure), `2026-10-31-guided-tour-{design,HANDOFF}` (tour đã có), `2026-10-26-production-and-course-upgrade-design` (74 KB, đối chiếu từng mục), `2026-10-12-corpus-semantic-index-design` (chỉ lớp A còn mở) | đối chiếu code, phần còn giá trị vào tài liệu / ADR, xóa |
+| **Chủ dự án chọn** | `NORMALIZED_CORPUS_RAG_ONLINE_PROPOSAL`, `PLANNING_IMPROVEMENT_PROPOSAL`, `TAG_EXPANSION_NOTES` | phần chưa làm: giữ làm đề xuất hay bỏ |

@@ -24,7 +24,7 @@ def test_two_restaurants_fit_two_days_even_when_one_has_a_sunset_wish_off_its_me
 
 # --- the validator catches plans that are wrong, whichever path made them -----------------------------------------
 
-from plan_fixtures import all_days, day_ctx, rec
+from plan_fixtures import day_ctx, rec
 
 from planning.model import DayResult, Item
 from planning.validate import validate
@@ -68,8 +68,6 @@ def test_a_first_visit_with_no_road_from_the_start_node_fails():
 
 import pytest
 
-from planning.engine import NotConfirmable
-from planning.session import ActionError
 
 
 def _started():

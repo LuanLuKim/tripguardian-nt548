@@ -1,4 +1,4 @@
-"""Global views (docs/CORPUS.md §Views): ClimateNormal, CalendarDay, RestrictedArea per city. Public API.
+"""Global views (docs/CORPUS.md §View toàn cầu): ClimateNormal, CalendarDay, RestrictedArea per city. Public API.
 
 Offline and city-agnostic: the city's area comes from config/cities.yaml, the settings from config/views.yaml, the
 output goes to data/<city>/views/. No model, no browser.

@@ -24,7 +24,7 @@ photon_url: https://photon.komoot.io/api/
 # Open-Meteo: free, no key, daily forecast up to 16 days ahead; config/climate.yaml covers dates beyond that.
 open_meteo_url: https://api.open-meteo.com/v1/forecast
 
-# Maps' hotel list ("Khách sạn"), queried through corpus.crawl's public API (docs/PLANNING.md §Chỗ ở (crawl live)).
+# Maps' hotel list ("Khách sạn"), queried through corpus.crawl's public API (docs/PLANNING.md §Live Context).
 lodging_query_limit: 40
 
 # Seconds. Roads change slowly, forecasts quickly, OTA prices daily.

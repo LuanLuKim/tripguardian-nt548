@@ -10,7 +10,7 @@ from requirements import valid_condition
 
 from ..infrastructure.catalog import Catalog
 from .resolve import anchor_for
-from .state import Base, SoftKey, Transit, ontology
+from .state import Base, SoftKey, Transit
 from .text import fold
 
 MONEY = re.compile(r"(\d+(?:[.,]\d+)?)\s*(k|nghin|ngan|tr|trieu|cu)?")

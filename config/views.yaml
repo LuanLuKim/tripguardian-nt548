@@ -1,4 +1,4 @@
-# Global views (docs/CORPUS.md §Views): computed from public sources for any city in config/cities.yaml, no model.
+# Global views (docs/CORPUS.md §View toàn cầu): computed from public sources for any city in config/cities.yaml, no model.
 timeout_s: 60
 climate:   # Open-Meteo archive -> monthly ClimateNormal
   url: https://archive-api.open-meteo.com/v1/archive

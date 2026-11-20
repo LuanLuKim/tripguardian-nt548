@@ -4,7 +4,6 @@ import pytest
 from fixtures import hard, love, si, srec
 
 from decision.engine import Engine, diff
-from decision.guard import PlanUpdate, TurnPlan
 from decision.heuristics import common_wish, general_wish
 from decision.pipeline import Data, run
 from decision.session import Session, State, Store

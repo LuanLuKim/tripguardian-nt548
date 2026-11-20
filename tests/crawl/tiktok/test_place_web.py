@@ -3,7 +3,6 @@
 
 import json
 
-import httpx
 
 from corpus.crawl.tiktok import place_web
 

@@ -56,7 +56,7 @@ def fit_summary(state: TripState, catalog: Catalog | None) -> dict | None:
     past_hard = [c for c in catalog.places if admissible(c, state.hard, state.activities.get(c.id))]
     wishes = []
     for key, f in sorted(state.soft.items()):
-        if f.known and (sign := WEIGHT_SIGN.get(f.value)):
+        if f.known and WEIGHT_SIGN.get(f.value):
             k = SoftKey.parse(key)
             wishes.append({"wish": key, "weight": f.value, "source": f.source,
                            "places_with_it": sum(c.value(k.feature, k.context) == k.value for c in past_hard),

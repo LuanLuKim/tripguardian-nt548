@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 import httpx
-import pytest
 from fastapi.testclient import TestClient
 
 SPEC = importlib.util.spec_from_file_location("model_gateway", Path(__file__).resolve().parent.parent / "scripts" / "model_gateway.py")

@@ -130,7 +130,7 @@ robustness:
   solid_max_lost: 0         # every scenario loses at most this many places -> solid
   feasible_max_lost: 0      # every small scenario loses at most this many -> feasible; otherwise fragile
 
-# Objectives (docs/ARCHITECTURE.md §10).
+# Objectives (docs/PLANNING.md §ⓖ Mục tiêu và phương án).
 objective_weights:          # merged over `weights` when the days are split for that objective
   least_travel: {travel: 2.0}
   low_cost: {}

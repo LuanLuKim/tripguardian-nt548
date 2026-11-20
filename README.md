@@ -1,203 +1,109 @@
+<p align="center"><img src="docs/design/readme/hero.webp" alt="Trang đầu TripGuardian: bản đồ 3D Đà Lạt" width="100%"></p>
+
 # TripGuardian
 
-> **Dự án học tập, phi thương mại.** Không dùng code, dữ liệu hay nội dung crawl (review Google Maps, video và bình luận TikTok) cho mục đích thương mại. Nội dung crawl thuộc về tác giả gốc và chỉ dùng cho nghiên cứu trong dự án này.
+Trợ lý lên lịch du lịch tự túc ở Đà Lạt: **chọn đúng nơi trước, rồi mới xếp lịch**, và nói rõ vì sao.
 
-Hệ thống place intelligence + lập lịch trình cá nhân hóa: giúp người dùng **chọn đúng địa điểm trước khi tạo lịch trình**, rồi kiểm tra tổ hợp đã chọn có đi được cùng nhau không. Phạm vi kiểm chứng ban đầu: Đà Lạt.
+**Dùng thử:** [tripguardian.visioncare-host.uk](https://tripguardian.visioncare-host.uk) (không cần tài khoản)
 
-Bốn giai đoạn, mỗi giai đoạn một package và một tài liệu:
+> Dự án học tập, phi thương mại. Nội dung crawl (review Google Maps, video và bình luận TikTok) thuộc tác giả gốc, chỉ dùng cho nghiên cứu trong dự án này.
 
-```text
-Place Intelligence  src/corpus/   offline: địa điểm → fact / signal / estimate có bằng chứng
-Trip Understanding  src/trip/     người dùng cần gì cho chuyến này → Search Input
-Place Decision      src/decision/ → shortlist → người dùng tuyển chọn → Decision Output
-Planning & Valid.   src/planning/ + src/live/ → phương án, chỗ ở, độ vững → Plan Output
+## TripGuardian làm gì
+
+Người đi Đà Lạt không thiếu gợi ý. Cái khó là biết nơi nào hợp với chuyến này, và các nơi đã chọn có đi được cùng nhau không. TripGuardian trả lời ba câu đó:
+
+- **Nơi nào hợp?** Bạn kể chuyến đi bằng lời (đi với ai, mấy ngày, thích gì, kiêng gì). Hệ thống lọc 3.168 địa điểm (bản serving 2026-11-03) và chỉ giữ nơi có bằng chứng phù hợp.
+- **Vì sao nơi này?** Mỗi thẻ nơi ghi lý do hợp, điểm đánh đổi và độ tin cậy. Thông tin lấy từ review Maps và video TikTok đã được model đọc và kiểm, không bịa: thiếu bằng chứng thì ghi `unknown`.
+- **Đi được cùng nhau không?** Lịch được xếp theo giờ mở cửa, thời gian di chuyển thật (OSRM), thời tiết và nhịp đi. Lịch vi phạm vẫn hiện, kèm cảnh báo; người dùng quyết định cuối.
+
+<p align="center"><img src="docs/design/readme/schedule.webp" alt="Màn lịch trình: bản đồ thứ tự điểm dừng, ngày đi, giờ trong chuyến" width="85%"></p>
+
+## Cách hoạt động
+
+```mermaid
+flowchart LR
+    subgraph offline["Offline: Place Intelligence"]
+        S["Google Maps<br/>TikTok<br/>web"] --> C["crawl → model đọc<br/>→ gộp bằng chứng"]
+        C --> R[("serving record<br/>fact / signal / estimate")]
+    end
+    subgraph online["Online: một hành trình"]
+        U(["Người dùng<br/>Web"]) --> H["Harness<br/>HTTP / SSE"]
+        H --> T["Trip Understanding<br/>cần gì cho chuyến này"]
+        T --> D["Place Decision<br/>shortlist, so sánh, chọn"]
+        D --> P["Planning<br/>chia ngày, thứ tự, chỗ ở"]
+    end
+    R -. chỉ đọc .-> T & D & P
+    L["Live Context<br/>OSRM, thời tiết, chỗ ở"] --> P
 ```
 
-Phần dùng chung: `src/harness/` (HTTP/SSE, hành trình chung), `src/agents/` (Agent, tool, skill, lõi trợ lý), `src/requirements/` (contract yêu cầu dùng chung), `src/accounts/` + `src/db/` + `src/mailer/` + `src/social/` (tài khoản, Postgres, thư, bạn bè), `src/booking/` + `src/journey/` (đặt chỗ, đường tới thành phố), `src/companion/` + `src/notify/` (chế độ Đang đi, thông báo), `src/analytics/`, `src/bench/` (đo). Đồ thị phụ thuộc: `docs/ARCHITECTURE.md` §3. Giao diện: `web/`.
+Trip, Decision và Planning mỗi bên có một Agent (model + tool + skill) chạy trên lõi chung `src/agents/`; Harness giữ trạng thái hành trình, kiểm kết quả và ghi trace. Chi tiết: `docs/ARCHITECTURE.md`, `docs/LLM_ARCHITECTURE.md`.
 
-## Cấu trúc thư mục
+## Thiết lập nhanh
 
-| Thư mục | Chứa gì | Trong git |
-|---|---|---|
-| `src/` | package Python, mỗi giai đoạn / phần dùng chung một package | có |
-| `tests/` | pytest, cùng tên thư mục với package trong `src/` | có (trừ `fixtures/{gmaps,tiktok}`) |
-| `config/` | mọi ngưỡng và tham số (`docs/ARCHITECTURE.md` §5) | có |
-| `migrations/` | SQL Postgres đánh số, `./run.sh db` chạy | có |
-| `web/` | React + Vite (`src/`), server public (`server.mjs`), script build / ảnh / test Node (`scripts/`), viewer 3D (`space3d/`) | có (trừ `dist/`, `public/data/`, `shots/`) |
-| `scripts/` | script chạy tay hoặc cron: vận hành, host model, chuỗi corpus, đo, client thử Streamlit (`scripts/README.md`) | có |
-| `docker/`, `certs/` | cấu hình SearXNG; chứng chỉ CA cho endpoint UIT | có (trừ CA bundle sinh ra) |
-| `docs/` | tài liệu chính thức (§Tài liệu); `docs/design/` ảnh / mock thiết kế, `docs/plans/` spec làm việc, `docs/reports/` báo cáo theo ngày, `docs/log/` nhật ký | có |
-| `submission/` | hồ sơ dự thi (§Hồ sơ dự thi) | có |
-| `run.sh` | khởi động / dừng dev và prod | có |
-| `data/`, `logs/`, `osrm-data/`, `.browser/` | dữ liệu, log, chỉ mục OSRM, profile trình duyệt crawl | không |
-| `.prod_src/` | bản đông cứng của `src/` mà prod chạy, `./run.sh prod` tạo (`docs/OPERATIONS.md` §1) | không |
-| `frontend_images/` | ảnh chụp UI để chủ dự án duyệt (`RULE.md` §0.2) | không |
-| `.venv`, `.venv-vllm`, `.cache` | symlink sang `tripguardian-store/` trên gpu156 (`docs/OPERATIONS.md` §2) | không |
-| `.claude/`, `.agents/`, `.cursor/`, `.opencode/`, `.impeccable/` | cấu hình và skill của công cụ agent | có (trừ file local) |
-
-## Tài liệu
-
-| Tài liệu | Nội dung |
-|---|---|
-| `docs/Project_Context.md` | Vì sao, cho ai, User Profile, nguyên tắc sản phẩm, phạm vi MVP, thước đo |
-| `docs/ARCHITECTURE.md` | Bản đồ hệ thống: bốn giai đoạn, ranh giới module, constraint, cấu hình, quyết định thiết kế |
-| `docs/AGENT_HARNESS.md` | Agent/tool/skill, router, hành trình chung, revision/retry, HTTP và SSE |
-| `docs/CORPUS.md` | Place Intelligence: nguồn, vai trò model, pipeline, gate, data model, CLI, đo chất lượng |
-| `docs/TRIP_UNDERSTANDING.md` | Trip State, chọn câu hỏi, ngân hàng câu hỏi, Search Input, CLI và API |
-| `docs/TRIP_UNDERSTANDING_QA.md` | Inventory field/tag, thông tin cốt lõi và tùy chọn, QA prompt → hoàn tất field, mẫu case và bàn giao Planning |
-| `docs/PLACE_DECISION.md` | Sàng lọc fail-closed, xếp hạng, đa dạng, khả thi của tổ hợp, Decision Output, CLI và API |
-| `docs/PLANNING.md` | Live Context, chia ngày, thứ tự, chỗ ở live, độ vững, dự phòng, Plan Output, CLI và API |
-| `docs/ACCOUNTS.md` | Đăng nhập Google, phiên, hồ sơ, avatar, xóa tài khoản, liên kết Calendar, Postgres |
-| `docs/SECURITY.md` | Ranh giới tin cậy, xác thực, phân quyền, chống lạm dụng, bí mật, khoảng trống bảo mật |
-| `docs/COMPANION.md` | Chế độ Đang đi (màn Hôm nay, check-in, gợi ý tại chỗ), xuất Google Calendar có xác nhận, thông báo |
-| `docs/ANALYTICS.md` | Event server / web, server analytics private, chỉ số Admin, Insights |
-| `docs/BOOKING.md` | `Offer` + adapter deeplink (xe khách, máy bay, chỗ ở), phương án đi từ nhà tới chỗ ở, API và `booking_click` |
-| `docs/Role_Web_Functional_Design.md` | Chức năng Web theo vai trò, từng màn (kể cả hướng dẫn có linh vật), và màn nào nằm ở file nào |
-| `docs/UX_Design_Brief.md` | Brief UI/UX: nguyên tắc, cách hiển thị chất lượng dữ liệu, hệ thị giác |
-| `docs/UI_SPEC_USER_WEB.md` | Đặc tả trang User Web cho designer / Figma |
-| `docs/UI_SPEC_FLOW_LAYOUT.md` | Luồng chuyển màn, kiểu chuyển cảnh và bố cục từng màn User Web |
-| `docs/UI_SPEC_LANDING.md` | Đặc tả landing: màn đầu 3D và ba bước (máy tính), trang Dùng ứng dụng (điện thoại) |
-| `docs/LLM_ARCHITECTURE.md` | Bản đồ dùng model xuyên hệ thống: vai trò / task, RAG, harness, vòng tool, tool, skill, guard, fallback |
-| `docs/LLM_PROVIDER.md` | Model nào đảm nhận vai trò nào: endpoint, key, chứng chỉ, ASR local |
-| `docs/OPERATIONS.md` | Vận hành production trên gpu156: deploy, `.prod_src/`, vị trí file, sao lưu, cron, kiểm tra sức khỏe |
-| `docs/reports/` | Báo cáo đo theo ngày, đúng tại ngày ghi: tái kiểm corpus normalized (2026-10-15), hiệu năng Planning chuyến dài |
-| `docs/log/DEV_LOG.md` | Nhật ký **code đang có gì** theo từng tính năng |
-| `docs/log/AGENT_FAILURES.md` | Nhật ký lỗi của coding agent, làm bằng chứng trước khi nâng thành rule |
-
-Quy tắc làm việc (bắt buộc): `RULE.md`. Hướng dẫn cho agent: `AGENTS.md`. Spec / plan đang làm (không phải tài liệu chính thức): `docs/plans/`.
-
-## Thiết lập
-
-Mục tiêu: clone code, tải gói dữ liệu, chạy được cả hệ thống như máy đang phát triển. Dữ liệu không nằm trong git.
-
-**Cần cài trước:** Python ≥ 3.12 (đang dùng 3.12), Node ≥ 20.19 (đang dùng 24), Git Bash (Windows; `run.sh` là shell script, dùng `netstat`/`taskkill`), Google Chrome bản thường (Playwright mở Chrome qua `channel="chrome"`), Docker (chỉ cho OSRM). Chỉ khi crawl: ffmpeg trên `PATH`, GPU cho ASR.
+Cần Python ≥ 3.12, Node ≥ 20.19, Docker. Dữ liệu không nằm trong git.
 
 ```sh
 git clone https://github.com/hohoangluan/tripguardian && cd tripguardian
-python -m venv .venv && source .venv/Scripts/activate   # Linux/macOS: .venv/bin/activate
-pip install -e ".[dev]"                                 # thêm .[asr] chỉ khi chạy ASR; chunkformer: pip install --no-deps
-python -m playwright install chromium                    # browser headless cho test parser và crawl
-cd web && npm install && cd ..
-cp .env.example .env                                     # điền key: docs/LLM_PROVIDER.md
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]" && (cd web && npm install)
+cp .env.example .env                     # điền key model: docs/LLM_PROVIDER.md
+python -m zipfile -e tripguardian-data-<ngày>.zip .   # gói dữ liệu tải từ Drive của nhóm
+./run.sh db                              # Postgres trong Docker, chạy migration
+./run.sh start                           # mở http://127.0.0.1:5173
 ```
 
-1. **Dữ liệu.** Tải `tripguardian-data-<ngày>.zip` mới nhất từ [Drive của nhóm](https://drive.google.com/drive/folders/1LeEgIdoioyCAM64WV3VLGeKYA-X5yEGT?usp=sharing), giải nén **tại thư mục gốc repo**: `python -m zipfile -e tripguardian-data-<ngày>.zip .` — gói trả về đúng chỗ `data/`, `web/public/data/snapshot.json` (dữ liệu web hiển thị) và `tests/fixtures/{gmaps,tiktok}` (trang crawl thật cho test parser). Mấy file này trích review và tài khoản người thật nên không nằm trong repo public. Gói không có `video.mp4` của TikTok (chỉ bước ASR khi crawl cần); bản `--no-photos` không có ảnh Maps, khi đó `/admin/labels` không hiện ảnh.
-2. **Key.** Trip Understanding, chọn câu hỏi và mọi phase cần model gọi API UIT, chỉ trả lời trong mạng campus; key và endpoint ở `.env`. Lỗi chứng chỉ `llm.uit.edu.vn`: tạo CA bundle một lần mỗi máy — `docs/LLM_PROVIDER.md` §Chứng chỉ TLS.
-3. **OSRM** (thời gian di chuyển cho Planning): `bash scripts/osrm_setup.sh` một lần mỗi máy — tải OSM Việt Nam, dựng chỉ mục vào `osrm-data/`, mở `127.0.0.1:5000`. Lần sau chỉ cần chạy lại container (dòng `docker run ... -p 127.0.0.1:5000:5000` cuối script). Không có OSRM thì Planning ước lượng thô và gắn cảnh báo. Endpoint và TTL ở `config/live.yaml`; `LIVE_CONTACT` trong `.env` là liên hệ gửi kèm request.
-4. **Postgres** (tài khoản, hành trình, event, thông báo; cần Docker): điền `POSTGRES_PASSWORD`, `DATABASE_URL`, `DATABASE_URL_READONLY` trong `.env`, rồi `./run.sh db` — tạo container `tripguardian-pg` ở `127.0.0.1:5433`, role, database và chạy migration (chạy lại an toàn). `./run.sh db-backup` sao lưu vào `data/backup/pg/`. Quên mật khẩu cần thư: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` (`docs/ACCOUNTS.md` §2c). Đăng nhập Google, Calendar và web push cần thêm `APP_BASE_URL`, `GOOGLE_*`, `TOKEN_ENC_KEY`, `VAPID_*` (`.env.example`, `docs/ACCOUNTS.md`). Hành trình cũ dạng file: `python -m harness import-files data/harness/sessions data/harness/feedback.jsonl`.
-5. **Agent endpoint và web search.** `AGENT_BASE_URL` trỏ `127.0.0.1:<cổng>` thì `./run.sh start` tự bật **9router** (cần `npm i -g 9router`; không có thì Agent trả lời theo policy dự phòng). `./run.sh prod` bật thêm **SearXNG** (`127.0.0.1:8888`, Docker; `docker/searxng/README.md`) cho tool `web_search` của Trip agent; `web_base_url` trống ở `config/trip.yaml` thì agent không có tool web.
-6. **Chỉ mục ngữ nghĩa** (ảnh / câu → "vibe", "chỗ như này"): nằm trong gói dữ liệu ở `data/index/`. Harness nạp embedder trên GPU `HARNESS_GPU` (mặc định `0`, `run.sh`); dựng lại: `python -m corpus index` (`docs/CORPUS.md` §Chỉ mục ngữ nghĩa).
-7. **Chỉ khi crawl:** đăng nhập tài khoản phụ một lần mỗi máy, `python -m corpus login tiktok`, `python -m corpus login gmaps` (profile lưu ở `.browser/`, đã gitignore). Chạy dịch vụ và Planning lodging không cần đăng nhập.
+Gói dữ liệu: [Drive của nhóm](https://drive.google.com/drive/folders/1LeEgIdoioyCAM64WV3VLGeKYA-X5yEGT?usp=sharing). OSRM, đăng nhập Google, web search, crawl và mọi biến môi trường: `docs/SETUP.md`.
 
-Người giữ dữ liệu tạo gói mới: `python scripts/pack_data.py [--no-photos] [--out <thư mục>]` (cái gì bị bỏ và vì sao: docstring của script), rồi đưa zip lên Drive. Sửa `data/` xong mà web cần thấy: `python web/scripts/export_snapshot.py` trước khi đóng gói.
-
-## Chạy
+## Tái lập kết quả
 
 ```sh
-./run.sh start   # 9router + harness + analytics (private) + review + web dev server + worker thông báo, in ra URL khi mọi cổng đã trả lời
-./run.sh stop    # dừng mọi tiến trình script này khởi động
+python -m pytest -q                      # test không gọi mạng
+python scripts/journey_sim.py            # người dùng giả đi hết Trip → Decision → Planning, báo cáo data/journey_sim/report.json
+python -m decision evaluate              # 30 chuyến ẩn → data/decision/eval.json
+python -m planning evaluate              # 30 chuyến ẩn qua Decision → Planning (cần OSRM)
 ```
 
-Production (gpu156, public qua Cloudflare tunnel): `./run.sh prod`, `./run.sh prod-stop`. Prod chạy từ bản đông cứng `.prod_src/`, không phải `src/`: sửa code không vào prod tới lần deploy sau. Deploy, vị trí file, sao lưu, cron và kiểm tra sức khỏe: `docs/OPERATIONS.md`.
+Cách đọc số đo: `docs/PLACE_DECISION.md` §17, `docs/PLANNING.md`. Trace từng lượt agent, bench trợ lý: `docs/LLM_ARCHITECTURE.md` §13. Báo cáo theo ngày: `docs/reports/`.
 
-| Dịch vụ | Cổng | Lệnh tương đương |
-|---|---|---|
-| Web (Vite) | 5173 | `http://127.0.0.1:5173/` (landing) · `/app` · `/admin` |
-| Agent harness (Trip, Decision, Planning) | 8769 | `python -m harness serve` |
-| Analytics (private) | 8770 | `python -m analytics serve --port 8770` |
-| Trang review / gán nhãn | 8765 | `python -m corpus review` |
-| 9router (endpoint của Agent) | theo `AGENT_BASE_URL` | `9router` |
-| SearXNG (`web_search`, chỉ prod) | 8888 | container `tripguardian-searxng` |
+## Cấu trúc thư mục
 
-CLI/API module chạy độc lập khi cần: `python -m trip serve` (:8766), `python -m decision serve` (:8767), `python -m planning serve` (:8768). User Web dùng harness và journey chung; contract ở `docs/AGENT_HARNESS.md`.
-
-### Test Trip bằng Streamlit
-
-Một client tối thiểu để kiểm thử riêng Trip Understanding qua đúng Harness HTTP/SSE (không thay thế User Web):
-
-```sh
-python -m harness serve
-streamlit run scripts/trip_tester.py
-```
-
-Mặc định app kết nối `http://127.0.0.1:8769`; có thể đổi URL ở sidebar. Cài dependencies dev trước bằng `pip install -e ".[dev]"`.
-
-Chạy thử User Web toàn luồng với harness thật (Khám phá → Hiểu chuyến đi → Chọn nơi → Lịch trình → Phản hồi), chụp từng màn vào `web/shots/app/`: `node web/scripts/shots_app.mjs [http://127.0.0.1:5173]`. Script dùng Chromium đầy đủ trong `.cache/ms-playwright/chromium-1169` (bản headless shell treo trên server dùng chung); `playwright-core` của web ghim 1.52.0 để khớp bản Chromium đó.
-
-Log ở `logs/run/<tên>.log`. Web đọc địa điểm từ `web/public/data/snapshot.json` (trong gói Drive); sinh lại bằng `python web/scripts/export_snapshot.py` sau khi aggregate. Gallery mỗi nơi (≤ 12 ảnh Maps / frame clip, ảnh đầu là ảnh bìa) nằm ở `web/public/data/covers.json`, sinh bằng `python web/scripts/pick_covers.py`: YOLO loại ảnh có người chiếm khung, pHash bỏ ảnh gần trùng, Gemma (task `photo_rank`, cache `.cache/photo_rank.json`) chấm độ đẹp và mức thể hiện nơi đó (chạy GPU + host LAN vài giờ; `--resume` chạy tiếp chỗ dừng, `--dry-run --ids a,b` in thứ hạng). Xong thì chạy `make_thumbs.py`.
-
-## Xây dữ liệu và chạy từng bước
-
-Lệnh đầy đủ của từng giai đoạn nằm trong tài liệu của giai đoạn đó. Đường chính:
-
-```sh
-# 1. Place Intelligence (docs/CORPUS.md §CLI)
-python -m corpus gmaps all --city dalat --headed     # search → filter → counts → list → crawl → qc → observe
-python -m corpus gmaps photos && python -m corpus gmaps photo_observe
-python -m corpus tiktok all --city dalat --headed
-python -m corpus aggregate && python -m corpus serving   # serving cũng biên dịch snapshot cho phần online
-python -m corpus snapshot                            # chỉ biên dịch lại snapshot từ data/serving/places.json
-python -m corpus views all --city dalat             # khí hậu, lịch, vùng hạn chế → data/dalat/views/ (docs/CORPUS.md §View toàn cầu)
-python -m corpus pulse --city dalat                  # Nhịp Đà Lạt: bản tin xu hướng từ dữ liệu đã crawl → data/dalat/pulse/ (docs/CORPUS.md §Nhịp Đà Lạt; cron hằng ngày: docs/OPERATIONS.md §4)
-python -m corpus index                               # chỉ mục ngữ nghĩa: vector theo GPU (vectors) rồi gộp vào data/index/ (compile)
-python -m corpus normalize --city dalat              # chuẩn hóa, báo membership/source/schema; không đổi serving pointer
-python -m corpus normalize --rebuild --city dalat    # dựng release staging chỉ từ dữ liệu đã lưu, không model/network
-python -m corpus normalize --rebuild --publish --city dalat  # dựng, kiểm chứng rồi chuyển release pointer
-python web/scripts/export_snapshot.py --view both    # User Web theo release; Admin có snapshot riêng
-python -m bench latency --scale 1,5,20               # độ trễ phần dùng corpus (data/bench/latency/)
-
-# 2. Đo xem corpus đã đủ cho Place Decision chưa (docs/PLACE_DECISION.md §17)
-python -m decision evaluate                          # 30 Trip State ẩn → data/decision/eval.json
-
-# 3. Lập lịch trình từ một Decision Output (docs/PLANNING.md §CLI và API)
-python -m planning build    <decision_output.json>
-python -m planning variants <decision_output.json> [--weather forecast.json]
-python -m planning lodging  <decision_output.json>   # chỗ ở cạnh tranh làm neo mỗi ngày
-python -m planning evaluate                          # 30 chuyến ẩn qua Decision → Planning
-```
-
-Journey giữ corpus binding qua Trip → Decision → Planning và restore/copy; đổi release pointer
-không chuyển journey đã pin. Sau khi cập nhật code hoặc muốn deployment nhận release mặc định
-mới, restart toàn harness theo quy trình đang dùng. Build `publish=false` không cần restart.
-Contract và rollback: `docs/CORPUS.md` §Chuẩn hóa và release offline.
-
-Phase cần model cần mạng UIT; gặp captcha thì giải trong cửa sổ trình duyệt (`--headed`). `evaluate` của Planning cần OSRM đang chạy và không chạy trong CI.
-
-## Test
-
-```sh
-python -m pytest -q                      # không gọi mạng; thiếu gói Drive thì test parser Maps/TikTok tự skip
-python -m pytest -q tests/planning        # một giai đoạn
-python scripts/journey_sim.py [--monkey N]           # mô phỏng người dùng đi hết Trip → Decision → Planning trên dữ liệu thật, không gọi model hay mạng; báo cáo ở data/journey_sim/report.json; `--agent` chạy 5 kịch bản gõ chữ qua Gemma trên UIT (từ chối chạy nếu `AGENT_BASE_URL` không phải UIT) và in thời gian từng lượt
-```
-
-Đo matrix local từ `src/` hiện tại (cần Postgres, `bwrap`, `.env`, model gateway đang có; không deploy/build): `scripts/local_stack.sh start`, `status`, `stop`. Mặc định web `127.0.0.1:28919` → harness `:8879`; đổi bằng `LOCAL_WEB_PORT`/`LOCAL_HARNESS_PORT` khi start. Ví dụ smoke **một ca**: `PROD_JOURNEY_BASE=http://127.0.0.1:28919 .venv/bin/python scripts/prod_journey_e2e.py --only solo_f_cafe_photo --jobs 4 --run-id local-smoke`. DB schema riêng; config CPU overlay, cache/log/PID riêng dưới `.superpowers/sdd/2026-11-03-prod-e2e/local-harness/`; corpus và `web/dist` chỉ đọc, không notify worker. `stop` chỉ dừng tiến trình của stack, giữ schema và bằng chứng; số đo CPU không so trực tiếp với GPU prod. Không chạy cả matrix trên gateway dùng chung khi chưa được phép.
-
-Test gọi mạng hoặc model thật nằm sau marker `live` và bị `addopts` loại khỏi lần chạy mặc định (`pyproject.toml`). Test marker `pg` cần Postgres: `TEST_DATABASE_URL=<DATABASE_URL> python -m pytest -q` (mỗi test một schema tạm); thiếu biến thì tự skip. Marker `corpus` cần `data/snapshot/current` (`python -m corpus snapshot`); thiếu thì tự skip.
-
-Web (CI không chạy): `cd web && npm run build` (có `tsc -b` kiểm kiểu). Test Node ở `web/scripts/test_*.mjs`, chạy bằng `node --test web/scripts/<file>`: `test_server_security.mjs` (proxy public, không cần dịch vụ ngoài) và `test_planning_state.mjs` chạy được ngay; `test_understand_ui.mjs` / `test_overload_ui.mjs` mở Chromium với fixture riêng (`test_overload_ui.mjs` do `tests/harness/test_overload_browser.py` dựng); `test_journey.mjs` cần `journey.ts` biên dịch trước (`JOURNEY_JS`).
-
-## Hồ sơ dự thi
-
-Không thuộc tài liệu chính thức (`RULE.md` §0.1), chỉ để tra khi cần:
-
-| Tệp | Nội dung |
+| Thư mục | Chứa gì |
 |---|---|
-| `submission/TECHNICAL_REPORT.md` | Proposal & Technical Specification (đặc tả kỹ thuật, số đo kèm ngày) |
-| `submission/PITCH_EVIDENCE_20261017.md`, `submission/evidence/` | Bằng chứng chạy thật cho phần thuyết trình (2026-10-17) |
-| `submission/pitch_desk.md`, `submission/PRESENTATION_TRIPGUARDIAN.md` | Kịch bản 13 slide, 11 phút 15 giây; nội dung thuyết trình |
-| `submission/ARCHITECTURE_MODULES.md` | Kiến trúc các module hỗ trợ (Live Context, …) cho ban giám khảo |
-| `submission/2026-10-06_de_tai_08_tour_guide_agent.docx` | Đề đồ án |
-| `submission/surveys/` | Hai khảo sát người dùng (CSV), notebook lọc / trực quan hóa, Apps Script tạo Google Form (`apps_script_README.md`) |
-| `submission/research/` | Ý tưởng, báo cáo kiểm và tóm tắt bench dùng làm nguồn cho báo cáo |
+| `src/` | package Python. Bốn giai đoạn: `corpus` (Place Intelligence), `trip`, `decision`, `planning` + `live`. Dùng chung: `agents`, `harness`, `requirements`, `accounts`, `db`, `booking`, `journey`, `companion`, `notify`, `analytics`, `bench`, … |
+| `tests/` | pytest, cùng tên thư mục với package |
+| `web/` | React + Vite (`src/`), server public (`server.mjs`), viewer 3D (`space3d/`) |
+| `config/` | mọi ngưỡng và tham số |
+| `scripts/` | script chạy tay hoặc cron (`scripts/README.md`) |
+| `migrations/` | SQL Postgres, `./run.sh db` chạy |
+| `docs/` | tài liệu (bảng dưới); `design/` ảnh thiết kế, `plans/` spec đang làm, `reports/` báo cáo theo ngày, `log/` nhật ký |
+| `submission/` | hồ sơ dự thi (`submission/README.md`) |
+| `docker/`, `certs/` | cấu hình SearXNG, chứng chỉ CA cho endpoint UIT |
 
-## Làm việc nhóm
+Không trong git: `data/`, `logs/`, `osrm-data/`, `.browser/` (profile crawl), `.prod_src/` (bản prod đông cứng), `frontend_images/` (ảnh UI chờ duyệt), symlink `.venv` / `.venv-vllm` / `.cache` (`docs/OPERATIONS.md` §2).
 
-- Mỗi task một branch từ `main` (`feat/<giai-đoạn>-<việc>`, `fix/...`), mở PR vào `main`; không push thẳng `main`.
-- Trước khi mở PR: `python -m pytest -q` xanh. CI (`.github/workflows/test.yml`) chạy đúng lệnh này trên mỗi PR.
-- Bắt buộc theo `RULE.md`: tài liệu tiếng Việt, code tiếng Anh, chỉ gọi module khác qua `__init__.py`, sửa tài liệu của giai đoạn khi đổi hành vi.
-- Không commit `.env`, `data/`, `.browser/`, `logs/`, `snapshot.json`, `tests/fixtures/{gmaps,tiktok}` (đã gitignore). Repo public: không đưa nội dung crawl (review, bình luận, tên tài khoản người thật) vào git; dữ liệu chung đi qua gói zip ở §Thiết lập.
+## Tài liệu
 
-## Ranh giới
+| Muốn biết | Đọc |
+|---|---|
+| Vì sao làm, cho ai, phạm vi MVP | `docs/Project_Context.md` |
+| Toàn hệ thống, ranh giới module | `docs/ARCHITECTURE.md` |
+| Agent, tool, skill, RAG, guard, trace | `docs/LLM_ARCHITECTURE.md`, `docs/AGENT_HARNESS.md` |
+| Model nào cho vai trò nào, key | `docs/LLM_PROVIDER.md` |
+| Từng giai đoạn | `docs/CORPUS.md`, `docs/TRIP_UNDERSTANDING.md`, `docs/TRIP_UNDERSTANDING_QA.md`, `docs/PLACE_DECISION.md`, `docs/PLANNING.md` |
+| Tính năng phụ | `docs/ACCOUNTS.md`, `docs/BOOKING.md`, `docs/COMPANION.md`, `docs/ANALYTICS.md` |
+| Bảo mật | `docs/SECURITY.md` |
+| Giao diện | `docs/Role_Web_Functional_Design.md`, `docs/UX_Design_Brief.md`, `docs/UI_SPEC_USER_WEB.md`, `docs/UI_SPEC_FLOW_LAYOUT.md`, `docs/UI_SPEC_LANDING.md` |
+| Cài đặt, chạy, test đầy đủ | `docs/SETUP.md` |
+| Vận hành production | `docs/OPERATIONS.md` |
+| Code đã làm gì; lỗi của coding agent | `docs/log/DEV_LOG.md`, `docs/log/AGENT_FAILURES.md` |
 
-Mỗi giai đoạn chỉ giao tiếp với giai đoạn khác qua public API của package (`__init__.py`), không deep import; mỗi nguồn dữ liệu ngoài có module và thư mục dữ liệu riêng. Chi tiết và lý do: `RULE.md` §2, `docs/ARCHITECTURE.md` §3.
+Quy tắc làm việc: `RULE.md`. Hướng dẫn cho coding agent: `AGENTS.md`.
+
+## Khai báo dùng AI
+
+- **Trong sản phẩm:** model đóng vai Extractor, Judge, Agent và ASR; model nào cho vai trò nào ở `docs/LLM_PROVIDER.md`.
+- **Khi làm dự án:** code và tài liệu được viết cùng coding agent (Claude Code, Codex). Thay đổi phải qua test; tác giả đọc và duyệt trước khi đưa lên production. Lỗi lặp lại của agent ghi ở `docs/log/AGENT_FAILURES.md`.
+
+## Tác giả
+
+Hồ Hoàng Luân · [github.com/hohoangluan](https://github.com/hohoangluan). Góp ý, báo lỗi: [Issues](https://github.com/hohoangluan/tripguardian/issues).

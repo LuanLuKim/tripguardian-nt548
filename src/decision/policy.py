@@ -1,4 +1,4 @@
-"""Fallback when the agent fails (docs/ARCHITECTURE.md §18.4): keywords + names on screen -> the same actions."""
+"""Fallback when the agent fails (docs/PLACE_DECISION.md §19): keywords + names on screen -> the same actions."""
 
 from trip import contains
 

@@ -15,7 +15,6 @@ Unpack in a fresh clone:
     python -m zipfile -e tripguardian-data-<YYYYMMDD>.zip .
 """
 import sys
-import json
 import zipfile
 from datetime import date
 from pathlib import Path

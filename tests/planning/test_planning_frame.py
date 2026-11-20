@@ -46,7 +46,7 @@ def test_days_and_dates_the_user_never_gave_stay_unknown():
 
 from dataclasses import replace
 
-from plan_fixtures import CENTRE, SOUTH, all_days, day_ctx, decision, prepared, rec, spot
+from plan_fixtures import CENTRE, SOUTH, day_ctx, decision, prepared, rec, spot
 
 from planning.build import pull_early, schedule_trip
 from planning.model import Day, Item

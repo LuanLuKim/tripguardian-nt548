@@ -86,12 +86,10 @@ def test_a_style_tag_needs_several_posters_and_a_child_counts_for_its_parent(tmp
 
 def _span_index(span_rows, places=None):
     """Build a minimal Index with spans loaded from hand-made rows (no LanceDB)."""
-    import threading
     photo_rows = [{**r, "v": unit(1, 0, 0)} for r in [{"place_id": sr["place_id"], "file": f"gmaps/places/{sr['place_id']}/photos/p.jpg",
                                                          "author": "u1", "owner": False, "source": "gmaps"} for sr in span_rows]]
     photo_vecs = np.stack([r.pop("v") for r in photo_rows])
     # Build span vectors and rows
-    d = 4
     vecs = np.stack([unit(1, 0.1 * i, 0, 0) for i in range(len(span_rows))])
     served_mask = np.array([r.get("served", True) for r in span_rows], dtype=bool)
     places = places or {r["place_id"]: {"name": r["place_id"], "styles": {}, "near_duplicate_group": None}

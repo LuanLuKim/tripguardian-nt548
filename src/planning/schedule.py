@@ -376,20 +376,6 @@ def end_back(ctx: DayCtx, loc: str | None) -> int:
     return leg + (buffer_after(ctx.places[loc], ctx, leg) if leg and loc in ctx.places else 0)
 
 
-def place_at(items, ctx: DayCtx, time: int) -> str | None:
-    """Where the day stands at `time`: the last stop started before it (a leg still running stays at its origin),
-    else the day's start node."""
-    here = ctx.day.start_node
-    for it in sorted(items, key=lambda i: (i.start, i.end)):
-        if it.start >= time:
-            break
-        if it.kind == "visit":
-            here = it.place_id
-        elif it.kind == "travel" and it.end <= time:
-            here = it.to_id
-    return here
-
-
 def meals_needed(items, ctx: DayCtx) -> list[str]:
     """The meals a finished day is missing and could have held: one rule for the scheduler and the validator.
     A meal is placed when the day has a meal block of that name, or a visit to a meal place inside its window (a visit

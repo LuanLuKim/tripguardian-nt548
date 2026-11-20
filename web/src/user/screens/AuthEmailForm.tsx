@@ -5,7 +5,7 @@ import { CALM, type Pet } from './AuthMascot'
 
 // Sign up (name, email, password, repeat) or sign in (email, password) without Google. Every state the visitor can
 // reach has its own screen: per-field messages (checked here with the server's own rules, then again by the server),
-// and one banner for what only the server can say. docs/Role_Web_Functional_Design.md §Đăng nhập maps each to a response.
+// and one banner for what only the server can say. docs/Role_Web_Functional_Design.md §2.1 maps each to a response.
 
 type Field = 'name' | 'email' | 'password' | 'again'
 type Values = Record<Field, string>

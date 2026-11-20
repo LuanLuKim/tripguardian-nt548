@@ -1,4 +1,4 @@
-"""When the chat shows TAGS, SUBTAGS or a plain LIST (config/tags.yaml `policy`, docs/TRIP_UNDERSTANDING.md §Tag, subtag hay
+"""When the chat shows TAGS, SUBTAGS or a plain LIST (config/tags.yaml `policy`, docs/PLACE_DECISION.md §Tag và subtag; docs/TRIP_UNDERSTANDING.md §19, tag, subtag hay
 danh sách). Pure: the ask's own words decide, no model.
 
     dims = what the ask already fixes: a category group, a must feature, a dish, a text (a prefer feature is a mood)

@@ -1,4 +1,4 @@
-# tag -> subtag (docs/TRIP_UNDERSTANDING.md §Tag, subtag hay danh sách). The app decides the shape from what the ask names
+# tag -> subtag (docs/TRIP_UNDERSTANDING.md §19, tag, subtag hay danh sách). The app decides the shape from what the ask names
 # (src/trip/domain/tag_policy.py): vague -> tags (kinds of places), one interest -> subtags (groups of it), specific or a
 # follow-up that names the kind -> the plain list. No flat cards beside a tags block. Format: src/bench/assistant.py docstring.
 cases:

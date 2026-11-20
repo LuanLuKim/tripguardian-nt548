@@ -14,7 +14,7 @@ import time
 import httpx
 
 from .. import gsearch
-from ..common.files import append_jsonl, data_dir, load_config, now
+from ..common.files import append_jsonl, data_dir, now
 
 BASE_URL = "http://127.0.0.1:8888/search"
 ENGINES = "bing,yahoo,yandex"  # duckduckgo is access-denied from here; probe 2026-10-30: 12/12 fee and hours queries answered

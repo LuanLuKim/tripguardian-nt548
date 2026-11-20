@@ -8,8 +8,6 @@ from planning.recommendations import recommend
 from planning.session import Store
 from test_planning_ghosts import engine_for, placed
 from test_planning_lodging_rank import stay, places, trip
-from planning.engine import NotConfirmable
-import pytest
 
 HARD = {"feature": "steep_or_stairs", "op": "ne", "value": "present", "unknown_policy": "exclude"}
 

@@ -5,7 +5,6 @@ import pytest
 
 from trip import Catalog, TripState, compile_search_input
 from trip.agent import TurnTools, build_messages
-from trip.domain.state import Evidence, Update, apply
 from trip_fixtures import rec
 
 

@@ -1,4 +1,4 @@
-"""The turn's messages around the model call (docs/TRIP_UNDERSTANDING.md §Ngữ cảnh và cache).
+"""The turn's messages around the model call (docs/LLM_ARCHITECTURE.md §6.3).
 
 Order: static system prompt, the history window, CURRENT CONTEXT (a `user` message: 9router drops a second `system`
 message), the user's new words. Nothing in the first two changes from turn to turn except by whole blocks, so the

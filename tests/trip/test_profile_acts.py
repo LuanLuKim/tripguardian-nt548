@@ -3,7 +3,6 @@ pick of a need is a low-confidence prior; a contradiction weakens an entry, neve
 
 from datetime import date, timedelta
 
-import pytest
 
 from trip.domain.patterns import Summary, acts_votes, detect, entries, observe, seed
 from trip.domain.state import Evidence, TripState, Update, apply

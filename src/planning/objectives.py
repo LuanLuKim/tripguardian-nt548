@@ -1,4 +1,4 @@
-"""Planning objectives (docs/ARCHITECTURE.md §10): which ones a trip calls for, and how a laid-out trip scores on each.
+"""Planning objectives (docs/PLANNING.md §ⓖ Mục tiêu và phương án): which ones a trip calls for, and how a laid-out trip scores on each.
 
 Every objective is a rule: its day-split weights (config objective_weights) and a score where lower is better, ties
 broken by total travel. No objective changes what validate checks.
@@ -6,7 +6,6 @@ broken by total travel. No objective changes what validate checks.
 
 from .days import exposed_risk, pref_risk, repeats
 from .details import extras_vnd
-from .settings import Settings
 from .traits import exposure
 
 LABEL = {"least_travel": "Ít di chuyển", "low_cost": "Chi phí thấp", "weather_robust": "Vững trước thời tiết",

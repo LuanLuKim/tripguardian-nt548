@@ -62,7 +62,7 @@ class SearchPage(_Frozen):
 
 
 class WebDocument(_Frozen):
-    """A page as text with its `#` headings kept (docs/CORPUS.md §Nguồn: input to local knowledge, not evidence)."""
+    """A page as text with its `#` headings kept (docs/CORPUS.md §Nguồn và mỗi nguồn chứng minh điều gì: input to local knowledge, not evidence)."""
     url: str
     title: str
     domain: str

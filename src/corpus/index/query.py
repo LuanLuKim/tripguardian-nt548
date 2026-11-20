@@ -316,9 +316,6 @@ class Index:
         children = [t for t in ok if any(s.get("parent") for s in self.styles["styles"] if s["id"] == t)]
         return max(children or ok, key=lambda t: counts[t])
 
-    def with_style(self, sid: str) -> list[str]:
-        return [p for p, d in self.places.items() if sid in d.get("styles", {})]
-
 
 def _bool(v) -> bool:
     """Coerce a LanceDB/PyArrow value to bool: handles str 'true'/'false', None, and native bool."""

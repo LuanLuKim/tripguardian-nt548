@@ -2,7 +2,7 @@ import pytest
 
 from fixtures import feat, hard, love, si, srec
 
-from decision import hard_check, run_pipeline
+from decision import hard_check
 from decision.model import Cand
 from decision.rank import conf, preference_fit
 from decision.screen import screen

@@ -569,7 +569,6 @@ def judge(sim, run: Run, c: Client, expect: dict):
     crashes = [s for s in run.steps if (s["error"] or "").startswith("CRASH")]
     run.check("no crash", not crashes, "; ".join(f'{s["stage"]}.{s["op"]}: {s["error"]}' for s in crashes[:3]))
     outs = c.view["outputs"]
-    sel = c.result["view"].get("selected") if c.view["stage"] == "decision" else None
     # revisions: every accepted request moves the journey on by exactly one
     run.check("revision moves forward once per accepted request", c.rev == c.accepted + 0, f"revision {c.rev}, accepted {c.accepted}")
     # trip: questions

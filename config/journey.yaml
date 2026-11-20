@@ -1,4 +1,4 @@
-# Journey settings (docs/BOOKING.md §Đường tới chỗ ở). Thresholds the code uses to decide which way of getting to the
+# Journey settings (docs/BOOKING.md §Journey). Thresholds the code uses to decide which way of getting to the
 # city is worth showing; they are product choices, tune them here. Airports come from config/airports.yaml.
 version: 1
 

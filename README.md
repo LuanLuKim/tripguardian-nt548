@@ -6,6 +6,8 @@ Trợ lý lên lịch du lịch tự túc ở Đà Lạt: **chọn đúng nơi t
 
 **Dùng thử:** [tripguardian.visioncare-host.uk](https://tripguardian.visioncare-host.uk) (không cần tài khoản)
 
+> **Fork cho đồ án NT548 nhóm 8:** phần vận hành ở [`docs/nt548/`](docs/nt548/README.md); chức năng giữ như TripGuardian.
+>
 > Dự án học tập, phi thương mại. Nội dung crawl (review Google Maps, video và bình luận TikTok) thuộc tác giả gốc, chỉ dùng cho nghiên cứu trong dự án này.
 
 ## TripGuardian làm gì
@@ -96,6 +98,7 @@ Không trong git: `data/`, `logs/`, `osrm-data/`, `.browser/` (profile crawl), `
 | Cài đặt, chạy, test đầy đủ | `docs/SETUP.md` |
 | Vận hành production | `docs/OPERATIONS.md` |
 | Code đã làm gì; lỗi của coding agent | `docs/log/DEV_LOG.md`, `docs/log/AGENT_FAILURES.md` |
+| Đồ án NT548 nhóm 8 (CI/CD, blue/green, canary, AI ops, DataOps) | `docs/nt548/README.md` |
 
 Quy tắc làm việc: `RULE.md`. Hướng dẫn cho coding agent: `AGENTS.md`.
 

@@ -1,6 +1,6 @@
 # Thiết kế: vận hành TripGuardian cho đồ án NT548 (nhóm 8)
 
-> Spec làm việc (`RULE.md` §0.1). Trạng thái: **chờ chủ dự án duyệt** (bản 2, 2026-11-20: bỏ triển khai lên server).
+> Spec làm việc (`RULE.md` §0.1). Trạng thái: bản 2 (2026-11-20, bỏ triển khai lên server); chủ dự án cho đưa lên GitHub để nhóm làm tiếp. Hướng dẫn từng mảng: `docs/nt548/`.
 > Repo: fork `LuanLuKim/tripguardian-nt548` (public) của TripGuardian.
 
 ## 1. Mục đích
@@ -88,7 +88,7 @@ docs/nt548/           tài liệu đồ án: README (tổng quan + chia việc) 
 docs/plans/2026-11-20-nt548-devops-design.md   file này
 ```
 
-File của TripGuardian chỉ sửa qua PR lên TripGuardian. Ngoại lệ hiện có: `workflow_dispatch` trong `.github/workflows/test.yml`.
+File của TripGuardian chỉ sửa qua PR lên TripGuardian. Ngoại lệ hiện có: `workflow_dispatch` trong `.github/workflows/test.yml`; hai dòng trỏ tới `docs/nt548/` trong `README.md`.
 
 ## 7. Chia việc
 

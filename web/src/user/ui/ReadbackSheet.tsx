@@ -1,36 +1,36 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useEffect, useRef, useState } from 'react'
-import { enterStage, requestStageEntry, JourneyError, mutateJourney, readJourney } from '../journey'
+import { JourneyError, mutateJourney, readJourney } from '../journey'
 import type { View as DecisionView } from '../pd/types'
 import { getSession } from '../tu/api'
 import type { Deck, DeckIssue, Readback, ReadbackLine, TurnInput, Understanding } from '../tu/types'
-import { go } from './common'
+import { openAssistant } from '../store'
 import { GateAsk } from './Gate'
 import { Icon } from './icons'
 import { ticketEditors } from './Ticket'
 
-const MARKERS: Record<ReadbackLine['kind'], string> = { said: 'Bạn nói', guess: 'Mình đoán', default: 'Mặc định', check: 'Cần xem lại' }
-const ORDER: ReadbackLine['kind'][] = ['check', 'said', 'guess', 'default']
-// a line without the kind its chip already shows ("Mặc định: …"), first letter up
+const TITLES: Record<ReadbackLine['tab'], string> = { trip: 'Ngày đi', companions: 'Đi với', mobility: 'Phương tiện', care: 'Lưu ý', pace: 'Nhịp độ', budget: 'Ngân sách', lodging: 'Nơi ở', more: 'Thêm' }
+const ORDER: ReadbackLine['tab'][] = ['trip', 'companions', 'mobility', 'lodging', 'pace', 'budget', 'care', 'more']
+// the line as the trip says it: no "Mặc định:" / "Mình đoán:" lead (where a fact came from is not the person's business here)
 const tidy = (text: string) => { const t = text.replace(/^(Mặc định|Tự kiểm|Mình đoán|Bạn nói)\s*:\s*/i, ''); return t.charAt(0).toUpperCase() + t.slice(1) }
 
-// The trip as TripGuardian has understood it, one row per thing written down, what needs a second look first. Each row opens the
-// same editor the trip ticket has, so a line is changed right here.
+// The trip summary (owner 2026-11-18): one row per topic, what the plan will be built on, plainly; no "bạn nói / mình đoán /
+// mặc định" tags. A line that needs a second look carries a small warning sign. Each row opens the trip ticket's editor.
 function TripSummary({ lines, u, busy, onEdit }: { lines: ReadbackLine[]; u: Understanding | null; busy: boolean; onEdit: (target: string, value: string | null) => void }) {
-  const sorted = [...lines].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind))
-  const [open, setOpen] = useState<number | null>(null)
+  const groups = ORDER.map(tab => ({ tab, lines: lines.filter(l => l.tab === tab) })).filter(g => g.lines.length)
+  const [open, setOpen] = useState<string | null>(null)
   const editors = u ? ticketEditors(u, onEdit) : null
   return <section className="tg-gt__sum" aria-label="Tóm tắt chuyến đi">
-    <p className="tg-gt__sum-n"><b>{lines.length}</b> điều đã ghi nhận cho chuyến này</p>
-    <ul>{sorted.map((line, i) => {
-      const editor = editors && line.tab !== 'care' && line.tab !== 'more' ? editors[line.tab] : null
-      return <li key={i} className={`is-${line.kind} ${open === i ? 'is-editing' : ''}`}>
-        <small>{MARKERS[line.kind]}</small>
-        <span>{tidy(line.text)}</span>
-        {editor && <button type="button" className="tg-gt__sum-edit" aria-expanded={open === i} disabled={busy} onClick={() => setOpen(open === i ? null : i)}>{open === i ? <><Icon name="check" size={14} />Xong</> : <><Icon name="edit" size={14} />Sửa</>}</button>}
-        {editor && open === i && <fieldset className="tg-gt__sum-editor" disabled={busy}>{editor}</fieldset>}
-      </li>
-    })}</ul>
+    <dl>{groups.map(({ tab, lines: rows }) => {
+      const editor = editors && tab !== 'care' && tab !== 'more' ? editors[tab] : null
+      const editing = open === tab
+      return <div key={tab} className={`${rows.some(l => l.kind === 'check') ? 'is-check' : ''} ${editing ? 'is-editing' : ''}`}>
+        <dt>{TITLES[tab]}</dt>
+        <dd>{rows.map((l, k) => <span key={k}>{l.kind === 'check' && <Icon name="warn" size={14} aria-label="Cần xem lại" />}{tidy(l.text)}</span>)}</dd>
+        {editor && <button type="button" className="tg-gt__sum-edit" aria-expanded={editing} disabled={busy} onClick={() => setOpen(editing ? null : tab)}>{editing ? <><Icon name="check" size={14} />Xong</> : <><Icon name="edit" size={14} />Sửa</>}</button>}
+        {editor && editing && <fieldset className="tg-gt__sum-editor" disabled={busy}>{editor}</fieldset>}
+      </div>
+    })}</dl>
   </section>
 }
 
@@ -80,8 +80,8 @@ export function ReadbackSheet({ id, initial, missing: initialMissing, onClose, o
   const edit = async () => {
     if (working.current) return
     working.current = true; setBusy(true); setError(null)
-    try { await enterStage(id, 'trip'); requestStageEntry(id, 'trip'); onClose(); go('/understand') }
-    catch { setError('Chưa mở được Tìm hiểu. Bạn thử lại nhé.') }
+    // The chat is beside the lists: what is wrong is said there, the journey stays on Lựa chọn.
+    try { onClose(); openAssistant(true) }
     finally { working.current = false; setBusy(false) }
   }
   return <Dialog.Root open onOpenChange={open => { if (!open && !busy) onClose() }}>
@@ -91,10 +91,10 @@ export function ReadbackSheet({ id, initial, missing: initialMissing, onClose, o
         <div className="tg-gt__paper" />
         <Dialog.Close className="tg-gt__x" disabled={busy} aria-label="Đóng"><Icon name="x" size={16} /></Dialog.Close>
         {deck?.tabs.length ? <GateAsk key={JSON.stringify(deck)} deck={deck} busy={busy} issues={issues} error={error}
-          onAnswer={answers => update({ kind: 'deck', answers })} onOther={edit} />
+          onAnswer={(answers, text) => update({ kind: 'deck', answers, ...(text ? { text } : {}) })} onOther={edit} />
           : <div className="tg-gt__page tg-gt__fan">
-            <Dialog.Title className="tg-gt__heading">{missing.length ? 'Cần thêm thông tin chuyến đi' : lines.length ? 'Mình sẽ xếp lịch theo những điều này' : 'Tiếp tục đến lịch trình'}</Dialog.Title>
-            <Dialog.Description id="gate-description" className="tg-gt__sub">{missing.length ? 'Bạn mở Tìm hiểu để bổ sung ngày đi hoặc lưu ý sức khỏe, ăn uống nhé.' : 'Mình đã có đủ thông tin cần thiết để xếp lịch. Bấm Sửa ở dòng nào bạn muốn đổi.'}</Dialog.Description>
+            <Dialog.Title className="tg-gt__heading">{missing.length ? 'Cần thêm thông tin chuyến đi' : lines.length ? 'Tóm tắt chuyến đi' : 'Tiếp tục đến lịch trình'}</Dialog.Title>
+            <Dialog.Description id="gate-description" className="tg-gt__sub">{missing.length ? 'Bạn mở Tìm hiểu để bổ sung ngày đi hoặc lưu ý sức khỏe, ăn uống nhé.' : 'Lịch trình được xếp theo những điều này. Bấm Sửa ở dòng muốn đổi.'}</Dialog.Description>
             {!missing.length && lines.length > 0 && <TripSummary lines={lines} u={u} busy={busy} onEdit={(target, value) => { void update({ kind: 'edit', target, value }) }} />}
             {error && <p className="tg-gt__err" role="alert">{error}</p>}
             <footer className="tg-gt__foot">

@@ -52,6 +52,7 @@ tests/fixtures/tiktok/
 # Large local files that must stay out of git (keep git status and the editor fast)
 /*.mp4
 /Screen Recording*
+/inkfilm-out
 /Huong-dan-su-dung-server-*.pdf
 /frontend_images/
 *.safetensors

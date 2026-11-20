@@ -1,8 +1,8 @@
 import { JourneyError } from './journey'
 
 // What a failed journey call means for the person, in plain Vietnamese. "Can't reach the server" is only said for a real network
-// failure; a 429, a replaced data version or a server fault each get their own sentence (never a raw status or error key).
-export const BUSY_TEXT = 'Máy chủ đang bận vì nhiều người dùng cùng lúc. Bạn đợi một chút rồi thử lại nhé.'
+// failure; a 429 (only after web/src/net.ts has already waited and sent it again), a replaced data version or a server fault each get their own sentence (never a raw status or error key).
+export const BUSY_TEXT = 'Bạn thao tác nhanh quá, mình chưa kịp gửi hết. Bạn đợi vài giây rồi thử lại nhé.'
 export const STALE_TEXT = 'Chuyến này được dựng trên bản dữ liệu địa điểm cũ, nay đã được thay bằng bản mới. Để không dùng thông tin đã lỗi thời, mình không xếp tiếp trên bản cũ. Bạn tạo lại chuyến để dùng dữ liệu mới nhé.'
 const FAULT_TEXT = 'Máy chủ đang gặp trục trặc, không phải do kết nối của bạn. Bạn thử lại sau ít phút nhé.'
 

@@ -82,7 +82,7 @@ def kinds_card(i: int, v: Vibe, name) -> Question:
     """image_choice: the look's kinds as real photos of real places; several may be picked."""
     return Question(
         qid=qid(i), group="G", tier=2, input="kinds", multi=True, custom=True, exits=True,
-        text=f"“{v.phrase}” ở Đà Lạt có mấy kiểu khá khác nhau. Bạn nghiêng về kiểu nào? Chọn nhiều được.",
+        text=f"“{v.phrase}” ở Đà Lạt có nhiều gương mặt rất khác nhau. Gương mặt nào làm bạn muốn đến ngay?",
         reason="Mỗi kiểu ra một nhóm nơi khác hẳn nhau.",
         chips=tuple(Chip(id=k.id, label=k.label) for k in v.offered),
         params={"vibe": i, "phrase": v.phrase, "kinds": [_kind_view(k, name) for k in v.offered],

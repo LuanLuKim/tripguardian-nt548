@@ -1,5 +1,5 @@
 """One main plan; when the trip's days cannot hold every pick, three plans that each drop places by one criterion
-the user understands (spec section 7): Giữ nơi hợp gu nhất, Di chuyển thuận lợi nhất, Tiết kiệm nhất. A direction is a drop ORDER: drop the
+the user understands (spec section 7): Tiết kiệm nhất, Giữ nhiều nơi bạn chọn nhất, Giữ nơi hợp gu nhất. A direction is a drop ORDER: drop the
 next place until everything fits, then give back any dropped place that still fits. Must-go places never drop. Budget
 never enters a place's score: prices only order the `cost` direction, and a place with no known price is never dropped
 by it."""
@@ -11,20 +11,26 @@ import os
 import pickle
 import signal
 import tempfile
+import threading
 import time
+from concurrent import futures
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from multiprocessing.connection import wait
 from dataclasses import asdict, replace
 from functools import partial
 
 from .backup import backups
-from .build import Schedule, itinerary, schedule_trip, travel_load
+from .build import Schedule, itinerary, schedule_trip, shortened_warnings, travel_load
 from .composer import must_places, profile_metrics, selection_utilities
 from .robustness import robustness
 from .timefit import describe as time_description
 from .traits import visit_minutes
 
-DIRECTIONS = ("fit", "travel", "cost", "most")
+# Three ways out of an overload (owner 2026-11-18): best fit, cheapest, most places. "travel" is gone as a way of its own:
+# every way is laid out by the same router, so little driving is a property of each one, not a choice. Its label stays
+# for sessions that picked it before.
+DIRECTIONS = ("fit", "cost", "most")
 LABEL = {"main": "Lịch của bạn", "fit": "Giữ nơi hợp gu nhất", "travel": "Di chuyển thuận lợi nhất", "cost": "Tiết kiệm nhất",
          "most": "Giữ nhiều nơi bạn chọn nhất", "kept": "Giữ các nơi đã xếp vừa"}
 TRADEOFF = {"fit": "có thể phải đi xa hơn và tốn hơn để giữ nơi hợp gu",
@@ -36,7 +42,6 @@ GAIN = {"fit": "giữ những nơi khớp gu bạn nhất", "travel": "ít ngồ
         "most": "ghé được nhiều nơi bạn chọn nhất",
         "kept": "chốt được ngay với lịch đã kiểm"}
 ORDINAL = {2: "thứ hai", 3: "thứ ba", 4: "thứ tư"}
-ALONE_MIN = 15              # spec section 7: "các nơi khác cách khách sạn < 15′", the dropped place off on its own
 EXTEND_STEP = 15            # extend offers go up in quarter hours, to extend_max_min
 OVERRUN = {"day_window", "departure"}   # a day past its end or its departure: only must-go places get laid out so
 NEUTRAL_UTILITY = 1.0       # composer.selection_utilities' value for a place with no utility and no soft weights
@@ -131,14 +136,6 @@ def _freed(trip, sched: Schedule, pid: str, gone) -> int:
     return visit + _saving(trip, sched, pid, gone)
 
 
-def _alone(trip, pid: str, kept) -> bool:
-    """pid is off on its own: at least ALONE_MIN from the lodging while every other kept place is closer than that."""
-    home = trip.ctxs[0].home if trip.ctxs else None
-    others = [p for p in kept if p != pid]
-    return bool(home and others) and trip.travel.leg(home, pid)[0] >= ALONE_MIN and \
-        all(trip.travel.leg(home, p)[0] < ALONE_MIN for p in others)
-
-
 def _next(trip, sched, candidates, direction, values, ranks, gone):
     """(place, its number on the criterion, the reason on the card) to drop next, or None when nothing can go."""
     if direction == "fit":
@@ -146,13 +143,6 @@ def _next(trip, sched, candidates, direction, values, ranks, gone):
         n = 1 + sum(_utility(values, q) < _utility(values, pid) for q in ranks)    # ties share a rank
         return pid, _utility(values, pid), "ít khớp gu nhất" if n == 1 else \
             f"khớp gu {ORDINAL.get(n, f'thứ {n}')} từ dưới lên"
-    if direction == "travel":
-        pid = max(candidates, key=lambda p: (_saving(trip, sched, p, gone), -_utility(values, p), p))
-        s = _saving(trip, sched, pid, gone)
-        reason = f"bớt {_hm(s)} đi xe" if s else "không bớt phút đi xe nào"
-        if _alone(trip, pid, set(trip.by_place) - gone - {pid}):
-            reason += f", các nơi khác cách chỗ ở < {ALONE_MIN}′"
-        return pid, s, reason
     if direction == "most":
         # the place that takes the most time goes first, so the fewest places go (owner 2026-11-13); a tie drops the
         # one that fits the user's taste least
@@ -304,6 +294,79 @@ def _file_child(tx, path) -> None:
     _child(tx, task)
 
 
+# The spawn workers stay up between searches: a fresh interpreter importing planning costs about a second, more than
+# most directions take (docs/PLANNING.md §Quá tải). Started on the first search, or ahead of it by warm().
+POOL_WORKERS = 8
+_POOL: futures.ProcessPoolExecutor | None = None
+_POOL_LOCK = threading.Lock()
+
+
+def _pool() -> futures.ProcessPoolExecutor:
+    global _POOL
+    with _POOL_LOCK:
+        if _POOL is None:
+            _POOL = futures.ProcessPoolExecutor(max_workers=POOL_WORKERS, mp_context=mp.get_context("spawn"))
+        return _POOL
+
+
+def _drop_pool(pool: futures.ProcessPoolExecutor) -> None:
+    """Kill a pool whose worker is stuck past the deadline; the next search starts a fresh one."""
+    global _POOL
+    with _POOL_LOCK:
+        if _POOL is pool:
+            _POOL = None
+    for proc in list((getattr(pool, "_processes", None) or {}).values()):
+        try:
+            proc.kill()
+        except (ProcessLookupError, OSError):
+            pass
+    pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _ready() -> bool:
+    return True
+
+
+def warm() -> None:
+    """Start every pool worker now (each imports planning once), so the first overload does not wait for it."""
+    pool = _pool()
+    futures.wait([pool.submit(_ready) for _ in range(POOL_WORKERS)], timeout=30)
+
+
+def _from_file(path):
+    with path.open("rb") as stream:
+        trip, main, protected, direction = pickle.load(stream)
+    counter = SimpleNamespace(value=0)
+    return _search(trip, main, protected, direction, counter), counter.value
+
+
+def _pooled(tasks: dict, *, deadline: float) -> dict:
+    """_in_children on the standing pool: the answers ready by the deadline; a task still running then is given up
+    and the pool that runs it killed, so nothing outlives the search's one deadline."""
+    pool = _pool()
+    try:
+        jobs = {pool.submit(_from_file, path): name for name, path in tasks.items()}
+    except RuntimeError:            # a pool broken by a killed worker: start again once
+        _drop_pool(pool)
+        pool = _pool()
+        jobs = {pool.submit(_from_file, path): name for name, path in tasks.items()}
+    done, pending = futures.wait(jobs, timeout=max(0.0, deadline - time.monotonic()))
+    got = {}
+    for job in done:
+        try:
+            got[jobs[job]] = job.result()
+        except Exception as e:      # noqa: BLE001 - the caller keeps only completed, checked answers
+            logging.getLogger(__name__).warning("overload worker failed: %s: %r", jobs[job], e)
+            if isinstance(e, BrokenProcessPool):
+                _drop_pool(pool)
+    if pending:
+        for job in pending:
+            job.cancel()
+        if any(job.running() for job in pending):
+            _drop_pool(pool)
+    return got
+
+
 def _child(tx, task) -> None:
     global _IN_CHILD
     if not _IN_CHILD:
@@ -344,7 +407,8 @@ def render_variant(trip, sched: Schedule, vid: str, dropped=(), available=True, 
             "time_suitability": time_description(sched.ctxs, sched.results), "recommendations": [],
             "robustness": robustness(sched.ctxs, sched.results, trip.travel.source) if day_parts else None,
             "backups": backups(sched.ctxs, sched.results, trip.decision, trip.by_id) if day_parts else None,
-            "warnings": sched.warnings,
+            "warnings": [*shortened_warnings(sched.ctxs, sched.results),
+                         *(w for w in sched.warnings if w.get("code") != "visit_shortened")],
             "lodging": {"id": None, "name": None, "price_vnd": None}, "score": [m["travel_min"]],
             "_results": sched.results, "_ctxs": sched.ctxs, "_home": trip.days[0].start_node if trip.days else None}
 
@@ -408,17 +472,31 @@ def _extend(trip, run: _Runs, main: Schedule) -> dict | None:
     return None
 
 
-def plan_or_directions(trip, *, protected=()) -> dict:
+def plan_or_directions(trip, *, protected=(), search: bool = True, main: Schedule | None = None) -> dict:
     """The plan output for one trip: a fitting trip has one `main` plan and no overload; an overloaded one has up to
-    four direction plans (two that keep the same places share one card, `merged`) and the overload card.
-    protected: places the session also keeps whatever happens (locked days), on top of composer.must_places."""
+    three direction plans (two that keep the same places share one card, `merged`) and the overload card.
+    protected: places the session also keeps whatever happens (locked days), on top of composer.must_places.
+    search=False (Lựa chọn's live preview): an overloaded trip gets only its main layout, what fits with the rest left
+    over, and an overload card marked `pending`; the directions are searched when the plan is made. main: the trip's
+    full schedule already worked out (the preview's `_main`), not laid out again."""
     deadline = time.monotonic() + max(0, trip.cfg.realistic.get("overload_deadline_s", _FORK_WAIT_S))
     run = _Runs(trip, SimpleNamespace(value=0) if _PROCESS_CONTEXT == 'spawn' else None)
+    if main is not None:
+        run.memo[frozenset(trip.by_place)] = main
     main = run(set(trip.by_place))
     if not _over(main):
         v = render_variant(trip, main, "main")
         return {"variants": [v], "overload": None, "ok": v["confirmable"], "warnings": [], "back_to_decision": None,
                 "comparison": [], "leftover": (), "schedule_calls": run.calls}
+    if not search:
+        v = render_variant(trip, main, "main")
+        v.update(editable=True, confirmable=False)
+        missing = sum(visit_minutes(trip.by_place[p], trip.cfg, trip.pace) for p in main.leftover) + \
+            sum(x.minutes for x in main.violations if x.kind in OVERRUN)
+        overload = {"missing_min": missing, "places": len(trip.by_place), "directions": [], "extend": None,
+                    "incomplete": [], "pending": True}
+        return {"variants": [v], "overload": overload, "ok": not main.violations, "warnings": [], "comparison": [],
+                "back_to_decision": None, "leftover": main.leftover, "schedule_calls": run.calls, "_main": main}
     protected = (must_places(trip) | set(protected)) & set(trip.by_place)
     out, seen = [], {}
     # Only immutable trip data crosses spawn; no corpus readers, callbacks or inherited native runtime.
@@ -437,7 +515,7 @@ def plan_or_directions(trip, *, protected=()) -> dict:
                 with path.open("wb") as stream:
                     pickle.dump((worker_trip, main, protected, direction), stream)
                 tasks[direction] = path
-            answers = _in_children(tasks, deadline=deadline)
+            answers = _pooled(tasks, deadline=deadline)
             searched = {name: answer for name, (answer, _) in answers.items()}
             for _, count in answers.values():
                 run.counter.value += count

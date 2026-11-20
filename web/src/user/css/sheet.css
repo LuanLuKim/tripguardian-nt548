@@ -96,7 +96,15 @@
 .tg-cv__ov { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.86); backdrop-filter: blur(6px); animation: tg-fade 200ms; }
 .tg-cv { position: fixed; inset: 0; z-index: 91; display: grid; place-items: center; outline: none; animation: tg-fade 200ms; }
 .tg-cv__stage { display: flex; align-items: flex-end; gap: 22px; }
-.tg-cv__player { display: block; height: min(86vh, 780px); aspect-ratio: 9 / 16; border: 0; border-radius: 18px; background: #000; box-shadow: var(--tg-sh-2); }
+.tg-cv__player { position: relative; display: block; overflow: hidden; height: min(86vh, 780px); aspect-ratio: 9 / 16; border: 0; border-radius: 18px; background: #000; box-shadow: var(--tg-sh-2); }
+.tg-cv__slot { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.tg-cv__slot.is-on { opacity: 1; pointer-events: auto; }
+.tg-cv__poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tg-cv__frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity 240ms ease; }
+.tg-cv__slot.is-ready .tg-cv__frame { opacity: 1; }
+.tg-cv__wait { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(0, 0, 0, 0.35); display: grid; place-items: center; }
+.tg-cv__wait i { width: 22px; height: 22px; border: 2.5px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; border-radius: 50%; animation: tg-spin 800ms linear infinite; }
+@media (prefers-reduced-motion: reduce) { .tg-cv__frame { transition: none; } .tg-cv__wait i { animation-duration: 2.4s; } }
 .tg-cv__info { display: grid; gap: 12px; width: 280px; padding-bottom: 12px; color: #f5f5f5; }
 .tg-cv__who { display: flex; align-items: center; gap: 10px; font-size: 1rem; }
 .tg-cv__who i { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--tg-sun); color: #fff; font: 700 1rem var(--tg-sans); font-style: normal; }

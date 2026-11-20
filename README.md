@@ -57,6 +57,7 @@ Phần dùng chung: `src/harness/` (HTTP/SSE, hành trình chung), `src/agents/`
 | `docs/UI_SPEC_USER_WEB.md` | Đặc tả trang User Web cho designer / Figma |
 | `docs/UI_SPEC_FLOW_LAYOUT.md` | Luồng chuyển màn, kiểu chuyển cảnh và bố cục từng màn User Web |
 | `docs/UI_SPEC_LANDING.md` | Đặc tả landing: màn đầu 3D và ba bước (máy tính), trang Dùng ứng dụng (điện thoại) |
+| `docs/LLM_ARCHITECTURE.md` | Bản đồ dùng model xuyên hệ thống: vai trò / task, RAG, harness, vòng tool, tool, skill, guard, fallback |
 | `docs/LLM_PROVIDER.md` | Model nào đảm nhận vai trò nào: endpoint, key, chứng chỉ, ASR local |
 | `docs/OPERATIONS.md` | Vận hành production trên gpu156: deploy, `.prod_src/`, vị trí file, sao lưu, cron, kiểm tra sức khỏe |
 | `docs/reports/` | Báo cáo đo theo ngày, đúng tại ngày ghi: tái kiểm corpus normalized (2026-10-15), hiệu năng Planning chuyến dài |

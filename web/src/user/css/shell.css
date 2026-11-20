@@ -1,11 +1,25 @@
 /* ---- app frame ---- */
 .tg-logo { display: block; flex: none; object-fit: contain; }
-.tg-logo.is-dark { filter: brightness(0) invert(1); }
 .tg-app { min-height: 100vh; }
-.tg-app.has-rail { --tg-rail: 112px; --rail-in: 112px; padding-left: var(--tg-rail); }
-/* the sidebar beside the trip-flow screens: the same 76 px rail as the homepage, fixed to the left edge */
+.tg-app.has-rail { --tg-rail: 34px; --rail-in: 34px; padding-left: var(--tg-rail); }
+/* the sidebar beside the trip-flow screens: folded into a strip on the left edge, out while the pointer rests on it */
 .tg-flowside { position: fixed; z-index: 45; top: 0; bottom: 0; left: 18px; width: 76px; display: flex; padding: 14px 0 12px; }
 .tg-flowside > .tg-hf__side { width: 100%; }
+.tg-dock { position: fixed; z-index: 46; top: 0; bottom: 0; left: 0; width: 34px; pointer-events: none; } /* folded: the strip itself is inert, only the arrow answers the pointer */
+.tg-dock__tab, .tg-dock.is-open { pointer-events: auto; }
+.tg-dock.is-open { width: 124px; }
+.tg-dock__tab { position: absolute; z-index: 1; left: 0; top: 50%; display: grid; place-items: center; width: 30px; height: 76px; translate: 0 -50%; padding: 0; border: 0; border-radius: 0 18px 18px 0; background: var(--tg-night); color: #fff; box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.55); animation: tg-dock-blink 1.5s ease-in-out infinite; transition: width 200ms var(--tg-ease); }
+.tg-dock__tab svg { animation: tg-dock-nudge 1.5s ease-in-out infinite; }
+.tg-dock__tab:hover, .tg-dock__tab:focus-visible { width: 34px; animation: none; }
+.tg-dock::before { content: ''; position: absolute; left: 0; top: 12%; bottom: 12%; width: 1.5px; background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.12) 25%, rgba(0, 0, 0, 0.12) 75%, transparent); }
+.tg-dock.is-open::before, .tg-dock.is-open .tg-dock__tab { opacity: 0; visibility: hidden; pointer-events: none; animation: none; }
+.tg-dock::after { content: ''; position: absolute; inset: 0; width: 124px; background: linear-gradient(90deg, rgba(246, 246, 246, 0.98), rgba(246, 246, 246, 0.98) 76%, rgba(246, 246, 246, 0)); opacity: 0; pointer-events: none; transition: opacity 220ms; }
+.tg-dock.is-open::after { opacity: 1; }
+.tg-dock__panel { left: 18px; visibility: hidden; opacity: 0; translate: -26px 0; pointer-events: none; transition: translate 260ms var(--tg-ease), opacity 200ms, visibility 0s 260ms; filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.16)); }
+.tg-dock.is-open .tg-dock__panel { visibility: visible; opacity: 1; translate: 0 0; pointer-events: auto; transition-delay: 0s; }
+@keyframes tg-dock-blink { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@keyframes tg-dock-nudge { 0%, 100% { translate: -1px 0; } 50% { translate: 3px 0; } }
+@media (prefers-reduced-motion: reduce) { .tg-dock__tab, .tg-dock__tab svg { animation: none; } }
 .tg-rail { position: fixed; z-index: 40; inset: 0 auto 0 0; width: var(--tg-rail); display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 18px 0; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(12px); border-right: 1px solid var(--tg-line); }
 .tg-rail ul { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .tg-rail__logo { display: grid; place-items: center; width: 44px; height: 44px; }
@@ -52,6 +66,8 @@ a.tg-steps__a:hover { background: var(--tg-pine-soft); }
 .tg-pop { z-index: 80; max-width: 280px; padding: 10px 13px; background: var(--tg-night); color: #f5f5f5; border-radius: 10px; font-size: 0.84rem; line-height: 1.45; box-shadow: var(--tg-sh-2); animation: tg-pop 150ms var(--tg-ease); }
 .tg-pop b { color: #fff; }
 .tg-pop__arrow { fill: var(--tg-night); }
+.tg-pop.is-light { max-width: 300px; padding: 12px 14px; background: var(--tg-surface); color: var(--tg-ink); border: 1px solid var(--tg-line); border-radius: 14px; box-shadow: var(--tg-sh-2); font-size: 0.86rem; }
+.tg-pop.is-light .tg-pop__arrow { fill: var(--tg-surface); filter: drop-shadow(0 1px 0 var(--tg-line)); }
 .tg-trust { display: inline-flex; align-items: center; gap: 4px; font: 600 0.74rem/1 var(--tg-sans); color: var(--tg-ink-2); }
 .tg-trust i { width: 5px; height: 11px; border-radius: 2px; background: var(--tg-line-2); }
 .tg-trust.is-hi i { background: var(--tg-pine); }
@@ -91,3 +107,27 @@ a.tg-steps__a:hover { background: var(--tg-pine-soft); }
   .tg-steps li:not(.is-now) .tg-steps__a { gap: 0; padding: 0 2px; font-size: 0; }
   .is-now .tg-steps__a { gap: 6px; padding: 0 10px 0 6px; font-size: 0.84rem; white-space: nowrap; }
 }
+
+/* the trip's three steps (home/Frame.tsx FlowNotch): hangs from the top edge like a phone's notch, flush with it, curved into it at both ears, warm dust grey like the chat's own colours */
+.tg-notch { --notch: #e9e3db; --ear: 18px; position: fixed; z-index: 47; top: 0; left: 50%; display: flex; align-items: center; gap: 2px; padding: 6px 12px 8px; translate: -50% 0; border-radius: 0 0 24px 24px; background: var(--notch); filter: drop-shadow(0 8px 10px rgba(62, 37, 30, 0.14)); }
+.tg-notch::before, .tg-notch::after { content: ''; position: absolute; top: 0; width: var(--ear); height: var(--ear); pointer-events: none; }
+.tg-notch::before { right: 100%; background: radial-gradient(circle at 0 100%, transparent calc(var(--ear) - 0.5px), var(--notch) var(--ear)); }
+.tg-notch::after { left: 100%; background: radial-gradient(circle at 100% 100%, transparent calc(var(--ear) - 0.5px), var(--notch) var(--ear)); }
+.tg-notch__step { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 38px; height: 34px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; color: rgba(62, 37, 30, 0.55); font: 600 0.82rem/1 var(--tg-sans); transition: background 160ms, color 160ms; }
+.tg-notch__step:hover:not(.is-on):not([aria-disabled='true']) { background: rgba(255, 255, 255, 0.6); color: #3e251e; }
+.tg-notch__step.is-on { background: #fff; color: #3e251e; padding: 0 14px 0 12px; box-shadow: 0 2px 8px -4px rgba(62, 37, 30, 0.4); cursor: default; }
+.tg-notch__step[aria-disabled='true'] { cursor: not-allowed; }
+.tg-notch__step[aria-disabled='true'] > svg { opacity: 0.4; }
+.tg-notch__step:focus-visible { outline: 2px solid #3e251e; outline-offset: 2px; }
+.tg-notch__step.is-go { gap: 8px; padding: 0 16px 0 13px; background: #fff; color: #3e251e; box-shadow: 0 2px 8px -4px rgba(62, 37, 30, 0.4); }
+.tg-notch__step.is-go > svg { color: var(--tg-brand); }
+.tg-notch__step.is-go:hover:not([aria-disabled='true']) { background: #fff; box-shadow: 0 0 0 2px color-mix(in srgb, var(--tg-brand) 30%, transparent); }
+.tg-notch__step.is-go[aria-disabled='true'] { color: rgba(62, 37, 30, 0.55); }
+@media (max-width: 520px) { .tg-notch__step.is-on > span:not(.tg-notch__tip) { display: none; } }
+/* the explanation under a step: the same night-coloured tag as the sidebar's (name + one line), not the browser's title bubble */
+.tg-notch__step { position: relative; }
+.tg-notch__tip { position: absolute; z-index: 2; top: calc(100% + 26px); left: 50%; display: grid; gap: 2px; width: max-content; max-width: 210px; padding: 8px 13px 9px; translate: -50% -4px; border-radius: 10px; background: var(--tg-night); color: rgba(255, 255, 255, 0.82); font: 400 0.76rem/1.35 var(--tg-sans); text-align: left; white-space: normal; box-shadow: 0 10px 22px -8px rgba(0, 0, 0, 0.5); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 140ms, translate 220ms var(--tg-ease), visibility 0s 220ms; }
+.tg-notch__tip b { font: 600 0.8rem/1.2 var(--tg-sans); color: #fff; }
+.tg-notch__tip::before { content: ''; position: absolute; left: 50%; bottom: 100%; translate: -50% 0; border: 10px solid transparent; border-top: 0; border-bottom-color: var(--tg-night); }
+.tg-notch__step:hover .tg-notch__tip, .tg-notch__step:focus-visible .tg-notch__tip { opacity: 1; visibility: visible; translate: -50% 0; transition-delay: 90ms; }
+@media (hover: none) { .tg-notch__tip { display: none; } }

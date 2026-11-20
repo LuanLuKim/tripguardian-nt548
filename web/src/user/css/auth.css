@@ -96,11 +96,7 @@
 .tg-auth__ok { display: flex; gap: 8px; align-items: center; margin: 0; color: var(--tg-ink-2); font-size: 0.85rem; }
 
 /* ---- the wordmark and the scene's decoration (screens/AuthMascot.tsx) ---- */
-.tg-brand { display: grid; justify-items: center; gap: 0; color: var(--tg-pine-d); }
-.tg-brand svg { margin-bottom: -6px; overflow: visible; }
-.tg-brand svg > path:first-child { fill: none; stroke: currentColor; stroke-width: 3.2; stroke-linecap: round; }
-.tg-brand__pin { fill: currentColor; } .tg-brand__dot { fill: #fff; }
-.tg-brand__name { font: italic 700 2.6rem/1.05 var(--tg-display); letter-spacing: -0.01em; }
+.tg-brand { display: grid; justify-items: center; gap: 0; }
 .tg-brand__tag { margin-top: 6px; font: italic 500 1.02rem var(--tg-display); color: var(--tg-ink-2); }
 .tg-auth__scene > .tg-brand { position: absolute; z-index: 1; top: 34px; left: 0; right: 0; }
 .tg-auth__tile { position: absolute; z-index: 1; width: 62px; height: 62px; display: grid; place-items: center; border-radius: 20px; background: rgba(255, 255, 255, 0.9); color: var(--tg-pine); box-shadow: 0 10px 24px rgba(30, 70, 50, 0.16); animation: tg-auth-float 5s ease-in-out infinite; }

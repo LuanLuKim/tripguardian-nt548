@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { PlacePhoto } from './common'
 import { Icon, type IconName } from './icons'
 
 // Type-ahead like Google Maps (docs/Role_Web_Functional_Design.md §6): suggestions from the 2nd character, 250 ms
@@ -11,6 +12,7 @@ export interface InputRow {
   name: string
   sub: string
   rating?: number | null
+  photoId?: string // a place of ours: its photo stands in for the icon
 }
 
 const MIN = 2
@@ -38,10 +40,11 @@ function Marked({ text, q }: { text: string; q: string }) {
   return <>{out}</>
 }
 
-export function PlaceInput<T>({ fetcher, row, onPick, placeholder, label, autoFocus = false, disabled = false, icon = 'search' }: {
+export function PlaceInput<T>({ fetcher, row, onPick, onQuery, placeholder, label, autoFocus = false, disabled = false, icon = 'search' }: {
   fetcher: (q: string, signal: AbortSignal) => Promise<T[]>
   row: (item: T) => InputRow
   onPick: (item: T, r: InputRow) => void
+  onQuery?: (typed: string) => void // what is typed, for a screen that gives way to the results
   placeholder: string
   label: string
   autoFocus?: boolean
@@ -100,7 +103,7 @@ export function PlaceInput<T>({ fetcher, row, onPick, placeholder, label, autoFo
     if (rows.length)
       body = rows.map((r, i) => (
         <li key={r.key} id={`${id}-${i}`} role="option" aria-selected={i === at} className={i === at ? 'is-at' : undefined} onPointerDown={(e) => e.preventDefault()} onClick={() => pick(i)} onPointerMove={() => setAt(i)}>
-          <i aria-hidden="true"><Icon name={r.icon} size={16} /></i>
+          <i aria-hidden="true" className={r.photoId ? 'has-photo' : undefined}>{r.photoId ? <PlacePhoto id={r.photoId} name="" sizes="64px" /> : <Icon name={r.icon} size={16} />}</i>
           <span><b className="tg-pin__name"><Marked text={r.name} q={q} /></b>{r.sub && <small>{r.sub}</small>}</span>
           {r.rating ? <em className="tg-mono" aria-label={`${r.rating} sao`}>★ {r.rating.toFixed(1)}</em> : null}
         </li>
@@ -117,7 +120,7 @@ export function PlaceInput<T>({ fetcher, row, onPick, placeholder, label, autoFo
           className="tg-input" type="text" role="combobox" autoComplete="off" spellCheck={false} autoFocus={autoFocus} disabled={disabled}
           aria-expanded={shown} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={shown && at >= 0 ? `${id}-${at}` : undefined}
           value={q} placeholder={placeholder}
-          onChange={(e) => { setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} onKeyDown={onKey}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); onQuery?.(e.target.value) }} onFocus={() => setOpen(true)} onKeyDown={onKey}
         />
         {busy && <span className="tg-pin__spin" aria-hidden="true" />}
       </label>

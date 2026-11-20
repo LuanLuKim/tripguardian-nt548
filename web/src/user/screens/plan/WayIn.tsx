@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { isDated, offerAge, readJourneyWay, readStayOffers, type Journey, type Offer, type WayOption } from '../../booking'
 import { track } from '../../events'
 import { fmtMin, fmtVnd } from '../../lib'
+import { pickFor, useRideChoice, type RideBrand } from '../../rides'
 import { Icon, type IconName } from '../../ui/icons'
 import '../../css/wayin.css'
 import '../../css/fixes.css'
 
-// "Đường tới Đà Lạt" / "Đường về": the ways from home to the city (GET /api/harness/journey), the road ones timed by the map,
+// "Phương tiện lên Đà Lạt" / "Phương tiện về": the ways from home to the city (GET /api/harness/journey), the road ones timed by the map,
 // a coach or flight stated only as far as a provider states it. Anything unknown says "chưa rõ"; a buy button opens the provider's own page.
 
 const MODE: Record<WayOption['mode'], { label: string; icon: IconName }> = {
@@ -51,8 +52,55 @@ export function BuyButton({ offer, label }: { offer: Offer; label?: string }) {
   )
 }
 
-// A leg's end as the backend names it: 'origin' / 'centre' / an airport code / a station name.
-const spot = (x: string) => (x === 'origin' ? 'chỗ bạn' : x === 'centre' ? 'trung tâm Đà Lạt' : /^[A-Z]{3}$/.test(x) ? `sân bay ${x}` : x)
+// A leg's end as the backend names it: 'origin' / 'centre' / 'lodging' / an airport code / a station name.
+const spot = (x: string) => (x === 'origin' ? 'chỗ bạn' : x === 'centre' ? 'trung tâm Đà Lạt' : x === 'lodging' ? 'chỗ ở' : /^[A-Z]{3}$/.test(x) ? `sân bay ${x}` : x)
+const money = (lo: number, hi: number) => (fmtVnd(lo) === fmtVnd(hi) ? `≈ ${fmtVnd(lo)}` : `≈ ${fmtVnd(lo)} – ${fmtVnd(hi)}`)
+type Choice = ReturnType<typeof useRideChoice>
+
+// Door to door for a way that rides to a station or an airport: the ride there (priced in the province it starts in), the
+// tickets for everyone, the ride from the city's airport or station to the lodging. One leg without a price: no total, and
+// the line says which leg (a partial total would understate the way). Driving yourself is km and hours only.
+function DoorToDoor({ o, brands, choice }: { o: WayOption; brands: Record<string, RideBrand> | undefined; choice: Choice }) {
+  const [open, setOpen] = useState(false)
+  if (!brands || !o.legs.some((l) => l.kind === 'transfer')) return null
+  const n = choice.people
+  const vehicle = choice.kind === 'bike' ? 'xe máy' : 'ô tô'
+  const steps = o.legs.map((l) => {
+    const where = `${spot(l.from_label)} → ${spot(l.to_label)}`
+    if (l.kind === 'transfer') {
+      const pick = l.rides ? pickFor(l.rides, brands, choice.brand, choice.kind, n) : null
+      const km = l.distance_km ? `${Math.round(l.distance_km)} km` : null
+      if (!pick) return { what: `Gọi xe ${where}`, sub: km, lo: null, hi: null, gap: l.rides ? `gọi ${vehicle} ở ${l.rides.region_name ?? 'nơi đón'}` : `đường ${where}` }
+      const who = `${pick.name}${pick.fallback ? ' (rẻ nhất có giá)' : ''} · ${pick.label}${pick.count > 1 ? ` × ${pick.count}` : ''}`
+      return { what: `Gọi xe ${where}`, sub: [km, who].filter(Boolean).join(' · '), lo: pick.lo, hi: pick.hi, gap: null }
+    }
+    const what = o.mode === 'plane' ? `Vé máy bay ${where}` : `Vé xe khách ${where}`
+    if (o.price_min_vnd == null) return { what, sub: null, lo: null, hi: null, gap: o.mode === 'plane' ? 'vé máy bay' : 'vé xe khách' }
+    return { what, sub: `vé rẻ nhất ${fmtVnd(o.price_min_vnd)} × ${n} người`, lo: o.price_min_vnd * n, hi: o.price_min_vnd * n, gap: null }
+  })
+  const gaps = steps.filter((x) => x.gap).map((x) => x.gap!)
+  const lo = steps.reduce((t, x) => t + (x.lo ?? 0), 0)
+  const hi = steps.reduce((t, x) => t + (x.hi ?? 0), 0)
+  return (
+    <div className="tg-wy__door">
+      <button type="button" className="tg-wy__door-sum" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {gaps.length ? <span>Chưa ra tổng cửa tới cửa: thiếu giá {gaps.join(', ')}</span> : <span>Cửa tới cửa <b>{money(lo, hi)}</b> cho {n} người</span>}
+        <Icon name={open ? 'chevronUp' : 'chevronDown'} size={16} />
+      </button>
+      {open && (
+        <ol className="tg-wy__steps">
+          {steps.map((x, i) => (
+            <li key={i} className={x.gap ? 'is-gap' : undefined}>
+              <div><b>{x.what}</b>{x.sub && <small>{x.sub}</small>}</div>
+              <span>{x.lo != null ? money(x.lo, x.hi!) : 'Chưa có giá'}</span>
+            </li>
+          ))}
+          <li className="tg-wy__steps-note"><small>Gọi xe ước theo bảng giá hãng công bố (chưa gồm giờ cao điểm, khuyến mãi); vé lấy từ trang đặt vé.</small></li>
+        </ol>
+      )}
+    </div>
+  )
+}
 
 const SHOWN = 4
 const bySoon = (a: Offer, b: Offer) => (a.depart_at ?? '9').localeCompare(b.depart_at ?? '9') || (a.price_vnd ?? Infinity) - (b.price_vnd ?? Infinity)
@@ -89,7 +137,7 @@ function DatedOffers({ list }: { list: Offer[] }) {
   )
 }
 
-function Card({ o, i, fastest }: { o: WayOption; i: number; fastest: boolean }) {
+function Card({ o, i, fastest, brands, choice }: { o: WayOption; i: number; fastest: boolean; brands: Record<string, RideBrand> | undefined; choice: Choice }) {
   const m = MODE[o.mode]
   const st = STATUS(o.feasible)
   // Road options show the whole distance. A coach or flight only drives to / from the station or airport, so say which stretch each km is.
@@ -108,15 +156,18 @@ function Card({ o, i, fastest }: { o: WayOption; i: number; fastest: boolean }) 
       {!road && kms.length > 0 && <ul className="tg-wy__legs">{kms.map((k) => <li key={k}>{k}</li>)}</ul>}
       <p className="tg-wy__meta">{[...(road ? kms : []), o.legs.find((l) => l.via)?.via ? `qua ${o.legs.find((l) => l.via)!.via}` : null, price ? `${price}/vé` : null].filter(Boolean).join(' · ') || ' '}</p>
       <p className="tg-wy__why">{o.tradeoff || REASON[o.reason] || 'Chưa rõ'}</p>
+      {!road && o.feasible !== false && <DoorToDoor o={o} brands={brands} choice={choice} />}
       {dated.length > 0 && <DatedOffers list={dated} />}
       {links.length > 0 && <div className="tg-wy__offers">{links.slice(0, 3).map((x) => <BuyButton key={x.offer_id} offer={x} />)}</div>}
     </li>
   )
 }
 
-export function WayIn({ lat, lng, originText, date, way, destLat, destLng }: {
+export function WayIn({ lat, lng, originText, date, way, destLat, destLng, people }: {
   lat: number | null | undefined; lng: number | null | undefined; originText?: string | null; date?: string | null; way: 'inbound' | 'outbound'; destLat?: number | null; destLng?: number | null
+  people?: number | null
 }) {
+  const choice = useRideChoice(people ?? null)
   const [got, setGot] = useState<{ key: string; data: Journey | null } | null>(null)
   const text = originText?.trim() || ''
   const key = `${lat}|${lng}|${text}|${date}|${way}|${destLat}|${destLng}`
@@ -130,7 +181,7 @@ export function WayIn({ lat, lng, originText, date, way, destLat, destLng }: {
       .then((data) => { if (live) setGot({ key, data }) }).catch(() => { if (live) setGot({ key, data: null }) })
     return () => { live = false }
   }, [key, ready]) // eslint-disable-line react-hooks/exhaustive-deps
-  const city = way === 'inbound' ? 'Đường tới Đà Lạt' : 'Đường về'
+  const city = way === 'inbound' ? 'Phương tiện lên Đà Lạt' : 'Phương tiện về'
   if (!ready) return null // the origin is asked in its own row above Đến Đà Lạt (Overview)
   if (!got || got.key !== key) return <div className="tg-wy" aria-busy="true"><h4>{city}</h4><p className="tg-wy__note">TripGuardian đang tìm cách đi cho bạn.</p><ul className="tg-wy__list">{[0, 1, 2].map((i) => <li key={i} className="tg-wy__card is-skel"><span className="tg-skel" /></li>)}</ul></div>
   if (!got.data) return <div className="tg-wy"><h4>{city}</h4><p className="tg-wy__note">{text ? noData : 'Chưa tải được các cách đi lúc này. Lịch trình vẫn dùng được, bạn thử lại sau nhé.'}</p></div>
@@ -141,8 +192,36 @@ export function WayIn({ lat, lng, originText, date, way, destLat, destLng }: {
     <div className="tg-wy">
       
       <h4>{city}{got.data.day && <small>ngày {got.data.day.slice(8, 10)}/{got.data.day.slice(5, 7)}</small>}</h4>
-      <ul className="tg-wy__list">{options.map((o, i) => <Card key={o.mode} o={o} i={i} fastest={o === fastest} />)}</ul>
+      <ul className="tg-wy__list">{options.map((o, i) => <Card key={o.mode} o={o} i={i} fastest={o === fastest} brands={got.data!.ride_brands} choice={choice} />)}</ul>
       <p className="tg-wy__note">Giờ đường bộ là ước tính theo bản đồ. Giá và chuyến lấy từ trang đặt vé, bấm vào để xem bản mới nhất.</p>
+    </div>
+  )
+}
+
+// What a mouse resting on "Máy bay" / "Xe khách" in the way-in row shows: that way's own card (times, prices, buy links), read the same
+// way as WayIn. Nothing here is chosen; the tag itself is still one tap. Without a start point there is nothing to look up yet.
+export function WayPeek({ mode, lat, lng, originText, date, destLat, destLng, people }: {
+  mode: 'plane' | 'bus'; lat: number | null | undefined; lng: number | null | undefined; originText?: string | null; date?: string | null; destLat?: number | null; destLng?: number | null; people?: number | null
+}) {
+  const choice = useRideChoice(people ?? null)
+  const text = originText?.trim() || ''
+  const key = `${lat}|${lng}|${text}|${date}|${destLat}|${destLng}`
+  const ready = (typeof lat === 'number' && typeof lng === 'number') || !!text
+  const [got, setGot] = useState<{ key: string; data: Journey | null } | null>(null)
+  useEffect(() => {
+    if (!ready) return
+    let live = true
+    readJourneyWay({ lat, lng, origin: text, date, way: 'inbound', dest_lat: destLat, dest_lng: destLng })
+      .then((data) => { if (live) setGot({ key, data }) }).catch(() => { if (live) setGot({ key, data: null }) })
+    return () => { live = false }
+  }, [key, ready]) // eslint-disable-line react-hooks/exhaustive-deps
+  const o = got?.key === key ? got.data?.options.find((x) => x.mode === mode) : undefined
+  return (
+    <div className="tg-wy tg-wy--peek" aria-live="polite">
+      {!ready ? <p className="tg-wy__note">Nhập điểm xuất phát ở trên để xem {mode === 'plane' ? 'chuyến bay' : 'xe khách'} phù hợp.</p>
+        : !got || got.key !== key ? <p className="tg-wy__note">Đang tìm {mode === 'plane' ? 'chuyến bay' : 'xe khách'}…</p>
+          : !o ? <p className="tg-wy__note">Chưa có {mode === 'plane' ? 'chuyến bay' : 'xe khách'} cho chặng này.</p>
+            : <ul className="tg-wy__list"><Card o={o} i={0} fastest={false} brands={got.data!.ride_brands} choice={choice} /></ul>}
     </div>
   )
 }

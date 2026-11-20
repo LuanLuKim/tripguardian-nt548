@@ -1,5 +1,6 @@
 """Bounded, process-local HTTP admission; the public edge owns volumetric DDoS protection."""
 
+import math
 import threading
 import time
 from collections import deque
@@ -15,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ProtectionSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     per_ip_minute: int = Field(120, ge=1)
-    per_user_minute: int = Field(60, ge=1)
+    per_user_minute: int = Field(240, ge=1)
     max_active: int = Field(16, ge=1)
     max_connections: int = Field(64, ge=1)
     read_timeout_s: float = Field(15, gt=0)
@@ -50,6 +51,13 @@ class RateGate:
                 return False
             window.append(now)
             return True
+
+    def wait(self, key: str) -> int:
+        """Whole seconds until `key` has a free slot again (the oldest call of its window leaves it); 1 at least."""
+        now = self.clock()
+        with self.lock:
+            window = self.windows.get(key)
+            return max(1, math.ceil(60 - (now - window[0]))) if window else 1
 
 
 class ProtectedHTTPServer(ThreadingHTTPServer):

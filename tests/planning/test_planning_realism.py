@@ -37,3 +37,30 @@ def test_no_refused_edit_or_unpicked_plan(runs, request):
         request.applymarker(pytest.mark.xfail(strict=True, reason=PENDING["run_errors"]))
     failures = [f"{cid}: {e}" for cid, run in runs.items() for e in run.errors]
     assert not failures, "\n".join(failures)
+
+
+# The cases where "Tối ưu lịch" once kept, or made, a day the user reads as wrong after they moved places around:
+# a missed lunch on a short last morning, a return past the day's end, a sunset place at 09:24 with no reason given.
+SCRAMBLED = ["couple_slow_dawn", "friends_packed_bar", "seven_days", "hotel_breakfast"]
+
+
+@pytest.mark.parametrize("cid", SCRAMBLED)
+def test_optimising_a_scrambled_plan_passes_the_realism_checks(cid):
+    """Each day's last place moved to the next day (a user dragging places about), then "Tối ưu lịch" on the whole
+    plan: what it shows passes every realism check, as the first plan does."""
+    from realistic_cases import Run, _unplaced, by_id, decision, engine, pick, pid
+    c = next(c for c in CASES if c["id"] == cid)
+    eng = engine()
+    out = eng.create(decision(c))
+    sid = out["id"]
+    view = pick(eng, sid, out["view"])
+    days = [[i["place_id"] for i in d["items"] if i["kind"] == "visit"] for d in view["itinerary"]]
+    for k, ids in enumerate(days):
+        if ids:
+            eng.act(sid, {"type": "move_place", "place": ids[-1], "day": (k + 1) % len(days)})
+    view = eng.recommend(sid, "all")["view"]
+    lodge = by_id()[pid(c["lodging"])]["identity"]
+    run = Run(c, view, view.get("itinerary") or [], _unplaced(view), {n: pid(n) for n in c["places"]},
+              (lodge["lat"], lodge["lng"]), 0.0, [], view.get("ghosts") or [])
+    failures = [f"{name}: {msg}" for name, check in CHECKS.items() for msg in check(run)]
+    assert not failures, "\n".join(failures)

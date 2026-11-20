@@ -11,7 +11,7 @@ import threading
 from collections import OrderedDict
 from contextlib import contextmanager
 from concurrent.futures import Future
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from trip import SearchInput, TurnInput
 from planning import TripIncomplete
@@ -43,6 +43,8 @@ def _page(query: dict) -> tuple[int, int | None]:
     return int(offset), int(limit) if limit is not None else None
 
 
+# decision.trip answers of the read-back sheet and the plan's fill rows; any other kind is a chat turn (Dispatcher._chat)
+READBACK_KINDS = frozenset({"deck", "drop", "readback_ok", "edit"})
 LIVE = ("say", "preview", "progress", "state", "card", "deck_issues", "readback", "places", "block", "replies")
 
 
@@ -70,6 +72,21 @@ def chat_title(transcript: list) -> str | None:
         line = " ".join(lines[0].split())
         return line if len(line) <= CHAT_TITLE_MAX else line[:CHAT_TITLE_MAX - 1].rstrip() + "…"
     return None
+
+
+MEMO_IDLE_S = 30 * 60  # a chat quiet this long gets its memo for the user's next trips (Trip remember; owner 2026-11-17)
+
+
+# SearchInput context fields Planning never reads (src/planning has no use of them): an answer that changes only these leaves the plan as it is.
+PLAN_BLIND = ("arrival_mode", "origin", "inbound", "outbound")
+
+
+def _plan_view(search_input: dict) -> dict:
+    """The part of a compiled SearchInput that can change a plan: without the blind context fields, the readiness / sources
+    bookkeeping and the unknowns that name only those fields."""
+    ctx = {k: v for k, v in (search_input.get("context") or {}).items() if k not in PLAN_BLIND}
+    unknowns = [u for u in search_input.get("unknowns") or [] if u not in PLAN_BLIND]
+    return {**{k: v for k, v in search_input.items() if k not in ("readiness", "sources")}, "context": ctx, "unknowns": unknowns}
 
 
 @contextmanager
@@ -104,22 +121,51 @@ class Harness:
         self._runtime_tokens: dict[str, object] = {}
         self._readers: dict[str, tuple] = {}
         self._readers_guard = threading.Lock()
+        self._quiet: dict[str, threading.Timer] = {}  # journey -> the timer that writes its chat's memo when it goes quiet
+        self._quiet_guard = threading.Lock()
 
     @property
     def tools(self) -> dict[str, ModuleTools]:
         return self._tools(self.corpus_binding)
 
-    def warm_releases(self, recent_bindings, recent_journeys=None) -> threading.Thread:
+    def warm_releases(self, recent_bindings, recent_journeys=None, encoders: bool = False) -> threading.Thread:
         """Warm active plus two distinct recent pins off the startup/request thread, then the journeys people used
         lately (recent_journeys: newest first), so the first open after a restart does not pay a cold Planning base
         or Decision reader (6-9 s each, measured 04/11)."""
+        encoders_ready = threading.Event()
+
+        def warm_encoders():
+            # first of all, in its own thread: loading the two encoders takes ~1 min on a shared GPU, and the first
+            # find_places after a restart waited for all of it (49 s measured 17/11) while releases and journeys warmed
+            logger = logging.getLogger(__name__)
+            started = time.monotonic()
+            try:
+                from corpus.index import Embedder
+                Embedder.warm()
+                logger.info("Encoder warmup ready in %.1fs", time.monotonic() - started)
+            except Exception:
+                logger.exception("Encoder warmup failed")
+            finally:
+                encoders_ready.set()
+        if encoders:
+            threading.Thread(target=warm_encoders, name="encoder-warm", daemon=True).start()
+        else:
+            encoders_ready.set()
+
         def warm():
             logger = logging.getLogger(__name__)
             def open_one(binding):
                 started = time.monotonic()
                 try:
-                    self._tools(binding)
+                    tools = self._tools(binding)
                     logger.info("Corpus warmup ready %s in %.3fs", self._binding_key(binding), time.monotonic() - started)
+                    # One release at a time, until the assistant is truly warm (encoders on the GPU, span vectors and region
+                    # caches read by one real search): releases, old pins and journeys warming side by side fought for the
+                    # same GPU and disk, so a user's first turn still landed in the middle of it.
+                    encoders_ready.wait(900)
+                    ready = getattr(getattr(tools.get("trip"), "engine", None), "warmed", None)
+                    if ready is not None and ready.wait(900):
+                        logger.info("Assistant warmup ready %s in %.1fs", self._binding_key(binding), time.monotonic() - started)
                 except Exception:
                     logger.exception("Corpus warmup failed %s", self._binding_key(binding))
             open_one(self.corpus_binding)
@@ -402,7 +448,7 @@ class Harness:
         if stage == "decision" and operation == "lodging":
             return self.lodging(jid, owner, *_page(payload or {}))
         # Planning reads that mint nothing render outside the journey lock; preview-act mints tokens on the writer.
-        planning_read = stage == 'planning' and operation in {'variants', 'routes', 'lodging', 'suggestions'}
+        planning_read = stage == 'planning' and operation in {'variants', 'routes', 'lodging', 'suggestions', 'summary'}
         out = self._planning_read(jid, stage, owner, operation=operation, payload=payload) if planning_read else None
         if out is None and self.read_tools_for_binding is not None and stage in {"trip", "decision"} and operation != "page":
             out = self._snapshot_read(jid, stage, owner, operation, payload)
@@ -578,6 +624,14 @@ class Harness:
         """Nhịp Đà Lạt (docs/CORPUS.md §Nhịp): the bulletin of the newest daily snapshot; no sections when the job never ran."""
         return corpus_pulse.bulletin("dalat") or {"city": "dalat", "generated_at": None, "day": None, "stale": True, "sections": []}
 
+    def calendar_days(self, first: str, last: str) -> dict:
+        """The home calendar's days between two YYYY-MM-DD days (at most 62): holiday, lunar day, forecast. ValueError: bad range."""
+        try:
+            a, b = date.fromisoformat(first), date.fromisoformat(last)
+        except ValueError:
+            raise ValueError("from and to must be real YYYY-MM-DD days") from None
+        return self.tools["trip"].calendar_days(a, b)
+
     def tags_trending(self) -> dict:
         """Home topics: tags ranked by the TikTok clips of the last 30 days (corpus.pulse.tag_trends), each with the cover
         photos of its most posted places. `tags` is empty when the daily job never wrote them (the page shows its own)."""
@@ -655,6 +709,9 @@ class Harness:
             self._sync_trip(jid)
         if not trace.get("replayed") and name == "planning.confirm":
             self._learn_from_plan(jid)
+            self._remember_after(jid, 0)  # the itinerary is confirmed: the chat's memo now, in the background
+        if not trace.get("replayed") and request.stage == "trip" and request.operation == "turn":
+            self._remember_after(jid, MEMO_IDLE_S)  # each chat turn restarts the quiet wait
         if not trace.get("replayed"):
             props = self.events.act_props(request.payload) if self.events and request.operation == "act" else {}
             if request.stage == "trip" and request.operation == "turn":
@@ -667,7 +724,7 @@ class Harness:
                 props |= {'trace_id': trace['turn_trace']['id'], 'turn_trace': trace['turn_trace']}
             self._event(name, trace.get("user_id"), jid, revision=response["revision"], path=trace.get("path"),
                         latency_ms=round((time.monotonic() - started) * 1000), first_ms=trace.get("first_ms"),
-                        refined=trace.get("refined"),
+                        refined=trace.get("refined"), route=trace.get("chat_route"),
                         compiled=True if trace.get("compiled") else None, **props)
         return response
 
@@ -689,6 +746,30 @@ class Harness:
                 self.tools["trip"].note_acts(session.user_id, session.sessions["trip"], acts)
         except Exception as exc:
             print(f"profile not updated for {jid}: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+    def _remember_after(self, jid: str, seconds: float) -> None:
+        """Write the journey's chat memo (Trip remember) after `seconds`, replacing a wait already set for it. The memo
+        costs one model call and is skipped when the chat has no turn its last memo did not read, so a quiet chat or a
+        confirm right after one costs nothing more. A restart loses a pending wait; the next confirm or turn sets it again."""
+        timer = threading.Timer(seconds, self._remember, (jid,))
+        timer.daemon = True
+        with self._quiet_guard:
+            if (old := self._quiet.pop(jid, None)) is not None:
+                old.cancel()
+            self._quiet[jid] = timer
+        timer.start()
+
+    def _remember(self, jid: str) -> None:
+        with self._quiet_guard:
+            if self._quiet.get(jid) is threading.current_thread():  # this wait is done; a newer one stays
+                self._quiet.pop(jid)
+        try:
+            session = self.store.peek(jid)
+            snap = session.snapshots.get("trip")
+            if session.user_id and snap:
+                self.tools["trip"].remember(deepcopy(snap))
+        except Exception as exc:  # a lost memo only loses personalization
+            print(f"memo not written for {jid}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     def _learn_from_plan(self, jid: str) -> None:
         """A confirmed plan: its places were kept in it; places the user dropped saying "dislike" are against."""
@@ -987,9 +1068,11 @@ class Harness:
 
             try:
                 refusal = None
-                if self.safety is not None and request.operation in {"turn", "act"}:
-                    current = self._module(session, stage).load(session.sessions[stage])
-                    refusal = admit(self.safety, request.payload, current, stage, review_text=request.operation == "turn")
+                chat = request.operation == "trip" and request.payload.get("kind") not in READBACK_KINDS  # the chat beside Lựa chọn
+                if self.safety is not None and (request.operation in {"turn", "act"} or chat):
+                    at = "trip" if chat else stage
+                    current = self._module(session, at).load(session.sessions[at])
+                    refusal = admit(self.safety, request.payload, current, at, review_text=request.operation != "act")
                 if refusal:
                     trace["path"] = "chat_refused"
                     capture("say", {"replace": refusal})
@@ -997,16 +1080,31 @@ class Harness:
                     result = self._module(session, stage).load(session.sessions[stage])
                 elif request.operation == "advance":
                     result = self._advance(session, spans)
+                elif chat:
+                    TurnInput.model_validate(request.payload)
+                    result = self._chat(session, request.payload, events, capture, trace)
                 elif request.operation == "trip":
                     inp = TurnInput.model_validate(request.payload)
-                    # read-back answers only: a gate card, a dropped line, the summary's own field edit (origin, dates, ...)
-                    if inp.kind not in {"deck", "drop", "readback_ok", "edit"}:
-                        raise ValueError("decision.trip accepts only deck, drop, edit or readback_ok")
+                    # read-back answers: a gate card, a dropped line, the summary's own field edit (origin, dates, ...)
+                    if stage != "decision":
+                        raise ValueError("read-back answers go to decision.trip")
                     trip = self._module(session, "trip")
                     payload = {**request.payload, "at": "plan" if request.payload.get("at") == "plan" else "gate"} if inp.kind == "deck" else request.payload
+                    before_input = session.outputs.get("trip")
                     trip.apply(session.sessions["trip"], "turn", payload, capture)
                     readback = trip.read(session.sessions["trip"], "readback", {})
-                    if "care" in readback.get("missing", ()):
+                    kept = False
+                    if "care" not in readback.get("missing", ()) and "planning" in session.sessions and "decision" in session.outputs:
+                        # An answer Planning never reads (how the trip gets to the city, where it starts) is saved on the trip only:
+                        # the plan, its Decision selection and chosen way stay as they are, so nothing is built again.
+                        after_input = SearchInput.model_validate(self._bound_output(session, trip.read(session.sessions["trip"], "search_input", {}))).model_dump(mode="json")
+                        if before_input is not None and _plan_view(before_input) == _plan_view(after_input):
+                            session.outputs["trip"] = after_input
+                            kept = True
+                    if kept:
+                        decided = self._module(session, "decision").load(session.sessions["decision"])
+                        rebased = {"id": decided["id"], "view": decided["view"]}
+                    elif "care" in readback.get("missing", ()):
                         # Save partial gate answers without compiling over an unresolved safety question.
                         capture("readback", readback)
                         rebased = self._module(session, "decision").load(session.sessions["decision"])
@@ -1016,10 +1114,22 @@ class Harness:
                         rebased = self._module(session, "decision").rebase(session.sessions["decision"],
                             self._decision_input(session))
                     result = {"id": rebased["id"], "view": rebased["view"]}
-                    for key in ("decision", "planning"):
-                        session.outputs.pop(key, None)
-                    session.sessions.pop("planning", None)
-                    session.snapshots.pop("planning", None)
+                    if not kept:
+                        for key in ("decision", "planning"):
+                            session.outputs.pop(key, None)
+                        session.sessions.pop("planning", None)
+                        session.snapshots.pop("planning", None)
+                elif request.operation == "new_chat":
+                    # "Trò chuyện mới": one conversation per trip on every screen, so every assistant of the journey (Trip,
+                    # Lựa chọn's, Lịch trình's) starts its chat history again; the trip, the lists and the schedule stay.
+                    if set(request.payload) - {"messages"}:
+                        raise ValueError("new_chat accepts only messages")
+                    messages = request.payload.get("messages") or []
+                    for name in ("trip", "decision", "planning"):
+                        if name in session.sessions:
+                            self._module(session, name).apply(session.sessions[name], "new_chat",
+                                                              {} if name == "trip" else {"messages": messages}, capture)
+                    result = self._module(session, stage).load(session.sessions[stage])
                 elif request.operation == "back":
                     # Navigation changes the displayed stage, never the persisted trip or schedule.
                     session.stage = "decision" if stage == "planning" else "trip"
@@ -1083,6 +1193,65 @@ class Harness:
                     if event["event"] not in LIVE:
                         emit(event["event"], event["data"])
             return response
+
+    def _chat(self, session: Journey, payload: dict, events: list[dict], capture, trace: dict) -> dict:
+        """One turn of THE chat of Lựa chọn (the home page sends to the same chat; there is no separate chat screen). Typed
+        text that acts on or asks about the lists (Decision's heuristics.route: a pick, a drop, a filter, a place on screen,
+        why one is missing) goes to Decision's assistant, whose trip wishes Trip then reads (_refine). Everything else is a
+        Trip turn as in its own stage (words, cards, places, tag stages, events, trends, photos, stays); Decision is rebuilt
+        only when the compiled Search Input moved, and the rebuilt view goes out as `view` after the reply. An open health
+        hint keeps the lists as they are until it is answered in the chat; a plan built from the old lists is dropped."""
+        decision = self._module(session, "decision")
+        if session.stage == "planning":
+            return self._chat_on_plan(session, payload, capture, trace)
+        if payload.get("kind") == "text" and decision.read(session.sessions["decision"], "route", {"text": payload.get("text", "")}).get("route") == "decision":
+            trace["chat_route"] = "decision"
+            result = decision.apply(session.sessions["decision"], "turn", {"text": payload["text"]}, capture)
+            texts = [t for e in events if e["event"] == "trip" for t in e["data"]["texts"]]
+            events[:] = [e for e in events if e["event"] != "trip"]  # internal: the web never sees it
+            if texts:
+                trace["refined"] = True
+                result = self._refine(session, " ".join(texts), events, capture) or result
+            for key in ("decision", "planning"):
+                session.outputs.pop(key, None)
+            session.sessions.pop("planning", None)
+            session.snapshots.pop("planning", None)
+            return result
+        trace["chat_route"] = "trip"
+        trip, sid = self._module(session, "trip"), session.sessions["trip"]
+        trip.apply(sid, "turn", payload, capture)
+        if "care" in trip.read(sid, "readback", {}).get("missing", ()):
+            current = decision.load(session.sessions["decision"])
+            return {"id": current["id"], "view": current["view"]}
+        output = SearchInput.model_validate(self._bound_output(session, trip.read(sid, "search_input", {}))).model_dump(mode="json")
+        hidden = self._module(session, "trip").snapshot(sid).get("state", {}).get("meta", {}).get("hidden_ids", [])
+        snapshot = session.snapshots.get("decision") or {}
+        if output == session.outputs.get("trip") and snapshot.get("hidden_ids", []) == hidden:
+            current = decision.load(session.sessions["decision"])
+            return {"id": current["id"], "view": current["view"]}
+        session.outputs["trip"] = output
+        out = decision.rebase(session.sessions["decision"], self._decision_input(session))
+        capture("view", {"view": out["view"], "diff": out["diff"]})
+        for key in ("decision", "planning"):
+            session.outputs.pop(key, None)
+        session.sessions.pop("planning", None)
+        session.snapshots.pop("planning", None)
+        return {"id": out["id"], "view": out["view"]}
+
+    def _chat_on_plan(self, session: Journey, payload: dict, capture, trace: dict) -> dict:
+        """The same chat on Lịch trình: typed text goes to the schedule's assistant (planning.turn, reading places through the
+        Trip session) unless it is discovery or the city's pulse (decision.heuristics.plan_route); that, and every card answer,
+        like or photo, is a Trip turn that answers without touching the schedule. A changed schedule drops the confirmed output."""
+        planning = self._module(session, "planning")
+        text = payload.get("text", "") if payload.get("kind") == "text" else ""
+        if text and self._module(session, "decision").read(session.sessions["decision"], "route", {"text": text, "on": "plan"}).get("route") == "planning":
+            trace["chat_route"] = "planning"
+            result = planning.apply(session.sessions["planning"], "turn", {"text": text, "trip_session": session.sessions["trip"]}, capture)
+            session.outputs.pop("planning", None)
+            return result
+        trace["chat_route"] = "trip"
+        self._module(session, "trip").apply(session.sessions["trip"], "turn", payload, capture)
+        return planning.load(session.sessions["planning"])
 
     def _refine(self, session: Journey, text: str, events: list[dict], capture) -> dict | None:
         """A wish typed at Chọn nơi: Trip Understanding reads it, then Decision is rebuilt on the new Search Input.

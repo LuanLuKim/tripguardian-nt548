@@ -18,3 +18,7 @@ cases:
   - {id: tags-not-near, family: tags, turns: ["Cà phê dưới 50k gần chợ Đà Lạt"], tool_groups: [places], tools_lack: [browse_tags], block: "!tags", cards: true}
   - {id: tags-not-named, family: tags, turns: ["Quán Túi Mơ To mở cửa mấy giờ?"], tools_lack: [browse_tags], block: "!tags"}
   - {id: tags-not-more, family: tags, turns: ["Gợi ý quán cà phê view đồi thông", "Thêm nữa đi"], tool_groups: [places], tools_lack: [browse_tags], block: "!tags", cards: true}
+  # ---- (d) too short, vague or off-topic to read a wish: never a dead end, the assistant opens directions itself (2026-11-16)
+  - {id: tags-deadend-what, family: tags, turns: ["gì"], tools: [browse_tags], block: tags, cards: false}
+  - {id: tags-deadend-noise, family: tags, turns: ["gâu gâu gâu"], tools: [browse_tags], block: tags, cards: false}
+  - {id: tags-deadend-after-taste, family: tags, turns: ["Tui thích săn mây á", "hmm"], tools: [browse_tags], block: tags}

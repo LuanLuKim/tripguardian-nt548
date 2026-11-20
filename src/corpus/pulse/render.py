@@ -1,10 +1,11 @@
 """Item -> the bulletin's words (docs/CORPUS.md §Nhịp). Fixed sentence templates over an item's fields; no model writes
 a bulletin. Dates are absolute (dd/mm): the bulletin is a snapshot, so "3 ngày trước" would go stale in the page."""
 
+import re
 from datetime import date
 
 SECTIONS = (("trend", "Xu hướng"), ("hot", "Đang hot"), ("top", "Nhiều nguồn cùng nhắc"), ("event", "Sự kiện sắp tới"),
-            ("season", "Mùa đang diễn ra"), ("new", "Mới xuất hiện"), ("closed", "Đã đóng cửa"))
+            ("season", "Mùa đang diễn ra"), ("new", "Mới xuất hiện"))
 TITLES = dict(SECTIONS)
 SOURCE_WORDS = {"tiktok": "video TikTok mới", "reviews": "đánh giá Maps mới", "rating_up": "điểm Maps đang tăng", "web": "trang web nhắc"}
 
@@ -14,16 +15,27 @@ def dm(iso: str) -> str:
     return f"{int(iso[8:10]):02d}/{int(iso[5:7]):02d}"
 
 
+MARKDOWN = re.compile(r"\*\*|__|`|^\s*(?:[-*+•]|#{1,6}|\d+[.)])\s+|\[([^\]]*)\]\([^)]*\)", re.M)
+
+
+def plain_quote(quote: str) -> str:
+    """A page's passage as plain words: the markup a page's text carries (a bullet, **bold**, a heading mark, a link) is not
+    part of a sentence, and the page shows the summary as text."""
+    return " ".join(MARKDOWN.sub(lambda m: m.group(1) or "", quote).split())
+
+
 def months(ms: list[int]) -> str:
-    """"tháng 11", "tháng 8–12", a run across the new year from its first month ("tháng 10–1"), else the list."""
+    """"tháng 11", "tháng 3–5", "tháng 1–3, 11–12": the months as runs of consecutive months, the smaller month always first
+    (a season over the new year reads as its two runs, never "11–3", which a glance takes for "3 to 11")."""
     ms = sorted(set(ms))
-    if len(ms) == 1:
-        return f"tháng {ms[0]}"
-    for k in range(len(ms)):        # the run that starts at ms[k] and wraps December -> January
-        run = ms[k:] + ms[:k]
-        if all(b == a % 12 + 1 for a, b in zip(run, run[1:])):
-            return f"tháng {run[0]}–{run[-1]}"
-    return "tháng " + ", ".join(map(str, ms))
+    runs: list[list[int]] = []
+    for m in ms:
+        if runs and m == runs[-1][-1] + 1:
+            runs[-1].append(m)
+        else:
+            runs.append([m])
+    text = ", ".join(str(r[0]) if len(r) == 1 else f"{r[0]}–{r[-1]}" for r in runs)
+    return f"tháng {text}"
 
 
 # One short phrase for the signal that lifted a place most (compute.trending `lead`); the numbers never reach the page.
@@ -70,12 +82,14 @@ def _event(i: dict) -> str:
     if s["source"] == "calendar":
         return f"Ngày {dm(d['on'])}"
     tag = "" if s["status"] in ("kept", "confirmed") else " (tham khảo)"
-    return f"Diễn ra {months(s['months'])}{tag} · {s['sources']} nguồn"
+    return f"Diễn ra {months(s['months'])}{tag} · {s['sources']} nguồn" + (" · đang hot" if s.get("hot") else "")
 
 
 def _season(i: dict) -> str:
     s = i["signals"]
     text = f"Đang vào mùa {i['subject']['name']} ({months(s['months'])})"
+    if s.get("hot"):
+        text += f" · đang hot: {hot_note(i)}"
     if s.get("latest_video"):
         text += f" · video mới nhất nhắc tới {i['subject']['name']}: {dm(s['latest_video']['date'])}"
     if s["status"] not in ("kept", "confirmed"):
@@ -83,16 +97,23 @@ def _season(i: dict) -> str:
     return text
 
 
+def hot_note(i: dict) -> str | None:
+    """Why an item is "đang hot", in the words of its own numbers; None when it is not. A season and a place: clips by
+    different authors in the window; an event: independent sites that report it."""
+    h, s = i["signals"].get("hot"), i["signals"]
+    if not h:
+        return None
+    if i["kind"] == "season":
+        return f"{h['videos']} clip TikTok của {h['authors']} người trong {h['window_days']} ngày"
+    if i["kind"] == "event":
+        return f"{h['sources']} trang cùng đưa tin"
+    return f"{s['tiktok_authors']} người đăng clip TikTok trong {s['window_days']} ngày"
+
+
 def _new(i: dict) -> str:
     s = i["signals"]
     when = f"ngày {dm(s['first_review'])}" if s["exact"] else f"khoảng tháng {int(s['first_review'][5:7])}/{s['first_review'][:4]}"
     return f"Đánh giá đầu tiên trên Maps {when} · {s['reviews']} đánh giá"
-
-
-def _closed(i: dict) -> str:
-    s = i["signals"]
-    base = f"Google Maps ghi đóng cửa vĩnh viễn (tra ngày {dm(i['dates']['checked'])})"
-    return base + (" · mới thấy từ lần cập nhật này" if s.get("new_since_last") else "")
 
 
 def _short(i: dict) -> dict:
@@ -132,12 +153,10 @@ def _short(i: dict) -> dict:
         out.update(signal=f"Đang vào mùa · {months(s['months'])}", reference=s["status"] not in ("kept", "confirmed"))
     elif kind == "new":
         out.update(signal="Mới có đánh giá đầu tiên", newest=s["first_review"])
-    elif kind == "closed":
-        out.update(signal="Đóng cửa vĩnh viễn")
     return out
 
 
-TEMPLATES = {"trend": _trend, "hot": _hot, "top": _top, "event": _event, "season": _season, "new": _new, "closed": _closed}
+TEMPLATES = {"trend": _trend, "hot": _hot, "top": _top, "event": _event, "season": _season, "new": _new}
 
 
 def item(i: dict) -> dict:
@@ -148,7 +167,11 @@ def item(i: dict) -> dict:
                  "maps_rating_trend": "Xu hướng điểm Maps", "web_documents": "Trang web", "maps_status": "Google Maps",
                  "calendar": "Lịch ngày lễ"}.get(e["type"], e["type"])
         sources.append({k: v for k, v in {"type": e["type"], "label": label, "url": e.get("url"), "date": e.get("date") or e.get("to")}.items() if v})
-    extra = {k: i["signals"][k] for k in ("summary", "image", "image_from", "see") if i["kind"] in ("event", "season")
+    extra = {k: i["signals"][k] for k in ("summary", "image", "image_from", "see", "parts") if i["kind"] in ("event", "season")
              and i["signals"].get(k)}
+    if extra.get("summary"):
+        extra["summary"] = plain_quote(extra["summary"])    # a snapshot written before the summary was cleaned still reads as text
+    if note := hot_note(i):
+        extra |= {"hot": True, "hot_note": note}     # the page's "Đang hot" badge; the note is its tooltip
     return {"id": i["id"], "kind": i["kind"], "title": i["subject"]["name"], "text": TEMPLATES[i["kind"]](i), **_short(i), **extra,
-            "place_id": i["subject"]["id"] if i["subject"]["type"] == "place" and i["kind"] != "closed" else None, "sources": sources}
+            "place_id": i["subject"]["id"] if i["subject"]["type"] == "place" else None, "sources": sources}

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { dayLabel, fmtMin, info, toMin } from '../../lib'
 import type { CrowdTip, DayConditions, Ghost, ItineraryDay, ItineraryItem } from '../../planning/types'
+import type { Rides } from '../../rides'
 import { PlacePhoto } from '../../ui/common'
 import { Icon } from '../../ui/icons'
 import { GhostSlot } from './GhostSlot'
 import { Conditions, VisitDuration } from './parts'
 import { useSlide, useStopDrag } from './reorder'
+import { RideBar, RideGhost } from './Rides'
 import { BLOCK, BLOCK_NOTE, MEAL_LABEL, dayAreas, shortDate, visits } from './shared'
 import { MapsLink, TripMap } from './TripMap'
 import type { MapDayRoute } from './useRoutes'
@@ -43,11 +45,11 @@ function Block({ it }: { it: ItineraryItem }) {
 
 const MODE_ICON: Record<string, 'walk' | 'bike' | 'car'> = { walk: 'walk', motorbike: 'bike', car: 'car' }
 
-export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange, durationOverrides, cond, tips, vehicle, extras, footer, summary, route, ghosts, onAddGhost, side,
+export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange, durationOverrides, cond, tips, vehicle, extras, footer, summary, route, ghosts, onAddGhost, side, rides,
   onBack, onOpen, onSwap, onDrop, onMoveDay, onReorder, onDuration }: {
   days: ItineraryDay[]; dayIdx: number; week: number; onDay: (i: number) => void; busy: boolean; locked: string[]
   durationRange?: [number, number]; durationOverrides: Record<string, number>; cond: DayConditions | undefined; tips: CrowdTip[]
-  vehicle: string; extras: ReactNode; footer: ReactNode; summary: string
+  vehicle: string; extras: ReactNode; footer: ReactNode; summary: string; rides?: Rides | null
   route: MapDayRoute | null // this day's road from planning/routes; null while it loads or when the day has none
   ghosts: Ghost[]; onAddGhost: (place: string | null) => void // the "+" after a slot's cards: the list of places, that slot's first
   side?: ReactNode // the place list (Find), shown over the map so the day stays in sight
@@ -166,6 +168,7 @@ export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange
               <div><dt>Ở lại</dt><dd>{fmtMin(totalStay)}</dd></div>
               {vehicle && <div><dt>Đi bằng</dt><dd>{vehicle}</dd></div>}
             </dl>}
+            {d && rides && <RideBar rides={rides} day={d.day} />}
             <Conditions c={cond} tips={tips} max={2} />
             {waiting && <p className="tg-it-warn" role="status"><Icon name="clock" size={14} />Đã đổi thứ tự · đang tính lại giờ và chặng đi…</p>}
             <ol className="tg-it-list" ref={listRef} onPointerDown={drag.onPointerDown} onDragStart={(e) => e.preventDefault()}>
@@ -185,6 +188,7 @@ export function DayView({ days, dayIdx, week, onDay, busy, locked, durationRange
                     {s.pre.map((b, k) => <Block key={k} it={b} />)}
                     {!stale && slotsAt.at.get(id)?.map((g) => <GhostSlot key={`${g.kind}${g.start}`} slot={g} day={d.day} busy={busy} onAdd={onAddGhost} onOpen={onOpen} />)}
                     {(s.leg > 0 || s.buffer > 0) && <p className="tg-it-leg"><Icon name={MODE_ICON[s.mode ?? ''] ?? 'bike'} size={14} /><span>{s.leg > 0 && <>≈ {s.leg} phút{vehicle ? ` ${vehicle}` : ''} · ước tính</>}{s.buffer > 0 && <small>{s.leg > 0 ? ' · ' : ''}+{s.buffer} phút đệm</small>}</span></p>}
+                    {!stale && rides?.ready && (() => { const leg = rides.legFor(d.day, id); return leg ? <RideGhost rides={rides} leg={leg} /> : null })()}
                     <article className="tg-it-card" aria-current={picked === id ? 'true' : undefined}>
                       <span className="tg-it-dot" aria-hidden="true">{i + 1}</span>
                       <div className="tg-it-card__top">

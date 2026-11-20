@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 import openai
 
 from .policy import CHAT_POLICY
-from .roles import AGENT, EXTRACTOR, JUDGE, JUDGE_FIRST, JUDGE_STRONG, NAVIGATOR, USER_SIM, WRITER, Role
+from .roles import AGENT, EXTRACTOR, JUDGE, JUDGE_FIRST, JUDGE_STRONG, NAVIGATOR, TRENDS, USER_SIM, WRITER, Role
 
 ATTEMPTS = 4  # per call: a broken JSON answer or a busy / unreachable server is tried again
 RETRY_S = 2.0  # first wait after HTTP 429 or a connection error; doubles each time
@@ -839,6 +839,36 @@ USER MESSAGE:
 )
 
 
+PLANNING_SUMMARY = Task(
+    name="planning_summary",
+    role=AGENT,
+    max_tokens=400,
+    temperature=0.7,
+    parallel=4,
+    schema={
+        "type": "object",
+        "properties": {"title": {"type": "string"}, "text": {"type": "string"}},
+        "required": ["title", "text"],
+        "additionalProperties": False,
+    },
+    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    prompt="""You write the heading of a trip overview page for a traveller's day-by-day itinerary in Đà Lạt, Vietnam.
+PLAN lists each day with its stops in visiting order (name, area, start time). It is the only source of facts.
+
+`title` (Vietnamese): a short, vivid headline of 4-9 words that captures the mood of this particular trip (for
+example its mix of cafés, hills, markets, food). No exclamation mark, no clichés such as "hành trình khám phá",
+no place name that is not in PLAN, no number of days.
+`text` (Vietnamese): 2-3 sentences, at most 55 words, that sum up how the days flow: what each day is about and
+the rhythm of the trip. Use "bạn" for the traveller, no slang, no emoji. Use only place names and areas from PLAN.
+Do not add any place, time, price, weather, opening hour or activity that PLAN does not state.
+
+PLAN:
+{plan}
+
+Reply with this JSON object and nothing else: {{"title": "...", "text": "..."}}""",
+)
+
+
 PLANNING_OPS = ["drop", "move_day", "reorder_edge", "pick_lodging", "lodging_near", "pace", "relax", "variant",
                 "unmapped"]
 
@@ -1653,26 +1683,30 @@ Text:
 # once more against each of its quotes in their page context; a quote that does not state it is dropped from its evidence.
 # Events of the coming weeks (docs/CORPUS.md §Sự kiện sắp tới): one web page -> the events it announces with their own
 # days. Code (corpus.events.gate) keeps an event only when its quote is in the page and holds its name and its first
-# day. Low volume (a dozen pages a night), so it runs on the Judge's endpoint; thinking off, else it thinks before the JSON.
+# day. Low volume (a few dozen pages a night) and the bulletin's quality hangs on it: the TRENDS role (terra on 9router),
+# since the Gemma Judge marked a festival's own pages 'not in the city' (2026-11-18).
 EVENT_EXTRACT = Task(
     name="event_extract",
-    role=JUDGE,
-    max_tokens=3000,
+    role=TRENDS,
+    max_tokens=12000,  # the reasoning counts too
     parallel=4,
     schema={
         "type": "object",
         "properties": {"events": {"type": "array", "items": {"type": "object", "properties": {
-            "name": _STR, "start": _STR, "end": _STR, "time": _STR, "venue": _STR, "summary": _STR, "quote": _STR},
-            "required": ["name", "start", "end", "time", "venue", "summary", "quote"],
+            "name": _STR, "start": _STR, "end": _STR, "time": _STR, "venue": _STR, "summary": _STR, "quote": _STR,
+            "in_city": {"type": "boolean"}, "part_of": _STR},
+            "required": ["name", "start", "end", "time", "venue", "summary", "quote", "in_city", "part_of"],
             "additionalProperties": False}}},
         "required": ["events"],
         "additionalProperties": False,
     },
     extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     prompt="""You read one web page about {city}, Vietnam, read on {today}, and list the events it announces that a
-visitor can go to: festivals, concerts, shows, fairs, expos, sport or cultural events. Leave out talks, seminars,
-business or investor events, workshops for professionals, meetups and language exchanges. Only what the page says;
-never add what you know.
+visitor can go to for the trip itself: festivals, flower or food fairs, concerts, shows, fairs, expos, races and other
+sport or cultural events. Leave out talks, seminars, business or investor events, workshops for professionals, meetups
+and language exchanges, and ceremonies or meetings that are for officials or residents (a conference, a party
+congress, a flag-raising, a commemoration) with nothing for a tourist to see or join. Only what the page says; never
+add what you know.
 
 Page: {title} ({url})
 Text:
@@ -1680,14 +1714,62 @@ Text:
 
 For each event:
 - name: the event's own name as the page writes it ("Festival Âm nhạc quốc tế Lang Biang 2026"); never only a place,
-  a ward, a season or a month.
+  a ward, a season or a month, and not a sentence or a description of it: when the page gives a short title and a
+  longer description, the title is the name. Keep the page's words, add none. A part of a larger event (its opening
+  night, its closing night, a parade of it) is named with that event ("Đêm Khai mạc Festival Hoa Đà Lạt 2026"), never
+  only as "Đêm Khai mạc": the name must say which event it is without the page around it.
 - start, end: YYYY-MM-DD as the page states them; a day written without a year belongs to {year} unless the page says
   otherwise; end = start for a one-day event; "" when the page gives no day (a month alone is not a day).
 - time: "HH:MM" of the main show or the opening when the page states it, else "".
 - venue: where it happens, as the page writes it, else "".
 - summary: one Vietnamese sentence, at most 200 characters, of what a visitor sees or does there, from the page.
 - quote: the shortest passage copied word for word from the text that holds the event's name and its first day.
+- in_city: false when the page says it is held outside {city} (another town, district or province, even one near
+  {city}, and an event named after {city} but held elsewhere). True when the page puts it in {city} (its streets, lake,
+  squares, gardens, or a venue the page puts there), when it is a programme of a larger event the page holds in {city},
+  or when it is named after {city} ("Festival Hoa Đà Lạt") and the page names no other place.
+- part_of: when the page presents this event as one programme of a larger festival or event (its opening or closing
+  night, a flower space, a concert, a parade or a contest held as part of it), that larger event's name as the page
+  writes it; "" when the page does not say it belongs to a larger event. Never guess it from the dates alone. List the
+  larger event itself too when the page gives its days.
 Leave out an event that ended before {today}. No event: {{"events": []}}.""",
+)
+
+
+# Names of the same season (docs/CORPUS.md §Nhịp, mùa): the names this month's pages give a flower, a fruit or the clouds,
+# grouped by what they are. Code (corpus.events.seasons) keeps a group only when its names share a word and the numbers are
+# real. Judge's endpoint; thinking off.
+SEASON_GROUP = Task(
+    name="season_group",
+    role=TRENDS,
+    max_tokens=12000,  # the reasoning counts too
+    parallel=1,
+    schema={
+        "type": "object",
+        "properties": {"groups": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+                       "not_seasons": {"type": "array", "items": {"type": "integer"}}},
+        "required": ["groups", "not_seasons"],
+        "additionalProperties": False,
+    },
+    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    prompt="""Web pages about {city}, Vietnam, gave these names for things that are in season this month ({month}), each with
+the number of pages and one page's words. Sort the names; judge only by the words given, never add what you know.
+
+Names:
+{names}
+
+Answer two things:
+- groups: lists of numbers. One list = the names that are the SAME thing in season (the same flower, fruit or sight, in
+  other words: "mùa dâu", "vườn dâu" and "dâu tây" are one; a garden or field named after the thing counts). Two things
+  that only look alike stay apart ("dâu tây" and "dâu tằm", "hồng treo gió" dried on strings and "hồng chín" ripe on the
+  tree). A sight and the act of going to see it are one ("săn mây" hunting clouds and "biển mây" the sea of clouds).
+  Put the name most pages give FIRST in its list. A name with no other name for it needs no list.
+- not_seasons: numbers of the names that are NOT something to see in season: a place or venue (a waterfall, a hill, a
+  temple, a resort, a mountain), the weather or climate ("mùa khô", "sương", "thời tiết"), the city, tourism in general,
+  a crowd period ("lễ Tết", "mùa cao điểm"), a wedding season, a cooking step, a word that names nothing in particular
+  ("hoa", "lá cây", "vườn hoa"). A named flower, fruit, leaf colour or natural sight IS a season even when named alone
+  ("lá phong" maple leaves, a flower field of one flower): never put it here.
+When unsure, leave the name out of both: it stays as it is.""",
 )
 
 

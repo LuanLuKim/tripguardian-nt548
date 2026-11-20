@@ -11,7 +11,7 @@ export function rootLevel(block: TagsBlock): TagLevel {
   const tags = block.level === 'tags'
   const nodes: TagNode[] = block.subtags.map(s => ({ ref: s.id, kind: tags ? 'tag' : 'subtag', label: s.label, count: s.count, cover: s.cover[0] ?? null, has_children: true }))
   if (block.all.length) nodes.push({ ref: '*', kind: 'all', label: 'Xem tất cả', count: block.all.length, cover: block.all_cover ?? null, has_children: true })
-  const label = block.title ?? (tags ? 'Bạn muốn khám phá điều gì?' : `${block.total} nơi hợp ý bạn`)
+  const label = block.title ?? (tags ? 'Bạn muốn khám phá điều gì?' : `${block.total} nơi hợp ý bạn`) // the assistant's own short question when it wrote one
   return { sig: block.sig ?? '', ref: ROOT, label, count: block.total, wished: false, nodes }
 }
 

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as api from './api'
 import type { Action, ActPreview, Diff, PlanOutput, ProgressEvent, View } from './types'
-import type { ChatPlaces } from '../tu/types'
+import type { ChatPlaces, TurnInput } from '../tu/types'
 import { useTrip } from '../trip'
 import { mergeSuggestions, PlanningGate } from './current'
 import { explainError } from '../journeyErrors'
@@ -14,11 +14,13 @@ interface PlanningCtx {
   busy: boolean
   act: (a: Action) => Promise<boolean>
   say: (text: string, onSay: (soFar: string) => void, onPlaces?: (d: ChatPlaces) => void) => Promise<Diff | null>
+  // one turn of THE chat on this screen (planning.trip): the schedule's assistant or Trip answers; a changed schedule is shown here
+  chat: (input: TurnInput, handlers: Record<string, ((d: any) => void) | undefined>) => Promise<Diff | null> // eslint-disable-line @typescript-eslint/no-explicit-any
   previewAct: (a: Action) => Promise<ActPreview | null>
   editPreview: ActPreview | null
   dismissPreview: () => void
   confirm: () => Promise<PlanOutput | null>
-  optimize: () => Promise<void>
+  optimize: (scope?: api.OptimizeScope) => Promise<void>
   reload: () => void
 }
 
@@ -153,6 +155,22 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
     }
   }, [id, accept])
 
+  const chat = useCallback(async (input: TurnInput, handlers: Record<string, ((d: any) => void) | undefined>) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (!id) return null
+    gate.current.invalidate()
+    const ticket = gate.current.ticket()
+    pending.current++
+    setBusy(true)
+    let last: Diff | null = null
+    try {
+      const r = await api.sendChat(id, input, { ...handlers, view: (d: { diff?: Diff }) => { last = d.diff ?? null; handlers.view?.(d) } })
+      if (r.view && accept(ticket, r.revision, r.view, true)) { if (last) setDiff(last); setError(null) }
+      return last
+    } finally {
+      if (ticket.generation === gate.current.ticket().generation) { pending.current--; setBusy(pending.current > 0) }
+    }
+  }, [id, accept])
+
   const confirm = useCallback(async () => {
     if (!id) return null
     gate.current.invalidate()
@@ -192,15 +210,15 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
     }
   }, [id, view])
 
-  // Ask the Planning Agent for one better layout; the server keeps it only if it passes the checks.
-  const optimize = useCallback(async () => {
+  // "Tối ưu lịch": the server searches a better layout (no model) and keeps it only if it passes the checks.
+  const optimize = useCallback(async (scope: api.OptimizeScope = 'keep_mine') => {
     if (!id) return
     gate.current.invalidate()
     const ticket = gate.current.ticket()
     pending.current++
     setBusy(true)
     try {
-      const r = await api.runRecommend(id, view)
+      const r = await api.runRecommend(id, view, scope)
       if (r) accept(ticket, r.revision, r.view, true)
       else if (ticket.generation === gate.current.ticket().generation) setError(OFFLINE)
     } catch (e) {
@@ -211,7 +229,7 @@ export function PlanningProvider({ children }: { children: ReactNode }) {
   }, [id, view, accept])
 
   return (
-    <Ctx.Provider value={{ view, diff, lodgingProgress, error, busy, act, say, previewAct,
+    <Ctx.Provider value={{ view, diff, lodgingProgress, error, busy, act, say, chat, previewAct,
       editPreview: preview && !busy && preview.view.state === view?.state && gate.current.currentPreview(preview.ticket, view?.state)
         && id && api.acceptsRevision(id, preview.revision) ? preview.result : null,
       dismissPreview: () => { gate.current.previewTicket(); setPreview(null) },

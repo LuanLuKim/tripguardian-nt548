@@ -31,5 +31,5 @@ def test_overloaded_lodging_builder_keeps_real_candidates_and_their_prices():
     h0 = stay("h0", *SOUTH, name="Homestay thật", rating=4.6, voices=30, price=350000)
     out = build_lodging_variants(d, recs + [h0], cfg=CFG, live_cfg=FakeLive(), geocode_fn=no_geocode,
                                  matrix_fn=fake_matrix, sun_fn=fixed_sun)
-    assert {d for v in out["variants"] for d in [v["id"], *v.get("merged", [])]} == {"fit", "travel", "cost", "most"}
+    assert {d for v in out["variants"] for d in [v["id"], *v.get("merged", [])]} == {"fit", "cost", "most"}
     assert any(c["id"] == "h0" and c["price_vnd"] == 350000 for c in out["lodging"]["candidates"])

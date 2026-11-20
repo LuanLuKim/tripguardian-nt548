@@ -335,3 +335,22 @@ a.tg-cx__tag:hover { border-color: var(--tg-pine); color: var(--tg-pine); }
   .tg-tr__row { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
   .tg-tr__img { width: 92px; height: 70px; }
 }
+
+/* ---------- the assistant pondering ----------
+   While a turn runs the bunny tilts its head and a thought cloud floats beside it, two small bubbles trailing down to its head;
+   the cloud holds the step it is on and three dots that bob. Once the turn ends the cloud folds back to one quiet grey line. */
+.tg-cx__think.is-run { position: relative; justify-self: start; margin-left: 6px; animation: tg-think-float 3.2s ease-in-out infinite; }
+.tg-cx__think.is-run > .tg-cx__think-h { position: relative; height: 38px; padding: 0 16px 0 18px; gap: 8px; border: 1px solid #e6e1db; border-radius: 22px; background: #fff;
+  box-shadow: 0 10px 26px -18px rgba(15, 59, 40, 0.45), 0 1px 0 rgba(255, 255, 255, 0.8) inset; }
+.tg-cx__think.is-run > .tg-cx__think-h::before, .tg-cx__think.is-run > .tg-cx__think-h::after { content: ''; position: absolute; border: 1px solid #e6e1db; border-radius: 50%; background: #fff; }
+.tg-cx__think.is-run > .tg-cx__think-h::before { left: -11px; top: 22px; width: 9px; height: 9px; }
+.tg-cx__think.is-run > .tg-cx__think-h::after { left: -19px; top: 30px; width: 5px; height: 5px; }
+.tg-cx__think.is-run .tg-dots { margin: 0; color: var(--tg-ink-3); }
+.tg-cx__think.is-run .tg-dots i { width: 5px; height: 5px; opacity: 0.45; }
+.tg-cx__think.is-run.is-bare > .tg-cx__think-h { padding: 0 18px; }
+.tg-cx__think.is-run.is-bare .tg-dots i { width: 6px; height: 6px; }
+@keyframes tg-think-float { 50% { transform: translateY(-3px); } }
+.tg-cx__m.is-bot > .tg-bot.is-live { animation: tg-bot-ponder 2.6s ease-in-out infinite; transform-origin: 50% 90%; }
+@keyframes tg-bot-ponder { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-7deg) translateY(-1px); } 70% { transform: rotate(5deg); } }
+@media (prefers-reduced-motion: reduce) { .tg-cx__think.is-run, .tg-cx__m.is-bot > .tg-bot.is-live { animation: none; } }
+.tg-cx__think.is-run.is-open { animation: none; } /* the list of steps stays still while it is read */

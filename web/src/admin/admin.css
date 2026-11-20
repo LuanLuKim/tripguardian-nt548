@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Mona+Sans:wdth,wght@75..125,300..900&family=JetBrains+Mono:wght@400..700&display=swap');
-
 /* ==========================================================================
    Admin Web — "control room". Desktop only, dense, keyboard first.
    One family (Mona Sans) whose width carries hierarchy; mono for data.
@@ -2864,5 +2862,119 @@ th[aria-sort='descending'] .u-sort {
 @media (max-width: 1400px) {
   .t-rising ol {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Sign-in (Login.tsx) */
+.a-login {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* .admin has a sidebar column; the sign-in page has none */
+  place-items: center;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.a-login__card {
+  display: grid;
+  gap: 14px;
+  width: min(380px, calc(100vw - 32px));
+  padding: 28px;
+}
+
+.a-login__card h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.a-login__card label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+.a-login__card input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.a-login__error {
+  color: var(--bad);
+  font-size: 0.85rem;
+}
+
+/* Review queue card on the overview (Dashboard.tsx) */
+.dq {
+  margin-bottom: 16px;
+}
+
+.dq__list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.dq__list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 150px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+
+.dq__list li:last-child {
+  border-bottom: 0;
+}
+
+.dq__main {
+  display: grid;
+  min-width: 0;
+}
+
+.dq__main b,
+.dq__main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dq__main small,
+.dq__kind {
+  color: var(--ink-3);
+  font-size: 0.78rem;
+}
+
+/* Placeholders while the overview loads: the page keeps its shape, so nothing jumps when the numbers arrive. */
+.a-skel {
+  display: block;
+  border-radius: 14px;
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--line) 50%, var(--surface-2) 100%) 0 0 / 200% 100%;
+  animation: a-skel 1.4s linear infinite;
+}
+
+.a-skel--todo {
+  min-height: 220px;
+}
+
+.a-skel--tile {
+  min-height: 92px;
+}
+
+@keyframes a-skel {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .a-skel {
+    animation: none;
   }
 }

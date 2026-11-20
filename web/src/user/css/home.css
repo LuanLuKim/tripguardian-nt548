@@ -23,9 +23,10 @@
 
 /* sidebar: a slim rail of icons; each button names itself in a tooltip on hover / focus, the page you are on is a dark square */
 .tg-hf__side { position: relative; z-index: 20; align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 0; }
-.tg-hf__logo { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; }
+/* margin-top drops the logo so its centre sits level with the centre of the home search bar (26px padding + 22px half of 44px + 1px border) */
+.tg-hf__logo { display: flex; align-items: center; justify-content: center; width: 100%; height: 60px; margin-top: 19px; }
 /* the three blocks and sign-out: each a white card of its own */
-.tg-hf__blk, .tg-hf__foot { flex: none; display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px 0; border-radius: 26px; background: var(--tg-surface); border: 1px solid var(--tg-line); box-shadow: var(--tg-sh-1); }
+.tg-hf__blk, .tg-hf__foot { flex: none; display: flex; align-items: center; gap: 20px; width: 100%; padding: 16px 0; border-radius: 26px; background: var(--tg-surface); border: 1px solid var(--tg-line); box-shadow: var(--tg-sh-1); }
 .tg-hf__blk { flex-direction: column; }
 /* the two middle cards sit centred between the logo and the foot, so the empty space is shared above and below */
 .tg-hf__mids { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; justify-content: center; gap: 14px; }
@@ -58,8 +59,6 @@
 /* "Tạo chuyến đi": fixed to the bottom right of the screen, on the same line as the sign-out button (above the trip-in-progress bar when there is one) */
 .tg-hf__new { position: fixed; z-index: 30; display: flex; align-items: center; justify-content: center; right: calc(18px + (var(--hf-rail) - 292px) / 2); bottom: 19px; grid-auto-flow: column; gap: 12px; width: 292px; height: 60px; padding: 0 24px; border-radius: 30px; background: var(--tg-brown); color: #fff; font-size: 1.122rem; font-weight: 600; white-space: nowrap; box-shadow: 0 16px 30px -12px rgba(0, 0, 0, 0.65); }
 /* the trip-in-progress bar floats over the page; nothing moves for it, but the page keeps room at its end */
-.tg-hf__app.has-bar .tg-hm__center { padding-bottom: 100px; }
-.tg-hf__app.has-bar .tg-hf__main .tg-page { padding-bottom: 100px; }
 .tg-hf__new:hover { background: #1c1915; }
 
 /* page panel */
@@ -144,6 +143,8 @@
    after the layout of the travel dashboard in docs/design/mock. */
 .tg-hf__main:has(> .tg-hm) { padding: 0; overflow: hidden; display: flex; }
 .tg-hm { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.tg-hf__app.has-bar .tg-hm__center { padding-bottom: 100px; }
+.tg-hf__app.has-bar .tg-hf__main .tg-page { padding-bottom: 100px; }
 .tg-hm__center { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--tg-line-2) transparent; padding: 26px 30px 24px; }
 .tg-hm__rail { display: flex; min-height: 0; overflow-y: auto; scrollbar-width: none; flex-direction: column; gap: 22px; padding: 22px 24px 96px; background: linear-gradient(180deg, #f1f1f1, #f7f7f7 60%, #fbfbfb); border-left: 1px solid var(--tg-line); }
 .tg-hm__bar { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
@@ -195,7 +196,10 @@
 /* right column */
 .tg-hm__rail .tg-hf__who { margin: 0; }
 .tg-hm__rail .tg-hf__name strong { font-size: 1.078rem; }
-.tg-cal header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+/* The rail already pads the section, so the card's own side padding goes; the day grid then bleeds 10px past the header on each side so the seven columns (36px each) breathe. */
+.tg-hm__rail .tg-cal { padding-inline: 0; }
+.tg-hm__rail .tg-cal__grid { margin-inline: -10px; }
+.tg-cal header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .tg-cal h3 { margin: 0; font: 600 1.155rem var(--tg-sans); letter-spacing: -0.01em; }
 .tg-cal header span { display: inline-flex; gap: 6px; }
 .tg-cal header button { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--tg-surface); border: 1px solid var(--tg-line); color: var(--tg-ink-2); transition: background 160ms, transform 160ms; }
@@ -204,8 +208,10 @@
 .tg-cal header .is-next { background: var(--tg-brown); border-color: var(--tg-brown); color: #fff; }
 .tg-cal header .is-next:hover { background: #1c1915; }
 .tg-cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 4px; text-align: center; }
-.tg-cal__grid b { padding-bottom: 6px; font-size: 0.792rem; font-weight: 600; color: var(--tg-ink-3); }
-.tg-cal__grid span { display: grid; place-items: center; height: 32px; margin: 0 auto; width: 100%; font-size: 0.88rem; color: var(--tg-ink-2); border-radius: 50%; }
+.tg-cal__grid b { padding-bottom: 8px; font-size: 0.792rem; font-weight: 600; color: var(--tg-ink-3); }
+/* A plain day is a 36px circle centred in its column, so neighbours keep a few px of air; a trip range (is-go / is-mid / is-edge) fills the whole column and stays one joined band. */
+.tg-cal__grid span { display: grid; place-items: center; height: 36px; margin: 0 auto; width: min(36px, 100%); font-size: 0.9rem; color: var(--tg-ink-2); border-radius: 50%; }
+.tg-cal__grid .is-mid, .tg-cal__grid .is-edge, .tg-cal__grid .is-go { width: 100%; }
 .tg-cal__grid .is-today { box-shadow: inset 0 0 0 1.5px var(--tg-line-2); font-weight: 600; color: var(--tg-ink); }
 .tg-cal__grid .is-mid { background: var(--tg-sun-soft); border-radius: 0; color: var(--tg-ink); }
 .tg-cal__grid .is-edge { background: var(--tg-brown); color: #fff; font-weight: 600; box-shadow: none; }
@@ -413,16 +419,95 @@
 .tg-hf__main .tg-page { padding-bottom: 84px; }
 @media (max-height: 780px) {
   .tg-hf__item { width: 48px; height: 48px; }
-  .tg-hf__blk { gap: 8px; padding: 10px 0; }
+  .tg-hf__blk { gap: 10px; padding: 10px 0; }
   .tg-hf__mids { gap: 10px; }
 }
 
-/* saved: the same photo card as recent, with the actions on the card */
-.tg-rc-wrap { position: relative; }
-.tg-rc__act { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; gap: 6px; opacity: 0; transform: translateY(4px); transition: opacity 200ms, transform 200ms var(--tg-ease); }
-.tg-rc-wrap:hover .tg-rc__act, .tg-rc-wrap:focus-within .tg-rc__act { opacity: 1; transform: none; }
-.tg-rc__btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.94); color: var(--tg-ink); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25); }
-.tg-rc__btn:hover:not(:disabled) { background: #fff; transform: scale(1.06); }
-.tg-rc__btn:disabled { opacity: 0.7; cursor: default; }
-@media (hover: none) { .tg-rc__act { opacity: 1; transform: none; } }
-.tg-rc-wrap .tg-rc__b { padding-right: 84px; }
+/* calendar: a locked trip still ahead is dark on its days (a band for a few days); the pointer on one opens a small card of the trip */
+.tg-cal__grid .is-go { position: relative; background: var(--tg-night); color: #fff; font-weight: 600; border-radius: 0; cursor: pointer; transition: background 160ms, transform 160ms; }
+.tg-cal__grid .is-go-start { border-radius: 999px 0 0 999px; }
+.tg-cal__grid .is-go-end { border-radius: 0 999px 999px 0; }
+.tg-cal__grid .is-go-start.is-go-end { border-radius: 999px; }
+.tg-cal__grid .is-go:hover, .tg-cal__grid .is-go:focus-visible { background: #000; }
+.tg-cal__grid .is-go.is-today { box-shadow: inset 0 0 0 2px #fff, 0 0 0 1.5px var(--tg-night); }
+.tg-cal__grid .is-go:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+/* Holiday and forecast on the days. A public holiday is the one amber thing on the grid: a small star on the cell's corner and its number in amber ink.
+   Weather is not drawn on the cells at all; the day's card says it. */
+.tg-cal__grid .is-holiday { position: relative; }
+.tg-cal__grid [tabindex] { cursor: pointer; }
+.tg-cal__grid [tabindex]:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg-cal__grid .is-holiday:not(.is-go):not(.is-edge) { color: #8a5a06; font-weight: 650; background: #fdf3dc; }
+.tg-cal__grid .is-holiday.is-today:not(.is-go):not(.is-edge) { box-shadow: inset 0 0 0 1.5px #e9a21b; }
+.tg-cal__star { position: absolute; top: -4px; left: -3px; display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #f0d9a4; color: #c9830c; }
+.tg-cal__star svg { fill: #e9a21b; stroke: #c9830c; stroke-width: 1.4; }
+/* Weather lives in a card that opens on the day (hover, focus or tap), not on the grid: the cells carry only the number and the holiday star. */
+.tg-cal__grid .has-day { cursor: pointer; }
+.tg-cal__grid .has-day:not(.is-go):not(.is-edge):hover { background: var(--tg-pine-soft); }
+.tg-cal__wxc { --bg: #e5625c; position: relative; isolation: isolate; overflow: hidden; display: grid; gap: 6px; padding: 12px 14px 10px; border-radius: 12px; color: #fff; background: var(--bg); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.16); }
+.tg-cal__wxc[data-sky='cloud'] { --bg: #4a8fd0; }
+.tg-cal__wxc[data-sky='rain'] { --bg: #476585; }
+.tg-cal__wxc[data-sky='storm'] { --bg: #1f2a58; }
+.tg-cal__wxc[data-sky='none'] { --bg: #6b7280; }
+.tg-cal__wxc-art { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; }
+.tg-cal__wxc-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.tg-cal__wxc-l { display: grid; gap: 2px; }
+.tg-cal__wxc-k { display: inline-flex; align-items: center; gap: 5px; font: 500 0.8rem/1.2 var(--tg-sans); }
+.tg-cal__wxc-t { margin: 0; font: 400 2.6rem/1 var(--tg-sans); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.tg-cal__wxc-t sup { font-size: 0.5em; vertical-align: top; position: relative; top: 0.1em; margin-left: 2px; font-weight: 300; }
+.tg-cal__wxc-w { display: grid; gap: 1px; margin: 0 4px 3px 0; font-size: 0.72rem; line-height: 1.3; font-weight: 500; }
+.tg-cal__wxc-w b { font: 600 0.82rem/1.25 var(--tg-sans); }
+.tg-cal__wxc-h { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 0.74rem; font-weight: 600; }
+.tg-cal__wxc-h i { display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: rgba(255, 255, 255, 0.92); text-shadow: none; }
+.tg-cal__wxc-h svg { fill: #e9a21b; stroke: #c9830c; }
+.tg-cal__wxc-s { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 14px; margin: 0; padding-top: 7px; border-top: 1px solid rgba(255, 255, 255, 0.28); }
+.tg-cal__wxc-s div { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.tg-cal__wxc-n { margin: 0; font-size: 0.68rem; line-height: 1.3; opacity: 0.9; }
+.tg-cal__wxc-s dt { white-space: nowrap; font-size: 0.68rem; line-height: 1.3; opacity: 0.88; }
+.tg-cal__wxc-s dd { margin: 0; font: 600 0.74rem/1.3 var(--tg-sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tg-cal__card:has(.tg-cal__wxc):not(:has(.tg-cal__tip)) { width: 262px; padding: 0; border: 0; border-radius: 16px; overflow: hidden; }
+.tg-cal__card:has(.tg-cal__wxc):not(:has(.tg-cal__tip)) .tg-cal__wxc { border-radius: 0; }
+.tg-cal__wxc + .tg-cal__tip { margin-top: 8px; }
+.tg-cal__wxc + .tg-cal__tip .tg-cal__cover { margin-top: 0; }
+.tg-cal__card { z-index: 90; width: 300px; padding: 8px; border: 1px solid var(--tg-line); border-radius: 20px; background: var(--tg-surface); box-shadow: 0 22px 44px -18px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.06); animation: tg-pop 160ms var(--tg-ease); }
+.tg-cal__tip { display: grid; gap: 3px; width: 100%; padding: 0; text-align: left; color: var(--tg-ink); }
+.tg-cal__cover { position: relative; display: block; height: 132px; overflow: hidden; border-radius: 13px; background: var(--tg-line); margin-bottom: 8px; }
+.tg-cal__cover .tg-photo { width: 100%; height: 100%; }
+.tg-cal__cover b { position: absolute; left: 8px; top: 8px; padding: 4px 10px; border-radius: 999px; background: var(--tg-night); color: #fff; font: 600 0.74rem/1.2 var(--tg-sans); }
+.tg-cal__tip strong { padding: 0 6px; font: 650 1.08rem/1.3 var(--tg-sans); }
+.tg-cal__tip small { padding: 0 6px; font-size: 0.84rem; color: var(--tg-ink-3); }
+.tg-cal__tip ul { display: grid; gap: 4px; margin: 8px 0 0; padding: 10px 6px 0; border-top: 1px solid var(--tg-line); list-style: none; }
+.tg-cal__tip li { display: flex; justify-content: space-between; gap: 12px; font-size: 0.88rem; line-height: 1.35; }
+.tg-cal__tip li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-cal__tip li em { flex: none; font-style: normal; color: var(--tg-ink-3); }
+.tg-cal__tip li.is-more { color: var(--tg-ink-3); }
+.tg-cal__tip i { display: inline-flex; align-items: center; gap: 5px; margin: 8px 6px 4px; font: 600 0.8rem/1 var(--tg-sans); font-style: normal; }
+.tg-cal__tip:hover i svg { transform: translateX(3px); }
+.tg-cal__tip i svg { transition: transform 180ms var(--tg-ease); }
+
+/* "Khám phá nơi muốn đến": kinds of trip to tap instead of typing (home/dialogs.tsx TagPicker) */
+.tg-tags-pick { width: min(620px, calc(100vw - 32px)); }
+.tg-tags-pick__body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; overscroll-behavior: contain; }
+.tg-tags-pick__lead { margin: 14px 20px 4px; color: var(--tg-ink-2); font-size: 0.92rem; line-height: 1.5; }
+.tg-tags-pick__grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 12px 20px 4px; padding: 0; list-style: none; }
+.tg-tags-pick__grid button { position: relative; display: block; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; border: 0; border-radius: 16px; background: var(--tg-line); box-shadow: var(--tg-sh-1); transition: transform 200ms var(--tg-ease), box-shadow 200ms; }
+.tg-tags-pick__grid button:hover { transform: translateY(-3px); box-shadow: var(--tg-sh-2); }
+.tg-tags-pick__grid img { width: 100%; height: 100%; object-fit: cover; }
+.tg-tags-pick__grid span { position: absolute; inset: auto 0 0; padding: 22px 8px 9px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.62)); color: #fff; font: 600 0.84rem/1.2 var(--tg-sans); text-align: left; }
+.tg-tags-pick__grid button[aria-pressed='true'] { box-shadow: 0 0 0 3px var(--tg-brand), var(--tg-sh-2); }
+.tg-tags-pick__grid i { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--tg-brand); color: #fff; }
+.tg-tags-pick__k { margin: 18px 20px 8px; color: var(--tg-ink-2); font: 600 0.78rem/1 var(--tg-mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.tg-tags-pick__who { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 20px; }
+.tg-tags-pick__who .tg-chip { min-height: 34px; padding: 0 13px; font-size: 0.86rem; }
+.tg-tags-pick__who .tg-chip[aria-pressed='true'] { border-color: var(--tg-brand); background: color-mix(in srgb, var(--tg-brand) 12%, #fff); color: var(--tg-ink); }
+.tg-tags-pick__go { display: flex; flex: none; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--tg-line); }
+.tg-tags-pick__go .tg-btn--primary { gap: 8px; }
+@media (max-width: 640px) { .tg-tags-pick__grid { grid-template-columns: repeat(3, 1fr); } }
+
+/* "Khám phá nơi muốn đến" beside the search box: the home's one call to start (the corner belongs to the chat, as on Lựa chọn) */
+.tg-hm__bar { display: flex; align-items: center; gap: 12px; }
+.tg-hm__go { flex: none; display: inline-flex; align-items: center; gap: 9px; height: 44px; padding: 0 20px 0 16px; border: 0; border-radius: 22px; background: var(--tg-brown); color: #fff; font: 600 0.95rem/1 var(--tg-sans); white-space: nowrap; box-shadow: 0 10px 22px -12px rgba(0, 0, 0, 0.55); transition: transform 200ms var(--tg-ease), box-shadow 200ms; }
+.tg-hm__go:hover { transform: translateY(-1px); box-shadow: 0 14px 26px -12px rgba(0, 0, 0, 0.6); }
+.tg-hm__go:active { transform: scale(0.97); }
+.tg-hm__go svg { transition: transform 300ms var(--tg-ease); }
+.tg-hm__go:hover svg { transform: rotate(-20deg); }
+.tg-hm__go:focus-visible { outline: 2px solid var(--tg-brown); outline-offset: 3px; }

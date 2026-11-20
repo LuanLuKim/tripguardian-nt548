@@ -22,10 +22,8 @@ OUT = base.OUT
 POSES = {
     'walk_a': 'walking to the right in a side three-quarter view, facing right, left foot stepping forward, small arms swinging, cheerful.',
     'walk_b': 'walking to the right in a side three-quarter view, facing right, right foot stepping forward, small arms swinging the other way, cheerful.',
-    'point': 'standing and facing slightly right, one paw stretched out to the right pointing at something, friendly smile, eyes looking where it points.',
     'point_up': 'one paw raised and pointing diagonally up to the upper right, head tilted up, eyes looking up, friendly smile.',
     'wink': 'winking one eye with a cheeky little smile, one paw raised in a small thumbs up.',
-    'love': 'holding a small pink heart in both paws, eyes closed in a warm smile, two tiny hearts floating near it.',
     'cheer': 'celebrating, jumping with both paws up, holding a small party popper, a few colorful confetti pieces around it, big open smile.',
     'bow': 'bowing politely forward with both paws together in front, eyes closed in a gentle thankful smile.',
 }
@@ -38,7 +36,7 @@ def one(job):
     base.MODEL = model
     for attempt in (1, 2):
         try:
-            img = Image.open(io.BytesIO(base.generate(url, key, prompt))).convert('RGBA').resize((720, 720), Image.LANCZOS)
+            img = base.fit(Image.open(io.BytesIO(base.generate(url, key, prompt))).convert('RGBA'))
             img.save(OUT / f'{name}.webp', 'WEBP', quality=88, method=6)
             print('ok  ', name, model, flush=True)
             return name, {'model': model, 'prompt': prompt, 'size': [720, 720], 'at': datetime.now(timezone.utc).isoformat(timespec='seconds')}

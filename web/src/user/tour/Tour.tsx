@@ -6,11 +6,11 @@ import { placeMascot, type Rect, type Spot } from './place'
 import { playCheer } from './sound'
 import { chapters, flatten, type Kind, type Pose } from './steps'
 
-// How the bunny looks in each pose: every picture is in public/img/bunny (idle, happy, wait, wow, sad, sleepy are the owner's own
-// drawings; the rest come from web/scripts/gen_mascot_moods.py and gen_tour_mascot.py). All are drawn stacked and cross-fade, like AuthMascot.
+// How the bunny looks in each pose: every picture is in public/img/bunny (idle, happy, wait, wow, sad, sleepy, love, point, curious are cut from the owner's
+// sheet by web/scripts/cut_mascot_sheet.py; the rest come from web/scripts/gen_mascot_moods.py and gen_tour_mascot.py). All are drawn stacked and cross-fade, like AuthMascot.
 const SRC: Record<Pose, string> = Object.fromEntries(
   (['idle', 'curious', 'wait', 'happy', 'shy', 'mail', 'sad', 'wow', 'wink', 'love', 'cheer', 'bow', 'point', 'point_up', 'walk_a', 'walk_b'] as const)
-    .map((k) => [k, `/img/bunny/${k}.webp`])) as Record<Pose, string>
+    .map((k) => [k, `/img/bunny/${k}.webp?v=2`])) as Record<Pose, string>
 SRC.wave = SRC.idle // the idle bunny already waves hello
 const WALK_MS = 520 // the walk to the next element
 const THINK_MS = 420 // the "…" over its head before the words

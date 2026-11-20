@@ -10,6 +10,7 @@ import {
   comment, FACT_LABELS, photosOf, postById, postsOf, reactionTotal, reactTo, readMinutes, REACTS, srcOf, togglePostSaved, topReacts, useStore, when, type Block, type Post, type ReactKey,
 } from './data'
 import { Avatar, Demo, Editorial, hubHref, Pic, postHref, ReactIcon, Visibility, writeHref } from './parts'
+import { Tour3d } from './Tour3d'
 import '../css/posts.css'
 
 // **bold** and *italic* are the only marks the composer writes.
@@ -70,7 +71,7 @@ function Article({ post, saved }: { post: Post; saved: boolean }) {
 
       <div className="tg-pr__col">
         <header className="tg-pr__head">
-          <p className="tg-pr__kick"><button type="button" onClick={() => go(hubHref({ place: post.placeId }))}>{place.name}</button>{post.tags[0] && <><i>·</i>{post.tags[0]}</>}{post.demo && <Demo />}{post.editorial && <Editorial />}</p>
+          <p className="tg-pr__kick"><button type="button" onClick={() => go(hubHref({ place: post.placeId }))}>{place.name}</button>{post.tags[0] && <><i>·</i>{post.tags[0]}</>}{post.demo && <Demo />}{post.editorial && <Editorial />}{post.featured && <span className="tg-bp-demo is-feat"><Icon name="cube" size={12} />Khám phá 3D</span>}</p>
           <h1>{post.title}</h1>
           <div className="tg-pr__by">
             <Avatar name={post.author} size={44} me={post.mine} />
@@ -129,6 +130,7 @@ function BlockView({ b, post, lead, onOpen }: { b: Block; post: Post; lead: bool
     const src = srcOf(post, b.src)
     return src ? <figure><button type="button" onClick={() => onOpen(src)} aria-label="Xem ảnh lớn"><Pic src={src} alt={b.cap} /></button>{b.cap && <figcaption>{b.cap}</figcaption>}</figure> : null
   }
+  if (b.t === 'tour') return <Tour3d title={b.title} ids={b.ids} />
   return <p className={lead && b.text.length > 80 ? 'is-lead' : undefined}><Inline text={b.text} /></p>
 }
 

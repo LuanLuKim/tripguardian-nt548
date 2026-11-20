@@ -15,10 +15,11 @@ import yaml
 
 from ..crawl.common.files import ROOT, data_dir, load_config, now, write_json
 from ..crawl.web import Web
-from ..llm import EVENT_EXTRACT
-from ..pulse import load as pulse_load
-from .gate import fold, kept, merge, why_not
+from ..llm import EVENT_EXTRACT, SEASON_GROUP
+from ..pulse import load as pulse_load, season_names as pulse_season_names
+from .gate import carried, fold, kept, merge, tidy, why_not
 from .picture import pick
+from .seasons import group as group_seasons
 
 
 def events_dir(city: str, root: Path | None = None) -> Path:
@@ -35,9 +36,11 @@ def queries(city_name: str, today: date, templates: list[str]) -> list[str]:
             for t in templates]
 
 
-def pages(web, qs: list[str], cfg: dict) -> list[dict]:
+def pages(web, qs: list[str], cfg: dict, city_name: str = "") -> list[dict]:
     """Every result of the queries once, best-ranked first: the first `pages` readable ones in full (text, og:image), the
-    rest and every social post as title + snippet. A page that cannot be read falls back to its snippet."""
+    rest and every social post as title + snippet. A page that cannot be read falls back to its snippet. With `city_name`, a
+    result whose text, title and address never name the city is left out: the queries name it, but a search engine still
+    returns other cities' calendars, and those would only cost a model call each."""
     hits, seen = [], set()
     for q in qs:
         try:
@@ -63,7 +66,10 @@ def pages(web, qs: list[str], cfg: dict) -> list[dict]:
             read += 1
         except Exception:  # paywall, timeout, not HTML
             out.append(snippet)
-    return out
+    if not city_name:
+        return out
+    names = {fold(city_name), fold(city_name).replace(" ", "")}
+    return [x for x in out if any(n in fold(f"{x['title']} {x['text']}") or n in fold(x["url"]).replace(" ", "") for n in names)]
 
 
 async def extract(todo: list[dict], cache: Path, city_name: str, today: date, ask) -> tuple[list[dict], Counter]:
@@ -72,7 +78,8 @@ async def extract(todo: list[dict], cache: Path, city_name: str, today: date, as
     sem = asyncio.Semaphore(EVENT_EXTRACT.parallel)
 
     async def one(page: dict) -> list[tuple[dict, dict]]:
-        key = hashlib.sha256(json.dumps([page["url"], page["text"], EVENT_EXTRACT.prompt_hash, today.isoformat()],
+        key = hashlib.sha256(json.dumps([page["url"], page["text"], EVENT_EXTRACT.prompt_hash, today.isoformat(),
+                                         EVENT_EXTRACT.role.name],  # another model's answers are not reused
                                         ensure_ascii=False).encode()).hexdigest()[:20]
         target = cache / f"{key}.json"
         if target.exists():
@@ -160,27 +167,39 @@ def run(city: str, today: date | None = None, web=None, ask=None) -> dict:
     w = qcfg["web"]
     web = web or Web(w["base_url"], events_dir(city) / "cache", timeout_s=w["timeout_s"], ttl_days=1,
                      min_interval_s=w["min_interval_s"])
+    ask_group = None
     if ask is None:
         client, model = EVENT_EXTRACT.role.client()
-        client = client.with_options(timeout=120, max_retries=0)
+        client = client.with_options(timeout=300, max_retries=0)  # terra thinks before it answers
 
         async def ask(**fields):
             return await EVENT_EXTRACT.ask(client, model, **fields)
+
+        async def ask_group(**fields):
+            return await SEASON_GROUP.ask(client, model, **fields)
     qs = queries(city_name, today, cfg["queries"])
-    todo = pages(web, qs, cfg)
+    todo = pages(web, qs, cfg, city_name)
     found, stats = asyncio.run(extract(todo, events_dir(city) / "extracted", city_name, today, ask))
-    passed, reasons = [], Counter()
+    if todo and stats["failed"] == len(todo):  # the model is unreachable: tonight's empty list is no news, keep the last snapshot
+        raise RuntimeError(f"events {city}: every page failed to extract, snapshot kept")
+    passed, reasons, programmes = [], Counter(), []
     for page, item in found:
         if why := why_not(item, page["text"], today, cfg["horizon_days"], city_name):
             reasons[why] += 1
+            if why == "no day" and (row := kept({**item, "start": today.isoformat()}, page, today)).get("part_of"):
+                programmes.append((row["name"], row["part_of"]))  # undated, but the page says whose programme it is
         else:
             passed.append(kept(item, page, today))
     events = merge(passed, tuple(cfg["social"]))
+    kept_over = len(events)
+    events = carried((load(city) or {}).get("events", []), events, today, programmes=tuple(programmes))  # a night's search misses pages, not events
+    events = [tidy(e, city_name) for e in events]  # after merging: two pages' spellings of one name still meet as one
     seasons, shots = pictures(web, events, season_names(city), city_name, tuple(cfg["social"]))
+    grouped = group_seasons(pulse_season_names(city), city_name, today, events_dir(city) / "season_groups", ask_group) if ask_group else None
     snapshot = {"city": city, "day": today.isoformat(), "built_at": now(), "queries": qs,
                 "pages": {"read": sum(p["read"] == "page" for p in todo), "snippets": sum(p["read"] == "snippet" for p in todo)},
                 "extract": dict(stats), "found": len(found), "dropped": dict(reasons), "pictures": dict(shots),
-                "events": events, "seasons": seasons}
+                "carried": len(events) - kept_over, "events": events, "seasons": seasons, **({"season_groups": {"day": today.isoformat(), **grouped}} if grouped else {})}
     path = write(city, snapshot, cfg["keep_snapshots"])
     print(f"events {city}: {len(events)} events from {len(found)} found {dict(reasons)} {snapshot['pages']} "
           f"pictures {dict(shots)} -> {path}", flush=True)

@@ -49,7 +49,7 @@ def test_dk1_an_empty_trip_opens_no_required_tab_without_the_agent(catalog, cfg)
     d = build(TripState(), catalog, cfg)
     assert qids(d) == []  # Only the agent opens a required topic in chat.
     assert qids(build(TripState(), catalog, cfg, ask="mobility")) == ["mobility"]  # the topic the agent chose
-    assert qids(build(TripState(), catalog, cfg, at="gate")) == ["trip", "care"]
+    assert qids(build(TripState(), catalog, cfg, at="gate")) == []  # nothing is asked before planning (owner 2026-11-18)
     assert (d.left, d.total) == (7, 7)
 
 
@@ -79,9 +79,9 @@ def test_dk5_a_skipped_optional_topic_does_not_hold_the_gate(catalog, cfg):
     assert "companions" not in qids(build(state, catalog, cfg, at="gate"))
 
 
-def test_dk5_the_gate_deck_shows_only_what_is_missing(catalog, cfg):
+def test_dk5_care_never_said_is_not_asked_before_planning(catalog, cfg):
     d = build(st(**{k: v for k, v in READY.items() if k != "care"}), catalog, cfg, at="gate")
-    assert qids(d) == ["care"] and d.left == 1
+    assert qids(d) == [] and d.left == 0  # nothing is asked before planning (owner 2026-11-18)
 
 
 def test_dk19_a_date_the_user_typed_is_theirs_not_a_guess(catalog, cfg, tmp_path):
@@ -171,7 +171,7 @@ def test_dk13_two_skips_stop_the_optional_questions_not_the_required_ones(catalo
                soft={"cloud_hunting=present": said("love", quote="săn mây")},
                meta={"soft_skips": 2})
     d = build(state, catalog, cfg, at="gate")
-    assert qids(d) == ["care"]
+    assert qids(d) == []  # nothing is asked before planning (owner 2026-11-18)
 
 
 def test_dk14_a_user_in_a_hurry_gets_no_optional_question(catalog, cfg, tmp_path):

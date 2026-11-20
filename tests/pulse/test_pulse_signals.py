@@ -24,13 +24,4 @@ def test_refreshed_reviews_join_the_first_crawls_one_row_per_author_and_the_coun
     rows = {r["author"]: r for r in signals.maps_reviews(tmp_path, {FID})[FID]}
     assert rows["a"] == {"date": "2026-10-25", "author": "a", "stars": 5}      # the later reading wins
     assert rows["c"]["date"] == "2026-11-13" and rows["b"]["stars"] == 5 and "d" not in rows   # no stars: no row
-    totals, status = signals.maps_places(tmp_path, {FID}, 7)
-    assert totals == {FID: 1250} and status == {}
-
-
-def test_a_place_maps_now_shows_closed_is_closed_as_of_the_refresh(tmp_path):
-    write(tmp_path / "gmaps" / "places" / "0x1_0x2" / "place.json", {"fid": FID, "name": "Quán", "reviews": 80})
-    write(tmp_path / "gmaps" / "reviews_recent" / "0x1_0x2.json", {"at": "2026-11-15T05:00:00+00:00", "fid": FID,
-                                                                  "status": signals.CLOSED, "reviews": []})
-    _, status = signals.maps_places(tmp_path, {FID}, 7)
-    assert status[FID]["as_of"] == "2026-11-15" and status[FID]["reviews"] == 80
+    assert signals.maps_totals(tmp_path, {FID}) == {FID: 1250}

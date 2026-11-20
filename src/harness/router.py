@@ -5,7 +5,7 @@ from .contracts import Request, Stage
 OPERATIONS = {
     "trip": frozenset({"turn", "advance"}),
     "decision": frozenset({"turn", "act", "advance", "back", "trip", "new_chat"}),
-    "planning": frozenset({"act", "recommend", "back", "confirm", "turn", "new_chat"}),
+    "planning": frozenset({"act", "recommend", "back", "confirm", "turn", "new_chat", "trip"}),
 }
 
 

@@ -12,7 +12,7 @@ trending:               # the home rail's one ranking: a 0-100 score over five s
   exclude_groups: [stay, rental]   # not places to visit
   min_score: 25         # below this a place is not "trending", only known
   weights: {tiktok: 40, tiktok_recent: 20, reviews: 20, rising: 10, web: 10}
-  cap: {tiktok: 8, tiktok_recent: 3, reviews: 0.06, web: 4}   # a part saturates here: more adds nothing; reviews = share of the place's all-time reviews
+  cap: {tiktok: 20, tiktok_recent: 6, reviews: 0.06, web: 4}   # a part saturates here: more adds nothing; reviews = share of the place's all-time reviews
   max_items: 10
 hot:                    # new TikTok videos at a place's POI page
   window_days: 30
@@ -33,13 +33,25 @@ new:                    # first Maps review is recent and the crawl holds (nearl
   coverage: 0.9         # crawled reviews / reviews Maps states
   exact_days: 45        # older first reviews are only month-precise (Maps says "4 tháng trước")
   max_items: 8
-closed:
-  min_reviews: 30       # only places people knew
-  max_items: 8
 event:
   horizon_days: 45      # spec says 30; 45 reaches the first day of next month from any day in this month's last third
-  max_items: 8
+  max_items: 10
+  hot_sources: 2        # an event that this many independent sites report is "đang hot" (clips never name an event: 0 of 2463 in 30 days)
   web_fresh_days: 3     # a dated-events snapshot (corpus.events) younger than this replaces the month-only claim events
 season:
   video_window_days: 60 # newest video naming the season's subject
-  max_items: 8
+  min_sources: 2        # a name only one page speaks of is no season yet ("du lịch Đà Lạt", "miền Bắc cưới" were such names)
+  hot_window_days: 30   # a season is "đang hot" by the bar of a hot place (`hot` above): clips by different authors that name it
+  hot_min_videos: 3
+  hot_min_authors: 3
+  max_items: 8          # read by the frozen prod code, which lists every name and would show the noise past 8: leave until deployed
+  limit: 16             # all the seasons of the month (new code; the pages show their own first rows, hot ones come first)
+  groups_fresh_days: 3  # the night's model grouping of season names (corpus.events.seasons) is read while it is younger than this
+  same:                 # HAND-ENTERED override of that grouping (a list = one season, the first name leads); wins on a name both group, and
+                        # still works when the model call fails. New names need no entry here: corpus events groups them every night
+    - [hồng chín, vườn hồng, hồng chín rộ, trái hồng, khu vườn hồng tại Cầu Đất Garden, cây hồng trụi lá chỉ còn quả]
+    - [dâu tây, dâu, mùa dâu, vườn dâu, dâu đất, vườn dâu tại Đà Lạt, vườn dâu tây sạch Bà Lan, vườn dâu Trên Mây Đà Lạt]
+    - [săn mây, biển mây, sương mây, thủy triều mây, săn mây Cầu Gỗ]
+    - [cỏ hồng, cỏ hồng và cỏ tuyết, đồi cỏ hồng gần Thung Lũng Vàng]
+    - [dã quỳ, dã quỳ vàng]
+    - [hồng treo gió, cây treo gió Đà Lạt]

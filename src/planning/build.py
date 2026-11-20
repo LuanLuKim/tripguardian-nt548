@@ -31,7 +31,7 @@ HOME = "@home"
 WARNING_TEXT = {
     "days_assumed": "Chưa biết số ngày: tạm xếp {n} ngày.",
     "dates_unknown": "Chưa biết ngày đi: không kiểm giờ mở cửa theo thứ và không ghim giờ hoàng hôn / bình minh.",
-    "base_unknown": "Chưa biết nơi ở: mỗi ngày bắt đầu và kết thúc ở địa điểm đầu / cuối.",
+    "base_unknown": "Chưa chọn chỗ ở: đường đi mỗi ngày tính từ nơi đầu tiên đến nơi cuối cùng. Chọn chỗ ở để tính cả đường đi về.",
     "travel_rough": "Thời gian di chuyển là ước lượng thô (không có OSRM), không dùng để kết luận độ vững.",
     "travel_pairs_rough": "{n} chặng không có đường trong OSRM, dùng ước lượng thô.",
     "hours_unknown": "{name}: chưa có giờ mở cửa nên mình chưa kiểm được.",
@@ -40,10 +40,11 @@ WARNING_TEXT = {
     "early_start": "Ngày {day}: bắt đầu sớm lúc {start} để kịp {name}.",
     "event_location_unknown": "Ngày {day}: chưa biết {label} ở đâu, lịch không tính đường tới đó.",
     "dawn_swapped": "Ngày {day}: bạn bắt đầu lúc {start} nên {name} xếp vào giờ hoàng hôn thay cho bình minh.",
+    "visit_shortened": "Để vừa lịch, mình rút ngắn thời gian ghé: {places}. Không nơi nào ngắn hơn thời gian ghé tối thiểu của nó.",
     "pin_dropped": "Ngày {day}: {name} không kịp vào đúng giờ đẹp nhất, mình xếp lúc khác trong ngày.",
     "near_duplicate": "{a} và {b} cùng một kiểu nơi: giữ cả hai cũng được, chỉ là chuyến đi kém đa dạng hơn.",
     "severe_weather": "Ngày {day}: thời tiết rất xấu, dự báo {cause} ({what}); không xếp nơi ngoài trời vào ngày này.",
-    "heavy_weather": "Ngày {day}: dự báo {cause} ({what}); nơi ngoài trời dễ hỏng, mỗi nơi có phương án thay.",
+    "heavy_weather": "Ngày {day}: dự báo {cause} ({what}). Điểm ngoài trời có thể kém vui, nhớ mang áo khoác và áo mưa.",
     "advisory": "Ngày {day}: có thông báo {kind} mức {severity}: {note} (nguồn: {source}).",
     "restricted_place": "{name}: nằm trong khu vực hạn chế ({kind}: {area}). Vẫn xếp trong lịch vì dữ liệu OpenStreetMap có thể chưa đủ; kiểm tra trước khi đi.",
     "crowd_day": "Ngày {day}: {why}. Nơi vốn đông sẽ đông hơn, mình để thêm thời gian chờ.",
@@ -64,6 +65,21 @@ WAIT_TEXT = {"opening": "chờ mở cửa", "meal": "chờ khung giờ ăn", "pi
 def _warn(code: str, **kw) -> dict:
     return {"code": code, "text": WARNING_TEXT[code].format(**kw)}
 
+
+
+SHORTENED_MIN = 10          # a visit cut by less than this is not worth a note
+
+
+def shortened_warnings(ctxs, results) -> list[dict]:
+    """One note naming each visit the clock cut below the pace's length to fit the day (never below the place's own
+    `short`: schedule.simulate), with the minutes cut. A length the user set is never cut, so it never shows here."""
+    cut = []
+    for cx, r in zip(ctxs, results):
+        for d in r.time_details:
+            p = cx.places.get(d.get("place_id"))
+            if p is not None and d.get("shortened_min", 0) >= SHORTENED_MIN:
+                cut.append(f"{p.name} bớt {d['shortened_min']}′")
+    return [_warn("visit_shortened", places=", ".join(cut))] if cut else []
 
 
 def pin_warnings(ctxs, results) -> list[dict]:
@@ -372,7 +388,7 @@ def condition_warnings(ctxs: list) -> list[dict]:
         c, n = cx.cond, cx.day.index + 1
         if c is None:
             continue
-        what = ", ".join(x for x in ("dông" if c.storm else "", f"mưa ~{c.rain_mm:.0f} mm" if c.rain_mm else "",
+        what = ", ".join(x for x in ("dông" if c.storm else "", f"mưa ~{c.rain_mm:.0f} mm" if (c.rain_mm or 0) >= 1 else "",
                                      f"gió giật ~{c.gust_kmh:.0f} km/h" if c.gust_kmh else "") if x)
         if c.weather != "none":
             out.append(_warn("severe_weather" if c.weather == "severe" else "heavy_weather", day=n, what=what,
@@ -795,6 +811,8 @@ def itinerary(days: list, results: list, ctxs=()) -> list[dict]:
             text = 'Chưa rõ có cho mang thú cưng không'
             if item.kind == 'visit' and item.place_id in unknown and text.lower() not in row.get('note', '').lower():
                 row['note'] = '; '.join(filter(None, [row.get('note'), text]))
+            if item.kind == 'travel' and cx is not None and (dist := cx.travel.distance_km(item.from_id, item.to_id)):
+                row['distance_km'] = dist  # an estimate; what a ride-hailing quote is priced on (journey.rides)
             items.append(row)
         out.append({'day': d.index + 1, 'date': d.date.isoformat() if d.date else None, 'weekday': d.weekday,
                     'window': [fmt(d.start), fmt(d.end)], 'method': r.method, 'items': items})

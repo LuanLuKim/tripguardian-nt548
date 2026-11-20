@@ -24,8 +24,8 @@ export function usePath() {
 // heavy page never stutters mid-animation. Same page with another query (the place sheet), a replace, the admin, and a move made
 // inside another transition change at once.
 // The steps of the trip in order: a move forward slides the page in from the right, a move back from the left.
-const STEP_PAGE = /\/(understand|explore|plan|done)(\/|$)/
-const STEP_ORDER = ['understand', 'explore', 'plan', 'done']
+const STEP_PAGE = /\/(explore|plan|done)(\/|$)/
+const STEP_ORDER = ['explore', 'plan', 'done']
 const stepOf = (path: string) => { const m = STEP_PAGE.exec(path); return m ? STEP_ORDER.indexOf(m[1]) : -1 }
 
 export function navigate(to: string, { replace = false } = {}) {
@@ -39,7 +39,8 @@ export function navigate(to: string, { replace = false } = {}) {
   const plain = replace || next === location.pathname || next.startsWith('/admin') || location.pathname.startsWith('/admin')
   const from = stepOf(location.pathname)
   const toStep = stepOf(next)
-  const way = from >= 0 && toStep >= 0 && from !== toStep ? (toStep > from ? ' tg-nav-fwd' : ' tg-nav-back') : ''
+  // Lựa chọn -> the schedule grows out of the map beside the list (tg-nav-plan); the way back slides.
+  const way = from === 0 && toStep === 1 ? ' tg-nav-plan' : from >= 0 && toStep >= 0 && from !== toStep ? (toStep > from ? ' tg-nav-fwd' : ' tg-nav-back') : ''
   if (plain || !startTransition(() => flushSync(apply), 'tg-nav' + way)) apply()
 }
 

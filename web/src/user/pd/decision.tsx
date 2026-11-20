@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { mutateJourney, readJourney, requestStageEntry } from '../journey'
+import { mutateJourney, readJourney } from '../journey'
 import { useTrip } from '../trip'
 import { info } from '../lib'
-import { getUi } from '../store'
+import { getUi, openAssistant } from '../store'
 import { go, warmPhotos } from '../ui/common'
 import { primePlanning } from '../planning/api'
 import * as api from './api'
@@ -10,6 +10,7 @@ import type { Action, Card, DecisionOutput, Diff, PlanPreview, View } from './ty
 import type { ChatPlaces, Readback } from '../tu/types'
 import { ReadbackSheet } from '../ui/ReadbackSheet'
 import { explainError } from '../journeyErrors'
+import { FORGET_EVENT } from '../account'
 
 // "building" while the background schedule for the current selection is being made (Planning, not confirmed).
 export type PreviewState = { status: 'idle' | 'building' } | PlanPreview
@@ -22,6 +23,7 @@ interface DecisionCtx {
   preview: PreviewState
   act: (a: Action) => Promise<boolean>
   say: (text: string, onSay: (soFar: string) => void, onPlaces?: (d: ChatPlaces) => void) => Promise<Diff | null>
+  accept: (view: View, diff?: Diff | null) => void // the lists a chat turn rebuilt (the `view` event of decision.trip)
   toPlan: () => Promise<boolean>
   reload: () => void
   more: (group: string, n?: number) => Promise<void> // page n (1 = first) of a tab, or its next page
@@ -29,6 +31,9 @@ interface DecisionCtx {
 }
 
 const Ctx = createContext<DecisionCtx | null>(null)
+// The last view of each journey's Lựa chọn: coming back to the screen (from the chat, from the schedule) paints it at once and the server's read replaces it.
+const kept = new Map<string, View>()
+if (typeof window !== 'undefined') addEventListener(FORGET_EVENT, () => kept.clear())
 const OFFLINE = 'Không kết nối được máy chủ chọn nơi. Bạn thử lại nhé.'
 const DEBOUNCE_MS = 350
 
@@ -68,6 +73,7 @@ export function DecisionProvider({ children, active = true }: { children: ReactN
   const shown = useRef<View | null>(null)
   const queued = useRef(0) // picks, drops and locks sent and not yet answered
   shown.current = view
+  useEffect(() => { if (id && view) kept.set(id, view) }, [view]) // eslint-disable-line react-hooks/exhaustive-deps -- only a new view is kept, under the journey it was read for
   const [loadingMore, setLoadingMore] = useState<string | null>(null)
   const loading = useRef<string | null>(null)
 
@@ -88,7 +94,7 @@ export function DecisionProvider({ children, active = true }: { children: ReactN
   useEffect(() => {
     seq.current++
     setGate(null)
-    setView(null)
+    setView(id && active ? kept.get(id) ?? null : null)
     setPreview({ status: 'idle' })
     if (!id || !active) return
     let live = true
@@ -113,7 +119,7 @@ export function DecisionProvider({ children, active = true }: { children: ReactN
         if (!live) return
         if (e instanceof api.DecisionError && (e.status === 404 || e.status === 409)) {
           dispatch({ type: 'set', patch: { decisionId: null } })
-          setError(e.status === 404 ? 'Phiên chọn nơi đã hết. Quay lại bước Tìm hiểu để bắt đầu lại.' : null)
+          setError(e.status === 404 ? 'Phiên chọn nơi đã hết. Bắt đầu một chuyến mới ở trang chủ nhé.' : null)
         } else setError(explainError(e, OFFLINE))
       },
     )
@@ -140,10 +146,8 @@ export function DecisionProvider({ children, active = true }: { children: ReactN
         if (!early || queued.current === 1) setView(r.view)
         setDiff(r.diff)
         setError(null)
-        if (r.goto === 'understand') {
-          requestStageEntry(id, 'trip')
-          go('/understand')
-        } else refreshPreview()
+        if (r.goto === 'understand') openAssistant(true) // "rethink the trip": said in the chat beside the lists
+        else refreshPreview()
         return true
       } catch (e) {
         if (early) setTimeout(() => { void api.loadDecision(id).then((r) => { if (queued.current === 0) setView(r.view) }, () => {}) }, 0) // the server said no: show what it holds
@@ -189,6 +193,14 @@ export function DecisionProvider({ children, active = true }: { children: ReactN
     },
     [id, dispatch, refreshPreview],
   )
+
+  const accept = useCallback((next: View, d: Diff | null = null) => {
+    api.withPhotos({ view: next })
+    dispatch({ type: 'set', patch: { planningId: null } })
+    setView(next)
+    setDiff(d)
+    refreshPreview()
+  }, [dispatch, refreshPreview])
 
   // Planning owns the gate; choosing places stays available until the user asks to schedule.
   const toPlan = useCallback(async () => {
@@ -247,7 +259,7 @@ export function DecisionProvider({ children, active = true }: { children: ReactN
   }, [id])
 
   return (
-    <Ctx.Provider value={{ view, diff, error, busy, preview, act, say, toPlan, reload: () => setTick((t) => t + 1), more, loadingMore }}>{children}
+    <Ctx.Provider value={{ view, diff, error, busy, preview, act, say, accept, toPlan, reload: () => setTick((t) => t + 1), more, loadingMore }}>{children}
       {id && gate && <ReadbackSheet key={gate.key} id={id} initial={gate.readback} missing={gate.missing} onClose={() => setGate(null)} onAdvance={toPlan} onView={next => { api.withPhotos({ view: next }); setView(next); dispatch({ type: 'set', patch: { planningId: null } }); refreshPreview() }} />}
     </Ctx.Provider>
   )

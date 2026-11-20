@@ -3,6 +3,8 @@ import { fmtVnd, info } from '../../lib'
 import type { ItineraryDay, Variant } from '../../planning/types'
 
 export const visits = (d: ItineraryDay) => d.items.filter((it) => it.kind === 'visit' && it.place_id)
+// How firmly a plan holds when the day runs late, as a short tag (the server's own labels, Vững / Khả thi / Mong manh, are not shown).
+export const ROBUST_TAG: Record<string, string> = { solid: 'Dư dả', feasible: 'Vừa vặn', fragile: 'Sát giờ' }
 export const costText = (v: Variant) => (v.metrics.cost_vnd ? `~${fmtVnd(v.metrics.cost_vnd)}` : 'Chưa có giá')
 
 // "2026-10-13" -> "13 thg 10"; the day number when the trip has no date yet.

@@ -21,7 +21,7 @@ VISIT_KEYS = ("short", "typical", "long")
 def _scaled_travel(travel: Travel, pct: int) -> Travel:
     legs = [[(m if mode == "none" else math.ceil(m * (100 + pct) / 100), mode) for m, mode in row]
             for row in travel.legs]
-    return Travel(travel.ids, legs, travel.source, travel.fetched_at, travel.rough_pairs)
+    return Travel(travel.ids, legs, travel.source, travel.fetched_at, travel.rough_pairs, travel.road_km)
 
 
 def _perturbed(cx: DayCtx, sc: dict) -> DayCtx:

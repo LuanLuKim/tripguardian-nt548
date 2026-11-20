@@ -79,15 +79,15 @@ export function PlacePhoto({ id, i = 0, name, ...rest }: { id: string; i?: numbe
 }
 
 // Opens on hover / focus AND on click, so touch and keyboard get the same explanation.
-export function Hint({ label, children, side = 'top' }: { label: ReactNode; children: ReactNode; side?: 'top' | 'bottom' | 'left' | 'right' }) {
+export function Hint({ label, children, side = 'top', className = '', tone = 'dark' }: { label: ReactNode; children: ReactNode; side?: 'top' | 'bottom' | 'left' | 'right'; className?: string; tone?: 'dark' | 'light' }) {
   const [open, setOpen] = useState(false)
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button type="button" className="tg-hint" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>{children}</button>
+        <button type="button" className={`tg-hint ${className}`} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>{children}</button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="tg tg-pop" side={side} sideOffset={8} collisionPadding={12} onOpenAutoFocus={(e) => e.preventDefault()} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+        <Popover.Content className={`tg tg-pop ${tone === 'light' ? 'is-light' : ''}`} side={side} sideOffset={8} collisionPadding={12} onOpenAutoFocus={(e) => e.preventDefault()} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
           {label}
           <Popover.Arrow className="tg-pop__arrow" />
         </Popover.Content>
@@ -96,10 +96,10 @@ export function Hint({ label, children, side = 'top' }: { label: ReactNode; chil
   )
 }
 
-export function Trust({ level, why }: { level: TrustLevel; why: string }) {
+export function Trust({ level, why, compact = false }: { level: TrustLevel; why: string; compact?: boolean }) {
   return (
     <Hint label={<><b>Độ tin cậy: {level}.</b> {why}</>}>
-      <span className={`tg-trust is-${level === 'Cao' ? 'hi' : level === 'Thấp' ? 'lo' : 'mid'}`}><i /><i /><i />{level}<Icon name="info" size={13} /></span>
+      <span className={`tg-trust is-${level === 'Cao' ? 'hi' : level === 'Thấp' ? 'lo' : 'mid'}`}><i /><i /><i />{compact ? <span className="tg-sr">Độ tin cậy {level}</span> : <>{level}<Icon name="info" size={13} /></>}</span>
     </Hint>
   )
 }
@@ -144,7 +144,7 @@ export function Toast() {
 function Bunny({ mood, say }: { mood: 'sad' | 'curious' | 'wait'; say: string }) {
   return (
     <div className="tg-bunny">
-      <img src={`/img/bunny/${mood}.webp`} alt="" width={220} height={220} />
+      <img src={`/img/bunny/${mood}.webp?v=2`} alt="" width={220} height={220} />
       <span className="tg-bunny__say">{say}</span>
     </div>
   )

@@ -16,23 +16,23 @@ Dành cho designer và người code landing (`/`). Máy tính (laptop, desktop,
 
 ## 2. Cấu trúc (máy tính)
 
-Thanh trên cố định (`Cách hoạt động` · `Địa điểm` · `Hỏi nhanh`, `Đăng nhập`, `Dùng thử khách` khi đang đăng nhập, `Lên lịch chuyến của bạn`), rồi các phần theo thứ tự:
+Thanh trên cố định (`Cách hoạt động` · `Khám phá` · `Hỏi nhanh`, `Đăng nhập`, `Dùng thử khách` khi đang đăng nhập, `Lên lịch chuyến của bạn`), rồi các phần theo thứ tự:
 
 | Phần | Nội dung | Màn thật được kể lại |
 |---|---|---|
 | **Màn đầu** | Cảnh 3D (`web/src/user/landing/scene.ts`, địa hình `terrain.ts`), chữ bên trái, mô hình lệch phải. Nhãn `TripGuardian · Đà Lạt`, tiêu đề `Lịch trình Đà Lạt vừa với bạn.`, câu phụ có số nơi thật, nút `Lên lịch chuyến của bạn`, link `Xem cách hoạt động`, ba cam kết (`Miễn phí` · `Không cần tài khoản` · `Chỗ nào cũng có thật`). Góc phải dưới: nút `Xoay thử Đà Lạt 3D`. Chân màn: nút nổi `Cuộn xuống để xem cách hoạt động` | — |
 | **Tìm hiểu** | `Cứ kể như kể với bạn đi cùng.` Một khung chat: bong bóng lời kể của người dùng (phải); avatar TripGuardian hỏi lại bằng ảnh `Bạn thích không gian quán nào hơn?` + `Vì bạn nói "cà phê chill"`, 3 ảnh quán thật, mỗi ảnh mang một gu người ta thật sự nhắc ở quán đó, chữ theo `taste_bank` (`Không gian rộng, thoáng` đang chọn · `Yên tĩnh` · `Ngồi ngoài trời`); dưới cùng vòng `3/7 thông tin` và 7 ô thông tin bắt buộc (`Ngày đi` · `Đi với` · `Phương tiện` đã ghi, `Lưu ý` · `Nhịp độ` · `Ngân sách` · `Nơi lưu trú` viền đứt) | Tìm hiểu: chat, thẻ hỏi bằng ảnh, cột *Thông tin chuyến* |
-| **Lựa chọn** | `Chọn ra 6 chỗ, không phải lục cả nghìn.` (số đếm lùi từ tổng số chỗ) + chú thích chấm / tuyến, rồi thanh tóm tắt như thanh dưới của Lựa chọn: `Đi kịp · 6 nơi · 7 giờ 30 tham quan · ≈ 1 giờ 38 đi lại · Lập lịch` (cộng từ ngày ví dụ) | Lựa chọn: thanh "Đã chọn" |
-| **Lựa chọn · vì sao** | `Chỗ nào cũng có lý do.` + thẻ một nơi y như thẻ ở Lựa chọn: ảnh (nhãn loại, `Ảnh: Google Maps`), tên, khu · ★ · số đánh giá Google, 3 dòng tích `<gu>, N người nhắc` (đúng gu người dùng vừa kể/chọn), hộp `Đánh đổi: <điều bất lợi đầu tiên người ta nhắc>, N người nhắc`, dòng phụ thời gian ở lại · giá · khung đông nhất cuối tuần | Lựa chọn: `PlaceCard` |
+| **Lựa chọn** | `Chọn ra 6 chỗ, không phải lục cả nghìn.` (số đếm lùi từ tổng số chỗ) + chú thích chấm / tuyến, rồi thanh tóm tắt như thanh dưới của Lựa chọn: `Đi kịp · 6 nơi · 7 giờ 30 tham quan · ≈ 1 giờ 38 đi lại · Lập lịch` (cộng từ ngày ví dụ); cuộn tiếp thì dưới thanh hiện thêm `Chỗ nào cũng có lý do.` — thẻ một nơi y như thẻ ở Lựa chọn: ảnh (nhãn loại, `Ảnh: Google Maps`), tên, khu · ★ · số đánh giá Google, 3 dòng tích `<gu>, N người nhắc` (đúng gu người dùng vừa kể/chọn), hộp `Đánh đổi: <điều bất lợi đầu tiên người ta nhắc>, N người nhắc`, dòng phụ thời gian ở lại · giá · khung đông nhất cuối tuần | Lựa chọn: thanh "Đã chọn" và `PlaceCard` |
 | **Lịch trình** | `Cả ngày xếp sẵn, bạn chỉ việc đi.` + câu nói về bước đọc lại trước khi xếp; dải 3 phương án khi chọn nhiều hơn số ngày (`Giữ nơi hợp gu nhất` · `Ít đi lại` · `Tiết kiệm`); timeline một ngày (tag `Ví dụ`): giờ, tên, nhãn bữa, `≈ N phút xe máy từ chỗ trước` | Đọc lại trước khi lập lịch; Chọn phương án; Lịch trình theo ngày |
 | **Đánh giá** | `Chốt lịch, chấm vài câu là xong.` + thẻ `Kế hoạch đã chốt.` với một câu `Gợi ý có đúng gu của bạn?` thang 1–5 (`Chưa đúng` … `Rất đúng`), rồi CTA | Phản hồi (`/app/done`) |
-| **Ảnh thật của chỗ thật** | 4 ảnh Google Maps ban ngày, mỗi ảnh ghi tên và nguồn lấy từ `credit` của chính ảnh | — |
-| **Hỏi nhanh** | 5 câu hỏi (`web/src/user/faq.ts`, dùng chung với trang Hỗ trợ); một dòng `Sắp có` | — |
-| **CTA cuối** + footer | `Bắt đầu chuyến Đà Lạt của bạn.`; khi đang đăng nhập thêm link dùng thử khách; footer nói rõ phần nào là ước tính | — |
+| **Khám phá 3D** | `Đi một vòng trước khi đến.` Lưới poster mô hình 3D (10 nơi, Ga Đà Lạt ô lớn; `web/src/user/landing/Showcase.tsx`, danh sách `MODELS`, chỉ hiện nơi có trong `/space3d/index.json`). Bấm một ô mở `/space3d/viewer.html?place=<slug>&host=full` trong khung toàn cửa sổ; `Esc`, nút `Đóng` hoặc nút Quay lại của mô hình để đóng; trang dừng cuộn khi khung mở | Tab Khám phá 3D của một nơi |
+| **Chuyện kể Đà Lạt** | Hai thẻ: phim Langbiang (`web/public/media/landing/langbiang.mp4`, 720p, bấm poster mới tải và phát tại chỗ) và phim tương tác Mùa xuân không về (poster mở https://storytelling-ho-than-tho.vercel.app/ trong khung toàn cửa sổ, có link mở tab mới) | — |
+| **Hỏi nhanh** | 5 câu hỏi (`web/src/user/faq.ts`, dùng chung với trang Hỗ trợ) | — |
+| **CTA cuối** + footer | `Bắt đầu chuyến Đà Lạt của bạn.`; footer nói rõ phần nào là ước tính | — |
 
 Ví dụ được chọn để các chương nối nhau: gu `Không gian rộng, thoáng` chọn ở Tìm hiểu là dòng đầu của thẻ Tiệm cà phê Thênh Thang ở Lựa chọn · vì sao, và quán đó là điểm 08:45 của lịch. Thẻ trên landing không bấm được (chỉ minh họa, `role="img"` khi là số liệu tổng).
 
-**Ảnh màn thật:** chương Tìm hiểu, Lựa chọn · vì sao, Lịch trình và Đánh giá hiện ảnh chụp màn thật của app (`Shot` trong `Landing.tsx`, tệp `web/src/user/landing/shots/app-{understand,choose,plan,feedback}.webp`, chú thích `Giao diện thật · …`). Thiếu tệp nào thì chương đó hiện bản dựng HTML mô tả ở bảng trên. Chụp bằng một chuyến khách thật trên bản live ở 1440×900, `deviceScaleFactor` 2, cắt sát phần cần xem, rộng tối đa 940 px, WebP ~85; không có thông tin cá nhân. Hiện có: câu hỏi bằng ảnh `Bạn muốn săn mây ở kiểu chỗ nào?`, thẻ một nơi ở Lựa chọn, bảng đọc lại `Bạn nói …` trước khi lập lịch, màn `Kế hoạch đã chốt.` Đổi màn trong app thì chụp lại.
+**Ảnh màn thật:** chương Tìm hiểu, Lựa chọn (thẻ vì sao), Lịch trình và Đánh giá hiện ảnh chụp màn thật của app (`Shot` trong `Landing.tsx`, tệp `web/src/user/landing/shots/app-{understand,choose,plan,feedback}.webp`, chú thích `Giao diện thật · …`). Thiếu tệp nào thì chương đó hiện bản dựng HTML mô tả ở bảng trên. Chụp bằng một chuyến khách thật trên bản live ở 1440×900, `deviceScaleFactor` 2, cắt sát phần cần xem, rộng tối đa 940 px, WebP ~85; không có thông tin cá nhân. Hiện có: câu hỏi bằng ảnh `Bạn muốn săn mây ở kiểu chỗ nào?`, thẻ một nơi ở Lựa chọn, bảng đọc lại `Bạn nói …` trước khi lập lịch, màn `Kế hoạch đã chốt.` Đổi màn trong app thì chụp lại.
 
 Thanh bước bên phải theo dõi phần đang xem (`Mở đầu` · `Tìm hiểu` · `Lựa chọn` · `Lịch trình` · `Đánh giá`) và bấm được để nhảy tới.
 
@@ -67,9 +67,17 @@ Landing không có ô nhập. Mọi nút `Lên lịch chuyến của bạn` mở
 7. Tệp `/world/*`, `/img/*` được lưu đệm 1 ngày; `.bin` có sẵn bản `.br` / `.gz` (`web/scripts/prod_assets.mjs`).
 8. Đo: `performance.mark` `tg-scene-start`, `tg-scene-built`, `tg-scene-first-frame`. Ngân sách: ảnh nền < 1 s, cảnh 3D sẵn sàng < 3 s trên laptop trung bình, 50–60 FPS.
 
+
+**Tải nhẹ cho phần 3D và phim** (`Showcase.tsx`; không phần nào tải khi chưa có dấu hiệu người xem muốn xem, để thung lũng ở màn đầu giữ đường truyền):
+- Ô 3D: khi lưới sắp vào màn hình (cách 700 px) tải trước script viewer (1 MB, đệm vĩnh viễn); rê chuột 150 ms / focus / chạm một ô thì tải trước dữ liệu và poster của nơi đó. Bấm thì khung toàn cửa sổ mở với poster của ô làm nền, mô hình hiện mờ dần lên khi viewer báo `space3d:ready` (quá 12 s vẫn hiện); không bao giờ có màn đen.
+- Phim Langbiang: `<video preload="none">` kèm poster; thẻ nằm trong màn hình ≥ 60% quá 1 s, hoặc rê / focus / chạm thì chuyển `preload="auto"` để đã có vài giây đầu khi bấm. Tệp mp4 H.264 720p, 7,6 MB, `moov` ở đầu tệp; `web/server.mjs` phục vụ `/media/landing/*.mp4` có Range (Safari cần, tua cũng cần). Khi đang tải mà bấm xem thì hiện `Đang tải phim…`.
+- Phim tương tác: rê / focus / chạm thẻ thì dựng sẵn khung ẩn của site phim (thanh tải của phim chạy xong trước lúc bấm; site phim cũng được `preconnect`); không bấm thì bỏ sau 120 s. Đóng là gỡ khung (dừng tiếng, giải phóng bộ nhớ).
+- Không nạp trước khi bật Save-Data hoặc đường truyền 2G / 3G. Mở khung nào thì phim Langbiang đang chạy tạm dừng, trang dừng cuộn.
+- Poster và ảnh trong `/media/landing/` đệm 1 ngày. Phim Langbiang lấy từ `tripguardian-store/inkfilm/story/out/langbiang.mp4` nén lại: `ffmpeg -i … -vf scale=1280:-2 -c:v libx264 -crf 29 -maxrate 1400k -c:a aac -b:a 80k -movflags +faststart`.
+
 ## 4. Ảnh
 
-Ảnh trong các thẻ chương là ảnh Google Maps của chính nơi đó (`places.json`, thumbnail khi có); ảnh minh họa không bao giờ đứng tên một nơi có thật. Ảnh nền landing và ảnh bản nhẹ (`landing-poster.webp`, `landing-p1..p5.webp`) chụp từ chính mô hình 3D. Ảnh nền hộp CTA cuối là gradient nâu–đen có quầng cam đất bằng CSS.
+Ảnh trong các thẻ chương là ảnh Google Maps của chính nơi đó (`places.json`, thumbnail khi có); ảnh minh họa không bao giờ đứng tên một nơi có thật. Ảnh nền landing và ảnh bản nhẹ (`landing-poster.webp`, `landing-p1..p5.webp`) chụp từ chính mô hình 3D. Ô 3D dùng poster chụp từ chính mô hình (`/space3d/posters/`), ghi rõ là mô hình, không đứng tên là ảnh thật. Ảnh nền hộp CTA cuối là gradient nâu–đen có quầng cam đất bằng CSS.
 
 ## 5. Điện thoại: Dùng ứng dụng
 

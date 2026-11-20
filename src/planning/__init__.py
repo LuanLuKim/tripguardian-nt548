@@ -18,7 +18,7 @@ _EXPORTS = {
     "Tools": ("tools", "Tools"), "create_engine": ("tools", "create_engine"),
     "PlanningProposal": ("proposal", "PlanningProposal"), "run_proposal": ("proposal", "run_proposal"),
     "EveStore": ("eve", "Store"), "eve_runner": ("eve", "eve_runner"), "run_eve": ("eve", "run_eve"),
-    "expert_runner": ("expert", "expert_runner"),
+    "expert_runner": ("expert", "expert_runner"), "warm_workers": ("overload", "warm"),
 }
 
 __all__ = list(_EXPORTS)

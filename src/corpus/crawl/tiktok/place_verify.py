@@ -16,7 +16,7 @@ import zlib
 from ...llm import PLACE_VIDEO_VERIFY
 from ...review import decisions
 from ..common.files import data_dir, load_config, log_error, now, write_json
-from .frames import FRAMES, frames
+from .frames import FRAMES, frames, seeable
 from .place_filter import places_by_video
 
 
@@ -58,7 +58,7 @@ async def run(city: str, shard: tuple[int, int] | None = None) -> dict:
 
     async def one(video_id: str, places: list[dict]):
         d = root / "videos" / video_id
-        if not (d / "video.mp4").exists():
+        if not seeable(d):  # a deleted clip is judged on its saved frames
             return
         v = json.loads((d / "video.json").read_text(encoding="utf-8"))
         t = v.get("transcript")

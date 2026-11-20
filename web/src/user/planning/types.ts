@@ -23,6 +23,7 @@ export interface ItineraryItem {
   mode?: string
   road_min?: number | null
   buffer_min?: number | null
+  distance_km?: number | null // estimated road km of a travel leg (what a ride is priced on)
   note?: string
 }
 
@@ -223,7 +224,8 @@ export interface View {
   variants: Variant[]
   active_variant?: Variant | null
   overload?: { level: 'tight' | 'overloaded'; estimated: boolean; needed: number; available: number;
-    binding: string[]; selection_places: number; keep_all_valid: boolean; text: string } | null
+    binding: string[]; selection_places: number; keep_all_valid: boolean; text: string
+    leftover_reasons?: { place_id: string; name: string; reason: 'hours' | 'time' | 'search_incomplete' }[] } | null
   keep_all?: Variant & { violations: { kind: string; day: number | null; place_id: string | null; detail: string }[] } | null
   comparison: Record<string, unknown>[]
   warnings: Warning[]

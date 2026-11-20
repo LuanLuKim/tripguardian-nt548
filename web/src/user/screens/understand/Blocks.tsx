@@ -1,6 +1,7 @@
 import type { DishBlock, ResultBlock, ServiceRow, ServicesBlock } from '../../tu/types'
 import { fold } from '../../search'
 import { SubtagBlock } from '../../tags/Subtags'
+import { ClipsLine } from './Clips'
 import { PlaceStage } from './Places'
 import { Trends } from './Trends'
 
@@ -38,5 +39,6 @@ function Services({ block }: { block: ServicesBlock }) {
 export function Block({ block, busy, autoOpen, onLike }: { block: ResultBlock; busy: boolean; autoOpen?: boolean; onLike: (id: string, on: boolean) => void }) {
   if (block.kind === 'tags') return <SubtagBlock block={block} autoOpen={autoOpen} onLike={onLike} />
   if (block.kind === 'trends') return <Trends block={block} busy={busy} onLike={onLike} />
+  if (block.kind === 'clips') return <ClipsLine block={block} busy={busy} onLike={onLike} />
   return block.kind === 'dish' ? <Dish block={block} busy={busy} onLike={onLike} /> : <Services block={block} />
 }

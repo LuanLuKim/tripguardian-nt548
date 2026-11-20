@@ -141,9 +141,11 @@ const GATE_COPY = { kicker: 'Trước khi lên lịch', heading: 'Một chút th
 
 export function GateAsk({ deck, busy, issues, error, onAnswer, onOther, copy = GATE_COPY }: {
   deck: Deck; busy: boolean; issues: DeckIssue[]; error: string | null; copy?: { kicker: string; heading: string; sub: string }
-  onAnswer: (answers: DeckAnswers) => void; onOther: () => void
+  onAnswer: (answers: DeckAnswers, text?: string) => void; onOther: () => void
 }) {
   const [at, setAt] = useState(0)
+  // "Khác, tự gõ": the words go with this card's answers, typed right here (the page never leaves for the chat)
+  const [typed, setTyped] = useState<Record<string, string | undefined>>({})
   const [ghost, setGhost] = useState<{ i: number; html: string } | null>(null) // the card just left, still showing its words while it slides away
   const front = useRef<HTMLDivElement>(null)
   const goTo = (i: number) => {
@@ -163,6 +165,9 @@ export function GateAsk({ deck, busy, issues, error, onAnswer, onOther, copy = G
   const notes = issues.filter(i => i.key === tab.qid || i.key.startsWith(`${tab.qid}.`))
   const rest = issues.filter(i => !deck.tabs.some(t => i.key === t.qid || i.key.startsWith(`${t.qid}.`)))
   const { answered } = form
+  const own = typed[tab.qid]
+  const words = Object.values(typed).map(t => t?.trim()).filter(Boolean).join('. ')
+  const withWords = () => { const out: DeckAnswers = { ...answers }; for (const [q, t] of Object.entries(typed)) if (t?.trim()) out[q] = [...(Array.isArray(out[q]) ? out[q] as string[] : []).filter(id => id !== 'skip'), 'other']; return out }
   const [lead, tail] = split(tab.question)
   const bringForward = goTo
   const chips = (options: Option[]): ReactNode => <div className="tg-gt__opts">{options.map(o => <button type="button" key={o.id} className={`tg-gt__opt ${selected.includes(o.id) ? 'is-on' : ''}`} disabled={busy} aria-pressed={selected.includes(o.id)} onClick={() => choose(o)}>
@@ -203,9 +208,10 @@ export function GateAsk({ deck, busy, issues, error, onAnswer, onOther, copy = G
               <ExtraInputs form={form} busy={busy} ranked />
               <DeckIssues issues={notes} />
               {tab.qid !== 'lodging' && (tab.options.some(o => o.id === 'other') || tab.options.some(o => o.id === 'skip')) && <div className="tg-gt__soft">
-                {tab.options.some(o => o.id === 'other') && <button type="button" disabled={busy} onClick={onOther}>Khác, tự gõ</button>}
+                {tab.options.some(o => o.id === 'other') && own === undefined && <button type="button" disabled={busy} onClick={() => setTyped(t => ({ ...t, [tab.qid]: '' }))}>Khác, tự gõ</button>}
                 {tab.options.some(o => o.id === 'skip') && <button type="button" disabled={busy} onClick={() => { skip(); if (!last) goTo(at + 1) }}>Bỏ qua{selected.includes('skip') ? ' ✓' : ''}</button>}
               </div>}
+              {own !== undefined && <textarea className="tg-gt__type" autoFocus rows={2} maxLength={500} disabled={busy} value={own} placeholder="Gõ điều bạn muốn mình lưu ý" aria-label={`Trả lời khác cho ${tab.header}`} onChange={e => setTyped(t => ({ ...t, [tab.qid]: e.target.value }))} onKeyDown={e => { if (e.key === 'Escape') setTyped(({ [tab.qid]: _, ...rest }) => rest) }} />}
               {!!reasons.length && <p className="tg-gt__note"><Icon name="edit" size={15} />{reasons.join(' · ')}</p>}
             </div>
           </div>}
@@ -219,7 +225,7 @@ export function GateAsk({ deck, busy, issues, error, onAnswer, onOther, copy = G
         <DeckIssues issues={rest} />
         <span className="tg-gt__hint">Trả lời xong là xếp lịch được</span>
         {!last && <button type="button" className="tg-gt__next" disabled={busy} onClick={() => bringForward(at + 1)}>Tiếp<Icon name="chevronRight" size={17} /></button>}
-        <button type="button" className="tg-gt__go" disabled={busy || !Object.keys(answers).length} onClick={() => onAnswer(answers)}>Xong<Icon name="check" size={18} /></button>
+        <button type="button" className="tg-gt__go" disabled={busy || (!Object.keys(answers).length && !words)} onClick={() => onAnswer(withWords(), words || undefined)}>Xong<Icon name="check" size={18} /></button>
       </div>
     </footer>
     {busy && <div className="tg-gt__wait" role="status"><span className="tg-dots"><i /><i /><i /></span><p>Đang ghi nhận lựa chọn của bạn…</p></div>}
@@ -232,7 +238,7 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 const fromIso = (value: string) => { const [y, m, d] = value.split('-').map(Number); return new Date(y, m - 1, d) }
 const WEEK = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
 
-function RangeCalendar({ from, to, busy, onPick }: { from: string; to: string; busy: boolean; onPick: (day: string) => void }) {
+export function RangeCalendar({ from, to, busy, onPick }: { from: string; to: string; busy: boolean; onPick: (day: string) => void }) {
   const today = iso(new Date())
   const [shown, setShown] = useState(() => { const d = from ? fromIso(from) : new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const lead = (shown.getDay() + 6) % 7 // Monday first

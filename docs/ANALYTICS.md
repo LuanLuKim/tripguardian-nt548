@@ -37,6 +37,8 @@ python -m analytics serve [--port 8770]   # 127.0.0.1, chỉ GET, role tg_analyt
 python -m analytics cluster               # mỗi tuần: nhóm ý người dùng viết (vai trò Extractor), cần DATABASE_URL
 ```
 
+Đăng nhập: tài khoản duy nhất lấy từ `.env` (`ADMIN_EMAIL`, `ADMIN_PASSWORD`; `src/analytics/auth.py`; cookie `Path=/`). `POST /api/analytics/login {email, password}` đặt cookie `tg_admin` (HttpOnly, SameSite=Strict, 12 giờ, token giữ trong bộ nhớ nên khởi động lại là đăng xuất); `POST …/logout`; `GET …/me`. Mọi GET khác trả 401 khi chưa đăng nhập; thiếu `ADMIN_PASSWORD` thì không ai vào được. Sai 5 lần trong 15 phút thì khóa địa chỉ đó 15 phút. Màn đăng nhập: `web/src/admin/Login.tsx`. Trên bản public, `web/server.mjs` proxy các route này và chỉ cho review API đi qua sau khi `/me` trả 200; lệnh khóa tính theo địa chỉ (`x-tg-client-ip`), cookie thêm `Secure` khi tới qua https (`x-tg-secure`).
+
 Vite proxy `/api/analytics` → 8770 (`ANALYTICS_PORT`). `./run.sh start` chạy nó; bản public không chạy và `web/server.mjs` chặn mọi `/api/*` ngoài harness / auth. Bộ lọc chung: `from`, `to` (ngày theo giờ Việt Nam; mặc định 30 ngày), `start_with`, `app_version`.
 
 | GET `/api/analytics/…` | Nội dung |

@@ -1,37 +1,55 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { impression } from '../events'
 import { useDecision } from '../pd/decision'
 import type { Card, Group, SearchResult } from '../pd/types'
 import { searchList } from '../pd/api'
-import { requestStageEntry } from '../journey'
-import { setUi, toggleCmp, useUi } from '../store'
+import { useBegin } from '../home/dialogs'
+import { useStarting } from '../startTrip'
+import { openAssistant, setUi, toggleCmp, useUi } from '../store'
 import { WaitLine } from '../ui/SlowHint'
 import '../css/fixes.css'
 import { useTrip } from '../trip'
-import { placesDelta } from '../tu/labels'
 import { AssistantFloat, AssistantPinned } from '../ui/Assistant'
 import { ArtHills, Empty, go, PlacePhoto } from '../ui/common'
 import { openPlace } from '../ui/PlaceSheet'
-import { DiscPicker } from '../ui/DiscPicker'
 import { Icon, type IconName } from '../ui/icons'
 import { PlaceCard } from '../ui/PlaceCard'
+import { areaOf, browseCards, compareFor, ExploreBar, ExploreSide, inAreas, isFiltered, NO_BROWSE, type Browse } from '../ui/ExploreSide'
+import { info } from '../lib'
 import { Pager } from '../ui/Pager'
 import { SelectedBar } from '../ui/SelectedBar'
+import { SplitPlan, useSplit, ViewSwitch } from '../ui/SplitPlan'
+import { warmMap } from './plan/TripMap'
 import { reducedMotion, useStagedList } from '../ui/useStagedList'
 import { Page, useTitle } from '../ui/Shell'
 import { LongTripWarning } from '../ui/LongTripWarning'
-import { LODGING_TAB, LodgingPanel, LodgingSearchResults, useLodgingList } from './Lodging'
+import { LODGING_TAB, LodgingPanel, LodgingSearchResults, useLodgingList, useStayCards } from './Lodging'
 
 const NO_CARDS: Card[] = []
+const ALL_STEP = 48 // Tất cả shows this many at a time; "Xem thêm" shows the next ones
+const ALL_TAB = 'all' // every group at once: the first page of each, best first
+
+// The rules that hid places, one plain sentence each. The server words a hard filter as «Điều kiện “<what> = | ≠ <value>”» (the user's own
+// condition): "≠ có" is "no <what>", so it reads "Bỏ N nơi <what>". A place closed on every day of the trip needs no line: closed places are closed.
+export function limitLines(rules: { rule: string; label: string; count: number }[]) {
+  return rules.flatMap((r) => {
+    if (r.rule === 'closed_all_trip_days') return []
+    const m = /^Điều kiện “(.+) (=|≠) (.+)”$/.exec(r.label)
+    // `reason` is what the row says after "<count> nơi bị bỏ": the thing those places have (or lack) that the user's condition rules out.
+    if (!m) return [{ ...r, reason: r.label.toLowerCase(), text: `Bỏ ${r.count} nơi: ${r.label.toLowerCase()}` }]
+    const [, what, op, value] = m
+    const [reason, text] = (op === '≠' && value === 'có') || (op === '=' && value === 'không') ? [what, `Bỏ ${r.count} nơi ${what}`]
+      : (op === '=' && value === 'có') || (op === '≠' && value === 'không') ? [`bạn chỉ giữ nơi ${what}`, `Chỉ giữ nơi ${what}, bỏ ${r.count} nơi còn lại`]
+      : op === '=' ? [`bạn chỉ giữ nơi ${what} ${value}`, `Chỉ giữ nơi ${what} ${value}, bỏ ${r.count} nơi còn lại`]
+      : [`${what} ${value}`, `Bỏ ${r.count} nơi ${what} ${value}`]
+    return [{ ...r, reason, text }]
+  })
+}
 // Every tab starts with its own icon, the stay tab's bed included, so the row reads as one.
 const TAB_ICONS: Record<string, IconName> = { meal: 'utensils', snack: 'smile', cafe: 'coffee', chill: 'coffee', nature: 'sun', garden: 'tree', camping: 'flame', sights: 'pin', culture: 'flag', fun: 'zap', night: 'moon', spa: 'heart', market: 'ticket' }
-// Back to Hiểu chuyến đi to see or relax a limit: the journey steps back on the server (Decision keeps its picks).
+// To see or relax a limit the user talks to the chat beside the lists (it reads and changes the trip; the lists follow).
 export function useEditTicket() {
-  const { trip } = useTrip()
-  return () => {
-    if (trip.journeyId) requestStageEntry(trip.journeyId, 'trip')
-    go('/understand')
-  }
+  return () => openAssistant(true)
 }
 
 export function Explore() {
@@ -41,18 +59,39 @@ export function Explore() {
   const tab = useUi((u) => u.tab)
   const cmp = useUi((u) => u.cmp)
   const [dropFor, setDropFor] = useState<Card | null>(null)
-  const [exOpen, setExOpen] = useState(false)
-  const [mode, setMode] = useState<'grid' | 'disc'>('grid')
-  const discHint = useDiscHint(mode === 'disc')
   const asst = useUi((u) => u.assistant)
   const editTicket = useEditTicket()
-  const pinned = asst.open && asst.pinned
-  const groups = view?.groups.filter((g) => g.id !== 'anchors' && (g.cards.length || g.total)) ?? []
-  const current = groups.find((g) => g.id === tab) ?? groups[0]
+  const starting = useStarting()
+  const begin = useBegin()
+  const split = useSplit()
+  // The map beside the list opens without waiting: its code, style and connection are read while the page is idle.
+  useEffect(() => {
+    const ric = window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 800))
+    const id = ric(() => warmMap())
+    return () => (window.cancelIdleCallback ?? clearTimeout)(id)
+  }, [])
+  // The cards are rows while the map is beside them (it is the width they have), photos otherwise.
+  const layout = split.open ? 'list' : 'grid'
+  const [hotPlace, setHotPlace] = useState<string | null>(null) // the place under the pointer in the list: its dot on the map
+  const pinned = asst.open && asst.pinned && !split.open // the chat pins beside the grid only while the schedule is not beside it
+  const groups = useMemo(() => view?.groups.filter((g) => g.id !== 'anchors' && (g.cards.length || g.total)) ?? [], [view?.groups])
   const needsLodging = Boolean(view?.lodging) // one lodging per trip: the tab is always there (to pick, or to change)
-  const onLodging = needsLodging && tab === LODGING_TAB
   const lodgingList = useLodgingList(needsLodging)
-  useEffect(() => { if (mode === 'grid') current?.cards.forEach((c, i) => impression(c.id, current.id, i + 1)) }, [current?.id, current?.cards.length, mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  const stayTotal = needsLodging ? lodgingList.opts?.total ?? 0 : 0
+  // Tất cả: the first page of every group, best first, and the stays (their own list, after Decision's) with them.
+  const allGroup = useMemo<Group | null>(() => {
+    if (groups.length < 2) return null
+    const seen = new Map<string, Card>()
+    groups.forEach((g) => g.cards.forEach((c) => { if (!seen.has(c.id)) seen.set(c.id, c) }))
+    return { id: ALL_TAB, label: 'Tất cả', total: groups.reduce((n, g) => n + g.total, 0) + stayTotal, cards: [...seen.values()].sort((a, b) => b.score - a.score) }
+  }, [groups, stayTotal])
+  const tabs = allGroup ? [allGroup, ...groups] : groups
+  const current = tabs.find((g) => g.id === tab) ?? tabs[0] // opens on Tất cả
+  const onLodging = needsLodging && tab === LODGING_TAB
+  const onAll = current?.id === ALL_TAB
+  const stays = useMemo(() => (onAll && needsLodging ? lodgingList.opts?.candidates ?? [] : []), [onAll, needsLodging, lodgingList.opts])
+  const stay = useStayCards()
+  useEffect(() => { current?.cards.forEach((c, i) => impression(c.id, c.group ?? current.id, i + 1)) }, [current?.id, current?.cards.length]) // eslint-disable-line react-hooks/exhaustive-deps
   const onCmp = toggleCmp
   const goCompare = (ids: string[]) => go(`/explore/compare/${ids.map(encodeURIComponent).join(',')}`)
   // The header count moved (a chat wish, an edited ticket): show by how much next to it.
@@ -78,8 +117,28 @@ export function Explore() {
       return next
     })
   }, [view?.change]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (current && fresh[current.id]) setFresh(({ [current.id]: _, ...rest }) => rest) }, [current?.id, fresh]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (current?.id === ALL_TAB && Object.keys(fresh).length) setFresh({}); else if (current && fresh[current.id]) setFresh(({ [current.id]: _, ...rest }) => rest) }, [current?.id, fresh]) // eslint-disable-line react-hooks/exhaustive-deps
   const { items, replacing } = useStagedList(current?.id ?? '', current?.cards ?? NO_CARDS, current ? view?.change?.[current.id] : undefined)
+
+  // The filter column and the sort act on the page on screen; another group starts clean (its areas are not this one's).
+  const [browse, setBrowse] = useState<Browse>(NO_BROWSE)
+  useEffect(() => { setBrowse((b) => (isFiltered(b) ? { ...NO_BROWSE, sort: b.sort } : b)) }, [current?.id])
+  const shownItems = useMemo(() => {
+    if (!isFiltered(browse) && browse.sort === 'rank') return items
+    const order = new Map(browseCards(current?.cards ?? NO_CARDS, browse).map((c, i) => [c.id, i]))
+    return items.filter((x) => order.has(x.card.id)).sort((a, b) => order.get(a.card.id)! - order.get(b.card.id)!)
+  }, [items, browse, current?.cards])
+  // The grid: Decision's cards, then (on Tất cả) the stays; any other order than "Hợp nhất" mixes them by that order.
+  const [shownCount, setShownCount] = useState(ALL_STEP)
+  useEffect(() => { setShownCount(ALL_STEP) }, [current?.id, browse])
+  const rows = useMemo(() => {
+    const out: ({ kind: 'pc'; id: string; name: string; stars: number; x: (typeof shownItems)[number] } | { kind: 'stay'; id: string; name: string; stars: number; c: (typeof stays)[number] })[] = [
+      ...shownItems.map((x) => ({ kind: 'pc' as const, id: x.card.id, name: x.card.name, stars: info(x.card.id)?.rating ?? -1, x })),
+      ...stays.filter((c) => inAreas(browse, info(c.id)?.area ?? c.area ?? null)).map((c) => ({ kind: 'stay' as const, id: c.id, name: c.name, stars: info(c.id)?.rating ?? c.rating ?? -1, c })),
+    ]
+    const cmp = compareFor(browse.sort)
+    return cmp && stays.length ? out.sort(cmp) : out
+  }, [shownItems, stays, browse])
 
   // Kept cards that moved slide from where they were (FLIP) instead of jumping.
   const gridRef = useRef<HTMLDivElement>(null)
@@ -96,7 +155,7 @@ export function Explore() {
           n.animate([{ transform: `translate(${old.left - r.left}px, ${old.top - r.top}px)` }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' })
       })
     rects.current = new Map(cards.map((n) => [n.dataset.place!, n.getBoundingClientRect()]))
-  }, [items])
+  }, [shownItems])
 
   // A tab is cut into pages; the user picks one and the grid starts again from its top.
   const goPage = (n: number) => {
@@ -115,10 +174,11 @@ export function Explore() {
     return () => { live = false; clearTimeout(t) }
   }, [query, searching, onLodging, trip.decisionId, view?.version, view?.selected.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!trip.decisionId)
+  // A trip being made (the home's button, an old chat moving on) shows the lists' shape meanwhile; with none, one tap makes it.
+  if (!trip.decisionId && !starting)
     return (
       <>
-        <Page narrow><Empty art={<ArtHills />} title="Chưa có gợi ý" body={error ?? 'Bắt đầu từ bước Tìm hiểu, chỉ vài câu thôi.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => go('/understand')}>Tìm hiểu</button>} /></Page>
+        <Page narrow><Empty art={<ArtHills />} title="Chưa có chuyến nào đang chọn" body={error ?? 'Mình gợi ý ngay những nơi nổi bật nhất, bạn chọn và trò chuyện để lọc thêm.'} action={<button type="button" className="tg-btn tg-btn--primary" onClick={() => begin({})}><Icon name="compass" size={18} /> Khám phá nơi muốn đến</button>} /></Page>
       </>
     )
   if (!view)
@@ -139,7 +199,7 @@ export function Explore() {
 
   const anchors = view.groups.find((g) => g.id === 'anchors')?.cards ?? []
   const total = groups.reduce((n, g) => n + g.total, 0) + anchors.length
-  const excluded = view.excluded.by_rule.reduce((n, r) => n + r.count, 0)
+  const limits = limitLines(view.excluded.by_rule)
   const q = view.pending
   const question = q && (
     <div key="ask" className="tg-narrow" aria-live="polite">
@@ -150,34 +210,12 @@ export function Explore() {
   )
   return (
     <>
-      <Page>
+      <Page className="tg-page--bleed">
         <div className={`tg-xlayout ${pinned ? 'is-pinned' : ''}`}>
           <div className="tg-xmain">
-            <header className="tg-xhead">
-              <div>
-                <h1>Gợi ý cho chuyến của bạn</h1>
-                <p>{total - anchors.length} nơi hợp với chuyến của bạn{listMove && <span key={listMove.key} className={`tg-xhead__delta tg-mono ${listMove.delta < 0 ? 'is-down' : 'is-up'}`}>{placesDelta(listMove.delta)}</span>}, xếp từ hợp nhất.</p>
-              </div>
-              <div className="tg-xhead__ops">
-                <div className="tg-seg" role="group" aria-label="Cách xem"><button type="button" aria-pressed={mode === 'grid'} onClick={() => setMode('grid')}><Icon name="grid" size={15} /> Lưới</button><button type="button" aria-pressed={mode === 'disc'} disabled={!groups.length} onClick={() => setMode('disc')}><Icon name="compass" size={15} /> Đĩa xoay</button></div>
-                {mode === 'grid' && groups.length > 0 && !discHint.seen && !(asst.open && !asst.pinned) && ( // the floating chat would sit on top of it
-                  <p className="tg-seghint" role="note">
-                    <span>Thử <b>Đĩa xoay</b>: lăn chuột để lướt từng nơi, ảnh to và rõ hơn.</span>
-                    <button type="button" onClick={() => { discHint.dismiss(); setMode('disc') }}>Xem thử</button>
-                    <button type="button" className="tg-seghint__x" onClick={discHint.dismiss} aria-label="Ẩn gợi ý"><Icon name="x" size={14} /></button>
-                  </p>
-                )}
-              </div>
-            </header>
+            <header className="tg-xhead"><h1>Gợi ý cho chuyến của bạn</h1><ViewSwitch open={split.open} onChange={(map) => { if (map !== split.open) split.toggle() }} /></header>
 
             <LongTripWarning days={view.days.length} />
-
-            {view.excluded.by_rule.length > 0 && (
-              <>
-                <button type="button" className="tg-excl" aria-expanded={exOpen} onClick={() => setExOpen((v) => !v)}><Icon name="lock" size={16} /><span><b>Giới hạn của bạn đã loại {excluded} nơi.</b> Bấm để xem vì giới hạn nào.</span><Icon name="chevronDown" size={18} /></button>
-                {exOpen && <ul className="tg-excl-list">{view.excluded.by_rule.map((r) => <li key={r.rule}><span>{r.label}</span><span style={{ opacity: 0.7 }}>· loại {r.count} nơi</span><button type="button" className="tg-link" onClick={editTicket}>Nới giới hạn</button></li>)}</ul>}
-              </>
-            )}
 
             {view.filter && view.filter.active.length > 0 && (
               <div className="tg-xfilter" role="group" aria-label="Bộ lọc">
@@ -199,42 +237,48 @@ export function Explore() {
                     <div className="tg-req__row">{anchors.map((c) => <button key={c.id} type="button" className="tg-req__row" onClick={(e) => openPlace(c.id, e.currentTarget.querySelector('figure'))}><PlacePhoto id={c.id} name={c.name} /><span><b>{c.name}</b><br /><small className="tg-muted">{c.area ?? c.category}</small></span></button>)}</div>
                   </section>
                 )}
-                {mode === 'disc' && current ? (
-                  <DiscPicker groups={groups} tab={onLodging ? LODGING_TAB : current.id} onTab={(t) => setUi({ tab: t })} cmp={cmp} onCmp={onCmp} onDrop={setDropFor} onBack={() => setMode('grid')} lodging={needsLodging ? lodgingList : null} />
-                ) : (
-                  <>
-                    <label className="tg-xsearch">
-                      <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }} placeholder={onLodging ? 'Tìm nơi lưu trú theo tên hoặc địa chỉ, ví dụ “homestay”, “Trại Mát”' : 'Tìm theo tên hoặc loại nơi, ví dụ “bánh căn”, “chùa”, “kem”'} aria-label={onLodging ? 'Tìm nơi lưu trú' : 'Tìm địa điểm trong mọi nhóm'} />
-                      {query && <button type="button" className="tg-xsearch__clear" aria-label="Xóa ô tìm" onClick={() => setQuery('')}><Icon name="x" size={16} /></button>}
-                      <Icon name="search" size={22} />
-                    </label>
+                <div className="tg-xbrowse">
+                  <ExploreSide
+                    query={query} setQuery={setQuery}
+                    searchLabel={onLodging ? 'Tìm nơi lưu trú' : 'Tìm địa điểm trong mọi nhóm'}
+                    searchHint={onLodging ? 'Tìm chỗ ở' : 'Tìm nơi'}
+                    groups={tabs} currentId={current?.id} onLodging={onLodging} fresh={fresh} icons={TAB_ICONS}
+                    onPick={(id) => setUi({ tab: id })}
+                    lodging={needsLodging ? { total: lodgingList.opts?.total ?? null, waiting: !lodgingList.failed, done: Boolean(view.lodging?.chosen || view.lodging?.booked) } : null}
+                    onPickLodging={() => setUi({ tab: LODGING_TAB })}
+                    areaNames={searching ? [] : [...(current?.cards ?? NO_CARDS).map(areaOf), ...stays.map((c) => info(c.id)?.area ?? c.area ?? null)]} browse={browse} setBrowse={setBrowse}
+                    limits={limits} onRelax={editTicket}
+                  />
+                  <div className="tg-xbrowse__main">
                     {searching && onLodging ? <LodgingSearchResults q={query.trim()} onClear={() => setQuery('')} /> : searching ? <SearchResults q={query.trim()} found={found} groups={groups} cmp={cmp} onCmp={onCmp} onDrop={setDropFor} pinned={pinned} onClear={() => setQuery('')} /> : <>
-                    <div className="tg-tabs" role="tablist" aria-label="Nhóm địa điểm" onKeyDown={(e) => {
-                      const i = groups.findIndex((g) => g.id === current?.id)
-                      if (e.key === 'ArrowRight') setUi({ tab: groups[(i + 1) % groups.length].id })
-                      if (e.key === 'ArrowLeft') setUi({ tab: groups[(i + groups.length - 1) % groups.length].id })
-                    }}>
-                      {groups.map((g) => { const on = !onLodging && current?.id === g.id; return <button key={g.id} type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} className="tg-tab" onClick={() => setUi({ tab: g.id })}><Icon name={TAB_ICONS[g.id] ?? 'pin'} size={15} /> {g.label}<b>{g.total}</b>{fresh[g.id] ? <i className="tg-tab__new" aria-label={`${fresh[g.id]} nơi mới`}>+{fresh[g.id]} mới</i> : null}</button> })}
-                      {needsLodging && <button type="button" role="tab" aria-selected={onLodging} tabIndex={onLodging ? 0 : -1} className="tg-tab" onClick={() => setUi({ tab: LODGING_TAB })}><Icon name="bed" size={15} /> Nơi lưu trú{lodgingList.opts?.total ? <b>{lodgingList.opts.total}</b> : lodgingList.failed ? null : <b className="tg-tab__wait" aria-label="Đang đếm"><i /></b>}{view.lodging?.chosen || view.lodging?.booked ? <Icon name="check" size={14} /> : null}</button>}
-                    </div>
+                    {!onLodging && current && current.cards.length > 0 && <ExploreBar label={current.label} total={current.total} shown={rows.length} onPage={current.cards.length + stays.length} partial={current.id === ALL_TAB} delta={listMove} browse={browse} setBrowse={setBrowse} />}
                     {onLodging ? <LodgingPanel list={lodgingList} /> : !current || current.cards.length === 0 ? (
                       <>
                         {question}
                         <Empty art={<ArtHills />} title="Chưa có nơi nào ở nhóm này" body="Thử nhóm khác, hoặc nới giới hạn để có thêm lựa chọn." />
                       </>
+                    ) : rows.length === 0 ? (
+                      <Empty art={<ArtHills />} title="Không có nơi nào khớp bộ lọc" body="Bỏ bớt một bộ lọc, hoặc xem trang khác của nhóm này." action={<button type="button" className="tg-btn tg-btn--ghost" onClick={() => setBrowse((b) => ({ ...NO_BROWSE, sort: b.sort }))}>Xóa bộ lọc</button>} />
                     ) : (
-                      <div ref={gridRef} className={`tg-grid ${pinned ? 'is-two' : ''} ${replacing ? 'is-replacing' : ''}`} key={current.id}>
-                        {items.flatMap(({ card: c, phase, i: order }, i) => {
-                          const out = [<PlaceCard key={c.id} c={c} phase={phase} order={order} onDrop={setDropFor} cmp={cmp.includes(c.id)} onCmp={onCmp} />]
-                          if (i === Math.min(4, items.length - 1) && question) out.push(question)
+                      <div ref={gridRef} className={`tg-grid ${pinned ? 'is-two' : ''} ${layout === 'list' ? 'is-list' : ''} ${replacing ? 'is-replacing' : ''}`} key={current.id} onPointerOver={(e) => { const id = (e.target as HTMLElement).closest<HTMLElement>('[data-place]')?.dataset.place ?? null; if (split.open && id !== hotPlace) setHotPlace(id) }} onPointerLeave={() => setHotPlace(null)}>
+                        {(onAll ? rows.slice(0, shownCount) : rows).flatMap((r, i) => {
+                          const out = [r.kind === 'pc' ? <PlaceCard key={r.id} c={r.x.card} phase={r.x.phase} order={r.x.i} onDrop={setDropFor} cmp={cmp.includes(r.id)} onCmp={onCmp} /> : stay.render(r.c, i)]
+                          if (i === Math.min(4, Math.min(rows.length, onAll ? shownCount : rows.length) - 1) && question) out.push(question)
                           return out
                         })}
                       </div>
                     )}
-                    {!onLodging && current && current.cards.length > 0 && <Pager label={current.label} total={current.total} page={current.page ?? 0} pages={current.pages ?? 1} from={(current.offset ?? 0) + 1} to={(current.offset ?? 0) + current.cards.length} busy={loadingMore === current.id} onPage={goPage} />}
+                    {onAll && !onLodging && rows.length > 0 && (
+                      <div className="tg-xmore">
+                        {rows.length > shownCount
+                          ? <button type="button" className="tg-btn tg-btn--ghost" onClick={() => setShownCount((n) => n + ALL_STEP)}>Xem thêm {Math.min(ALL_STEP, rows.length - shownCount)} nơi</button>
+                          : <p className="tg-faint">Đã hiện {rows.length} nơi. Chọn một nhóm bên trái để xem tiếp.</p>}
+                      </div>
+                    )}
+                    {!onLodging && current && current.id !== ALL_TAB && current.cards.length > 0 && <Pager label={current.label} total={current.total} page={current.page ?? 0} pages={current.pages ?? 1} from={(current.offset ?? 0) + 1} to={(current.offset ?? 0) + current.cards.length} busy={loadingMore === current.id} onPage={goPage} />}
                     </>}
-                  </>
-                )}
+                  </div>
+                </div>
                 {view.unverified.count > 0 && (
                   <details className="tg-unverified" open={view.unverified.open}>
                     <summary><Icon name="info" size={16} /> Chưa xác minh được điều kiện của bạn ({view.unverified.count})</summary>
@@ -251,7 +295,9 @@ export function Explore() {
 
       {cmp.length >= 2 && <button type="button" className="tg-btn tg-btn--primary tg-float-cmp" onClick={() => goCompare(cmp)}><Icon name="swap" size={18} /> So sánh {cmp.length} nơi</button>}
       <SelectedBar />
-      <AssistantFloat />
+      {split.open && <SplitPlan hot={hotPlace} onHot={setHotPlace} onClose={split.close} />}
+      <AssistantFloat pinAllowed={!split.open} />
+      {stay.dialog}
       <DropSheet card={dropFor} onClose={() => setDropFor(null)} />
     </>
   )
@@ -295,13 +341,4 @@ export function DropSheet({ card, onClose, after }: { card: Card | { id: string;
     void act({ type: 'drop', place_id: card.id }).then(ok => { if (ok) after?.() })
   }, [card, act, onClose, after])
   return null
-}
-
-// A one-time pointer to the disc view: shown until the user dismisses it or has tried the disc once (per browser).
-const DISC_HINT = 'tg.disc-hint.v1'
-function useDiscHint(inDisc: boolean) {
-  const [seen, setSeen] = useState(() => { try { return localStorage.getItem(DISC_HINT) === '1' } catch { return false } })
-  const dismiss = () => { setSeen(true); try { localStorage.setItem(DISC_HINT, '1') } catch { /* the hint just shows again next time */ } }
-  useEffect(() => { if (inDisc && !seen) dismiss() }, [inDisc]) // eslint-disable-line react-hooks/exhaustive-deps
-  return { seen, dismiss }
 }

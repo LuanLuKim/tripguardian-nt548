@@ -67,9 +67,9 @@ type Props = { state: EveState; busy: boolean; error: string | null; send: Retur
 // `start` / `end` are the daily outing hours and only make sense on a trip of more than one day.
 type Times = { arrive: string; start?: string | null; end?: string | null; leave: string }
 const MOMENTS = [
-  { key: 'arrive', icon: 'plane', label: 'Đến', note: 'Ngày đầu bắt đầu từ giờ này' },
+  { key: 'arrive', icon: 'plane', label: 'Xuất phát', note: 'Ngày đầu bắt đầu từ giờ này' },
   { key: 'start', icon: 'sun', label: 'Đi chơi', note: 'Mỗi ngày ra ngoài từ giờ này' },
-  { key: 'end', icon: 'moon', label: 'Về nghỉ', note: 'Mỗi ngày xong trước giờ này' },
+  { key: 'end', icon: 'moon', label: 'Nghỉ ngơi', note: 'Mỗi ngày xong trước giờ này' },
   { key: 'leave', icon: 'home', label: 'Rời đi', note: 'Ngày cuối xong trước giờ này' },
 ] as const
 
@@ -90,7 +90,7 @@ export function EveTimes({ times, busy, send }: { times: Times; busy: boolean; s
             <span className="tg-eve__moment-ico" aria-hidden="true"><Icon name={m.icon} size={18} /></span>
             <div>
               <span className="tg-eve__moment-label">{m.label}</span>
-              <TimePick label={m.label} value={at(m.key)} disabled={busy} onChange={(x) => { setV((o) => ({ ...o, [m.key]: x })); setSaved(false) }} />
+              <TimePick hover label={m.label} value={at(m.key)} disabled={busy} onChange={(x) => { setV((o) => ({ ...o, [m.key]: x })); setSaved(false) }} />
               <small>{m.note}</small>
             </div>
           </div>

@@ -64,8 +64,14 @@ def journey_options(params: dict, options=None) -> dict:
         return {"origin": None, "origin_text": text, "dest": list(dest) if dest else None,
                 "dest_is_centre": dest is None, "way": way, "day": day.isoformat() if day else None,
                 "options": [], "reason": "unknown_origin"}
-    run = options or (lambda o, d, t, w: journey.options(o, d, t, way=w))
+    run = options or (lambda o, d, t, w: journey.options(o, d, t, way=w, with_rides=True))
     return run(origin, day, dest, way).as_dict()
+
+
+def rides(params: dict) -> dict:
+    """Grab / Be / Xanh SM estimates for each leg `km:minutes:lat:lng[:lat2:lng2];…` (journey.rides; lat2, lng2 = where
+    the leg ends, for fixed routes); a bad leg is a 400."""
+    return journey.ride_quotes(journey.parse_ride_legs(str(params.get("legs") or "")))
 
 
 def home_point(city: str | None, search=None) -> dict | None:

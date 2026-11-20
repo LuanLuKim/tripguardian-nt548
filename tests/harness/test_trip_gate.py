@@ -104,16 +104,75 @@ def test_h3_a_legacy_confirmation_does_not_waive_unanswered_care():
         run(h, v, "advance", "to-planning")
 
 
-def test_h4_only_read_back_answers_reach_the_trip_from_the_decision_stage():
-    from harness import RouteError
+def test_h4_a_chat_turn_on_lua_chon_goes_to_trip_and_rebuilds_the_lists_only_when_the_trip_moved():
+    """There is no separate chat screen: Trip's chat runs beside Lựa chọn (decision.trip with any turn kind)."""
+    from harness import Request
     h, tools = make()
     v = decision(h)
-    gated(tools, ["care"])
-    for payload in ({"kind": "text", "text": "đổi sang 5 ngày"}, {"kind": "show"}, {"kind": "answer", "qid": "x"}):
-        with pytest.raises((RouteError, ValueError)):
-            run(h, v, "trip", f"bad-{payload['kind']}", payload)
+    did = v["sessions"]["decision"]
+    days = {"n": 2}
+
+    def read(sid, operation, payload):
+        if operation == "readback":
+            return dict(READBACK, missing=[])
+        out = []
+        tools["trip"]._compiled(sid, lambda event, data: out.append(data["search_input"]))
+        return {**out[-1], "context": {**out[-1]["context"], "days": days["n"]}}
+
+    tools["trip"].read = read
+
+    def chat(view, rid, text):
+        events = []
+        out = h.request(view["id"], Request(request_id=rid, stage="decision", operation="trip", expected_revision=view["revision"],
+                                            payload={"kind": "text", "text": text}), emit=lambda e, d: events.append(e))
+        return out, events
+
+    v, events = chat(v, "chat-same", "Đà Lạt có gì vui?")
+    assert v["stage"] == "decision" and "view" not in events and "rebased" not in tools["decision"].states[did]
+    days["n"] = 3
+    v, events = chat(v, "chat-moved", "đi 3 ngày nhé")
+    assert v["stage"] == "decision" and "view" in events and events.index("view") > events.index("done")
+    assert tools["decision"].states[did]["rebased"] == 3 and v["outputs"]["trip"]["context"]["days"] == 3
     v = run(h, v, "trip", "tap", {"kind": "deck", "answers": {"care": ["none"]}})
     assert v["stage"] == "decision"
+
+
+def test_h4c_a_chat_message_about_the_lists_is_answered_by_decision_and_its_trip_wish_by_trip():
+    from harness import Request
+    h, tools = make()
+    v = decision(h)
+    read = tools["decision"].read
+    tools["decision"].read = lambda sid, op, payload: {"route": "decision"} if op == "route" else read(sid, op, payload)
+    events = []
+    v = h.request(v["id"], Request(request_id="chat-list", stage="decision", operation="trip", expected_revision=v["revision"],
+                                   payload={"kind": "text", "text": "yên tĩnh hơn"}), emit=lambda e, d: events.append((e, d)))
+    assert v["stage"] == "decision" and "trip" not in [e for e, _ in events]
+    assert tools["trip"].states[v["sessions"]["trip"]]["refined"] == "muốn yên tĩnh hơn"
+    assert any(e == "view" and d["diff"]["text"].startswith("Giữ 22") for e, d in events)
+
+
+def test_h4d_the_chat_on_lich_trinh_edits_the_schedule_or_asks_trip_without_touching_it():
+    from harness import Request
+    h, tools = make()
+    v = decision(h)
+    v = run(h, v, "act", "pick")
+    v = run(h, v, "advance", "to-planning")
+    assert v["stage"] == "planning"
+    read = tools["decision"].read
+    ways = {"Dời sang ngày 2": "planning", "Tháng này có lễ hội gì?": "trip"}
+    tools["decision"].read = lambda sid, op, payload: {"route": ways[payload["text"]]} if op == "route" else read(sid, op, payload)
+    plan_before = tools["planning"].calls
+    trip_before = tools["trip"].calls
+
+    def chat(view, rid, payload):
+        return h.request(view["id"], Request(request_id=rid, stage="planning", operation="trip", expected_revision=view["revision"], payload=payload))
+
+    v = chat(v, "plan-edit", {"kind": "text", "text": "Dời sang ngày 2"})
+    assert v["stage"] == "planning" and tools["planning"].calls == plan_before + 1 and tools["trip"].calls == trip_before
+    v = chat(v, "plan-ask", {"kind": "text", "text": "Tháng này có lễ hội gì?"})
+    assert v["stage"] == "planning" and tools["planning"].calls == plan_before + 1 and tools["trip"].calls == trip_before + 1
+    with pytest.raises(ValueError):
+        chat(v, "plan-deck", {"kind": "deck", "answers": {"care": ["none"]}})
 
 
 def test_h4b_a_field_edit_from_the_summary_or_lich_trinh_reaches_the_trip():
@@ -145,7 +204,7 @@ def test_partial_gate_answers_are_saved_while_a_health_hint_cannot_compile():
         run(h, v, "advance", "still-needs-care")
 
 
-def test_real_trip_adapter_saves_dates_until_the_pending_health_question_is_answered(tmp_path, monkeypatch):
+def test_real_trip_adapter_plans_only_after_the_health_hint_the_user_raised_is_answered(tmp_path, monkeypatch):
     from datetime import date
     import test_dispatch
     from trip import Catalog, Engine, SessionStore, Settings, Tools, TripState
@@ -169,11 +228,7 @@ def test_real_trip_adapter_saves_dates_until_the_pending_health_question_is_answ
     h.store.save(journey)
     with pytest.raises(TripNotReady) as err:
         run(h, v, "advance", "gate")
-    assert err.value.missing == ["trip", "care"]
-    v = run(h, v, "trip", "dates", {"kind": "deck", "answers": {"trip.dates": "2026-11-20..2026-11-22"}})
-    s = trip.engine.store.get(s.id)
-    assert s.state.days.value == 3 and s.state.start_date.value == date(2026, 11, 20)
-    assert trip.read(s.id, "readback", {})["missing"] == ["care"]
+    assert err.value.missing == ["care"]  # only the health hint the user raised; no dates asked (owner 2026-11-18)
     v = run(h, v, "trip", "not-safe-yet", {"kind": "deck", "answers": {"care": ["none"]}})
     assert trip.read(s.id, "readback", {})["missing"] == ["care"]
     v = run(h, v, "trip", "care", {"kind": "deck", "answers": {"care": ["steps"]}})
@@ -205,3 +260,39 @@ def test_real_trip_adapter_takes_the_origin_edited_from_lich_trinh(tmp_path, mon
     s = trip.engine.store.get(v["sessions"]["trip"])
     assert v["stage"] == "decision" and s.state.origin.value.text == "Thành phố Hồ Chí Minh"
     assert v["outputs"]["trip"]["context"]["origin"]["text"] == "Thành phố Hồ Chí Minh"
+
+
+def test_an_answer_planning_never_reads_keeps_the_plan_and_one_it_reads_drops_it(tmp_path, monkeypatch):
+    from datetime import date
+    import test_dispatch
+    from trip import Catalog, Engine, SessionStore, Settings, Tools
+    from trip.api import engine as trip_engine
+    from harness import Harness
+
+    monkeypatch.setattr(trip_engine, "TURN_LOG", tmp_path / "trip_turns.log")
+
+    def no_model(*_):
+        raise AssertionError("a field edit must not call a model")
+
+    trip = Tools(Engine(Catalog.from_records([], n_min=1), Settings(), SessionStore(None), no_model,
+                        today=lambda: date(2026, 11, 10)))
+    h = Harness(trip, test_dispatch.Tools("decision"), test_dispatch.Tools("planning"), test_dispatch.STORE(tmp_path))
+    v = run(h, h.create(), "turn", "compile", {"kind": "show"})
+    v = run(h, v, "advance", "choose")
+    v = run(h, v, "trip", "dates", {"kind": "deck", "answers": {"trip.dates": "2026-11-20..2026-11-22"}})
+    v = run(h, v, "trip", "care", {"kind": "deck", "answers": {"care": ["none"]}})
+    v = run(h, v, "advance", "plan")
+    planning_id = v["sessions"]["planning"]
+    # the way in and where the trip starts do not change a plan: it, and the decision it came from, stay
+    v = run(h, v, "back", "back-1")
+    v = run(h, v, "trip", "origin", {"kind": "edit", "target": "origin", "value": '{"text": "Hồ Chí Minh", "lat": 10.77, "lng": 106.7, "province": null}'})
+    assert v["sessions"]["planning"] == planning_id and "decision" in v["outputs"]
+    assert v["outputs"]["trip"]["context"]["origin"]["text"] == "Hồ Chí Minh"
+    v = run(h, v, "trip", "arrival", {"kind": "deck", "answers": {"arrival": ["plane"]}, "at": "plan"})
+    assert v["sessions"]["planning"] == planning_id and v["outputs"]["trip"]["context"]["arrival_mode"] == "plane"
+    v = run(h, v, "advance", "again")
+    assert v["stage"] == "planning" and v["sessions"]["planning"] == planning_id
+    v = run(h, v, "back", "back-2")
+    # the pace is read by Planning: the plan is built again
+    v = run(h, v, "trip", "pace", {"kind": "deck", "answers": {"pace": ["slow"]}, "at": "plan"})
+    assert "planning" not in v["sessions"] and "decision" not in v["outputs"]

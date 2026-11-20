@@ -19,6 +19,7 @@ import { HeartFill, Icon } from './icons'
 import { diveFrom, Space3d, useSpace3d, useWarmWhenIdle, warmOnIntent } from './Space3d'
 import { askAssistant } from './askAssistant'
 import { DetailsOverview, KnownFor } from './PlaceDetails'
+import { FeedPlayer, playerSrc, poster, tell, usePlayerReady, warmPlayer } from './clips'
 import { PhoneLink, SiteLink, phoneText, siteOf } from './contact'
 
 // docs/Role_Web_Functional_Design.md §6: "Xem chi tiết" of a place. One sheet for the disc, the grid and the shared
@@ -279,7 +280,7 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
       </header>
 
       <div className="tg-ps__tabs" role="tablist" aria-label="Thông tin về nơi này" ref={tabsRef}>
-        {TABS.filter(([k]) => (k !== 'space3d' || model) && (k !== 'video' || p.videos.length > 0)).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} {...(k === 'space3d' ? modelIntent : {})} onClick={(e) => pick(k, e.currentTarget)}>{l}</button>)}
+        {TABS.filter(([k]) => (k !== 'space3d' || model) && (k !== 'video' || p.videos.length > 0)).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} {...(k === 'space3d' ? modelIntent : k === 'video' ? { onPointerEnter: warmPlayer, onFocus: warmPlayer } : {})} onClick={(e) => pick(k, e.currentTarget)}>{l}</button>)}
       </div>
 
       <section className="tg-ps__pane" role="tabpanel">
@@ -391,46 +392,21 @@ function SheetBody({ id, big, onClose }: { id: string; big: React.RefObject<HTML
   )
 }
 
-// TikTok's own embedded player (credit and controls stay TikTok's). `preview`: no controls, muted, looping.
-const playerSrc = (id: string, preview: boolean) =>
-  `https://www.tiktok.com/player/v1/${id}?autoplay=1&rel=0&music_info=0&description=0${preview ? '&controls=0&progress_bar=0&play_button=0&volume_control=0&fullscreen_button=0&timestamp=0&loop=1' : '&loop=1'}`
-// The player says when it is ready; a preview is then muted so hovering never makes a sound.
-function useMuteWhenReady(frame: React.RefObject<HTMLIFrameElement | null>, on: boolean) {
-  useEffect(() => {
-    if (!on) return
-    const f = (e: MessageEvent) => {
-      const w = frame.current?.contentWindow
-      if (!w || e.source !== w || !e.data?.['x-tiktok-player']) return
-      if (e.data.type === 'onPlayerReady') {
-        w.postMessage({ type: 'mute', 'x-tiktok-player': true }, '*')
-        w.postMessage({ type: 'play', 'x-tiktok-player': true }, '*')
-      }
-    }
-    addEventListener('message', f)
-    return () => removeEventListener('message', f)
-  }, [frame, on])
-}
-
-// A clip kept on our server (corpus tiktok clips), played by the browser itself.
-const clipSrc = (id: string) => `/media/tiktok/${id}/video.mp4`
-
 // A traveller's clip: its first frame; hovering a moment plays it muted in place, a click opens the viewer.
 function Clip({ v, onOpen }: { v: Video; onOpen: () => void }) {
   const [hover, setHover] = useState(false)
   const timer = useRef<number | undefined>(undefined)
   const frame = useRef<HTMLIFrameElement>(null)
-  useMuteWhenReady(frame, hover)
+  usePlayerReady(frame, hover, (el) => { tell(el, 'mute'); tell(el, 'play') })
   useEffect(() => () => clearTimeout(timer.current), [])
   const desc = v.desc.replace(/#\S+/g, '').trim().slice(0, 120)
-  const enter = () => { if (!reducedMotion()) timer.current = window.setTimeout(() => setHover(true), 280) }
+  const enter = () => { warmPlayer(); if (!reducedMotion()) timer.current = window.setTimeout(() => setHover(true), 280) }
   const leave = () => { clearTimeout(timer.current); setHover(false) }
   return (
     <li className="tg-ps__clip">
       <button type="button" className={`tg-ps__cplay ${hover ? 'is-live' : ''}`} onClick={onOpen} onMouseEnter={enter} onMouseLeave={leave} onFocus={enter} onBlur={leave} aria-label={`Xem clip của @${v.handle ?? 'tiktok'}`}>
-        <img src={`/media/tiktok/${v.id}/frames/f1.jpg`} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.visibility = 'hidden' }} />
-        {hover && (v.local
-          ? <video src={clipSrc(v.id)} muted autoPlay loop playsInline preload="none" tabIndex={-1} aria-hidden="true" />
-          : <iframe ref={frame} src={playerSrc(v.id, true)} title="" tabIndex={-1} aria-hidden="true" allow="autoplay; encrypted-media" />)}
+        <img src={poster(v.id)} alt="" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = 'hidden' }} />
+        {hover && <iframe ref={frame} src={playerSrc(v.id, true)} title="" tabIndex={-1} aria-hidden="true" allow="autoplay; encrypted-media" />}
         <span className="tg-ps__cbtn"><Icon name="play" size={26} /></span>
       </button>
       <b>@{v.handle ?? 'tiktok'}</b>
@@ -445,6 +421,9 @@ function ClipViewer({ videos, at, place, placeId, onAt, onClose }: { videos: Vid
   const n = videos.length
   const go = (d: number) => onAt((at + d + n) % n)
   const desc = v.desc.trim()
+  // The clip on screen and its two neighbours stay mounted (keyed by clip): moving on swaps which one is shown, nothing reloads.
+  const near = [...new Set([at, (at + 1) % n, (at - 1 + n) % n])]
+  const played = useRef(new Set<string>())
   return (
     <Dialog.Root open onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
@@ -455,9 +434,10 @@ function ClipViewer({ videos, at, place, placeId, onAt, onClose }: { videos: Vid
         }}>
           <Dialog.Close className="tg-cv__x" aria-label="Đóng"><Icon name="x" size={22} /></Dialog.Close>
           <div className="tg-cv__stage">
-            {v.local
-              ? <video key={v.id} className="tg-cv__player" onPlay={() => track('evidence_play', { place_id: placeId, video_id: v.id })} src={clipSrc(v.id)} poster={`/media/tiktok/${v.id}/frames/f1.jpg`} controls autoPlay loop playsInline title={`Clip TikTok của @${v.handle ?? 'tiktok'}`} />
-              : <iframe key={v.id} className="tg-cv__player" src={playerSrc(v.id, false)} title={`Clip TikTok của @${v.handle ?? 'tiktok'}`} allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen />}
+            <div className="tg-cv__player">
+              {near.map((k) => <FeedPlayer key={videos[k].id} className="tg-cv__slot" v={videos[k]} current={k === at} title={`Clip TikTok của @${videos[k].handle ?? 'tiktok'}`}
+                onPlay={() => { if (!played.current.has(videos[k].id)) { played.current.add(videos[k].id); track('evidence_play', { place_id: placeId, video_id: videos[k].id }) } }} />)}
+            </div>
             <aside className="tg-cv__info">
               <p className="tg-cv__who"><i>{(v.handle ?? 't').slice(0, 1).toUpperCase()}</i><Dialog.Title asChild><b>@{v.handle ?? 'tiktok'}</b></Dialog.Title></p>
               <p className="tg-cv__place"><Icon name="pin" size={14} /> {place}</p>

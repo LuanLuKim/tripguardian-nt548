@@ -98,12 +98,11 @@ def compare_places(turn, inp: ComparePlaces) -> dict:
 
 class PlaceStatus(BaseModel):
     """Is this place real and open: the corpus status, whether it is open at this moment (only when its hours are
-    verified; otherwise unknown), when its data was last seen, and any permanent-closure report Google Maps gave. Use
-    it for "quán này còn mở không", "có thật không", "đóng cửa chưa"."""
+    verified; otherwise unknown) and when its data was last seen. Use it for "quán này còn mở không", "có thật không"."""
     model_config = ConfigDict(extra="forbid")
     tool_name: ClassVar[str] = "place_status"
 
-    id: str = Field(description="A place id or the place's name (a closed place is found by its name).")
+    id: str = Field(description="A place id or the place's name.")
 
 
 @read_tool(PlaceStatus, group="detail")
@@ -154,6 +153,9 @@ class BrowseTags(BaseModel):
         "user said: empty {} for a vague ask; săn mây -> must cloud_hunting=present; bánh căn -> dish; ăn uống -> groups "
         "restaurant; a mood (chill) -> prefer, not must. Never guess kinds yourself. near_place, price_max, sort and page "
         "are not taken."))
+    question: str = Field("", max_length=56, description=(
+        "A SHORT heading over the cards (one line, at most 8 words), in your own words, drawn from what the user just said (a question that "
+        "makes them curious); never a stock phrase, never an instruction like \"chọn một hay nhiều\". Empty only if nothing fits."))
 
 
 @read_tool(BrowseTags, group="places")
@@ -309,6 +311,29 @@ class AreaNotice(BaseModel):
 @read_tool(AreaNotice, group="tips", place_args=("id",))
 def area_notice(turn, inp: AreaNotice) -> dict:
     return turn.knowledge.more.area(inp.id)
+
+
+# ---------- clips ----------
+
+class PlaceClips(BaseModel):
+    """Show travellers' TikTok clips of 1-6 places on a clip stage the user swipes through like TikTok. Call it when a
+    moving picture answers better than photos: what a place is like ("đẹp không", "view thế nào", "đông không"), how
+    something goes there ("săn mây ở Đa Phú thế nào", "đường lên có khó không"), or the user asks for clips, videos or
+    TikTok. Not for choosing among many places (cards do that). about: what the user wants to see, in their words. The
+    reply may say there are clips (shown); never describe what a clip shows. shown 0: say nothing about clips."""
+    model_config = ConfigDict(extra="forbid")
+    tool_name: ClassVar[str] = "place_clips"
+
+    ids: list[str] = Field(min_length=1, max_length=6, description="Place ids or names, the one asked about first.")
+    about: str = Field("", max_length=60, description='What the user wants to see, in their words ("mây buổi sáng"), or empty.')
+    heading: str = Field("", max_length=56, description="A short heading over the clips in your words (at most 8 words), or empty.")
+
+
+@action_tool("trip", PlaceClips, requires="assistant")
+def place_clips(turn, inp: PlaceClips) -> dict:
+    out = turn.knowledge.more.clips(_many(turn, inp.ids), inp.about)
+    turn.told_ids |= {p["id"] for p in out["places"] if p["clips"]}  # the reply may name the places the clips show
+    return out
 
 
 # ---------- 5.7 actions in the trip ----------

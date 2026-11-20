@@ -25,6 +25,7 @@ class Travel:
     source: str                         # osrm | rough
     fetched_at: str | None
     rough_pairs: int = 0
+    road_km: list[list[float]] = field(default_factory=list)  # straight line x road_factor: what a ride is priced on
     index: dict = field(init=False)
 
     def __post_init__(self):
@@ -35,6 +36,12 @@ class Travel:
         if a == b:
             return 0, "none"
         return self.legs[self.index[a]][self.index[b]]
+
+    def distance_km(self, a: str | None, b: str | None) -> float | None:
+        """Estimated road km from node a to node b; None when either node or the table is unknown."""
+        if not self.road_km or a not in self.index or b not in self.index:
+            return None
+        return self.road_km[self.index[a]][self.index[b]]
 
 
 def rough_minutes(distance_km: float, mobility: str | None, cfg: Settings) -> int:
@@ -59,6 +66,7 @@ def build_travel(nodes: dict, mobility: str | None, cfg: Settings, live_cfg, mat
             pass
     rough_pairs = 0
     legs = []
+    road_km = [[round(km(a, b) * cfg.road_factor, 1) for b in points] for a in points]
     for i, a in enumerate(points):
         row = []
         for j, b in enumerate(points):
@@ -73,4 +81,4 @@ def build_travel(nodes: dict, mobility: str | None, cfg: Settings, live_cfg, mat
                 row.append((rough_minutes(d, mobility, cfg), mobility or "motorbike"))
                 rough_pairs += 1 if minutes is not None else 0
         legs.append(row)
-    return Travel(ids, legs, source, fetched_at, rough_pairs)
+    return Travel(ids, legs, source, fetched_at, rough_pairs, road_km)

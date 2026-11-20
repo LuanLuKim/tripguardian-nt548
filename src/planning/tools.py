@@ -92,9 +92,9 @@ class Tools:
                 raise ToolError(409, str(exc)) from None
         if operation == "recommend":
             permit_tool(self.skill, "planning.propose")
-            if payload:
-                raise ValueError("Planning recommend does not accept user text or arbitrary tools")
-            return self.engine.recommend(sid)
+            if payload not in ({}, {"scope": "keep_mine"}, {"scope": "all"}):
+                raise ValueError("Planning recommend accepts only scope keep_mine | all")
+            return self.engine.recommend(sid, payload.get("scope", "keep_mine"))
         raise ValueError(f"planning does not accept {operation}")
 
     def read(self, sid: str, operation: str, payload: dict) -> dict:
@@ -106,6 +106,8 @@ class Tools:
             return self.engine.routes(sid)
         if operation == "variants":
             return {"variants": self.engine.variants(sid)}
+        if operation == "summary":
+            return self.engine.summary(sid)
         if operation == "preview-act":
             import json
             raw = payload.get("action")

@@ -92,14 +92,10 @@ def test_next_with_no_pending_question_returns_the_text_box_despite_missing_topi
     assert card["qid"] == "conversation" and card["input"] == "text" and card["chips"] == []
 
 
-def test_gate_keeps_every_missing_topic_with_its_default_question(catalog, cfg):
+def test_the_gate_asks_nothing_the_user_did_not_raise(catalog, cfg):
     cfg = replace(cfg, max_tabs=7)
     gate = deck.build(TripState(), catalog, cfg, at="gate", ask="mobility", question=QUESTION)
-    assert {t.qid: t.question for t in gate.tabs} == {
-        "trip": "Bạn ở Đà Lạt từ ngày nào đến ngày nào?",
-        "care": "Có điều gì về sức khỏe, đi lại hay ăn uống cần lưu ý?",
-    }
-    assert all(t.kind == "required" for t in gate.tabs) and gate.left == gate.total == 2
+    assert gate.tabs == () and gate.left == 0  # nothing is asked before planning (owner 2026-11-18)
 
 
 class PhotoLooks:

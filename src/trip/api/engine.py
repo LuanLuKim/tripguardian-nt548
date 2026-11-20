@@ -25,7 +25,7 @@ from agents.assistant import REGISTRY, Guarded, last_shown, rule_reply
 from corpus import tags as corpus_tags
 
 from ..agent.tools import DATE_TOOLS
-from ..domain import ask, deck, drill, values
+from ..domain import ask, deck, drill, memo, values
 from ..domain.derive import derive
 from ..domain.deck import Deck
 from ..domain import vibes
@@ -106,6 +106,8 @@ NOT_DONE_SAY = "Mình chưa xử lý xong ý này. Bạn kể lại giúp mình 
 FALLBACK_SAY = ("Mình đã ghi lại những gì đọc được, nhưng trợ lý đang bận nên chưa hiểu hết câu này. "
                 "Bạn gửi lại giúp mình nhé.")
 BUSY_SAY = "Trợ lý đang bận nên chưa ghi được lựa chọn này. Bạn bấm lại giúp mình nhé."  # a button answer the agent missed
+LOCAL_NOW_ITEMS = 3  # seasons, events and popular places each, in the agent's local_now
+NEXT_CARD_WAIT_S = 0.8  # how long a discovery turn waits, before the agent, for the photo card that opens under its reply
 DRILL_WAIT_S = 0.3  # how long a turn waits, after the agent, for its photo card (not ready: it shows on a later turn;
 # waiting 3 s added 3 s to every long first message, 2026-10-16)
 NOTED_SAY = "Mình đã ghi lựa chọn của bạn."  # a button answer recorded with no agent reply (closed card, or agent failed)
@@ -116,6 +118,18 @@ DONE_SAY = "Xong rồi, mình đi tìm chỗ hợp với chuyến này."
 OTHER_TYPE_SAY = "Bạn gõ ý của bạn vào ô bên dưới giúp mình nhé."
 REVIEW_SAY = "Mình đã hỏi đủ những điều cần cho chuyến này. Các nơi đang hợp ở bảng bên cạnh."
 BAD_VALUE = "Giá trị này mình chưa đọc được, bạn thử lại nhé."
+NEW_CHAT = "new_chat"  # transcript mark of the chat's "Trò chuyện mới" (Engine.new_chat)
+
+
+def since_new_chat(transcript: list[dict]) -> list[dict]:
+    """The conversation on screen: the lines after the user's last "Trò chuyện mới". The earlier lines stay in the trip
+    for the record (the history title, the Agent's memo); the screen and the model's chat history start after the mark."""
+    for i in range(len(transcript) - 1, -1, -1):
+        if transcript[i].get("kind") == NEW_CHAT:
+            return transcript[i + 1:]
+    return transcript
+
+
 EXIT_LABEL = {"skip": "Bỏ qua", "unsure": "Chưa chắc"}  # what the user pressed, as it shows in the chat
 DECLINE_SAY = "Không sao, mình để trống ý này."
 DATE_SAY = "Mình ghi ngày đi {day}."
@@ -142,6 +156,8 @@ BAD_PHOTO = "Ảnh này mình không mở được, bạn thử ảnh JPG hoặc
 log = logging.getLogger(__name__)
 PHOTOS_KEPT = 5  # photo records the assistant keeps for one session (memory only)
 FOLLOWUP_LIMIT = 3  # the agent's own questions in a row after which the app asks a required topic itself
+EXPLORED_MAX = 24   # picks of one photo stage the agent reads
+EXPLORED_SHOWN = 4  # picks the chat line names before "và N nữa"
 APPLIED_FIELDS = frozenset({"care", "checkout_at", "day_end", "checkin_at", "frame.day_start", "start_date", "month", "month_part", "days", "nights", "people", "budget_vnd",
                             "budget_scope", "signal", "hard", "soft", "arrival_mode", "mobility", "driver", "unmapped"})
 # Of those, the ones written as the user's own words (source user): the agent is told not to record or compute them again
@@ -150,7 +166,7 @@ EXACT_FIELDS = frozenset({"care", "checkout_at", "day_end", "checkin_at", "frame
 
 class TurnInput(Frozen):
     kind: Literal["text", "answer", "edit", "show", "more", "theme", "to_chat", "to_quiz", "image", "deck", "drop", "readback_ok",
-                  "like", "tag", "wish"]
+                  "like", "tag", "wish", "explored"]
     answers: dict[str, list[str] | str] = {}
     text: str = ""
     qid: str = ""
@@ -233,6 +249,24 @@ def picked_text(d: Deck, answers: dict) -> str:
     return "\n".join(f"{h}: {' · '.join(dict.fromkeys(v))}" for h, v in lines.items()) or "Lựa chọn cho chuyến đi"
 
 
+def photo_choice(tab, vals: list[str], said: str | None, name: Callable[[str], str],
+                 known_for: Callable[[str], list[str]] = lambda _: [],
+                 looks: Callable[[str], list[str]] = lambda _: []) -> tuple[dict, tuple[str, ...]]:
+    """What the user did on a photo card, for the agent: the kinds they kept (what each looks like, the place on its
+    photo), the ones they passed over, the card's question and the words of theirs that opened it.
+    -> (the context, the kept photos' place ids: the user saw them, so the reply may name them)."""
+    shown = [o for o in tab.options if o.id not in ("skip", "other")]
+    kept = [o for o in shown if o.id in vals]
+    return {"card": tab.header, **({"asked": tab.question} if tab.question else {}),
+            **({"opened_by_their_words": said} if said else {}),
+            "kept": [{"kind": o.label, "looks_like": list(o.cues), **({"photo_of": name(o.photo[0]),
+                                                                        "photo_place_looks": looks(o.photo[0]),
+                                                                        "photo_place_known_for": known_for(o.photo[0])}
+                                                                       if o.photo else {}),
+                      **({"places_of_this_kind": o.count} if o.count else {})} for o in kept],
+            "not_chosen_this_time": [o.label for o in shown if o.id not in vals]}, tuple(o.photo[0] for o in kept if o.photo)
+
+
 def card(q: Question | None, effects: dict[str, int] | None = None) -> dict | None:
     """effects: chip id -> places the "Đang hợp với bạn" count gains or loses if that chip is chosen."""
     if q is None:
@@ -283,7 +317,7 @@ class Engine:
 
     def view(self, s: Session) -> dict:
         return {"id": s.id, "discovery": self.cfg.discovery,
-                "transcript": [self._entry(t, s.state) for t in s.transcript if t["role"] in ("user", "agent")],
+                "transcript": [self._entry(t, s.state) for t in since_new_chat(s.transcript) if t["role"] in ("user", "agent")],
                 "understanding": understanding(s.state, self.catalog, self.cfg),
                 "card": self._card(s.state, s.card),
                 "tradeoffs": tradeoffs(s.state, self.cfg),
@@ -313,6 +347,12 @@ class Engine:
             return []
         liked = {a.place_id for a in state.anchors if a.priority == "want" and a.place_id}
         return [c for pid in ids if (c := self.knowledge.view(pid, self.today(), pid in liked, (scenes or {}).get(pid)))]
+
+    def calendar_days(self, first: date, last: date) -> dict:
+        """The home calendar's days: holiday, lunar day and forecast (infrastructure.knowledge.Knowledge.month_days)."""
+        if self.knowledge is None:
+            return {"from": first.isoformat(), "to": last.isoformat(), "days": {}}
+        return self.knowledge.month_days(first, last)
 
     def tag_view(self, ref: str) -> dict:
         """The home page's tag: {tag, block, cards}. block = the tag's places split into subtags (the chat's `tags` block,
@@ -482,6 +522,7 @@ class Engine:
         before = s.state
         turn = self._open_turn(s, picked_text(current, inp.answers), "answer")
         issues, flat, other = [], {}, False
+        choices: list[tuple[dict, tuple[str, ...]]] = []  # what the user did on a photo card, for the agent
         for key, raw in inp.answers.items():
             vals = raw if isinstance(raw, list) else [raw]
             tab = available.get(key)
@@ -539,6 +580,7 @@ class Engine:
                     topic = key.removeprefix("drill.")
                     st = drill.finish(st, topic, "done")
                     selected = [opts[v] for v in vals]
+                    choices.append(photo_choice(tab, vals, quote, self._name, self._known_for, self._looks_of))
                     from ..domain.state import Vibe
                     from itertools import zip_longest
                     places = tuple(dict.fromkeys(p for row in zip_longest(*(o.places for o in selected))
@@ -673,7 +715,8 @@ class Engine:
             # words that fit the talk. The app opens no required topic by itself.
             if self._tap_only(s, available, inp):
                 return self._tap_next(s, turn, emit)
-            return self._run(s, s.transcript[-1]["text"], emit, answer=True, picked=True)
+            return self._run(s, s.transcript[-1]["text"], emit, answer=True, picked=True,
+                             chosen=[c for c, _ in choices], chosen_ids=tuple(p for _, ids in choices for p in ids))
         emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
         emit("card", self._card(s.state, s.card))
 
@@ -782,6 +825,18 @@ class Engine:
                             question=s.card.ask_question if isinstance(s.card, Deck) else None)
         emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
         emit("card", self._card(s.state, s.card))
+
+    def new_chat(self, sid: str) -> None:
+        """The chat's "Trò chuyện mới": a mark in the transcript, so the screen and the model's chat history start
+        again after it. The trip stays as it is (what the user told, the places, the schedule). An open card closes,
+        except an open health hint: that question still has to be answered before the lists move."""
+        s = self.store.get(sid)
+        with s.lock:
+            if "care" not in self._readback(s.state).get("missing", ()) and s.card is not None and (
+                    isinstance(s.card, Deck) or s.card.qid not in ("conversation", "frame")):
+                s.card = conversation_card()
+            s.transcript.append({"role": "system", "text": NEW_CHAT, "turn": s.state.meta.turn, "kind": NEW_CHAT})
+            self.store.save(s)
 
     def refine(self, sid: str, text: str, emit: Emit) -> None:
         """A wish typed later, at Chọn nơi: read it like any text turn, without questions, then compile again. The
@@ -1023,7 +1078,8 @@ class Engine:
         emit("card", self._card(s.state, s.card))
 
     def _run(self, s: Session, text: str, emit: Emit, may_ask: bool = True, quiet: bool = False,
-             answer: bool = False, picked: bool = False) -> None:
+             answer: bool = False, picked: bool = False, explored: tuple[str, ...] = (),
+             chosen: list[dict] | None = None, chosen_ids: tuple[str, ...] = ()) -> None:
         """An agent turn whose reply is sent once, when it is final: every check (Clef, guard, trim, a retry) has
         already run, so the user never sees words that are then replaced. Progress, state and cards pass at once."""
         held: list[str] = []
@@ -1053,16 +1109,20 @@ class Engine:
             emit(ev, data)
 
         try:
-            self._agent_turn(s, text, hold, may_ask, quiet, answer, picked)
+            self._agent_turn(s, text, hold, may_ask, quiet, answer, picked, explored, chosen, chosen_ids)
         finally:
             flush()
 
     def _agent_turn(self, s: Session, text: str, emit: Emit, may_ask: bool = True, quiet: bool = False,
-                    answer: bool = False, picked: bool = False) -> None:
+                    answer: bool = False, picked: bool = False, explored: tuple[str, ...] = (),
+                    chosen: list[dict] | None = None, chosen_ids: tuple[str, ...] = ()) -> None:
         """One agent turn: record what the user said, then let the agent loop run until it asks, finishes or replies.
         answer: the text is an option the user pressed on the open card (it answers that card; Clef is not asked).
         picked: the deck already wrote that answer and opened the turn (`text` is its summary): the agent only reacts
-        and chooses the next question."""
+        and chooses the next question. explored: with picked, what the user kept on the photo stage they just closed:
+        the agent reads their taste from it and opens a new direction. chosen: with picked, what the user kept and
+        passed over on each photo card, with what the kinds look like; chosen_ids: the places on the kept photos (the
+        user saw them, so the reply may name them)."""
         if not picked and isinstance(s.card, Deck):
             for tab in s.card.tabs:
                 if tab.kind == "drill":  # its photos were shown and the user typed instead: answered in words, not shown again
@@ -1110,9 +1170,18 @@ class Engine:
                               "state", {"understanding": understanding(st, self.catalog, self.cfg)}))
         if tools.assistant:  # what the user showed or pasted: the perceive tools read these (spec §5.2)
             tools.photos = s.photos
-            tools.shown_log = last_shown(s.transcript, self._name)
+            tools.shown_log = last_shown(since_new_chat(s.transcript), self._name)
             tools.tag_seen, tools.tag_picked = tuple(blocks.recent_signatures(s.transcript)), tuple(blocks.picked_tags(s.transcript))
             tools.slots = {"photos": photo_context(s.photos), "links": links_in(text)}
+        tools.told_ids |= set(chosen_ids)  # the places on the photos the user kept: they saw them, the reply may name them
+        upcoming = None  # the photo card that opens under this reply: known before the agent writes, so it leads into it
+        if photos is not None and self.cfg.discovery:
+            try:  # the photo scores are prepared offline, so this is quick; a late card opens after the reply as before
+                tools.state = drill.adopt(tools.state, photos.result(timeout=NEXT_CARD_WAIT_S))
+                photos = None
+                upcoming = next((d for d in tools.state.drills if d.status == "pending" and d.tab is not None), None)
+            except Exception as exc:  # noqa: BLE001 - the card is optional
+                tools.log.append(f"next_card_late {type(exc).__name__}")
         guard = None
         if tools.assistant and self.cfg.assistant.guard and self.judge is not None and not picked and not answer:
             # Clef reads the message for rules R1-R8 while the model works (spec 2026-10-29 §4); a hit stops the model
@@ -1196,7 +1265,7 @@ class Engine:
             if mode in ("write", "none") and tools.route is not None and not compound and covers(tools.route, data):
                 # Compound requests keep reads: group-level coverage cannot prove every clause was answered.
                 # the prepared data answers every asked group: no lookup (each costs a 3-8 s second call)
-                keep = {"record_fact", "browse_tags", "hide_place"} if mode == "write" else set()  # a broad ask still gets its subtags
+                keep = {"record_fact", "browse_tags", "hide_place", "place_clips"} if mode == "write" else set()  # a broad ask still gets its subtags
                 # only reads prefetch could have prepared go (and the ungrouped ones, web search): a tool prefetch never
                 # prepares stays, so an ask Clef routed elsewhere ("hết bao nhiêu tiền", "homestay dưới 600k") still
                 # finds estimate_cost / find_stays
@@ -1204,11 +1273,16 @@ class Engine:
                     n not in keep and ((t := REGISTRY.get(n)) is None or t.group is None or t.group in PREPARED_GROUPS))}
                 log.append(f"covered tools={mode}")
         fit = fit_summary(st, self.catalog) if assistant else None  # the "Đang hợp" count and what narrows it
-        messages = build_messages(st, text, s.transcript[:-1], prev.text if prev else None, self.today(), hints, compared,
-                                   clarify, dict(needed), stuck, picked=picked, lookups=found, data=data,
+        now = self._local_now(st, tools) if assistant and self.cfg.discovery and not quiet else None
+        known = self._remembered(s) if not quiet else None  # earlier chats' memos: a prior, never a fact of this trip
+        messages = build_messages(st, text, since_new_chat(s.transcript)[:-1], prev.text if prev else None, self.today(), hints, compared,
+                                   clarify, dict(needed), stuck, picked=picked, explored=explored, lookups=found, data=data,
                                    assistant=assistant, ask_words=self.cfg.assistant.ask_words,
                                    reply_style=self.cfg.assistant.reply_style, slots=tools.slots, discovery=self.cfg.discovery,
-                                   fit=fit,
+                                   fit=fit, chosen=chosen, local_now=now, remembered=known,
+                                   next_card={"about": upcoming.topic, **({"opened_by_their_words": upcoming.quote} if upcoming.quote else {}),
+                                              "kinds": [o.label for o in upcoming.tab.options if o.id not in ("skip", "other")]}
+                                   if upcoming else None,
                                    name_of=lambda pid: p.name if (p := self.catalog.by_id.get(pid)) else None)
         tools.step("read", "Đọc lựa chọn của bạn" if picked else "Đọc tin nhắn của bạn", "ok")
         if assistant:
@@ -1241,6 +1315,13 @@ class Engine:
                 tools.state = drill.adopt(tools.state, photos.result(timeout=DRILL_WAIT_S))
             except Exception as exc:  # a photo card is optional: the turn goes on without it (a slow one is built
                 log.append(f"drill_build_failed {type(exc).__name__}")  # again on a later turn)
+        if getattr(tools, "words", None):  # the model's own words on the photo card of this turn (the config's are the fallback)
+            w = tools.words
+            tools.state = tools.state.model_copy(update={"drills": tuple(
+                d.model_copy(update={"tab": d.tab.model_copy(update={"question": w["question"], "why": w["why"],
+                                                                     **({"header": w["header"]} if w["header"] else {})})})
+                if (d.turn == turn or (upcoming and d.topic == upcoming.topic)) and d.tab is not None and d.status == "pending"
+                else d for d in tools.state.drills)})
         if any(b.get("kind") == "tags" for b in getattr(tools, "blocks", ())):
             # the reply's tags / subtags already ask "which kind?": the photo question on the same taste would open over
             # them and ask it twice, so the taste's photo card is closed for this turn (the subtags win)
@@ -1295,7 +1376,7 @@ class Engine:
         if short != say:
             say = short
             emit("say", {"replace": say})
-        last_ask = next((t["text"] for t in reversed(s.transcript[:-1]) if t["role"] == "agent" and t.get("kind") == "say"), "")
+        last_ask = next((t["text"] for t in reversed(since_new_chat(s.transcript)[:-1]) if t["role"] == "agent" and t.get("kind") == "say"), "")
         if may_ask and same_question(say, last_ask):
             # the user went on without answering the question: it is not asked again (testers, 2026-10-16)
             log.append("same_question")
@@ -1322,8 +1403,9 @@ class Engine:
             log.append("card_is_the_question")
             say = drop_questions(say)
             emit("say", {"replace": say})
-        if (may_ask and tools.asked is None and asks_in_text(say)
+        if (may_ask and tools.asked is None and asks_in_text(say) and upcoming is None
                 and any(d.turn == turn and d.status == "pending" and d.tab is not None for d in tools.state.drills)):
+            # (with next_card the reply may offer the card in a question, "bạn muốn xem thử không?": kept)
             # the taste the user just named has its photo card: the photos are this turn's one question, so the
             # agent's own question in words gives way to them
             log.append("drill_first")
@@ -1425,7 +1507,7 @@ class Engine:
             s.state = with_meta(s.state, nudged=(*s.state.meta.nudged, due))
             card = deck.build(s.state, self.catalog, self.cfg, ask=due)
         # a failed agent leaves the text box: the user says it again before anything else is asked
-        s.card = card or (conversation_card() if failed else self._next(s, say))
+        s.card = card or (conversation_card() if failed else self._next(s, say, leads=upcoming is not None))
         if may_ask:
             own = (s.card.qid == "conversation" and asks_in_text(say)) or (
                 isinstance(s.card, Deck) and any(t.kind in ("agent", "drill") for t in s.card.tabs))
@@ -1522,6 +1604,35 @@ class Engine:
         s.state = s.state.model_copy(update={"wishes": s.state.wishes.model_copy(update={"kinds": kept})})
         s.transcript.append({"role": "system", "text": f"wish {inp.value} {label}", "turn": s.state.meta.turn})
         emit("state", {"understanding": understanding(s.state, self.catalog, self.cfg)})
+
+    def _explored(self, s: Session, inp: TurnInput, emit: Emit) -> None:
+        """Xong on a photo stage where the user kept something (chips = "place:<id>" of the places and the labels of the
+        kinds they kept; the like and wish turns already wrote them): the agent reads what the picks say of their taste
+        and opens a new direction. Only a place this chat holds as a want or a kind it holds as a wish counts: the
+        client never writes the prompt."""
+        held = {squash(w.kind): w.kind for w in s.state.wishes.kinds}
+        held |= {f"place:{a.place_id}": self._name(a.place_id) or a.text for a in s.state.anchors if a.priority == "want" and a.place_id}
+        picks = tuple(dict.fromkeys(held[k] for c in inp.chips[:EXPLORED_MAX]
+                                    if (k := c if c.startswith("place:") else squash(c)) in held))
+        if not picks:
+            raise ValueError("explored needs places or kinds this chat recorded")
+        shown = " · ".join(picks[:EXPLORED_SHOWN]) + (f" và {len(picks) - EXPLORED_SHOWN} nữa" if len(picks) > EXPLORED_SHOWN else "")
+        # what each pick is, for the agent: a place's kind, a kind's first places (the stage showed them)
+        wished = {squash(w.kind): w for w in s.state.wishes.kinds}
+        kept, ids = [], []
+        for c in dict.fromkeys(inp.chips[:EXPLORED_MAX]):
+            if c.startswith("place:") and c in held:
+                place = self.catalog.by_id.get(pid := c.removeprefix("place:"))
+                kept.append({"place": held[c], **({"is_a": place.category} if place and place.category else {}),
+                             "looks": self._looks_of(pid), "known_for": self._known_for(pid)})
+                ids.append(pid)
+            elif (w := wished.get(squash(c))) is not None:
+                kept.append({"kind": w.kind, "looks": self._common_look(w.place_ids),
+                             "for_example": [self._name(p) for p in w.place_ids[:2]]})
+                ids.extend(w.place_ids[:2])
+        self._open_turn(s, f"Mình chọn: {shown}", "explored")
+        self._run(s, s.transcript[-1]["text"], emit, picked=True, explored=picks,
+                  chosen=[{"kept": kept}], chosen_ids=tuple(ids))
 
     def _tag(self, s: Session, inp: TurnInput, emit: Emit) -> None:
         """A tap on a tag card (no model call): the chat opens that tag, as its subtags when they split its places well
@@ -1848,13 +1959,14 @@ class Engine:
         except OSError as e:
             s.transcript.append({"role": "system", "text": f"profile not saved: {e}", "turn": m.turn})
 
-    def _next(self, s: Session, say: str) -> Question | Deck:
+    def _next(self, s: Session, say: str, leads: bool = False) -> Question | Deck:
         """The open question after a turn in which the agent showed no card. A reply that ends on a question keeps the
-        talk in plain text: the user answers in words. Otherwise the deck shows one question: a pending follow-up or a
+        talk in plain text: the user answers in words, unless it `leads` into the photo card it was told of (next_card):
+        then the question offers that card and the card waits under the reply for a tap. Otherwise the deck shows one question: a pending follow-up or a
         confirmation. A required topic is never opened here: only the agent asks it (ask_required), in its own words;
         with nothing to show the text box stays open."""
         s.state = drill.refresh(s.state, self.catalog, self.cfg)
-        if asks_in_text(say):
+        if asks_in_text(say) and not leads:
             return conversation_card()
         built = deck.build(s.state, self.catalog, self.cfg,
                            agent=s.card.agent if isinstance(s.card, Deck) else ())
@@ -1895,6 +2007,87 @@ class Engine:
         groups = vibes.SCOPES.get(scope)
         return {c.id for c in self.catalog.places if admissible(c, st.hard, st.activities.get(c.id))
                 and (groups is None or c.category_group in groups)}
+
+    def _local_now(self, st: TripState, tools: TurnTools) -> dict | None:
+        """What is in season, on and popular in Đà Lạt now (the daily Nhịp snapshot, a few ms), short, so the agent can
+        weave one item into the talk like a local friend. Places in it pass the trip's hard limits and may be named."""
+        if self.knowledge is None:
+            return None
+        out: dict = {}
+        try:
+            for kind, key in (("season", "seasons"), ("event", "events"), ("trend", "popular_places")):
+                got = self.knowledge.trends(st, kind=kind, limit=LOCAL_NOW_ITEMS)
+                rows = []
+                for it in got.get("items", ())[:LOCAL_NOW_ITEMS]:
+                    see = it.get("see_at") or it.get("held_at") or []
+                    tools.told_ids |= {x["id"] for x in see} | ({it["id"]} if it.get("id") else set())
+                    rows.append({"name": it["name"], **({"hot": True} if it.get("hot") else {}),
+                                 **({"days": it["days"]} if it.get("days") else {}),
+                                 **({"where": [x["name"] for x in see]} if see else {})})
+                if rows:
+                    out[key] = rows
+                    out.setdefault("as_of", got.get("as_of"))
+        except Exception as exc:  # noqa: BLE001 - local colour is optional; the turn goes on without it
+            tools.log.append(f"local_now_failed {type(exc).__name__}")
+        return out or None
+
+    def _looks_of(self, pid: str) -> list[str]:
+        """The photo styles of a place's own photos (corpus.index style tags): what it looks like, beside what reviews say."""
+        try:
+            return self.looks.style_labels(pid) if self.looks is not None else []
+        except Exception:  # noqa: BLE001 - looks are optional context
+            return []
+
+    def _common_look(self, pids) -> list[str]:
+        try:
+            return self.looks.common_style(pids) if self.looks is not None else []
+        except Exception:  # noqa: BLE001
+            return []
+
+    def _remembered(self, s: Session) -> dict | None:
+        """What earlier chats' memos say of this user (memo.remembered), for CURRENT CONTEXT; None without consent."""
+        m = s.state.meta
+        if not (self.profiles and m.remember and m.user_id):
+            return None
+        try:
+            return memo.remembered(self.profiles.memos(m.user_id, but=s.id))
+        except (OSError, ValueError):
+            return None
+
+    def remember(self, sid: str, state: TripState, transcript: list[dict]) -> bool:
+        """The Agent's memo of chat `sid` for the user's next trips (domain/memo.py), when its user agreed to remember
+        and the chat has turns the last memo did not read: one model call, merged with that memo. True when written.
+        Called when the itinerary is confirmed and when the chat has been quiet a while (harness), never on a turn."""
+        m = state.meta
+        if not (self.profiles and m.remember and m.user_id) or m.turn <= self.profiles.memo_upto(m.user_id, sid):
+            return False
+        data = memo.chat_input(state, transcript, self._name, self._known_for, self._looks_of, self._common_look)
+        if not data.get("said"):
+            return False
+        before = self.profiles.memo(m.user_id, sid)
+        messages = [{"role": "system", "content": memo.PROMPT},
+                    {"role": "user", "content": json.dumps({"CHAT": data, **({"PREVIOUS": before.model_dump(mode="json")} if before else {})},
+                                                           ensure_ascii=False)}]
+        try:
+            reply = asyncio.run(self.chat(messages, [], lambda _: None))
+        except AgentError as exc:
+            log.warning("memo not written for %s: %s", sid, exc)
+            return False
+        written = memo.parse(getattr(reply, "text", None) or str(getattr(reply, "content", "") or ""))
+        if written is None:
+            log.warning("memo not written for %s: the reply was not a memo", sid)
+            return False
+        self.profiles.put_memo(m.user_id, sid, self.today(), m.turn, written)
+        return True
+
+    def _known_for(self, pid: str, most: int = 5) -> list[str]:
+        """What reviews confirm of a place the user chose ("outdoor_seating=present"), the best attested first: the
+        agent reads a taste across picks from these, never a fact it did not get."""
+        p = self.catalog.by_id.get(pid)
+        if p is None:
+            return []
+        said = [(k.n, f"{f}={k.value}") for f, k in p.known.items() if k.value not in ("absent", "unknown", "none", None)]
+        return [x for _, x in sorted(said, reverse=True)[:most]]
 
     def _name(self, pid: str) -> str:
         c = self.catalog.by_id.get(pid)

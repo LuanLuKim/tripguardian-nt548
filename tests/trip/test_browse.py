@@ -190,3 +190,63 @@ def test_retired_child_of_a_saved_tag_path_is_skipped(k):
 def test_warm_computes_every_places_tags_once(k):
     assert k.browse.warm(wait_s=0) == len(k.catalog.places)
     assert k.browse.place_tags("0xcaf0:0x1") is k.browse.place_tags("0xcaf0:0x1")
+
+
+def vibe_records():
+    """24 cloud places: 15 cafes in three looks (sunset, flowers, live music; 5 each), 5 restaurants, 4 camps."""
+    out = []
+    for i in range(15):
+        look = ("sunset_view", "flower_garden", "live_music")[i % 3]
+        out.append(served(f"0xcaf{i}:0x1", f"Quán Mây {i}", {"cloud_hunting": "present", look: "present"}, voices=100 - i, photos=PHOTO))
+    for g, cat, n in (("restaurant", "Nhà hàng", 5), ("camping", "Cắm trại", 4)):
+        out += [served(f"0x{g[:3]}{i}:0x1", f"{cat} Mây {i}", {"cloud_hunting": "present"}, group=g, category=cat, voices=50 - i, photos=PHOTO)
+                for i in range(n)]
+    return out
+
+
+def test_a_kind_with_enough_places_opens_its_vibes_before_the_places():
+    k = make(vibe_records())
+    cloud = {"must": [["cloud_hunting", "present"]]}
+    cafe = k.browse.stage(cloud, S, ["category:cafe"])
+    assert cafe["label"] == "Quán cà phê săn mây" and len(cafe["ids"]) == 15
+    vibes = {c["id"]: c for c in cafe["children"]}
+    assert set(vibes) == {"experience:sunset_view", "experience:flower_garden", "experience:live_music"}
+    assert all(c["count"] == 5 and c["label"].startswith("Quán cà phê") for c in vibes.values())
+    sunset = k.browse.stage(cloud, S, ["category:cafe", "experience:sunset_view"])
+    assert sunset["children"] is None and sunset["ids"] == [f"0xcaf{i}:0x1" for i in range(0, 15, 3)]  # ranked as the set was
+    small = k.browse.stage(cloud, S, ["category:restaurant"])
+    assert small["children"] is None and len(small["ids"]) == 5  # too few to split: its places
+
+
+def test_a_vibe_is_the_last_level_of_a_named_interest_and_a_wrong_path_is_refused():
+    k = make(vibe_records())
+    cloud = {"must": [["cloud_hunting", "present"]]}
+    for path in (["category:cafe", "experience:sunset_view", "experience:live_music"],  # deeper than the interest's two levels
+                 ["category:cafe", "experience:hiking"],                              # not one of its vibes
+                 ["category:restaurant", "experience:sunset_view"],                   # a kind that does not split
+                 ["experience:sunset_view"]):                                         # not a kind of this ask
+        with pytest.raises(ValueError):
+            k.browse.stage(cloud, S, path)
+
+
+def test_the_trips_limits_hold_on_every_level():
+    from trip.domain.state import with_meta
+    k = make(vibe_records())
+    cloud = {"must": [["cloud_hunting", "present"]]}
+    hidden = with_meta(S, hidden_ids=("0xcaf0:0x1", "0xcaf3:0x1"))
+    sunset = k.browse.stage(cloud, hidden, ["category:cafe", "experience:sunset_view"])
+    assert "0xcaf0:0x1" not in sunset["ids"] and len(sunset["ids"]) == 3
+
+
+def test_a_vague_ask_has_tags_then_kinds_then_vibes():
+    from unittest.mock import patch
+    k = make(vibe_records())
+    with patch("trip.infrastructure.browse.policy.first_pick", return_value=("tags", "vague")):
+        tag = k.browse.stage({}, S, ["experience:cloud_hunting"])
+        assert "category:cafe" in {c["id"] for c in tag["children"]}
+        cafe = k.browse.stage({}, S, ["experience:cloud_hunting", "category:cafe"])
+        assert {c["id"] for c in cafe["children"]} == {"experience:sunset_view", "experience:flower_garden", "experience:live_music"}
+        leaf = k.browse.stage({}, S, ["experience:cloud_hunting", "category:cafe", "experience:live_music"])
+        assert leaf["children"] is None and len(leaf["ids"]) == 5
+        with pytest.raises(ValueError):
+            k.browse.stage({}, S, ["experience:cloud_hunting", "category:cafe", "experience:live_music", "x"])

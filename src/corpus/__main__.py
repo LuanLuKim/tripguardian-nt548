@@ -50,7 +50,7 @@ PHASES = {  # source -> phase -> (run, needs a browser)
                "place_verify": (tiktok_place_verify.run, False), "place_poi": (tiktok_place_poi.run, False),
                "poi_crawl": (tiktok_poi_crawl.run, True), "poi_refresh": (tiktok_poi_refresh.run, True), "web_videos": (tiktok_web_videos.run, True),
                "place_web": (tiktok_place_web.run, False),
-               "clips": (tiktok_clips.run, False),
+               "clips": (lambda city: (tiktok_clips.run(city), _publish_clips(city))[0], False),
                "comments_crawl": (tiktok_comments_crawl.run, True),
                "observe": (tiktok_observe.run, False)},
     "gmaps": {"search": (gmaps_search.run, True), "stay_search": (gmaps_search.run_stay, True), "resolve": (gmaps_resolve.run, True), "filter": (gmaps_filter.run, False), "counts": (gmaps_counts.run, True),
@@ -109,6 +109,12 @@ def run(source: str, phase: str, city: str, headed: bool, limit: int | None = No
             asyncio.run(out)
 
 
+def _publish_clips(city: str) -> None:
+    """After `tiktok clips` the chat's clip stage reads the new list: data/serving/clips/<city>.json follows it."""
+    from .serving import clips
+    print(f"serving clips {city}: {clips.publish(city)}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="python -m corpus")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -135,6 +141,7 @@ def main() -> None:
     sub.add_parser("aggregate", help="every source's observations -> data/intel/places/").add_argument("--city", default="dalat")
     sub.add_parser("serving", help="intel -> data/serving/places.json for Place Decision").add_argument("--city", default="dalat")
     sub.add_parser("stay_prices", help="newest dated lodging prices -> data/serving/stay_prices/<city>.json").add_argument("--city", default="dalat")
+    sub.add_parser("clips", help="verified TikTok clips with their words for the chat's clip stage -> data/serving/clips/<city>.json").add_argument("--city", default="dalat")
     sub.add_parser("flight_offers", help="newest crawled flights -> data/serving/flight_offers/<city>.json").add_argument("--city", default="dalat")
     sub.add_parser("snapshot", help="data/serving/places.json -> data/snapshot/<version>/ (what online reads)").add_argument("--city", default="dalat")
     np = sub.add_parser("normalize", help="normalize saved inputs; optionally build and publish an offline release")
@@ -255,6 +262,9 @@ def main() -> None:
                 print(json.dumps({"normalization_id": result.id, "summary": result.manifest["summary"]}, ensure_ascii=False))
         elif args.cmd == "serving":
             serving_run(args.city)
+        elif args.cmd == "clips":
+            from .serving import clips
+            print(clips.publish(args.city))
         elif args.cmd == "stay_prices":
             from .serving import stay_prices
             print(stay_prices.publish(args.city)["stats"])

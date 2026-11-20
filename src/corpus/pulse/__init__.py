@@ -9,6 +9,7 @@ every 24 h); online only reads. Text comes from fixed templates over the items' 
     bulletin(city, now=None, root=None) -> {city, generated_at, stale, sections[{kind, title, items[]}]} | None
     hot(city, now=None, root=None) -> {fid: {label, newest, videos, authors, window_days, as_of}}   (display only)
     trends(city, kind=None, month=None, limit=6, now=None, root=None) -> {as_of, stale, items[], note?} | None
+    season_names(city, now=None, root=None) -> [{name, sources, quote}]   (the names this month's season claims give, for corpus.events to group)
 """
 
 from datetime import UTC, date, datetime
@@ -37,7 +38,7 @@ def build(city: str, now: datetime | None = None, root: Path | None = None) -> d
     cfg = config()
     now = now or datetime.now(UTC)
     sig = signals.load(city, cfg["tz_offset_h"], root)
-    items = compute.build(sig, cfg, now.date(), previous=store.load(city, root), city_name=_city_name(city))
+    items = compute.build(sig, cfg, now.date(), city_name=_city_name(city))
     snapshot = {"city": city, "generated_at": now.isoformat(timespec="seconds"), "day": now.date().isoformat(),
                 "counts": {k: sum(1 for i in items if i["kind"] == k) for k in compute.KINDS},
                 "inputs": {"places": len(sig["places"]), "places_with_videos": len(sig["videos"]),
@@ -89,7 +90,7 @@ def trends(city: str, kind: str | None = None, month: int | None = None, limit: 
         return None
     out, seen = [], {}
     for i in snap["items"]:
-        if kind and i["kind"] != kind:
+        if i["kind"] not in compute.KINDS or (kind and i["kind"] != kind):  # a kind the job no longer writes (an older latest.json) is skipped
             continue
         if month is not None and i["kind"] in ("season", "event") and month not in i["signals"].get("months", [month]):
             continue
@@ -100,7 +101,7 @@ def trends(city: str, kind: str | None = None, month: int | None = None, limit: 
             out.append({"kind": i["kind"], "name": r["title"], "place_id": r["place_id"], "text": text,
                         "sources": [s for s in r["sources"] if s.get("url")][:3],
                         # the chat's trends block shows these (a dated event's own words, picture and days)
-                        **{k: r[k] for k in ("summary", "image", "image_from", "see") if r.get(k)},
+                        **{k: r[k] for k in ("summary", "image", "image_from", "see", "hot", "hot_note") if r.get(k)},
                         **({"days": r["signal"], "on": r["on"]} if i["signals"].get("source") == "web" else {})})
     res = {"as_of": snap["day"], "stale": _age_days(snap, now) > config()["stale_after_days"], "items": out}
     if month is not None and month != int(snap["day"][5:7]):
@@ -116,6 +117,18 @@ def tag_trends(city: str, now: datetime | None = None, root: Path | None = None)
         return None
     return {"as_of": snap["day"], "window_days": tags.config()["trend"]["window_days"],
             "stale": _age_days(snap, now) > config()["stale_after_days"], "tags": snap["tags"]}
+
+
+def season_names(city: str, now: datetime | None = None, root: Path | None = None) -> list[dict]:
+    """Every name this month's season claims give a thing to see, once each (accent-folded), most pages first, with one
+    page's words about it: what corpus.events asks the model to group into seasons (names pages give one season)."""
+    now = (now or datetime.now(UTC)).date()
+    seen: dict[str, dict] = {}
+    for cl in compute.season_claims({"claims": signals.local_claims(root or signals.data_root(), city)}, now, _city_name(city)):
+        row = seen.setdefault(compute.fold(cl["subject"]), {"name": cl["subject"], "sources": 0, "quote": ""})
+        if cl["sources"] > row["sources"] or not row["quote"]:
+            row.update(sources=max(cl["sources"], row["sources"]), quote=" ".join((cl["evidence"][0].get("quote") or "").split())[:160])
+    return sorted(seen.values(), key=lambda r: (-r["sources"], r["name"]))
 
 
 def run(city: str) -> None:

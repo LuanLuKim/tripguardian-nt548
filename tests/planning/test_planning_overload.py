@@ -1,5 +1,3 @@
-import re
-
 from plan_fixtures import CENTRE, SOUTH, decision, prepared, rec, spot
 
 from planning.build import schedule_trip
@@ -22,11 +20,12 @@ def test_a_trip_that_fits_has_one_main_plan_and_no_overload():
     assert [v["id"] for v in out["variants"]] == ["main"] and out["overload"] is None
 
 
-def test_overload_gives_up_to_four_directions_each_dropping_just_enough():
+def test_overload_gives_up_to_three_directions_each_dropping_just_enough():
     trip = trip_of(heavy(10), days=2)
     out = plan_or_directions(trip)
     ov = out["overload"]
-    assert ov and {d["id"] for d in ov["directions"]} <= {"fit", "travel", "cost", "most"}
+    # cheapest, most places, best fit (owner 2026-11-18); little driving is every direction's, not a direction
+    assert ov and {d["id"] for d in ov["directions"]} <= {"fit", "cost", "most"}
     for v in out["variants"]:
         kept = set(v["kept"])
         assert not schedule_trip(trip, kept=kept).leftover
@@ -162,43 +161,27 @@ def test_an_overrun_dropping_cannot_fix_never_empties_a_day_with_room():
         assert v["unavailable_reason"] == UNAVAILABLE["no_gain"] != UNAVAILABLE["protected"]
 
 
-def test_travel_drops_the_longest_road_first_and_says_the_minutes_saved():
+def test_there_is_no_travel_direction_and_no_two_cards_keep_the_same_places():
     recs = [spot(f"c{i}", CENTRE, i, visit=(120, 150, 180)) for i in range(6)] + \
            [spot(f"s{i}", SOUTH, i, visit=(120, 150, 180)) for i in range(4)]
     d = decision([r["id"] for r in recs], days=2,
                  base={"place_id": None, "text": "home", "lat": CENTRE[0], "lng": CENTRE[1]})
-    for c in d["confirmed"]:
-        c["utility"] = 5.0 if c["id"].startswith("s") else 1.0     # fit keeps the south places: travel has its own card
-    travel = next(v for v in plan_or_directions(prepared(d, recs))["variants"] if v["id"] == "travel")
-    gone = travel["dropped"]
-    assert gone and gone[0]["place_id"].startswith("s")             # the south is the long way from the lodging
-    values = [x["value"] for x in gone]
-    assert values == sorted(values, reverse=True)
-    for x in gone:
-        m = re.fullmatch(r"bớt (\d+)′ đi xe", x["reason"])
-        assert m and int(m.group(1)) == x["value"] > 0
+    out = plan_or_directions(prepared(d, recs))
+    ids = [v["id"] for v in out["variants"]]
+    assert out["overload"] and "travel" not in ids and set(ids) <= {"fit", "cost", "most"}
+    kept = [frozenset(v["kept"]) for v in out["variants"]]
+    assert len(kept) == len(set(kept))
 
 
-def test_travel_measures_from_the_lodging_on_an_arrival_day():
-    # Day one starts at the arrival point, 6-7 km north of everything; the lodging is in the centre. "far" is the only
-    # place 15′ or more from the lodging, so travel drops it first and says the others are close to the lodging.
-    recs = [spot(f"c{i}", CENTRE, i, visit=(120, 150, 180)) for i in range(8)] + \
-           [rec("far", SOUTH[0] - 0.02, SOUTH[1] - 0.01, area="area-2", visit=(120, 150, 180))]
-    d = decision([r["id"] for r in recs], days=2, entry={"text": "airport", "lat": CENTRE[0] + 0.06, "lng": CENTRE[1]},
-                 base={"place_id": None, "text": "home", "lat": CENTRE[0], "lng": CENTRE[1]})
-    d["trip_context"]["context"]["frame"] = {
-        "days": [{"date": f"2026-12-{12 + i}", "start": "08:00", "end": "21:00", "busy": [], "intensity": "normal"}
-                 for i in range(2)],
-        "arrive": {"at": "2026-12-12T09:00", "how": "plane"}, "leave": None, "drive_day_min": None,
-        "meals": {"skip": [], "breakfast_at_lodging": False, "snacks": False, "shift_min": 0},
-        "rest": None, "visit": {}}
-    for c in d["confirmed"]:
-        c["utility"] = 5.0 if c["id"] == "far" else 1.0             # fit keeps "far": travel has its own card
-    trip = prepared(d, recs)
-    assert trip.days[0].start_node == "@entry" and trip.ctxs[0].home == "@home"
-    travel = next(v for v in plan_or_directions(trip)["variants"] if v["id"] == "travel")
-    first = travel["dropped"][0]
-    assert first["place_id"] == "far" and first["reason"].endswith(", các nơi khác cách chỗ ở < 15′")
+def test_the_preview_lays_out_what_fits_and_leaves_the_directions_for_later():
+    trip = trip_of(heavy(10), days=2)
+    quick = plan_or_directions(trip, search=False)
+    assert [v["id"] for v in quick["variants"]] == ["main"] and quick["overload"]["pending"]
+    assert quick["leftover"] and quick["variants"][0]["confirmable"] is False
+    assert quick["overload"]["directions"] == [] and quick["schedule_calls"] == 1
+    full = plan_or_directions(trip, main=quick["_main"])
+    assert full["overload"]["directions"] and not full["overload"].get("pending")
+    assert full["leftover"] == quick["leftover"]
 
 
 def test_most_drops_the_longest_visit_first_and_keeps_the_most_places():

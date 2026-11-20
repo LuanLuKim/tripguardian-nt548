@@ -10,12 +10,13 @@ import { canTransition, startTransition } from '../../viewTransition'
 import { prefetchSnapshot } from '../../data/store'
 import { featureLabel, isNegative } from '../../data/labels'
 import { fetchLandscape } from '../landing/bin'
+import { Showcase } from '../landing/Showcase'
 import { hasGpu } from '../landing/device'
 import { AREAS, DAY, FOCUS, ROAD_FACTOR, ROUTE, SCENE_PLACES, SPEED_KMH, byName, type LPlace } from '../landing/route'
 import stats from '../landing/stats.json'
 import type { DalatScene, ScenePlace, SceneState } from '../landing/scene'
 import { priceText, reducedMotion } from '../lib'
-import { Photo, thumbOf } from '../ui/common'
+import { thumbOf } from '../ui/common'
 import { Icon, Logo, type IconName } from '../ui/icons'
 import { FAQ } from '../faq'
 import { useTitle } from '../ui/Shell'
@@ -29,11 +30,9 @@ const RAIL: [string, number][] = [['Mở đầu', 0], ['Tìm hiểu', 1], ['Lự
 const BEATS = 6
 const STORY_LEN = 5.5
 const stepOf = (beat: number) => (beat === 3 ? 2 : beat)
-const HINTS = ['Cuộn xuống để xem cách hoạt động', 'Cuộn tiếp: Lựa chọn', 'Cuộn tiếp: vì sao chọn chỗ đó', 'Cuộn tiếp: Lịch trình', 'Cuộn tiếp: Chốt lịch', 'Còn nữa bên dưới: ảnh thật của từng chỗ']
+const HINTS = ['Cuộn xuống để xem cách hoạt động', 'Cuộn tiếp: Lựa chọn', 'Cuộn tiếp: vì sao chọn chỗ đó', 'Cuộn tiếp: Lịch trình', 'Cuộn tiếp: Chốt lịch', 'Còn nữa bên dưới: mô hình 3D và phim']
 // The light version uses one frame from the real 3D model for each chapter.
 const PLATES = ['/img/landing-poster.webp', '/img/landing-p1.webp', '/img/landing-p2.webp', '/img/landing-p3.webp', '/img/landing-p4.webp', '/img/landing-p5.webp'].map((src) => `${src}?v=home1`) // ?v: the CDN keeps images a day
-// the four photos of the "Địa điểm thật" section: place, and which of its photos shows the place best (daylight, recognisable)
-const SHOWCASE: [string, number][] = [['Thung lũng Tình Yêu', 3], ['Hồ Xuân Hương', 1], ['Dinh III', 3], ['Thác Datanla', 0]]
 const DAYPART: Record<string, string> = { early_morning: 'sáng sớm', morning: 'buổi sáng', noon: 'buổi trưa', afternoon: 'buổi chiều', evening: 'buổi tối', night: 'ban đêm' }
 
 // Tìm hiểu: what the visitor says, the photo question the chat asks back (three real cafés, each labelled with a taste
@@ -115,7 +114,6 @@ export function Landing() {
   const trade = TRADE.map((id) => signal(spot, id)).find((s) => s && isNegative(s.id, s.value))
   const price = priceText(spot.price)
   const asks = ASK.flatMap((a) => { const place = byName(a.place), photo = place?.photos[a.photo] ?? place?.photos[0]; return photo ? [{ ...a, src: thumbOf(photo.src) ?? photo.src }] : [] })
-  const showcase = SHOWCASE.map(([n, i]) => ({ place: byName(n), photo: byName(n).photos[i] }))
 
   // The next screens need the place data: fetch it while the visitor reads, but only once the model has drawn (or
   // cannot), so the 2.8 MB of covers never compete with the landscape for the connection.
@@ -264,26 +262,25 @@ export function Landing() {
           .to(chapters[2], enter, 1.6)
           .from(chapters[2].querySelector('.tg-lk--bar'), { y: 30, autoAlpha: 0, duration: 0.25 }, 1.75)
           .to(state, { route: 1, duration: 0.4 }, 1.55)
-          .to(chapters[2], leave, 2.2)
+          .from(chapters[2].querySelectorAll('.tg-l3__why'), { y: 30, autoAlpha: 0, duration: 0.25 }, 2.6)
+          .from(chapters[2].querySelectorAll('.tg-lk__why li, .tg-lk__trade'), { x: 24, autoAlpha: 0, stagger: 0.05, duration: 0.18 }, 2.7)
+          .to(chapters[2], leave, 3.2)
           .to(state, { cam: 3, duration: 1 }, 2.1)
-          .to(chapters[3], enter, 2.6)
-          .from(chapters[3].querySelectorAll('.tg-lk__why li, .tg-lk__trade'), { x: 24, autoAlpha: 0, stagger: 0.05, duration: 0.18 }, 2.64)
-          .from(chapters[3].querySelectorAll('.tg-l3__shot'), { y: 30, autoAlpha: 0, duration: 0.25 }, 2.64)
-          .to(chapters[3], leave, 3.2)
           .to(state, { cam: 4, duration: 1 }, 3.1)
-          .to(chapters[4], enter, 3.6)
-          .from(chapters[4].querySelectorAll('.tg-lk__plans span'), { y: 12, autoAlpha: 0, stagger: 0.04, duration: 0.14 }, 3.6)
-          .from(chapters[4].querySelectorAll('.tg-l3__day li'), { x: 30, autoAlpha: 0, stagger: 0.04, duration: 0.16 }, 3.62)
+          .to(chapters[3], enter, 3.6)
+          .from(chapters[3].querySelectorAll('.tg-lk__plans span'), { y: 12, autoAlpha: 0, stagger: 0.04, duration: 0.14 }, 3.6)
+          .from(chapters[3].querySelectorAll('.tg-l3__day li'), { x: 30, autoAlpha: 0, stagger: 0.04, duration: 0.16 }, 3.62)
           .to(state, { travel: 1, duration: 0.8 }, 3.7)
-          .from(chapters[4].querySelectorAll('.tg-l3__shot'), { y: 30, autoAlpha: 0, duration: 0.25 }, 3.62)
-          .to(chapters[4], leave, 4.2)
+          .from(chapters[3].querySelectorAll('.tg-l3__shot'), { y: 30, autoAlpha: 0, duration: 0.25 }, 3.62)
+          .to(chapters[3], leave, 4.2)
           .to(state, { cam: 5, duration: 1 }, 4.1)
-          .to(chapters[5], enter, 4.6)
-          .from(chapters[5].querySelectorAll('.tg-lk__seal'), { scale: 0.4, autoAlpha: 0, duration: 0.22, ease: 'back.out(2)' }, 4.62)
-          .from(chapters[5].querySelectorAll('.tg-lk__scale i'), { y: 10, autoAlpha: 0, stagger: 0.04, duration: 0.14 }, 4.7)
-          .from(chapters[5].querySelectorAll('.tg-l3__shot'), { y: 30, autoAlpha: 0, duration: 0.25 }, 4.62)
+          .to(chapters[4], enter, 4.6)
+          .from(chapters[4].querySelectorAll('.tg-lk__seal'), { scale: 0.4, autoAlpha: 0, duration: 0.22, ease: 'back.out(2)' }, 4.62)
+          .from(chapters[4].querySelectorAll('.tg-lk__scale i'), { y: 10, autoAlpha: 0, stagger: 0.04, duration: 0.14 }, 4.7)
+          .from(chapters[4].querySelectorAll('.tg-l3__shot'), { y: 30, autoAlpha: 0, duration: 0.25 }, 4.62)
           .to({}, { duration: 0.01 }, STORY_LEN - 0.01)
-        gsap.from('.tg-l4__tile', { y: 60, opacity: 0, stagger: 0.08, duration: 0.7, ease: 'power2.out', scrollTrigger: { trigger: '.tg-l4', start: 'top 72%' } })
+        gsap.from('.tg-l6__tile', { y: 50, opacity: 0, stagger: 0.06, duration: 0.6, ease: 'power2.out', scrollTrigger: { trigger: '.tg-l6__grid', start: 'top 80%' } })
+        gsap.from('.tg-l7__card', { y: 50, opacity: 0, stagger: 0.12, duration: 0.7, ease: 'power2.out', scrollTrigger: { trigger: '.tg-l7__row', start: 'top 80%' } })
         return () => { gsap.ticker.remove(tick); lenis?.destroy(); lenisRef.current = null }
       })
     }
@@ -383,6 +380,12 @@ export function Landing() {
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
   }, [exploring]) // eslint-disable-line react-hooks/exhaustive-deps
+  // a full-window model or film is open: the page stops scrolling under it
+  const freeze = (on: boolean) => {
+    document.documentElement.style.overflow = on ? 'hidden' : ''
+    if (on) lenisRef.current?.stop()
+    else lenisRef.current?.start()
+  }
   const toChapter = (index: number) => {
     const sec = story.current
     if (!sec) return
@@ -403,10 +406,10 @@ export function Landing() {
   return (
     <div className={`tg-l ${still ? 'is-still' : ''} ${leaving ? 'is-leaving' : ''}`}>
       <nav className="tg-ln" aria-label="Trang giới thiệu">
-        <a href="/app" className="tg-ln__logo" aria-label="Vào TripGuardian" onClick={(e) => { e.preventDefault(); navigate('/app') }}><Logo size={30} /></a>
+        <a href="/app" className="tg-ln__logo" aria-label="Vào TripGuardian" onClick={(e) => { e.preventDefault(); navigate('/app') }}><Logo size={46} full /></a>
         <div className="tg-ln__links">
           <button type="button" onClick={() => toChapter(1)}>Cách hoạt động</button>
-          <button type="button" onClick={() => toId('tg-photos')}>Địa điểm</button>
+          <button type="button" onClick={() => toId('tg-3d')}>Khám phá</button>
           <button type="button" onClick={() => toId('tg-faq')}>Hỏi nhanh</button>
         </div>
         <a href="/app/login" className="tg-ln__login" onClick={(e) => { e.preventDefault(); navigate('/app/login') }}>Đăng nhập</a>
@@ -451,7 +454,7 @@ export function Landing() {
               <Shot name="understand" label="câu hỏi bằng ảnh ở bước Tìm hiểu"><div className="tg-lk tg-lk--chat">
                 <p className="tg-lk__me">{SAY}</p>
                 <div className="tg-lk__bot">
-                  <img className="tg-lk__avatar" src="/img/gen/bot-avatar.webp" alt="" width="30" height="30" />
+                  <img className="tg-lk__avatar" src="/img/gen/bot-avatar.webp?v=2" alt="" width="30" height="30" />
                   <div className="tg-lk__ask">
                     <p className="tg-lk__q">Bạn thích không gian quán nào hơn?<small>Vì bạn nói “cà phê chill”</small></p>
                     <ul className="tg-lk__opts">{asks.map((a, i) => <li key={a.label} className={i === 0 ? 'is-on' : ''}><img src={a.src} alt="" loading="lazy" decoding="async" /><span>{a.label}</span>{i === 0 && <i aria-label="Bạn chọn"><Icon name="check" size={12} strokeWidth={3} /></i>}</li>)}</ul>
@@ -468,7 +471,7 @@ export function Landing() {
             <article className="tg-l3__ch" aria-labelledby="tg-ch2">
               <p className="tg-kicker">Lựa chọn</p>
               <h2 id="tg-ch2" aria-label={`Bạn chọn ra ${ROUTE.length} chỗ trong ${num(stats.places)} địa điểm`}><span aria-hidden="true">Chọn ra <span ref={counter} className="tg-l3__count">{still ? ROUTE.length : num(stats.places)}</span> chỗ, không phải lục cả nghìn.</span></h2>
-              <p className="tg-muted">Gợi ý xếp theo điều bạn vừa kể. Bạn bấm Thêm chỗ muốn đi, thanh dưới cho biết cả ngày còn đi kịp không.</p>
+              <p className="tg-muted">Gợi ý xếp theo điều bạn vừa kể, mỗi chỗ ghi rõ vì sao hợp, bao nhiêu người đã nhắc và điều cần đánh đổi. Bạn bấm Thêm chỗ muốn đi, thanh dưới cho biết cả ngày còn đi kịp không.</p>
               <ul className="tg-l3__legend">
                 <li><i className="is-all" />Mỗi chấm là một chỗ ở Đà Lạt</li>
                 <li><i className="is-five" />Chỗ bạn chọn, nối theo thứ tự đi</li>
@@ -480,26 +483,23 @@ export function Landing() {
                 <span>≈ <b>{hm(ROAD)}</b> đi lại</span>
                 <span className="tg-lk__go">Lập lịch <Icon name="arrow" size={15} /></span>
               </div>
-            </article>
-
-            {/* 3 · Lựa chọn · vì sao: one suggestion as the app's place card shows it, every line counted from what people said */}
-            <article className="tg-l3__ch" aria-labelledby="tg-ch3">
-              <p className="tg-kicker">Lựa chọn · vì sao</p>
-              <h2 id="tg-ch3">Chỗ nào cũng có lý do.</h2>
-              <p className="tg-muted">Mỗi gợi ý ghi rõ vì sao hợp bạn, bao nhiêu người đã nhắc tới, và điều cần đánh đổi.</p>
-              <Shot name="choose" label="thẻ một nơi ở bước Lựa chọn"><div className="tg-lk tg-lk--card">
-                {spot.photos[0] && <figure className="tg-lk__media"><img src={thumbOf(spot.photos[0].src) ?? spot.photos[0].src} alt="" decoding="async" />{spot.category && <span className="tg-lk__cat">{spot.category}</span>}<figcaption>Ảnh: {spot.photos[0].credit}</figcaption></figure>}
-                <div className="tg-lk__body">
-                  <div className="tg-lk__title"><h3>{spot.name}</h3><p>{spot.area}{spot.rating ? ` · ★ ${spot.rating.toLocaleString('vi-VN')}` : ''}{spot.reviews ? ` · ${num(spot.reviews)} đánh giá Google` : ''}</p></div>
-                  {why.length > 0 && <ul className="tg-lk__why" aria-label="Vì sao phù hợp">{why.map((w) => <li key={w.label}><Icon name="check" size={15} /><span>{w.label}, <small>{w.n} người nhắc</small></span></li>)}</ul>}
-                  {trade && <p className="tg-lk__trade"><Icon name="warn" size={15} /><span><b>Đánh đổi:</b> {featureLabel(trade.id)}, {trade.n} người nhắc</span></p>}
-                  <p className="tg-lk__facts">
-                    <span>Ở lại ≈ {DAY[FOCUS].stay}</span>
-                    {price && <span>{price}{spot.price?.per === 'person' ? '/người' : ''}</span>}
-                    {peak && <span>Cuối tuần đông nhất {DAYPART[peak[0]] ?? peak[0]}</span>}
-                  </p>
-                </div>
-              </div></Shot>
+                          {/* Lựa chọn · vì sao: one suggestion as the app's place card shows it, every line counted from what people said */}
+              <div className="tg-l3__why">
+                <h3>Chỗ nào cũng có lý do.</h3>
+                <Shot name="choose" label="thẻ một nơi ở bước Lựa chọn"><div className="tg-lk tg-lk--card">
+                  {spot.photos[0] && <figure className="tg-lk__media"><img src={thumbOf(spot.photos[0].src) ?? spot.photos[0].src} alt="" decoding="async" />{spot.category && <span className="tg-lk__cat">{spot.category}</span>}<figcaption>Ảnh: {spot.photos[0].credit}</figcaption></figure>}
+                  <div className="tg-lk__body">
+                    <div className="tg-lk__title"><h3>{spot.name}</h3><p>{spot.area}{spot.rating ? ` · ★ ${spot.rating.toLocaleString('vi-VN')}` : ''}{spot.reviews ? ` · ${num(spot.reviews)} đánh giá Google` : ''}</p></div>
+                    {why.length > 0 && <ul className="tg-lk__why" aria-label="Vì sao phù hợp">{why.map((w) => <li key={w.label}><Icon name="check" size={15} /><span>{w.label}, <small>{w.n} người nhắc</small></span></li>)}</ul>}
+                    {trade && <p className="tg-lk__trade"><Icon name="warn" size={15} /><span><b>Đánh đổi:</b> {featureLabel(trade.id)}, {trade.n} người nhắc</span></p>}
+                    <p className="tg-lk__facts">
+                      <span>Ở lại ≈ {DAY[FOCUS].stay}</span>
+                      {price && <span>{price}{spot.price?.per === 'person' ? '/người' : ''}</span>}
+                      {peak && <span>Cuối tuần đông nhất {DAYPART[peak[0]] ?? peak[0]}</span>}
+                    </p>
+                  </div>
+                </div></Shot>
+              </div>
             </article>
 
             {/* 4 · Lịch trình: read back, then the day hour by hour; too many picks get three ways to drop some */}
@@ -557,29 +557,25 @@ export function Landing() {
             </div>
           )}
           {!still && active > 0 && <nav className="tg-l3__rail" aria-label="Các chương">{RAIL.map(([label, beat]) => <button key={label} type="button" aria-current={stepOf(active) === beat ? 'step' : undefined} onClick={() => toChapter(beat)}><span>{label}</span><i /></button>)}</nav>}
-          {!still && <button type="button" className="tg-l3__down" key={active} onClick={() => (active < BEATS - 1 ? toChapter(active + 1) : toId('tg-photos'))}><Icon name="chevronDown" size={18} />{HINTS[Math.min(active, BEATS - 1)]}</button>}
+          {!still && <button type="button" className="tg-l3__down" key={active} onClick={() => (active < BEATS - 1 ? toChapter(active + 1) : toId('tg-3d'))}><Icon name="chevronDown" size={18} />{HINTS[Math.min(active, BEATS - 1)]}</button>}
         </div>
       </section>
 
-      <section className="tg-l4" id="tg-photos" aria-labelledby="tg-l4-h">
-        <div className="tg-l__head tg-rv"><h2 id="tg-l4-h">Ảnh thật của chỗ thật</h2><p className="tg-muted">{num(stats.withPhotos)} chỗ có ảnh chụp từ Google Maps, ghi nguồn ngay dưới ảnh. Không có ảnh minh họa nào đứng tên một chỗ có thật.</p></div>
-        <div className="tg-l4__grid">{showcase.map(({ place, photo }, i) => <figure key={place.id} className={`tg-l4__tile t${i} tg-rv`} data-delay={i * 0.08}><Photo photo={photo} alt={place.name} sizes={i ? '(max-width: 900px) 50vw, 440px' : '(max-width: 900px) 100vw, 900px'} /><figcaption><b>{place.name}</b><span>Ảnh: {photo.credit}</span></figcaption></figure>)}</div>
-      </section>
+      <Showcase onOpen={freeze} />
 
       <section className="tg-l5" id="tg-faq" aria-labelledby="tg-faq-h">
         <div className="tg-l5__l tg-rv">
           <h2 id="tg-faq-h">Hỏi nhanh</h2>
-          <p className="tg-l5__soon">Sắp có <span>Ứng dụng điện thoại</span><span>Thêm thành phố</span></p>
         </div>
         <div className="tg-faq tg-rv" data-delay="0.1">{FAQ.map(([q, a], i) => <div key={q} className="tg-faq__i"><button type="button" aria-expanded={faq === i} onClick={() => setFaq(faq === i ? -1 : i)}>{q}<Icon name={faq === i ? 'minus' : 'plus'} size={18} /></button>{faq === i && <p className="tg-muted">{a}</p>}</div>)}</div>
       </section>
 
       <section className="tg-cta tg-rv" id="tg-cta" aria-labelledby="tg-cta-h">
         <div className="tg-cta__img" aria-hidden="true" />
-        <div className="tg-cta__in"><h2 id="tg-cta-h">Bắt đầu chuyến Đà Lạt của bạn.</h2><button type="button" className="tg-btn tg-btn--sun tg-cta__btn" onClick={(e) => void begin(e.currentTarget)}>{cta}</button><p>Miễn phí · Dùng thử được không cần tài khoản · Đăng nhập để lưu chuyến</p>{member && <button type="button" className="tg-link tg-cta__guest" onClick={(e) => void begin(e.currentTarget, true)}>Hoặc dùng thử với tư cách khách (phiên mới, tài khoản của bạn giữ nguyên)</button>}</div>
+        <div className="tg-cta__in"><h2 id="tg-cta-h">Bắt đầu chuyến Đà Lạt của bạn.</h2><button type="button" className="tg-btn tg-btn--sun tg-cta__btn" onClick={(e) => void begin(e.currentTarget)}>{cta}</button><p>Miễn phí · Dùng thử được không cần tài khoản · Đăng nhập để lưu chuyến</p></div>
       </section>
 
-      <footer className="tg-lf"><Logo size={26} dark /><span className="tg-lf__sp" /><span>Giờ giấc và quãng đường là ước tính; địa hình theo dữ liệu thật, cây và mái nhà chỉ là biểu tượng. Số liệu theo bản dữ liệu {stats.asOf?.split('-').reverse().join('/')}: {num(stats.places)} nơi, {num(stats.withPhotos)} nơi có ảnh thật.</span></footer>
+      <footer className="tg-lf"><Logo size={36} /><span className="tg-lf__sp" /><span>Giờ giấc và quãng đường là ước tính; địa hình theo dữ liệu thật, cây và mái nhà chỉ là biểu tượng. Số liệu theo bản dữ liệu {stats.asOf?.split('-').reverse().join('/')}: {num(stats.places)} nơi, {num(stats.withPhotos)} nơi có ảnh thật.</span></footer>
     </div>
   )
 }

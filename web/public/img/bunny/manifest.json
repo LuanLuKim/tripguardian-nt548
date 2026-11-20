@@ -1,110 +1,191 @@
 {
  "shy": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: covering both eyes shyly with its two paws, head turned slightly away, blushing.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: covering both eyes shyly with its two paws, head turned slightly away, blushing.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:29:04+00:00"
+  "at": "2026-11-17T04:30:53+00:00"
  },
  "peek": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: covering its face with both paws but peeking through a small gap between the fingers with one eye, blushing.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: covering its face with both paws but peeking through a small gap between the fingers with one eye, blushing.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:30:35+00:00"
- },
- "curious": {
-  "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: tilting its head to one side with one eyebrow raised, curious and puzzled, one ear flopped over, both paws down in front.",
-  "size": [
-   720,
-   720
-  ],
-  "at": "2026-11-09T16:30:25+00:00"
+  "at": "2026-11-17T04:30:37+00:00"
  },
  "mail": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: holding a small cream envelope with a little mint heart seal in both paws, smiling gently, as if it just sent or received a letter.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding a small cream envelope with a little pink heart seal in both paws, smiling gently, as if it just sent or received a letter.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:30:22+00:00"
+  "at": "2026-11-17T04:30:52+00:00"
  },
  "walk_a": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: walking to the right in a side three-quarter view, facing right, left foot stepping forward, small arms swinging, cheerful.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: walking to the right in a side three-quarter view, facing right, left foot stepping forward, small arms swinging, cheerful.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:31:32+00:00"
+  "at": "2026-11-17T04:18:15+00:00"
  },
  "walk_b": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: walking to the right in a side three-quarter view, facing right, right foot stepping forward, small arms swinging the other way, cheerful.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: walking to the right in a side three-quarter view, facing right, right foot stepping forward, small arms swinging the other way, cheerful.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:31:46+00:00"
- },
- "point": {
-  "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: standing and facing slightly right, one paw stretched out to the right pointing at something, friendly smile, eyes looking where it points.",
-  "size": [
-   720,
-   720
-  ],
-  "at": "2026-11-09T16:31:31+00:00"
+  "at": "2026-11-17T04:18:09+00:00"
  },
  "point_up": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: one paw raised and pointing diagonally up to the upper right, head tilted up, eyes looking up, friendly smile.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: one paw raised and pointing diagonally up to the upper right, head tilted up, eyes looking up, friendly smile.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:32:36+00:00"
+  "at": "2026-11-17T04:18:10+00:00"
  },
  "wink": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: winking one eye with a cheeky little smile, one paw raised in a small thumbs up.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: winking one eye with a cheeky little smile, one paw raised in a small thumbs up.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:32:37+00:00"
- },
- "love": {
-  "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: holding a small pink heart in both paws, eyes closed in a warm smile, two tiny hearts floating near it.",
-  "size": [
-   720,
-   720
-  ],
-  "at": "2026-11-09T16:32:54+00:00"
+  "at": "2026-11-17T04:19:14+00:00"
  },
  "cheer": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: celebrating, jumping with both paws up, holding a small party popper, a few colorful confetti pieces around it, big open smile.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: celebrating, jumping with both paws up, holding a small party popper, a few colorful confetti pieces around it, big open smile.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:33:39+00:00"
+  "at": "2026-11-17T04:19:18+00:00"
  },
  "bow": {
   "model": "cx/gpt-6.1-sol",
-  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: bowing politely forward with both paws together in front, eyes closed in a gentle thankful smile.",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no scenery, no ground shadow, new pose: bowing politely forward with both paws together in front, eyes closed in a gentle thankful smile.",
   "size": [
    720,
    720
   ],
-  "at": "2026-11-09T16:33:30+00:00"
+  "at": "2026-11-17T04:19:15+00:00"
+ },
+ "umbrella": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding a small open yellow umbrella over its head with one paw, a few raindrops falling beside it, a calm cheerful smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:32:27+00:00"
+ },
+ "cold": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: wearing a cozy cream knitted scarf, hugging itself with both paws and shivering a little, cheeks pink, a small puff of breath, a shy smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:32:44+00:00"
+ },
+ "coffee": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding a small white coffee cup with gentle steam in both paws, eyes closed, a relaxed content smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:32:39+00:00"
+ },
+ "camera": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding a small retro camera up to one eye with both paws, taking a photo, the other eye open, cheerful.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:33:44+00:00"
+ },
+ "idea": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: one paw raised with the index finger up, a small glowing yellow lightbulb floating above its head, bright eyes, excited smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:33:57+00:00"
+ },
+ "warn": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding up a small yellow triangle warning sign with an exclamation mark in one paw, a concerned but gentle expression, head slightly tilted.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:34:14+00:00"
+ },
+ "calendar": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding a small calendar page with a big green check mark in both paws, proud happy smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:34:52+00:00"
+ },
+ "thumbs_up": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: giving a confident thumbs up with one paw, smiling brightly at the viewer.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:34:56+00:00"
+ },
+ "suitcase": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding the handle of a small cream suitcase with a brown strap in one paw, ready to travel, excited smile.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:35:16+00:00"
+ },
+ "eat": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding a small bowl of steaming noodles and a pair of chopsticks, mouth open about to take a bite, happy eyes.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T04:35:56+00:00"
+ },
+ "chat": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: holding a large white rounded speech bubble with three small dots inside it in one paw, the other paw waving hello, friendly attentive smile, looking at the viewer.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T11:51:32+00:00"
+ },
+ "chat_head": {
+  "model": "cx/gpt-6.1-sol",
+  "prompt": "Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: wearing a small cream headset with a tiny microphone, one paw touching the headset, a small speech bubble with a heart floating beside its head, helpful cheerful smile, looking at the viewer.",
+  "size": [
+   720,
+   720
+  ],
+  "at": "2026-11-17T11:51:34+00:00"
  }
 }

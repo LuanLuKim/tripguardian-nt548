@@ -159,6 +159,16 @@ WRITER = Role(
     guided=False,  # 9router does not enforce strict schemas: the schema goes in the prompt
 )
 
+TRENDS = Role(
+    name="trends",
+    purpose="the nightly Trending bulletin's reading (corpus.events: a page's events, the season names grouped); the Gemma "
+            "Judge marked most of a festival's own pages 'not in the city' (2026-11-18), so it takes the Agent route "
+            "(terra on 9router) unless TRENDS_* says otherwise",
+    key_env="TRENDS_API_KEY", base_url_env="TRENDS_BASE_URL", model_env="TRENDS_MODEL",
+    reasoning_env="TRENDS_REASONING_EFFORT", fallback=AGENT, default_parallel=4,
+    guided=False,  # 9router does not enforce strict schemas: the schema goes in the prompt
+)
+
 USER_SIM = Role(
     name="user_sim",
     purpose="benchmark only: plays a traveller from a hidden trip (python -m bench, --live / --briefs)",

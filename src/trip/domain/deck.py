@@ -149,15 +149,16 @@ def build(state: TripState, catalog: Catalog, cfg: Settings, agent=(), at="under
     if at == "gate":
         return Deck(tabs=required, left=len(required), total=len(GATE_REQUIRED), at=at)
     if at == "plan":  # the Lịch trình page: the optional groups still empty, each one answered when the user chooses
-        from .required import arrival_tab
+        from .required import arrival_answered, arrival_tab
         # The way to the city comes first. Until it is answered the way around the city is not asked (a drive in is the
         # vehicle; a plane or coach is what makes the question worth asking), so the two never ask the same thing twice.
+        # Once answered it stays, showing the chosen way, so the user can change it.
         arrival = arrival_tab(state)
-        fill = tuple(t for t in required if t.qid in PLAN_FILL and not (arrival and t.qid == "mobility"))
-        if arrival:
-            first = next((i for i, t in enumerate(fill) if t.qid != "companions"), len(fill))
-            fill = fill[:first] + (arrival,) + fill[first:]
-        return Deck(tabs=fill, left=len(fill), total=len(PLAN_FILL) + 1, at=at)
+        open_arrival = not arrival_answered(state)
+        fill = tuple(t for t in required if t.qid in PLAN_FILL and not (open_arrival and t.qid == "mobility"))
+        first = next((i for i, t in enumerate(fill) if t.qid != "companions"), len(fill))
+        fill = fill[:first] + (arrival,) + fill[first:]
+        return Deck(tabs=fill, left=len(fill) - (0 if open_arrival else 1), total=len(PLAN_FILL) + 1, at=at)
     if at == "understand":
         required = tuple(t for t in required if t.qid not in state.meta.declined)
     from . import ask as asking  # not `ask`: that is the chosen topic

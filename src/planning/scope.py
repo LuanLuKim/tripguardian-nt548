@@ -15,7 +15,7 @@ _SCOPE = {
     "dismiss_suggestion": NONE, "keep_my_order": NONE,
     "move_place": RELAYOUT, "reorder": RELAYOUT, "drop_place": RELAYOUT, "add_from_backup": RELAYOUT,
     "swap": RELAYOUT, "make_room": RELAYOUT, "repair_meals": RELAYOUT, "relax": RELAYOUT,
-    "set_visit_duration": RELAYOUT, "set_stop_time": RELAYOUT,
+    "set_visit_duration": RELAYOUT, "set_stop_time": RELAYOUT, "optimize": RELAYOUT,
     "set_pace": VARIANT, "set_objective": VARIANT, "set_day_window": VARIANT, "reoptimize": VARIANT,
     "extend_days": VARIANT,
     "pick_lodging": LODGING_HOME, "clear_lodging": LODGING_HOME,

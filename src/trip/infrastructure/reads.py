@@ -37,6 +37,10 @@ QUOTE_CHARS = 180
 MAX_DAYS = 45  # calendar() window
 MAX_ROUTE_POINTS = 6
 MODES = ("walk", "motorbike", "car")
+CLIPS_PER_PLACE = 4  # clips of one place on a clip stage
+CLIPS_MAX = 12  # clips on one clip stage
+# words of an ask that say nothing about what a clip shows ("clip", "cho xem", "o", "the nao"), folded
+CLIP_STOP = frozenset("clip video tiktok xem cho minh toi ban o tai cua va voi the nao nhu nao sao co khong di den la mot cac nhung".split())
 LISTS = ("access", "situation", "bring", "avoid", "photo_spot", "order")
 CLAIM_KINDS = ("tip", "notice", "access", "avoid", "best_time", "price_norm", "crowded_at", "if_rain", "specialty", "season",
                "event")
@@ -105,17 +109,18 @@ class Feeds:
     calendar: Callable[[], list[dict] | None] | None = None  # [{date, lunar: {year, month, day, leap}, holiday | None}]
     restricted: Callable[[float, float], list[dict] | None] | None = None  # areas holding the point; None = view never built
     stay_prices: Callable[[], dict] | None = None           # (fid, stay_date, nights) -> published price row
+    clips: Callable[[], dict[str, list[dict]]] | None = None  # fid -> its verified TikTok clips (corpus.serving.clips)
 
     @classmethod
     def corpus(cls, city: str = "dalat") -> "Feeds":
         from corpus import views
-        from corpus.serving import stay_prices
+        from corpus.serving import clips, stay_prices
 
         def restricted(lat: float, lng: float) -> list[dict] | None:
             areas = views.restricted_areas(city)
             return None if areas is None else views.restricted_hits(lat, lng, areas)
         return cls(city=city, climate=lambda: views.climate_normals(city), calendar=lambda: views.calendar_days(city),
-                   restricted=restricted, stay_prices=lambda: stay_prices.load(city))
+                   restricted=restricted, stay_prices=lambda: stay_prices.load(city), clips=lambda: clips.load(city))
 
 
 def _quote(text: str) -> str:
@@ -359,11 +364,8 @@ class Reads:
     # ---------- place_status ----------
 
     def status(self, ref: str, state: TripState) -> dict:
-        """Is the place real and open: the corpus status, a closure Google Maps reported (Nhịp), hours state now."""
-        closed = self._closed_report(ref)
+        """Is the place real and open: the corpus status and the hours state now. A closed place is not in the corpus at all."""
         if ref not in self.k.catalog.by_id:
-            if closed:
-                return {"n": closed["name"], "status": "closed_reported", "closure": closed["closure"]}
             raise ValueError(f"unknown place {ref!r}: no such place in the corpus")
         rec = self._need(ref)
         op, prov = rec.get("operation") or {}, rec.get("provenance") or {}
@@ -373,22 +375,7 @@ class Reads:
                "open_now": "unknown" if is_open is None else is_open, "hours_today": today or "unknown",
                "hours_source": {k: hours.get(k) for k in ("status", "as_of", "source") if hours.get(k)},
                "last_seen": prov.get("as_of"), "rating_trend": (prov.get("rating_trend") or {}).get("direction")}
-        out["closure"] = closed["closure"] if closed else "no closure report in the data"
         return {k: v for k, v in out.items() if v not in (None, {})}
-
-    def _closed_report(self, ref: str) -> dict | None:
-        pulse = self.k.pulse
-        if pulse is None:
-            return None
-        try:
-            items = pulse(kind="closed", limit=500)["items"]
-        except Exception:
-            return None
-        name = fold((self.k.catalog.by_id[ref].name if ref in self.k.catalog.by_id else ref))
-        for it in items:
-            if it.get("place_id") == ref or fold(it["name"]) == name:
-                return {"name": it["name"], "closure": {"text": it["text"]}}
-        return None
 
     # ---------- find_dishes ----------
 
@@ -730,6 +717,45 @@ class Reads:
                 if f and f.get("status") in FIRM + ("UNCERTAIN",) and f.get("value") not in (None, "absent") and f.get("reason") != "silence":
                     out.append({"src": "place", "kind": fid, "value": f["value"], "n": f.get("n")})
         return out
+
+    def clips(self, ids: list[str], about: str) -> dict:
+        """Travellers' verified TikTok clips of `ids` for the clip stage, the best for `about` first: a clip whose words
+        (caption, speech, what was seen in it) hold the ask's words leads, then how surely it is the place, then the
+        newest. One clip per author on the whole stage; the places take turns so the first one does not fill it, and the
+        clips that match come before the others. {about, shown, places[{id, name, clips, matched}], _clips[...]}: the
+        clip rows are for the app only (the reply never describes a clip it did not see)."""
+        feed = self.feeds.clips() if self.feeds.clips else {}
+        words = [w for w in squash(about).split() if len(w) > 1 and w not in CLIP_STOP]
+        pairs = [" ".join(p) for p in zip(words, words[1:])]
+
+        def fit(row: dict) -> int:
+            text = f" {squash(row.get('text') or '')} "
+            return sum(f" {w} " in text for w in words) + 2 * sum(f" {p} " in text for p in pairs)
+
+        places, queues = [], []
+        for pid in dict.fromkeys(ids):
+            self._need(pid)
+            rows = sorted(feed.get(pid) or (), key=lambda r: r.get("posted") or "", reverse=True)  # newest first among equals
+            rows = sorted(rows, key=lambda r: (-fit(r), -(r.get("score") or 0)))
+            places.append({"id": pid, "name": self.k.catalog.by_id[pid].name, "clips": 0, "matched": 0})
+            queues.append([(r, fit(r) > 0) for r in rows])
+        out, authors = [], set()
+        for matched in (True, False):  # every place's matching clips first, then the rest
+            for _ in range(CLIPS_PER_PLACE):
+                for place, queue in zip(places, queues):
+                    pick = next(((r, m) for r, m in queue if m == matched and r.get("author") not in authors), None)
+                    if pick is None or len(out) >= CLIPS_MAX or place["clips"] >= CLIPS_PER_PLACE:
+                        continue
+                    queue.remove(pick)
+                    r, m = pick
+                    authors.add(r.get("author"))
+                    place["clips"] += 1
+                    place["matched"] += m
+                    out.append({"video_id": r["video_id"], "url": r["url"], "handle": r.get("author"),
+                                "caption": r.get("caption") or "", "posted": r.get("posted"), "place_id": place["id"],
+                                "place": place["name"], "matched": m})
+        note = None if out else "no clips of these places: do not mention clips"
+        return {"about": about.strip(), "shown": len(out), "places": places, **({"note": note} if note else {}), "_clips": out}
 
     def area(self, pid: str) -> dict:
         """Is the place inside a restricted area (military land, no-access land) the map data lists."""

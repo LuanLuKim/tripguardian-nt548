@@ -265,6 +265,17 @@ class Looks:
     def styles_of(self, pid: str) -> list[str]:
         return list(self._ix.place_styles(pid)) if self.ready() and pid in self.catalog.by_id else []
 
+    def style_labels(self, pid: str) -> list[str]:
+        """The photo styles a place's own photos show, as words ("Mộc mạc", "Nhà kính"); [] before the index is read."""
+        return [self._ix.style_label(s) for s in self.styles_of(pid)]
+
+    def common_style(self, pids) -> list[str]:
+        """The style most of these places' photos share, as words (a tag or a kind the user kept); [] when none holds."""
+        if not self.ready():
+            return []
+        found = self._ix.dominant_style([p for p in pids if p in self.catalog.by_id])
+        return [self._ix.style_label(found)] if found else []
+
 
 def photo_cues(data: bytes) -> dict:
     """A user's photo -> {kind, cues}: the Extractor's reading of its visible signs (corpus.llm PHOTO_CUES). Nothing

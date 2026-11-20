@@ -90,16 +90,22 @@ def test_server_serves_the_people_routes(pool):
     from urllib.error import HTTPError
     from urllib.request import urlopen
 
+    from urllib.request import Request
+
+    from analytics.auth import AdminAuth
     from analytics.server import handler
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler(pool))
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler(pool, AdminAuth("a@x.vn", "pw")))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}/api/analytics"
     try:
+        with urlopen(Request(f"{base}/login", json.dumps({"email": "a@x.vn", "password": "pw"}).encode(),
+                             {"Content-Type": "application/json"})) as r:
+            cookie = r.headers["Set-Cookie"].split(";")[0]
         for path in ("trends", "users", "users/list"):
-            with urlopen(f"{base}/{path}") as r:
+            with urlopen(Request(f"{base}/{path}", headers={"Cookie": cookie})) as r:
                 assert r.status == 200 and json.load(r) is not None
         with pytest.raises(HTTPError) as e:
-            urlopen(f"{base}/users/{'0' * 32}")
+            urlopen(Request(f"{base}/users/{'0' * 32}", headers={"Cookie": cookie}))
         assert e.value.code == 404
     finally:
         srv.shutdown()

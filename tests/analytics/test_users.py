@@ -62,7 +62,10 @@ def test_people_follow_the_journey_owner_and_climb_the_ladder(pool):
     assert gaps["never_journey"] == {"n": 1, "of": 2} and gaps["low_feedback"] == {"n": 1, "of": 1}
     assert gaps["no_prior"] == {"n": 1, "of": 2}
     assert "Google Calendar" in gaps["unused"] and "Chốt lịch" not in gaps["unused"]
-    assert out["cohorts"][-1]["size"] == 2 and out["cohorts"][-1]["cells"][0] == 0.5
+    # the cell of the week a was active in (1 day ago): on a Monday to Wednesday that is not the signup week (3 days ago)
+    vn, monday = timezone(timedelta(hours=7)), lambda d: d - timedelta(days=d.weekday())  # noqa: E731
+    week = (monday((NOW - timedelta(days=1)).astimezone(vn).date()) - monday((NOW - timedelta(days=3)).astimezone(vn).date())).days // 7
+    assert out["cohorts"][-1]["size"] == 2 and out["cohorts"][-1]["cells"][week] == 0.5
 
     rows = {r["email"]: r for r in analytics.users_list(pool, {})}
     assert set(rows) == {"a@gmail.com", "b@gmail.com", None}

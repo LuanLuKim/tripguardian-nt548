@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from corpus.serving import scenes
 
 CFG = scenes.config()
@@ -43,7 +45,7 @@ def test_people_blur_dark_duplicates_and_unknown_are_never_shown():
     d = doc(ph("p", "interior", person=True), ph("u", "interior", person=None), ph("l", "interior", conf="low"),
             ph("b", "exterior", blur=20.0), ph("k", "view", light=10.0), ph("w", "view", light=250.0),
             ph("d", "food", keep=False), ph("x", "unknown"), ph("o", "other"), ph("c", "crowd"), ph("m", "menu"))
-    assert scenes.pick(d, "restaurant") == []
+    assert [p["photo_id"] for p in scenes.pick(d, "restaurant")] == ["p", "u", "l"]  # only people photos stay: they fill a place with none
 
 
 def test_unlabelled_place_is_empty_not_an_error(tmp_path):
@@ -72,7 +74,7 @@ def test_no_people_rule_doubtful_labels_and_crowds_are_never_allowed():
             ph("l", "interior", conf="low"), ph("c", "crowd"), ph("n", "interior", person=None, conf="low"),
             {**ph("nolabel", "interior"), "person": None}, {k: v for k, v in ph("noperson", "view").items() if k != "person"}]
     assert scenes.allowed_files(doc(*rows), CFG) == []
-    assert scenes.pick(doc(*rows), "cafe") == []
+    assert [p["photo_id"] for p in scenes.pick(doc(*rows), "cafe")] == ["y", "noperson", "u", "l"]  # no person-free photo: people ones fill in, never the crowd scene
     ok = doc(ph("a", "interior"), ph("b", "other"), ph("t", "menu"), ph("blur", "view", blur=5.0), ph("dup", "food", keep=False))
     assert scenes.allowed_files(ok, CFG) == [f"gmaps/places/0xa_0xb/photos/{i}.jpg" for i in "abt"]
     assert scenes.allowed_files(None) == []
@@ -152,17 +154,25 @@ def test_an_off_kind_scene_is_shown_only_when_the_model_says_it_shows_the_place(
     assert [e["photo_id"] for e in scenes.off_kind(d, "stay")] == ["sign", "menu", "bfast"]
 
 
-def test_a_visitor_photo_with_people_fills_a_thin_place_only_when_it_shows_the_place():
+def test_a_visitor_photo_with_people_fills_a_thin_place_after_the_person_free_ones():
     thin = doc(ph("e", "exterior"), ph("crowd", "view", person=True, blur=2900), ph("selfie", "view", person=True),
                ph("unsure", "food", person=None), ph("c", "crowd", person=True))
     ap = {"crowd": {"beauty": 8, "shows_place": 7}, "selfie": {"beauty": 6, "shows_place": 2},
           "unsure": {"beauty": 5, "shows_place": 6}, "c": {"beauty": 9, "shows_place": 9}}
-    assert [p["photo_id"] for p in scenes.pick(thin, "cafe")] == ["e"]  # unscored: never
-    assert [p["photo_id"] for p in scenes.pick(thin, "cafe", appeal=ap)] == ["crowd", "unsure", "e"]
+    assert [p["photo_id"] for p in scenes.pick(thin, "cafe")] == ["e", "crowd", "unsure", "selfie"]  # unscored: they fill in, after the person-free one
+    assert [p["photo_id"] for p in scenes.pick(thin, "cafe", appeal=ap)] == ["e", "crowd", "unsure"]  # the model says "selfie" shows nothing of the place
     assert scenes.allowed_files(thin, CFG) == ["gmaps/places/0xa_0xb/photos/e.jpg"]  # the gallery keeps the strict rule
     full = doc(ph("e", "exterior"), ph("i", "interior"), ph("f", "food"), ph("crowd", "view", person=True, blur=2900))
     assert "crowd" not in [p["photo_id"] for p in scenes.pick(full, "cafe", appeal=ap)]
     assert [e["photo_id"] for e in scenes.with_people(thin, CFG)] == ["crowd", "selfie", "unsure"]
+
+
+def test_photos_with_people_come_least_crowded_first():
+    d = doc(ph("big", "view", person=True), ph("small", "view", person=True))
+    ap = {"big": {"beauty": 9, "shows_place": 4}, "small": {"beauty": 5, "shows_place": 8}}
+    assert [p["photo_id"] for p in scenes.pick(d, "cafe", appeal=ap)] == ["small", "big"]
+    d = doc(ph("free", "view"), ph("big", "view", person=True))
+    assert [p["photo_id"] for p in scenes.pick(d, "cafe", appeal={"big": {"beauty": 10, "shows_place": 10}})][0] == "free"
 
 
 def test_a_photo_the_model_says_shows_nothing_of_the_place_is_dropped():
@@ -170,3 +180,17 @@ def test_a_photo_the_model_says_shows_nothing_of_the_place_is_dropped():
     ap = {"dryer": {"beauty": 6, "shows_place": 2}, "bed": {"beauty": 7, "shows_place": 7}}
     assert [p["photo_id"] for p in scenes.pick(d, "stay", appeal=ap)] == ["bed", "ext"]  # unscored "ext" stays
     assert [p["photo_id"] for p in scenes.pick(d, "stay")] == ["dryer", "ext", "bed"]
+
+
+def test_pick_never_runs_dry_when_the_only_person_free_photo_is_old_and_a_fresh_one_has_people():
+    from corpus.serving import scenes
+    cfg = {**scenes.config(), "show": 2}
+    a = {"scene": "view", "photo_id": "a", "file": "a.jpg", "w": 800, "h": 600, "blur": 500, "brightness": 120, "with_people": True}
+    b = {"scene": "view", "photo_id": "b", "file": "b.jpg", "w": 800, "h": 600, "blur": 500, "brightness": 120, "old": True}
+    mp = pytest.MonkeyPatch()
+    mp.setattr(scenes, "candidates", lambda *x, **k: [a, b])
+    try:
+        got = scenes.pick({"place_fid": "x"}, None, cfg)
+    finally:
+        mp.undo()
+    assert [e["photo_id"] for e in got] == ["a", "b"]

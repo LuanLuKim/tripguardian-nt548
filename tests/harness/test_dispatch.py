@@ -7,7 +7,7 @@ class Tools:
     """Small stateful module adapter; no network or LLM required."""
     def __init__(self, stage):
         self.stage, self.states = stage, {}
-        self.calls = 0
+        self.calls, self.ops = 0, []
 
     def create(self, payload):
         sid = f"{len(self.states) + 1:012x}"
@@ -32,6 +32,7 @@ class Tools:
 
     def apply(self, sid, operation, payload, emit):
         self.calls += 1
+        self.ops.append(operation)
         if self.stage == "decision" and operation == "turn":
             emit("say", {"delta": "Mình hiểu rồi."})
             if "yên tĩnh" in payload.get("text", ""):
@@ -158,6 +159,10 @@ def test_new_chat_keeps_outputs_and_replays_without_a_second_write(stage):
     assert after['outputs'] == before['outputs']
     assert after['sessions'] == before['sessions']
     assert after['stage'] == stage
+    # one conversation per trip on every screen: every assistant of the journey starts its history again
+    for name in ('trip', 'decision', 'planning'):
+        if name in after['sessions']:
+            assert tools[name].ops.count('new_chat') == 1, name
 
 
 def test_stale_revision_does_not_change_state():
@@ -492,3 +497,29 @@ def test_planning_turn_is_routed_and_gets_the_journeys_trip_session_but_never_a_
     assert out["stage"] == "planning"
     with pytest.raises(ValueError):
         run(h, out, "turn", "plan-chat-2", {"text": "x y", "trip_session": "0123456789ab"})
+
+
+def test_a_quiet_chat_and_a_confirmed_plan_ask_trip_for_the_chat_memo(monkeypatch):
+    import threading
+    from harness import dispatch
+    h, tools = make()
+    got = threading.Event()
+    tools["trip"].remember = lambda snap: (setattr(tools["trip"], "remembered", snap), got.set())
+    peek = h.store.peek  # a signed-in journey (an account row is not needed to test the timing)
+    monkeypatch.setattr(h.store, "peek", lambda jid: (lambda s: (setattr(s, "user_id", "account-1"), s)[1])(peek(jid)))
+    v = h.create()
+    v = run(h, v, "turn", "t1", {"kind": "text", "text": "đi Đà Lạt"})
+    first = h._quiet[v["id"]]
+    assert first.interval == dispatch.MEMO_IDLE_S and first.is_alive()  # the quiet wait, not a call now
+    v = run(h, v, "turn", "t2", {"kind": "text", "text": "ngắm đồi"})
+    assert h._quiet[v["id"]] is not first and first.finished.is_set()  # each turn restarts it (the old wait cancelled)
+    h._remember_after(v["id"], 0)  # what a confirm does: the memo now
+    assert got.wait(5) and tools["trip"].remembered["id"] == v["sessions"]["trip"]
+    assert v["id"] not in h._quiet or h._quiet[v["id"]] is not threading.current_thread()
+
+
+def test_a_chat_without_an_account_gets_no_memo():
+    h, tools = make()
+    tools["trip"].remember = lambda snap: (_ for _ in ()).throw(AssertionError("no account, no memo"))
+    v = h.create()
+    h._remember(v["id"])  # nothing asked, nothing raised

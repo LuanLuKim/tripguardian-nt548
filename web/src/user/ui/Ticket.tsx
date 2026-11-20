@@ -169,6 +169,11 @@ export function ticketEditors(u: Understanding, onEdit: (t: string, v: string | 
     times: (
       <div className="tg-full__edit">
         {(['checkin_at', 'checkout_at', 'day_end'] as const).map((k) => <label key={k} className="tg-full__time"><span className="tg-faint">{FIELD_LABEL[k]}</span><TimeInput className="tg-input" label={FIELD_LABEL[k]} value={t[k]?.value ?? ''} onChange={(v) => onEdit(k, v || null)} /></label>)}
+        {(() => {
+          // A day that ends before it starts (or at breakfast) leaves no time to go anywhere: the plan then drops almost every place, so say it here, where the time is set.
+          const start = (t.checkin_at?.value as string | undefined) ?? '08:00', end = t.day_end?.value as string | undefined
+          return end && (end <= start || end < '12:00') ? <p className="tg-alert" role="status"><Icon name="warn" size={16} /> Mỗi ngày xong lúc {end}, {end <= start ? 'không sau giờ bắt đầu' : 'tức là buổi sáng'}: gần như không còn giờ để đi chơi. Nếu ý bạn là buổi tối, chọn lại giờ (ví dụ 19:15).</p> : null
+        })()}
       </div>
     ),
     purpose: <Seg label="Mục đích" value={u.purpose?.value ?? null} options={Object.entries(PURPOSE_LABEL).map(([value, label]) => ({ value, label }))} onChange={(v) => onEdit('purpose', v)} />,

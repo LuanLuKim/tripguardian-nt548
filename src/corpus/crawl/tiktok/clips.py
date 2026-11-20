@@ -12,6 +12,7 @@ import json
 
 from ..common.files import data_dir, listed, load_config, now, write_json
 from .place_verify import evidence_pairs
+from .frames import saved
 from .poi_crawl import name_keys, score
 
 
@@ -33,7 +34,7 @@ def run(city: str) -> dict:
             names[fid].append(p["poi"]["name"])
     by_place: dict[str, list[str]] = collections.defaultdict(list)
     for video_id, fid in evidence_pairs():
-        if fid in names and (root / "videos" / video_id / "video.mp4").exists():
+        if fid in names and saved(root / "videos" / video_id):
             by_place[fid].append(video_id)
     out = {}
     for fid, ids in sorted(by_place.items()):

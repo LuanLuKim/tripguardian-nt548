@@ -8,7 +8,6 @@
     web           {fid: [domain]}                                   sites whose Documents name the place (undated)
     status        {fid: {name, status, as_of, reviews}}             Maps status of every crawled place
     claims        [LocalClaim dict]                                 data/<city>/local/local_claims.json
-    holidays      [{date, name}]                                    corpus.views calendar
 Every item: {id, kind, subject: {type, id, name}, signals, dates, evidence[]}; an item without evidence is never made.
 """
 
@@ -16,10 +15,11 @@ import re
 import unicodedata
 from datetime import date, timedelta
 
-KINDS = ("trend", "hot", "top", "event", "season", "new", "closed")
+from .render import plain_quote
+
+KINDS = ("trend", "hot", "top", "event", "season", "new")
 EVIDENCE_MAX = 5
 MIN_SUBJECT = 5  # characters of an accent-folded season subject before a video text may be searched for it
-CLOSED = "Bị đóng vĩnh viễn"
 STATUS_RANK = {"confirmed": 0, "kept": 1, "unverified": 2}  # conflict / contradicted claims are not evidence for a bulletin
 
 
@@ -161,6 +161,8 @@ def trending(sig: dict, cfg: dict, now: date) -> list[dict]:
                     "signals": {"score": score, "lead": lead, "parts": {k: round(v, 2) for k, v in parts.items()},
                                 "tiktok_authors": len(v_authors), "tiktok_recent_authors": len(recent), "review_authors": len(r_authors),
                                 "rising": rising, "web_domains": len(domains),
+                                # "đang hot" is one bar everywhere: clips by different authors in the window (config `hot`)
+                                **({"hot": True} if len(v_authors) >= cfg["hot"]["min_authors"] and len(vids) >= cfg["hot"]["min_videos"] else {}),
                                 "newest": max([v["date"] for v in vids] or [now.isoformat()]), "window_days": c["window_days"]},
                     "dates": {"from": (now - timedelta(days=c["window_days"])).isoformat(), "to": now.isoformat()},
                     "evidence": evidence})
@@ -188,22 +190,6 @@ def new(sig: dict, cfg: dict, now: date) -> list[dict]:
     return out[:c["max_items"]]
 
 
-def closed(sig: dict, cfg: dict, now: date, previous: dict | None = None) -> list[dict]:
-    c = cfg["closed"]
-    seen = {i["id"] for i in (previous or {}).get("items", [])}
-    out = []
-    for fid, st in sig["status"].items():
-        if st.get("status") != CLOSED or (st.get("reviews") or 0) < c["min_reviews"]:
-            continue
-        iid = f"closed:{fid}"
-        out.append({"id": iid, "kind": "closed", "subject": {"type": "place", "id": fid, "name": st["name"]},
-                    "signals": {"reviews": st["reviews"], "new_since_last": None if previous is None else iid not in seen},
-                    "dates": {"checked": st["as_of"]},
-                    "evidence": [{"type": "maps_status", "status": CLOSED, "date": st["as_of"]}]})
-    out.sort(key=lambda i: (-i["signals"]["reviews"], i["id"]))
-    return out[:c["max_items"]]
-
-
 def _claim_evidence(c: dict) -> list[dict]:
     return [{"type": "web_document", "id": e["doc_id"], "url": e["source_url"], "domain": e["domain"],
              "date": (e.get("retrieved_at") or "")[:10] or None, "quote": e["quote"]} for e in (c.get("evidence") or [])[:2]]
@@ -213,16 +199,11 @@ def events(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
     c = cfg["event"]
     end = now + timedelta(days=c["horizon_days"])
     out = []
-    for h in sig["holidays"]:
-        d = _day(h["date"])
-        if now <= d <= end and h.get("name"):
-            out.append({"id": f"event:holiday:{h['date']}", "kind": "event", "subject": {"type": "event", "id": None, "name": h["name"]},
-                        "signals": {"source": "calendar"}, "dates": {"on": h["date"]},
-                        "evidence": [{"type": "calendar", "date": h["date"], "name": h["name"]}]})
     web = sig.get("events")
-    if web and (now - _day(web["day"])).days <= c.get("web_fresh_days", 3):
+    fresh = bool(web and (now - _day(web["day"])).days <= c.get("web_fresh_days", 3))
+    if fresh:
         # dated events read from this month's pages: they replace the claims, which know only a month
-        out += web_events(web["events"], now, end, c["max_items"] - len(out))
+        out += web_events(web["events"], now, end, c["max_items"] - len(out), c["hot_sources"])
         return sorted(out, key=lambda i: (i["dates"].get("on") or i["dates"]["from"], i["id"]))
     claims = {}
     for cl in sig["claims"]:
@@ -239,7 +220,7 @@ def events(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
     for cl, start in claims.values():
         out.append({"id": f"event:{cl['claim_id']}", "kind": "event", "subject": {"type": "event", "id": None, "name": cl["subject"]},
                     "signals": {"source": "claim", "months": cl["when"]["months"], "status": cl["status"], "sources": cl["sources"],
-                                "text": cl["text"]},
+                                "text": cl["text"], **({"hot": {"sources": cl["sources"]}} if cl["sources"] >= c["hot_sources"] else {})},
                     "dates": {"from": start.isoformat()}, "evidence": _claim_evidence(cl)})
     out.sort(key=lambda i: (i["dates"].get("on") or i["dates"]["from"], i["id"]))
     return out[:c["max_items"]]
@@ -248,9 +229,10 @@ def events(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
 FESTIVE = ("festival", "le hoi", "hoi ", "trien lam", "expo", "giai chay", "marathon", "dem nhac", "hoa nhac", "chao nam moi")
 
 
-def web_events(events: list[dict], now: date, end: date, room: int) -> list[dict]:
+def web_events(events: list[dict], now: date, end: date, room: int, hot_sources: int = 2) -> list[dict]:
     """The `room` events most worth a visitor's while, among those not over and starting before `end`: more sites that
-    name it first, then a festival, fair, race or concert night, then the sooner one; shown in date order."""
+    name it first, then a festival, fair, race or concert night, then the sooner one; shown in date order. An event
+    that `hot_sources` independent sites report is "đang hot" (no clip of the POI crawl names an event, so clips cannot say)."""
     def domains(e):
         return len({s["domain"] for s in e["sources"]})
     live = [e for e in events if _day(e["end"]) >= now and _day(e["start"]) <= end]
@@ -261,7 +243,8 @@ def web_events(events: list[dict], now: date, end: date, room: int) -> list[dict
              # corpus.pulse.render) still shows it, as "Diễn ra tháng 11 · 3 nguồn"
              "signals": {"source": "web", "time": e["time"], "venue": e["venue"], "summary": e["summary"],
                          "image": e["image"], **({"image_from": e["image_from"]} if e.get("image_from") else {}),
-                         "sources": domains(e), "status": "confirmed",
+                         **({"parts": e["parts"]} if e.get("parts") else {}),  # its programmes (corpus.events.gate.fold_parts)
+                         "sources": domains(e), "status": "confirmed", **({"hot": {"sources": domains(e)}} if domains(e) >= hot_sources else {}),
                          "months": _months(_day(e["start"]), _day(e["end"]))},
              "dates": {"from": e["start"], "to": e["end"]},
              "evidence": [{"type": "web_document", "url": s["url"], "domain": s["domain"], "date": s["read"],
@@ -287,12 +270,58 @@ def _next_month_start(now: date, month: int) -> date:
 # words two pages put around the same season's name ("mùa hoa dã quỳ ở Đà Lạt" = "hoa dã quỳ" = "dã quỳ")
 SEASON_LOOSE = {"mua", "hoa", "o", "tai", "doi", "dalat", "nam", "nay", "va"}
 # what is left of a name that is only weather or a word ("Mùa khô", "Mùa thu", "hồng"): not a season to go and see
-SEASON_VAGUE = {"", "kho", "mua", "thu", "dong", "xuan", "he", "may", "hong", "thang", "lanh", "nang"}
+SEASON_VAGUE = {"", "kho", "mua", "thu", "dong", "xuan", "he", "may", "hong", "thang", "lanh", "nang", "suong", "suong mu", "langbiang"}
 
 
 def season_key(subject: str) -> str:
     words = f" {fold(subject)} ".replace(" da lat ", " ").split()    # the city as a phrase: "dã quỳ" keeps its "da"
     return " ".join(w for w in words if w not in SEASON_LOOSE and not w.isdigit())
+
+
+def season_same(cfg: dict, sig: dict | None = None, now: date | None = None) -> tuple[dict[str, str], dict[str, set[str]], set[str]]:
+    """({key: leading key}, {leading key: every name of the season, accent-folded}, {keys that are no season}).
+
+    Names the pages give ONE season that no word rule can tell apart ("vườn hồng" and "mùa hồng chín" are the persimmon
+    season; "mùa dâu" and "dâu tây" the strawberry one) come from two places: the groups the night's model call made
+    (`sig["events"]["season_groups"]`, corpus.events.seasons; ignored when older than `season.groups_fresh_days`) and
+    config `season.same`, which is hand-entered, wins on a name both group, and works without any model."""
+    same, names, drop = {}, {}, set()
+
+    def put(group: list[str]) -> None:
+        lead = same.get(season_key(group[0]), season_key(group[0]))
+        for n in group:
+            if (k := season_key(n)) not in same:
+                same[k] = lead
+                names.setdefault(lead, set()).update({_plain(n), k})
+    for g in cfg["season"].get("same", ()):
+        put(g)
+    made = (sig or {}).get("events") or {}
+    made = made.get("season_groups") if made and now and (now - _day(made["day"])).days <= cfg["season"].get("groups_fresh_days", 3) else None
+    if made:
+        for g in made["groups"]:
+            if g:
+                put(g)
+        drop = {season_key(n) for n in made["not_seasons"]} - set(same)
+    return same, names, drop
+
+
+def season_claims(sig: dict, now: date, city_name: str = "") -> list[dict]:
+    """The claims that may name a season this month (before they are grouped): a season / best-time claim with a page
+    behind it, about a thing to see, not the city; a place's claim only when it is a `season` claim."""
+    out = []
+    for cl in sig["claims"]:
+        if (cl["kind"] not in ("season", "best_time") or cl["status"] not in STATUS_RANK or now.month not in cl["when"]["months"]
+                or not cl.get("evidence") or fold(cl["subject"]) == fold(city_name)):
+            continue
+        if cl["subject_kind"] != "phenomenon" and not (cl["kind"] == "season" and cl["subject_kind"] in ("poi", "poi_unresolved")):
+            continue    # a city's or a dish's season, or a place's best time to visit (the dry months): not a season to see
+        out.append(cl)
+    return out
+
+
+def _plain(subject: str) -> str:
+    """The subject as a video's text would say it: accent-folded, the city dropped ("hồng treo gió Đà Lạt")."""
+    return " ".join(f" {fold(subject)} ".replace(" da lat ", " ").split())
 
 
 # Where a season is seen (owner 2026-11-15: "mùa hoa gì" asks where to go and see it): places to visit, never a stay,
@@ -357,29 +386,37 @@ def see_places(sig: dict, key: str, doc_ids: set[str]) -> list[str]:
 
 def seasons(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
     """What is in season this month: the season and best-time claims about a thing to see (a flower, the clouds, the
-    persimmons; a place only when the page speaks of its season), one item per season however the pages name it,
-    the most sources first. A claim nobody checked yet still counts (marked "tham khảo"): "hoa dã quỳ" in 47 pages
-    is the season of November even before a check, and outranks a checked claim two pages make."""
+    persimmons), one item per season however the pages name it. A season is a thing, not a place: a place's claim joins
+    the group of the thing it is named after ("đồi Cỏ Hồng" with "cỏ hồng") but a group of places alone is the weather
+    of those places ("Nên đi vào mùa khô") and is dropped, as is a name only one page speaks of. All the seasons stay;
+    one that people posted about a lot lately carries `hot` and comes first, then the most sources. A claim nobody
+    checked yet still counts (marked "tham khảo"): "hoa dã quỳ" in 47 pages is the season of November even before a check."""
     c = cfg["season"]
+    same, aliases, not_seasons = season_same(cfg, sig, now)
     groups: dict[str, list[dict]] = {}
-    for cl in sig["claims"]:
-        if (cl["kind"] not in ("season", "best_time") or cl["status"] not in STATUS_RANK or now.month not in cl["when"]["months"]
-                or not cl.get("evidence") or fold(cl["subject"]) == fold(city_name)):
-            continue
-        if cl["subject_kind"] != "phenomenon" and not (cl["kind"] == "season" and cl["subject_kind"] in ("poi", "poi_unresolved")):
-            continue    # a city's or a dish's season, or a place's best time to visit (the dry months): not a season to see
+    for cl in season_claims(sig, now, city_name):
         key = season_key(cl["subject"])
-        if key in SEASON_VAGUE or key.startswith("thang "):
+        key = same.get(key, key)
+        if key in SEASON_VAGUE or key in not_seasons or key.startswith("thang "):
             continue
         groups.setdefault(key, []).append(cl)
     out = []
     shots = (sig.get("events") or {}).get("seasons") or {}   # corpus.events: a picture per season name, found the night before
+    clips = _season_clips(sig, now, max(c["video_window_days"], c["hot_window_days"]))
     for key, cls in groups.items():
+        if not any(x["subject_kind"] == "phenomenon" for x in cls):
+            continue
         lead = min(cls, key=lambda x: (-x["sources"], STATUS_RANK[x["status"]], -x["confidence"], x["subject"]))
         status = min((x["status"] for x in cls), key=STATUS_RANK.get)
         domains = {e["domain"] for x in cls for e in x["evidence"] if e.get("domain")}
         sources = max(max(x["sources"] for x in cls), len(domains))
-        video = _latest_video(sig, key, now, c["video_window_days"])
+        if sources < c["min_sources"]:
+            continue
+        # every name the group is called, the pages' and the config's: a video says "vườn hồng", not "hồng chín"
+        names = {key, *(_plain(x["subject"]) for x in cls), *aliases.get(key, ())}
+        talk = _talk(clips, names, now, c)
+        video = max(talk["rows"], key=lambda v: (v["date"], v["id"])) if talk["rows"] else None
+        hot = talk["hot"]
         # the group's quotes, those that name this month first: the row's sentence and the two pages shown under it
         merged = {**lead, "evidence": sorted((e for x in cls for e in x["evidence"]),
                                              key=lambda e: not _names_month(e.get("quote") or "", now.month))}
@@ -388,15 +425,64 @@ def seasons(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
         see = see_places(sig, key, {e["doc_id"] for x in cls for e in x["evidence"] if e.get("doc_id")})
         out.append({"id": f"season:{key.replace(' ', '-')}", "kind": "season",
                     "subject": {"type": "season", "id": None, "name": lead["subject"]},
-                    "signals": {"months": sorted(lead["when"]["months"]), "sources": sources, "status": status,
+                    "signals": {"months": _months_of(cls, lead, now), "sources": sources, "status": status,
                                 "latest_video": {k: video[k] for k in ("id", "date", "url")} if video else None,
+                                **({"hot": hot} if hot else {}),
                                 **({"summary": s} if (s := season_summary([{"type": "web_document", "quote": e.get("quote")}
                                                                            for e in merged["evidence"][:20]], now.month)) else {}),
                                 **({"image": shot["image"], "image_from": shot["image_from"]} if shot.get("image") else {}),
                                 **({"see": see} if see else {})},
                     "dates": {"month": now.month}, "evidence": evidence})
-    out.sort(key=lambda i: (-i["signals"]["sources"], STATUS_RANK[i["signals"]["status"]], i["id"]))
-    return out[:c["max_items"]]
+    out.sort(key=lambda i: (not i["signals"].get("hot"), -(i["signals"].get("hot") or {}).get("authors", 0), -i["signals"]["sources"],
+                            STATUS_RANK[i["signals"]["status"]], i["id"]))
+    return out[:c.get("limit", c["max_items"])]
+
+
+SPAN_MAX = 6    # a claim that runs longer than this months is "most of the year", not the season's own span
+
+
+def _months_of(cls: list[dict], lead: dict, now: date) -> list[int]:
+    """The months this season is on, around today: the months its names say, so "vườn hồng" 9–11 completes "mùa hồng chín" 8, 9, 11, 12.
+    A claim longer than SPAN_MAX months is left out ("cả năm" would make every season January to December). A month that
+    only a minority of the names that give today's month also give is one page's stray (24 pages on clouds, two of them
+    saying May), and the months kept are the run through today: what is not connected to this month is not "now"."""
+    own = [x["when"]["months"] for x in cls if len(x["when"]["months"]) <= SPAN_MAX and now.month in x["when"]["months"]]
+    if not own:
+        return sorted(lead["when"]["months"])
+    votes = {m: sum(m in ms for ms in own) for m in range(1, 13)}
+    keep = {m for m, v in votes.items() if v and 2 * v >= votes[now.month]}
+    run, m = {now.month}, now.month
+    while (m := m % 12 + 1) in keep and m not in run:
+        run.add(m)
+    m = now.month
+    while (m := (m - 2) % 12 + 1) in keep and m not in run:
+        run.add(m)
+    return sorted(run)
+
+
+def _season_clips(sig: dict, now: date, window: int) -> list[tuple[dict, str]]:
+    """[(video, its accent-folded text)] of the last `window` days, each video once (one lists under several places)."""
+    seen: dict[str, tuple[dict, str]] = {}
+    for vs in sig["videos"].values():
+        for v in _within(vs, now, window):
+            if v["id"] not in seen:
+                seen[v["id"]] = (v, fold(v.get("text") or ""))
+    return list(seen.values())
+
+
+def _talk(clips: list[tuple[dict, str]], names: set[str], now: date, c: dict) -> dict:
+    """The clips whose own text names the season (any of its names, whole words, in order) and whether that is a lot:
+    the same bar as a place that is "đang hot" (config `hot`): clips by different authors in the last `hot_window_days`."""
+    names = {n for n in names if len(n) >= MIN_SUBJECT}   # "hồng" would match every pink and every rose; "dau" is also "đâu"
+    if not names:
+        return {"rows": [], "hot": None}
+    word = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")(?!\w)")
+    rows = [v for v, text in clips if word.search(text)]
+    recent = [v for v in rows if v["date"] >= (now - timedelta(days=c["hot_window_days"])).isoformat()]
+    authors = {v["author"] for v in recent}
+    hot = ({"videos": len(recent), "authors": len(authors), "newest": max(v["date"] for v in recent), "window_days": c["hot_window_days"]}
+           if len(recent) >= c["hot_min_videos"] and len(authors) >= c["hot_min_authors"] else None)
+    return {"rows": [v for v in rows if v["date"] >= (now - timedelta(days=c["video_window_days"])).isoformat()], "hot": hot}
 
 
 def _names_month(quote: str, month: int) -> bool:
@@ -410,20 +496,11 @@ def season_summary(evidence: list[dict], month: int) -> str | None:
     """The season's sentence in the chat's trends block: one page's own quote, the one that names this month first
     ("tháng 11"), else the first that fits; None when no quote is the right length. No model writes it."""
     quotes = [q for e in evidence if e["type"] == "web_document"
-              and SUMMARY_CHARS[0] <= len(q := " ".join((e.get("quote") or "").split())) <= SUMMARY_CHARS[1]]
+              and SUMMARY_CHARS[0] <= len(q := plain_quote(e.get("quote") or "")) <= SUMMARY_CHARS[1]]
     return next((q for q in quotes if _names_month(q, month)), quotes[0] if quotes else None)
 
 
-def _latest_video(sig: dict, key: str, now: date, window: int) -> dict | None:
-    """Newest video of the window whose own text names the season's subject (accent-folded words, in order)."""
-    if len(key) < MIN_SUBJECT:
-        return None  # "hồng" would match every pink and every rose: too short to tell the season from the word
-    word = re.compile(r"(?<!\w)" + re.escape(key) + r"(?!\w)")
-    rows = [v for vs in sig["videos"].values() for v in _within(vs, now, window) if word.search(fold(v.get("text") or ""))]
-    return max(rows, key=lambda v: (v["date"], v["id"])) if rows else None
-
-
-def build(sig: dict, cfg: dict, now: date, previous: dict | None = None, city_name: str = "") -> list[dict]:
+def build(sig: dict, cfg: dict, now: date, city_name: str = "") -> list[dict]:
     """All items, in the bulletin's section order."""
     return (trending(sig, cfg, now) + hot(sig, cfg, now) + top(sig, cfg, now) + events(sig, cfg, now, city_name) + seasons(sig, cfg, now, city_name)
-            + new(sig, cfg, now) + closed(sig, cfg, now, previous))
+            + new(sig, cfg, now))

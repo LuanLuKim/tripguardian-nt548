@@ -1,4 +1,4 @@
-/* "Đường tới Đà Lạt": option cards of the ways in (screens/plan/WayIn.tsx). Tokens only. */
+/* "Phương tiện lên Đà Lạt": option cards of the ways in (screens/plan/WayIn.tsx). Tokens only. */
 .tg-wy { display: grid; gap: 14px; width: 100%; }
 .tg-wy h4 { font: 600 1.15rem var(--tg-display); color: var(--tg-ink); display: flex; align-items: baseline; gap: 10px; }
 .tg-wy h4 small { font: 500 0.9rem var(--tg-sans); color: var(--tg-ink-3); }
@@ -53,3 +53,18 @@
 .tg-wy__row .tg-btn { white-space: nowrap; gap: 6px; }
 .tg-wy__more { justify-self: start; background: none; border: 0; padding: 4px 2px; font: 600 0.85rem var(--tg-sans); color: var(--tg-brand); cursor: pointer; }
 .tg-wy__more:hover { text-decoration: underline; }
+
+/* door to door on a plane / coach card: the total, and each leg when opened (WayIn.tsx DoorToDoor) */
+.tg-wy__door { display: grid; gap: 6px; margin-top: 2px; }
+.tg-wy__door-sum { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; border: 1px solid var(--tg-line); border-radius: 12px; background: var(--tg-line-2); color: var(--tg-ink-2); font: 500 0.9rem var(--tg-sans); text-align: left; cursor: pointer; }
+.tg-wy__door-sum b { color: var(--tg-ink); font-weight: 600; }
+.tg-wy__door-sum:hover { border-color: var(--tg-ink-3); }
+.tg-wy__door-sum:focus-visible { outline: 2px solid var(--tg-brand); outline-offset: 2px; }
+.tg-wy__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tg-wy__steps li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding: 6px 2px; border-bottom: 1px dashed var(--tg-line); font-size: 0.88rem; }
+.tg-wy__steps li div { display: grid; gap: 1px; min-width: 0; }
+.tg-wy__steps b { font-weight: 600; color: var(--tg-ink); }
+.tg-wy__steps small { color: var(--tg-ink-3); }
+.tg-wy__steps li > span { color: var(--tg-ink); font-weight: 600; text-align: right; max-width: 9em; }
+.tg-wy__steps li.is-gap > span { color: var(--tg-warn); font-weight: 500; }
+.tg-wy__steps li.tg-wy__steps-note { display: block; border: 0; padding-top: 2px; }

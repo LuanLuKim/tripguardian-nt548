@@ -1,4 +1,5 @@
 import type { ChatPlaces, SearchInput } from '../tu/types'
+import type { ItineraryDay } from '../planning/types'
 
 // Shapes of the Place Decision API (src/decision/engine.py, pipeline.py, cards.py, feasibility.py).
 
@@ -210,6 +211,7 @@ export interface PreviewVariant {
   metrics: { travel_min: number; cost_vnd: number; cost_unknown: number }
   robustness: { level: 'solid' | 'feasible' | 'fragile'; label: string }
   places: string[][] // place ids per day
+  itinerary?: ItineraryDay[] // the days with times and legs (absent from an older harness build: the split view then shows the places only)
 }
 
 export interface PlanPreview {

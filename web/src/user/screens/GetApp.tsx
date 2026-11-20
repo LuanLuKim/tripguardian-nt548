@@ -31,7 +31,7 @@ export function GetApp() {
 
   return (
     <main className="tg-ga">
-      <header className="tg-ga__top"><Logo size={30} /></header>
+      <header className="tg-ga__top"><Logo size={44} /></header>
 
       <div className="tg-ga__art" aria-hidden="true">
         <div className="tg-ga__phone">

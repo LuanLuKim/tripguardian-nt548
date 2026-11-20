@@ -1,6 +1,7 @@
 import type { Action, ActPreview, ActResult, DayRoute, PlanOutput, ProgressEvent, Suggestions, TurnHandlers, View } from './types'
+import type { TurnInput } from '../tu/types'
 import { acceptsRevision, loadJourney, mutateJourney, readJourney, resumeJourney, type JourneyView } from '../journey'
-import { setOptimized } from '../store'
+import { setOptimized, type OptimizeParts } from '../store'
 import { JourneyError } from '../journey'
 export { JourneyError as PlanningError }
 // Lựa chọn starts the first read of this stage the moment it has advanced (see pd/api primeDecision): no resume step, no wait for the route.
@@ -35,6 +36,11 @@ export const sendText = async (id: string, text: string, h: TurnHandlers) => {
   const j = await mutateJourney(id, 'planning', 'turn', { text }, h as Record<string, ((d: any) => void) | undefined>) // eslint-disable-line @typescript-eslint/no-explicit-any
   return { ...(j.result as { view: View }), revision: j.revision }
 }
+// THE chat on Lịch trình (planning.trip, docs/PLACE_DECISION.md §19 "Một khung chat"): the result is the schedule, changed or not.
+export const sendChat = async (id: string, input: TurnInput, h: Record<string, ((d: any) => void) | undefined>) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const j = await mutateJourney(id, 'planning', 'trip', input, h)
+  return { ...(j.result as { view?: View }), revision: j.revision }
+}
 export const readSuggestions = (id: string) => readJourney<Suggestions & { revision: number }>(id, 'planning/suggestions')
 export const previewAct = (id: string, action: Action) => readJourney<ActPreview & { revision: number }>(id, `planning/preview-act?action=${encodeURIComponent(JSON.stringify(action))}`)
 export const readRoutes = (id: string) => readJourney<{ days: DayRoute[] }>(id, 'planning/routes')
@@ -63,12 +69,17 @@ const travelOf = (v: View) => {
 }
 // One proposal from the Planning Agent over the deterministic baseline; the server keeps it only when it is valid and
 // not worse (docs/PLANNING.md). Remembers the before / after travel so Lịch trình can say what changed and offer undo.
-export async function runRecommend(id: string, before: View | null) {
+export type OptimizeScope = 'keep_mine' | 'all'
+// "Tối ưu lịch": the server's deterministic search (planning/optimize.py). keep_mine leaves the places the user moved and
+// the days they ordered as they are; all may change them too.
+export async function runRecommend(id: string, before: View | null, scope: OptimizeScope = 'keep_mine') {
   try {
-    const j = await mutateJourney(id, 'planning', 'recommend')
-    const r = { ...(j.result as { view: View; proposal: { status: 'accepted' | 'fallback'; diagnostics: string[] } }), revision: j.revision }
-    const base = before && before.variants.length ? (before.state.chosen_variant ? travelOf(before) : before.variants[0].metrics.travel_min) : travelOf(r.view)
-    setOptimized(id, { status: r.proposal.status, before: base, after: travelOf(r.view), diagnostics: r.proposal.diagnostics, seen: false })
+    const j = await mutateJourney(id, 'planning', 'recommend', { scope })
+    const r = { ...(j.result as { view: View; proposal: { status: 'accepted' | 'fallback'; diagnostics: string[]; changed?: boolean; before?: OptimizeParts; after?: OptimizeParts } }), revision: j.revision }
+    const p = r.proposal
+    const base = p.before ? p.before.travel_min : before && before.variants.length ? (before.state.chosen_variant ? travelOf(before) : before.variants[0].metrics.travel_min) : travelOf(r.view)
+    setOptimized(id, { status: p.status, before: base, after: p.after ? p.after.travel_min : travelOf(r.view), diagnostics: p.diagnostics, seen: false,
+      changed: p.changed, parts: p.before && p.after ? { before: p.before, after: p.after } : undefined })
     return r
   } catch (e) {
     if (e instanceof JourneyError) throw e // the caller tells a busy / failing server from a plain "no better layout"

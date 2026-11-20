@@ -26,10 +26,10 @@
 .tg-stage__card.is-deck.is-on { box-shadow: 0 0 0 3px var(--tg-surface), 0 0 0 6px var(--tg-ink), 0 -22px 0 -3px color-mix(in srgb, var(--tg-surface) 80%, transparent), 0 30px 80px color-mix(in srgb, var(--tg-night) 40%, transparent); }
 .tg-stage__badge { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px 4px 8px; border-radius: 999px; background: var(--tg-ink); color: var(--tg-surface); font-size: 0.82rem; font-weight: 600; animation: tg-pop 0.28s var(--tg-ease) both; }
 .tg-stage__wish { position: absolute; top: 10px; left: 10px; display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 12px 0 10px; border-radius: 999px; background: color-mix(in srgb, var(--tg-surface) 92%, transparent); color: var(--tg-ink); font-size: 0.85rem; font-weight: 600; box-shadow: var(--tg-sh-1); opacity: 0; translate: 0 -4px; transition: opacity 0.2s ease, translate 0.2s var(--tg-ease), background-color 0.16s ease, color 0.16s ease; }
-.tg-stage__card.is-front .tg-stage__wish, .tg-stage__wish:focus-visible, .tg-stage__wish.is-on { opacity: 1; translate: 0 0; }
 .tg-stage__wish:hover { background: var(--tg-surface); }
 .tg-stage__wish.is-on { background: var(--tg-ink); color: var(--tg-surface); }
 .tg-stage__wish:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
+.tg-stage__card.is-front .tg-stage__wish, .tg-stage__wish:focus-visible, .tg-stage__wish.is-on { opacity: 1; translate: 0 0; }
 @keyframes tg-pop { from { opacity: 0; scale: 0.7; } }
 
 /* a card whose children are still on the way: a soft sweep over the photo, no spinner */
@@ -48,7 +48,7 @@
 .tg-stage__ring[data-phase="leave"][data-dir="down"] .tg-stage__card.is-front { transform: translateY(-14px) scale(1.07); opacity: 0; transition-delay: 0.05s; }
 .tg-stage__ring[data-phase="leave"][data-dir="up"] .tg-stage__card { transform: translateX(0) scale(0.84); opacity: 0; }
 
-/* the basket: what is picked, across every level */
+/* the basket: what is picked, across every level, and the one way out */
 .tg-basket { justify-content: space-between; gap: 12px; padding-left: 14px; }
 .tg-basket__items { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 8px 6px 4px; list-style: none; overflow-x: auto; scrollbar-width: none; }
 .tg-basket__items::-webkit-scrollbar { display: none; }
@@ -61,6 +61,8 @@
 .tg-basket__items > li > button:focus-visible { outline: 2px solid var(--tg-ink); outline-offset: 2px; }
 .tg-basket__none { padding: 0 6px; font-size: 0.88rem; color: var(--tg-ink-3); }
 .tg-basket > .tg-btn { flex: none; }
+
+.tg-stage__card.is-jump { transition: none; } /* a card that wraps round the ring jumps instead of sweeping across the front */
 
 @media (prefers-reduced-motion: reduce) {
   .tg-stage__ring.is-tree .tg-stage__card { animation: tg-fade-only 0.18s ease both; animation-delay: 0s; }

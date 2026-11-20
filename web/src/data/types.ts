@@ -38,7 +38,6 @@ export interface Video {
   url: string
   handle: string | null
   desc: string
-  local?: boolean // the clip is on our server (/media/tiktok/<id>/video.mp4); else TikTok's embedded player
 }
 
 export interface PriceRange {

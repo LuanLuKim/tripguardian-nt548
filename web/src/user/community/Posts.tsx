@@ -14,6 +14,7 @@ import { Avatar, Demo, Editorial, hubHref, PlacePic, postHref, Pic, Rating, writ
 import { PostMap, type Pin } from './PostMap'
 import { PostSearch } from './Search'
 import { Lightbox } from './Reader'
+import { FeaturedBanner } from './Tour3d'
 import '../css/posts.css'
 
 // "Bài viết" (docs/design/mock/designs/search-blog): one screen. The places that have posts on the left (hover one and the map flies
@@ -102,6 +103,8 @@ export function Posts() {
                 )}
                 {q && hits.length > 0 && <p>{hits.reduce((n, h) => n + h.posts.length, 0)} bài viết · rê chuột vào một nơi để xem trên bản đồ</p>}
               </div>
+
+              {!q && tab !== 'mine' && <FeaturedBanner />}
 
               {q && hits.length === 0 && (
                 <div className="tg-bp-empty">

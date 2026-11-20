@@ -242,13 +242,13 @@ export function useAllReviews(id: string): Quote[] | null {
   return reviewFiles.get(id) ?? null
 }
 
-export function useSnapshot() {
+export function useSnapshot(enabled = true) {
   const [snap, setSnap] = useState<Snapshot | null>(ready)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    if (ready) return
+    if (ready || !enabled) return
     loadSnapshot().then(setSnap, (e) => setError(String(e)))
-  }, [])
+  }, [enabled])
   return { snap, error }
 }
 

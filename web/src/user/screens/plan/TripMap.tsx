@@ -12,6 +12,7 @@ const SIDE = Z.size * Z.cols
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron'
 
 type Pt = { lat: number; lng: number }
+const DALAT_CENTER: Pt = { lat: 11.9440, lng: 108.4400 }
 const project = (p: Pt): [number, number] => {
   const lat = (p.lat * Math.PI) / 180
   return [((p.lng + 180) / 360 * Z.n - Z.x) * Z.size, ((1 - Math.asinh(Math.tan(lat)) / Math.PI) / 2 * Z.n - Z.y) * Z.size]
@@ -20,10 +21,30 @@ const unproject = ([x, y]: [number, number]): [number, number] => [
   (x / Z.size + Z.x) / Z.n * 360 - 180,
   Math.atan(Math.sinh(Math.PI * (1 - 2 * (y / Z.size + Z.y) / Z.n))) * 180 / Math.PI,
 ]
+// Positron is grey on grey: water, green and roads take light colours of their own so the map reads at a glance
+// (owner 2026-11-18, "màu map tươi tí"), still pale enough for the pins and the route to stand on.
+const TINT: Record<string, Record<string, string>> = {
+  background: { 'background-color': '#f6f3ea' },
+  landuse_residential: { 'fill-color': '#eeeadf' },
+  park: { 'fill-color': '#cfe7c1' },
+  landcover_wood: { 'fill-color': '#d5e8c9' },
+  water: { 'fill-color': '#a9d5ee' },
+  waterway: { 'line-color': '#8fc6e6' },
+  building: { 'fill-color': '#ebe4d6', 'fill-outline-color': '#ddd3c1' },
+  highway_minor: { 'line-color': '#ffffff' },
+  highway_major_casing: { 'line-color': '#e3d3a8' },
+  highway_major_inner: { 'line-color': '#fffaf0' },
+  highway_motorway_casing: { 'line-color': '#e8bd6a' },
+  highway_motorway_inner: { 'line-color': '#fde3a7' },
+  highway_motorway_bridge_casing: { 'line-color': '#e8bd6a' },
+  highway_motorway_bridge_inner: { 'line-color': '#fde3a7' },
+}
+// The live map draws every tile the frame shows: no source bounds, so a frame wider than the Đà Lạt square has no blank band
+// (the square only bounds the offline mosaic).
 function localizeStyle(style: StyleSpecification): StyleSpecification {
-  const [west, north] = unproject([0, 0]), [east, south] = unproject([SIDE, SIDE])
-  for (const source of Object.values(style.sources)) {
-    if (source.type === 'vector' || source.type === 'raster') source.bounds = [west, south, east, north]
+  for (const layer of style.layers) {
+    const tint = TINT[layer.id]
+    if (tint && 'paint' in layer) layer.paint = { ...(layer.paint ?? {}), ...tint } as typeof layer.paint
   }
   for (const layer of style.layers) {
     if (layer.type === 'symbol' && layer.layout?.['text-field'] && /name/.test(JSON.stringify(layer.layout['text-field']))) {
@@ -36,6 +57,31 @@ const inside = ([x, y]: [number, number]) => x >= 0 && y >= 0 && x <= SIDE && y 
 const distance = (a: [number, number], b: [number, number]) => {
   const p = (n: number) => n * Math.PI / 180
   return 6371000 * 2 * Math.asin(Math.min(1, Math.sqrt(Math.sin(p(b[0] - a[0]) / 2) ** 2 + Math.cos(p(a[0])) * Math.cos(p(b[0])) * Math.sin(p(b[1] - a[1]) / 2) ** 2)))
+}
+
+// The live map's code, worker and style are read once per page and shared by every map: a second map (another day, Lịch trình after
+// Lựa chọn) starts drawing at once. warmMap() starts them early (Lựa chọn calls it when idle, the "Bản đồ" switch on hover).
+type Kit = { lib: typeof import('maplibre-gl'); style: StyleSpecification }
+let kit: Promise<Kit> | null = null
+function loadKit(): Promise<Kit> {
+  kit ??= (async () => {
+    const [lib, worker] = await Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url')])
+    lib.setWorkerUrl(worker.default)
+    const response = await fetch(STYLE_URL, { credentials: 'omit' })
+    if (!response.ok) throw new Error('Map style unavailable')
+    return { lib, style: localizeStyle(await response.json() as StyleSpecification) }
+  })()
+  kit.catch(() => { kit = null }) // a failed read is tried again by the next map
+  return kit
+}
+export function warmMap() {
+  if (!document.head.querySelector('link[data-map-warm]')) {
+    const l = document.createElement('link')
+    l.rel = 'preconnect'; l.href = new URL(STYLE_URL).origin; l.crossOrigin = ''; l.dataset.mapWarm = '1'
+    document.head.appendChild(l)
+  }
+  void loadKit().catch(() => {})
+  void loadMosaic()
 }
 
 let mosaic: Promise<HTMLCanvasElement> | null = null
@@ -234,7 +280,11 @@ export function TripMap({ groups, title, className = '', hot, onHot, onOpen, lab
     for (const line of lines) for (const stop of line) include(stop.xy)
     for (const road of roads) if (road) for (const point of road.v) include(point)
     for (const point of endPts) if (point) include(point)
-    return Number.isFinite(x0) ? [x0, x1, y0, y1] : [0, SIDE, 0, SIDE]
+    if (Number.isFinite(x0)) return [x0, x1, y0, y1]
+    // Nothing to show yet: the middle of Đà Lạt (around Hồ Xuân Hương), not the whole region the offline tiles cover.
+    const [ax, ay] = project({ lat: DALAT_CENTER.lat - 0.02, lng: DALAT_CENTER.lng - 0.03 })
+    const [bx, by] = project({ lat: DALAT_CENTER.lat + 0.02, lng: DALAT_CENTER.lng + 0.03 })
+    return [ax, bx, by, ay]
     // Bounds are independent of pan, zoom and tile fade frames.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, roads, endPts.flat().join(',')])
@@ -272,16 +322,12 @@ export function TripMap({ groups, title, className = '', hot, onHot, onOpen, lab
     let map: VectorMap | null = null
     const start = async () => {
       try {
-        const [lib, worker] = await Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url')])
-        if (controller.signal.aborted) return
         const probe = document.createElement('canvas').getContext('webgl2')
         if (!probe) { setOffline(true); return }
         probe.getExtension('WEBGL_lose_context')?.loseContext()
-        lib.setWorkerUrl(worker.default)
-        const response = await fetch(STYLE_URL, { signal: controller.signal, credentials: 'omit' })
-        if (!response.ok) throw new Error('Map style unavailable')
-        const style = localizeStyle(await response.json() as StyleSpecification)
+        const { lib, style: shared } = await loadKit()
         if (controller.signal.aborted) return
+        const style = structuredClone(shared) // the map owns and may change its style object
         const c = camera.current
         map = new lib.Map({
           container: base.current!, style, interactive: false, attributionControl: false,
@@ -345,10 +391,12 @@ export function TripMap({ groups, title, className = '', hot, onHot, onOpen, lab
     const g = c.getContext('2d')!
     g.scale(dpr, dpr)
     const css = getComputedStyle(c)
-    if (offline && tiles) {
-      g.fillStyle = css.getPropertyValue('--tg-bg').trim()
+    // The bundled zoom-12 mosaic stands in until the live map has drawn, but only near its own size: blown up it is a blur of pixels,
+    // so a close view waits on the map's plain paper colour instead.
+    if (offline || !revealed) {
+      g.fillStyle = offline ? css.getPropertyValue('--tg-bg').trim() : (TINT.background['background-color'] ?? '#f6f3ea')
       g.fillRect(0, 0, w, h)
-      g.drawImage(tiles, ox, oy, SIDE * scale, SIDE * scale)
+      if (tiles && (offline || scale <= 2)) g.drawImage(tiles, ox, oy, SIDE * scale, SIDE * scale)
     }
     const ink = css.getPropertyValue('--tg-pine').trim()
     const brand = css.getPropertyValue('--tg-brand').trim() || ink
@@ -395,7 +443,7 @@ export function TripMap({ groups, title, className = '', hot, onHot, onOpen, lab
       trace(pts)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tiles, offline, soft, w, h, scale, ox, oy, hotAt, routes, endPts.flat().join(','), groupKey])
+  }, [tiles, offline, revealed, soft, w, h, scale, ox, oy, hotAt, routes, endPts.flat().join(','), groupKey])
 
   useEffect(() => { setZoom(1); setPan([0, 0]); setWheelActive(false) }, [title, groupKey, offline])
 

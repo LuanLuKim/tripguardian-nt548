@@ -8,10 +8,8 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from .. import data_root
-from ..views import calendar_days
 
 SERVING = ("serving", "places.json")
-CLOSED = "Bị đóng vĩnh viễn"
 
 
 def _read(path: Path):
@@ -86,25 +84,18 @@ def maps_reviews(root: Path, fids: set) -> dict:
     return out
 
 
-def maps_places(root: Path, fids: set, tz_h: int) -> tuple[dict, dict]:
-    """(review_totals {fid: n} for served places, status {fid: {name, status, as_of, reviews}} of every permanently
-    closed place Maps lists) from data/gmaps/places/*/place.json; as_of = the day that file was written."""
-    totals, status = {}, {}
-    tz = timezone(timedelta(hours=tz_h))
+def maps_totals(root: Path, fids: set) -> dict:
+    """{fid: review count Maps shows} for served places, from data/gmaps/places/*/place.json (the count the last refresh saw, when there was one)."""
+    totals = {}
     for f in (root / "gmaps" / "places").glob("*/place.json"):
         d = _read(f)
-        if not d or not d.get("fid"):
+        if not d or not d.get("fid") or d["fid"] not in fids:
             continue
         recent = maps_recent(root, d["fid"]) or {}
-        now_count = _count(recent.get("review_count"))  # what Maps shows at the last refresh, when there was one
-        if d["fid"] in fids and (now_count or isinstance(d.get("reviews"), int)):
+        now_count = _count(recent.get("review_count"))
+        if now_count or isinstance(d.get("reviews"), int):
             totals[d["fid"]] = now_count or d["reviews"]
-        if (recent.get("status") or d.get("status")) == CLOSED:
-            as_of = (recent["at"][:10] if recent.get("status") == CLOSED else
-                     datetime.fromtimestamp(f.stat().st_mtime, UTC).astimezone(tz).date().isoformat())
-            status[d["fid"]] = {"name": d.get("name") or "", "status": CLOSED, "as_of": as_of,
-                                "reviews": now_count or d.get("reviews") or 0}
-    return totals, status
+    return totals
 
 
 _AGE = re.compile(r"(một|\d+) (phút|giờ|ngày|tuần|tháng|năm) trước")   # as corpus.observe.gmaps.prep, which pulls the
@@ -145,10 +136,6 @@ def local_claims(root: Path, city: str) -> list:
     return (_read(root / city / "local" / "local_claims.json") or {}).get("claims", [])
 
 
-def holidays(city: str) -> list:
-    return [{"date": d["date"], "name": d["holiday"]} for d in (calendar_days(city) or []) if d.get("holiday")]
-
-
 def web_documents(root: Path, city: str) -> dict:
     """{doc_id: the page's text} of the web Documents the local claims were read from (data/web/<city>/documents/):
     where a season is seen is in the page around its name, not in the claim's one-sentence quote."""
@@ -170,8 +157,8 @@ def load(city: str, tz_h: int, root: Path | None = None) -> dict:
     root = root or data_root()
     places = served(root)
     fids = set(places)
-    totals, status = maps_places(root, fids, tz_h)
+    totals = maps_totals(root, fids)
     return {"places": places, "videos": tiktok_videos(root, fids, tz_h), "reviews": maps_reviews(root, fids),
-            "review_totals": totals, "web": web_domains(root, city, fids), "status": status,
-            "claims": local_claims(root, city), "holidays": holidays(city), "events": web_events(root, city),
+            "review_totals": totals, "web": web_domains(root, city, fids),
+            "claims": local_claims(root, city), "events": web_events(root, city),
             "documents": web_documents(root, city)}

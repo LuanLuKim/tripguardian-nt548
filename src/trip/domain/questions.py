@@ -429,8 +429,8 @@ def stay_times_q() -> Question:
 def arrival_q(mobility_known: bool) -> Question:
     """How the trip reaches the city. Driving in also says the vehicle, unless it is already known."""
     own = ((Chip(id="self", label="Tự đi", drafts=(d("arrival_mode", "self"),)),) if mobility_known else tuple(
-        Chip(id=f"self:{k}", label=f"Tự đi, {label.lower()}", drafts=(d("arrival_mode", "self"), d("mobility", k)))
-        for k, label in VEHICLE.items()))
+        Chip(id=f"self:{k}", label=label, drafts=(d("arrival_mode", "self"), d("mobility", k)))
+        for k, label in {"motorbike": "Xe máy", "car": "Ô tô"}.items()))  # driving in is the vehicle itself: no "Tự đi" in the chip
     return with_other(Question(
         qid="arrival", group="A", tier=1, text="Bạn tới Đà Lạt bằng gì?",
         reason="Đi xe khách hay máy bay thì ở Đà Lạt cần thuê xe hoặc gọi xe; tự đi thì dùng luôn xe của bạn.",

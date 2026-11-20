@@ -1,5 +1,6 @@
 """Keyframes of a saved video, shared by asr_check (names on screen) and place_verify: videos/<video_id>/frames/f1..fN.jpg."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -18,3 +19,24 @@ def frames(mp4: Path, total_s: float, out_dir: Path) -> list[bytes]:
                             "-i", str(mp4), "-frames:v", "1", "-vf", f"scale={FRAME_WIDTH}:-2", str(f)], check=True)
         out.append(f.read_bytes())
     return out
+
+
+def has_frames(d: Path) -> bool:
+    """Every keyframe of the video directory `d` is saved: frames() reads them without the mp4."""
+    return all((d / "frames" / f"f{i + 1}.jpg").exists() for i in range(FRAMES))
+
+
+def saved(d: Path) -> bool:
+    """The clip of video directory `d` was downloaded: its mp4 is on disk, or it was deleted on purpose after its transcript
+    and frames were kept (video.json clip_removed, scripts/free_tiktok_clips.py). The web plays it through TikTok's player."""
+    if (d / "video.mp4").exists():
+        return True
+    try:
+        return bool(json.loads((d / "video.json").read_text(encoding="utf-8")).get("clip_removed"))
+    except (OSError, ValueError):
+        return False
+
+
+def seeable(d: Path) -> bool:
+    """Its frames can be read: the mp4 is on disk to cut them from, or they are all saved already."""
+    return (d / "video.mp4").exists() or has_frames(d)

@@ -34,14 +34,6 @@ export function PostSearch({ value, onType, onEnter, placeholder = 'Tìm địa 
     addEventListener('pointerdown', away)
     return () => removeEventListener('pointerdown', away)
   }, [])
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      const el = document.activeElement
-      if (e.key === '/' && !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el as HTMLElement | null)?.isContentEditable) && !document.querySelector('[role="dialog"]')) { e.preventDefault(); input.current?.focus() }
-    }
-    addEventListener('keydown', key)
-    return () => removeEventListener('keydown', key)
-  }, [])
 
   const q = text.trim()
   const places = useMemo(() => (q ? searchPlaces(q, true) : []), [q, store, snap])
@@ -77,7 +69,7 @@ export function PostSearch({ value, onType, onEnter, placeholder = 'Tìm địa 
             else if (e.key === 'ArrowUp' && rows.length) { e.preventDefault(); setHi((i) => (i <= 0 ? rows.length - 1 : i - 1)) }
           }}
         />
-        {text ? <button type="button" className="tg-bp-search__x" aria-label="Xóa" onClick={() => { setText(''); onType?.(''); setHi(-1); input.current?.focus(); if (value && !onType) go('/posts') }}><Icon name="x" size={13} /></button> : <kbd aria-hidden="true">/</kbd>}
+        {text ? <button type="button" className="tg-bp-search__x" aria-label="Xóa" onClick={() => { setText(''); onType?.(''); setHi(-1); input.current?.focus(); if (value && !onType) go('/posts') }}><Icon name="x" size={13} /></button>  : null}
       </form>
 
       {show && (

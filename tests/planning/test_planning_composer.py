@@ -32,7 +32,7 @@ def test_overload_offers_drop_directions_and_preserves_selection():
     output, records = overloaded(roles={"p0": "anchor", "p1": "locked"})
     original = copy.deepcopy(output)
     out = run(output, records)
-    assert {d for v in out["variants"] for d in [v["id"], *v.get("merged", [])]} == {"fit", "travel", "cost", "most"}
+    assert {d for v in out["variants"] for d in [v["id"], *v.get("merged", [])]} == {"fit", "cost", "most"}
     assert out["ok"] and valid(out)
     assert out["keep_all"] is None and out["overload"]
     for variant in valid(out):
@@ -88,7 +88,7 @@ def test_impossible_must_set_is_explained_instead_of_silently_trimmed():
     out = run(output, records)
     assert not out["ok"]
     assert len(out["variants"]) == 1
-    assert set(out["variants"][0]["merged"]) == {"travel", "cost", "most"}
+    assert set(out["variants"][0]["merged"]) == {"cost", "most"}
     assert all(v["status"] == "unavailable" for v in out["variants"])
     assert all(set(v["kept"]) == {f"p{i}" for i in range(8)} for v in out["variants"])
 

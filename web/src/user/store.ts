@@ -12,13 +12,17 @@ export interface Msg {
   stage?: 'decision' | 'planning'
 }
 
-// What the Planning Agent's one proposal did to a journey's schedule (journey id -> outcome); see PLANNING.md.
+// The terms "Tối ưu lịch" scores a plan on (planning/optimize.py objective); see PLANNING.md §Tối ưu lịch.
+export interface OptimizeParts { problems: number; meals_missed: number; travel_min: number; spread_min: number; time_penalty: number; pace_excess: number; value: number }
+// What the last "Tối ưu lịch" did to a journey's schedule (journey id -> outcome).
 export interface Optimized {
   status: 'accepted' | 'fallback'
   before: number // travel minutes of the baseline
   after: number // travel minutes now
   diagnostics: string[]
   seen: boolean
+  changed?: boolean // the plan was replaced by a better one
+  parts?: { before: OptimizeParts; after: OptimizeParts }
 }
 
 export interface Opened { kind: 'place' | 'theme'; id: string; at: string }

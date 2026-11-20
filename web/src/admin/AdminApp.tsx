@@ -4,6 +4,8 @@ import { useSnapshot } from '../data/store'
 import { match, navigate, usePath } from '../router'
 import { Icon } from '../ui/bits'
 import { useDecisions } from './decisions'
+import { AdminGate } from './Login'
+import { useOverview } from './overview'
 import { Analytics } from './screens/Analytics'
 import { Dashboard } from './screens/Dashboard'
 import { Evidence } from './screens/Evidence'
@@ -16,6 +18,20 @@ import { System } from './screens/System'
 import { Trends } from './screens/Trends'
 import { Users } from './screens/Users'
 import './admin.css'
+
+// The fonts load beside the page, not in front of it: an @import in the stylesheet holds the first paint until Google
+// answers; here the text shows in the fallback face and swaps (display=swap).
+const FONTS = 'https://fonts.googleapis.com/css2?family=Mona+Sans:wdth,wght@75..125,300..900&family=JetBrains+Mono:wght@400..700&display=swap'
+if (!document.getElementById('admin-fonts')) {
+  for (const href of ['https://fonts.googleapis.com', 'https://fonts.gstatic.com']) {
+    const pre = Object.assign(document.createElement('link'), { rel: 'preconnect', href })
+    if (href.includes('gstatic')) pre.crossOrigin = ''
+    document.head.append(pre)
+  }
+  const css = Object.assign(document.createElement('link'), { id: 'admin-fonts', rel: 'stylesheet', href: FONTS, media: 'print' })
+  css.onload = () => (css.media = 'all')
+  document.head.append(css)
+}
 
 const NAV = [
   { path: '/admin', label: 'Tổng quan', icon: 'gauge', key: 'd', group: 'Công việc' },
@@ -35,16 +51,16 @@ const GROUPS = [...new Set(NAV.map((n) => n.group))]
 type Theme = 'light' | 'dark'
 const THEME_KEY = 'tg.admin.theme'
 
-// Follows the system until the reviewer picks one; the pick is a per-browser convenience.
+// Light until the reviewer picks one; the pick is a per-browser convenience.
 function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
       const saved = localStorage.getItem(THEME_KEY)
       if (saved === 'light' || saved === 'dark') return saved
     } catch {
-      /* storage blocked: fall back to the system theme */
+      /* storage blocked: stay light */
     }
-    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    return 'light'
   })
   const toggle = () =>
     setTheme((t) => {
@@ -60,8 +76,14 @@ function useTheme() {
 }
 
 export default function AdminApp() {
+  return <AdminGate>{(signOut) => <AdminShell signOut={signOut} />}</AdminGate>
+}
+
+function AdminShell({ signOut }: { signOut: () => void }) {
   const path = usePath()
-  const { snap, error } = useSnapshot()
+  // The overview screen comes first: the 40 MB snapshot starts only once it has drawn (other screens start it at once).
+  const first = useOverview()
+  const { snap, error } = useSnapshot(path.split('?')[0].replace(/\/$/, '') !== '/admin' || !!first.ov || !!first.error)
   const decisions = useDecisions()
   const [palette, setPalette] = useState(false)
   const [help, setHelp] = useState(false)
@@ -108,8 +130,8 @@ export default function AdminApp() {
 
   let screen
   let m: Record<string, string> | null
-  if (!snap) screen = <p className="a-empty">{error ? `Không tải được snapshot: ${error}` : 'Đang tải snapshot'}</p>
-  else if (base === '/admin') screen = <Dashboard snap={snap} />
+  if (base === '/admin') screen = <Dashboard />
+  else if (!snap) screen = <p className="a-empty">{error ? `Không tải được snapshot: ${error}` : 'Đang tải snapshot'}</p>
   else if (base === '/admin/review') screen = <Review snap={snap} />
   else if (base === '/admin/labels') screen = <Labels />
   else if ((m = match(path, '/admin/places/:id'))) screen = <Places snap={snap} openId={m.id} />
@@ -163,6 +185,9 @@ export default function AdminApp() {
           </button>
           <button onClick={toggleTheme}>
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} /> {theme === 'dark' ? 'Nền sáng' : 'Nền tối'}
+          </button>
+          <button onClick={signOut}>
+            <Icon name="user" size={15} /> Đăng xuất
           </button>
           {snap && <small>Snapshot {new Date(snap.build.at).toLocaleString('vi-VN')}</small>}
         </div>

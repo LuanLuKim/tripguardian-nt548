@@ -18,6 +18,7 @@ from .traits import exposure, visit_minutes
 DAWN_REST = (12 * 60, 14 * 60 + 30, "rest", "Nghỉ trưa bù dậy sớm", "lodging")
 LUGGAGE_MOBILITY = {"motorbike", "walk"}      # the last day after check-out with the bags on: only places near the way
 BALANCE_MIN = 60          # a full day weighs like an hour of extra road: near-equal roads spread over the days
+FILL_FIRST_MIN = 600       # trip length not given: each later day weighs like ten hours of road, so day 1 fills before day 2
 AREA_MIN = 15             # a day with no place of the same area weighs like this much extra road (a far place sets a
                           # day's area; a day with no lodging to start from is not free to open)
 
@@ -250,7 +251,7 @@ class _Day:
             # a breakfast dish belongs to a day whose breakfast it can take; lunch is the fallback (T14: bánh căn at 13:30)
             late = 1 if slot and p.meal_kind == "breakfast" and slot != "breakfast" else 0
             excess = max(0, len(self.order) + 1 - self.cx.cfg.per_day[self.cx.pace]) if lay.balance_count else 0
-            key = (miss, clash, late, excess, add + BALANCE_MIN * fill + away, add, self.k, i)
+            key = (miss, clash, late, excess, add + lay.spread(self.k, fill) + away, add, self.k, i)
             if best is None or key < best[0]:
                 best = (key, i, at, slot, load)
         return best
@@ -293,6 +294,14 @@ class _Layout:
         self.max_leg = (trip.decision["trip_context"].get("pace") or {}).get("max_leg_min")
         self.musts = must_places(trip)
         self.balance_count = (trip.decision["trip_context"].get("sources") or {}).get("pace") in {"user", "inferred"}
+        # No trip length from the user (the frame is default_days long): the places fill day 1 as far as it holds them,
+        # then day 2, instead of being spread one a day over days the user never said they have (owner 2026-11-18).
+        self.fill_first = not trip.decision["trip_context"]["context"].get("days")
+
+    def spread(self, k: int, fill: float) -> float:
+        """What putting a place on day k weighs besides its road: how full that day gets, or, with no trip length, how
+        late the day is."""
+        return k * FILL_FIRST_MIN if self.fill_first else BALANCE_MIN * fill
 
     def allowed(self, p, day: _Day) -> bool:
         """Hard rules: not on a hazard day, open that weekday long enough, and, on a last day carried out with the bags
@@ -330,7 +339,7 @@ class _Layout:
         add = trial.tour() - day.tour()
         excess = max(0, len(trial.order) - pulled.cfg.per_day[pulled.pace]) if self.balance_count else 0
         late = int(trial.meal.get(pid) not in (None, "breakfast") and self.places[pid].meal_kind == "breakfast")
-        return ((miss, False, late, excess, add + BALANCE_MIN * trial.used() / max(1, trial.cap), add, day.k, key[0]), trial, None)
+        return ((miss, False, late, excess, add + self.spread(day.k, trial.used() / max(1, trial.cap)), add, day.k, key[0]), trial, None)
 
     def place(self, pid: str, skip: int | None = None) -> bool:
         best = None
@@ -407,7 +416,7 @@ class _Layout:
                     spot = (None, i, day.stretches[i].stops.index(pid) + 1, None, day.loads[pid])
                     day.take(pid)
                     here = (max(0, len(day.order) + 1 - day.cx.cfg.per_day[day.cx.pace]) if self.balance_count else 0,
-                            before - day.tour() + BALANCE_MIN * used / max(1, day.cap) + _risk(p, day.cx) + (
+                            before - day.tour() + self.spread(day.k, used / max(1, day.cap)) + _risk(p, day.cx) + (
                                 AREA_MIN if p.area and all(self.places[q].area != p.area for q in day.order) else 0))
                     best = None
                     for other in self.days:
@@ -473,7 +482,7 @@ def assign(trip, ctxs: list[DayCtx], ids: list[str]) -> tuple[list[list[str]], l
     left = [pid for pid in sorted(ids, key=_hardness(lay, ids)) if not lay.place(pid)]
     lay.improve(trip.cfg.improve_passes)
     # Do not change an overloaded subset search. A fitting selection can use its otherwise empty days.
-    if not left:
+    if not left and not lay.fill_first:
         for empty in [d for d in lay.days if not d.order and d.cap and not d.cx.day.blocks]:
             options = []
             for donor in lay.days:

@@ -44,11 +44,14 @@ analytics|8770|$PYTHON -m analytics serve --port 8770
 review|8765|$PYTHON -m corpus review --city dalat
 web|5173|node web/node_modules/vite/bin/vite.js web --port 5173 --strictPort"
 
-# Production: only what the internet may reach (web/server.mjs keeps /admin and the review API private).
+# Production: what web/server.mjs sends through the tunnel. /admin is public but signed in (ADMIN_EMAIL / ADMIN_PASSWORD
+# in .env): analytics (:8770) and the review server (:8765) run beside the harness, still on 127.0.0.1 only.
 # The harness never inherits a dev APP_BASE_URL / TG_TEST_LOGIN from this shell (it reads the public one from .env:
 # a dev value 403s every POST, test login must stay off); it gets one shared GPU for corpus.index (Trip looks and photos).
 HARNESS_GPU=${HARNESS_GPU:-0}
 PROD_SERVICES="harness|8769|env -u APP_BASE_URL -u TG_TEST_LOGIN CUDA_VISIBLE_DEVICES=$HARNESS_GPU $PYTHON -m harness serve --port 8769
+analytics|8770|$PYTHON -m analytics serve --port 8770
+review|8765|$PYTHON -m corpus review --city dalat
 public|$PUBLIC_PORT|node web/server.mjs $PUBLIC_PORT"
 
 # Workers with no port: name | command. The notification worker plans, checks the forecast and sends web push.
@@ -248,8 +251,13 @@ build_web() {
   { (cd web && node_modules/.bin/tsc -b && node_modules/.bin/vite build --outDir .deploy-build --emptyOutDir) &&
     PROD_DIST="$PWD/$stage" node web/scripts/prod_assets.mjs; } > "$RUN_DIR/build.log" 2>&1 ||
     { echo "[build] FAILED, live site untouched, see $RUN_DIR/build.log"; return 1; }
+  echo "[build] ready in $stage"
+}
+
+# The built web goes live: web/dist is what web/server.mjs serves.
+publish_web() {
   mkdir -p web/dist
-  cp -a "$stage/." web/dist/ && echo "[build] copied over web/dist"
+  cp -a web/.deploy-build/. web/dist/ && echo "[build] copied over web/dist"
 }
 
 # After a deploy: the harness env is the production one, test login is off, a guest can sign in and open a trip.
@@ -362,8 +370,8 @@ warmup_wait() {
   i=0
   until grep -q 'Journey warmup:' "$RUN_DIR/harness.log" 2>/dev/null; do
     i=$((i + 1))
-    if [ $i -ge "${WARMUP_WAIT:-300}" ]; then
-      echo "[harness] warmup not finished after ${WARMUP_WAIT:-300}s: opening the tunnel anyway"; return 0
+    if [ $i -ge "${WARMUP_WAIT:-600}" ]; then
+      echo "[harness] warmup not finished after ${WARMUP_WAIT:-600}s: opening the tunnel anyway"; return 0
     fi
     sleep 1
   done
@@ -384,12 +392,22 @@ prod() {
     exit 1
   fi
   [ -f data/index/current ] || echo "[index] data/index/current missing: no photo cards on Hiểu chuyến đi (python -m corpus index)"
-  echo "[db] backup + migrate"
-  db_backup || exit 1
-  $PYTHON -m db migrate > "$RUN_DIR/migrate.log" 2>&1 || { echo "[db] migrate FAILED, see $RUN_DIR/migrate.log"; exit 1; }
+  # The database copy + migrate and the thumbnails + web build touch nothing of each other: they run side by side (owner
+  # 20/11/2026). The live site changes only after both succeed (publish_web), so a failure on either side leaves it as it was.
+  (
+    echo "[db] backup + migrate"
+    db_backup || exit 1
+    $PYTHON -m db migrate > "$RUN_DIR/migrate.log" 2>&1 || { echo "[db] migrate FAILED, see $RUN_DIR/migrate.log"; exit 1; }
+    echo "[db] migrated"
+  ) &
+  db_pid=$!
   echo "[build] thumbnails (new photos only)"
   $PYTHON web/scripts/make_thumbs.py > "$RUN_DIR/thumbs.log" 2>&1 || echo "[build] thumbnails failed (originals are served instead), see $RUN_DIR/thumbs.log"
-  build_web || exit 1
+  build_web; web_ok=$?
+  wait "$db_pid"; db_ok=$?
+  [ "$db_ok" -eq 0 ] || { echo "[db] FAILED: not deploying, live site untouched"; exit 1; }
+  [ "$web_ok" -eq 0 ] || exit 1
+  publish_web || exit 1
   searx_start
   router_start
   clef_start

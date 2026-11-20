@@ -1,10 +1,10 @@
 import type { PointerEvent } from 'react'
-import { Icon } from '../ui/icons'
+import { Icon, Logo } from '../ui/icons'
 
 // How the bunny feels on the sign-in screen. The mood comes from what the visitor is doing (docs/Role_Web_Functional_Design.md §Đăng nhập):
 // idle (nothing special), wait (request in flight), shy / peek (password field focused / shown), curious (something is
 // missing or taken), sad (the server said no), happy (signed in), mail (a code was sent: holds an envelope). Each mood is its own picture of the same bunny
-// (public/img/bunny: idle, happy, wait, sad are the owner's drawings, the rest made by web/scripts/gen_mascot_moods.py) that cross-fades in; the motion on top (sway, wobble,
+// (public/img/bunny: idle, happy, wait, sad, curious are cut from the owner's sheet by web/scripts/cut_mascot_sheet.py, the rest made by web/scripts/gen_mascot_moods.py) that cross-fades in; the motion on top (sway, wobble,
 // hop) and the bubbles live in css/auth.css and stop under reduced motion.
 export type Mood = 'idle' | 'wait' | 'shy' | 'peek' | 'curious' | 'sad' | 'happy' | 'mail'
 export type Pet = { mood: Mood; say: string }
@@ -24,17 +24,13 @@ function unlook(e: PointerEvent<HTMLElement>) {
 }
 
 const MOODS: Mood[] = ['idle', 'wait', 'shy', 'peek', 'curious', 'sad', 'happy', 'mail']
-const PICS = Object.fromEntries(MOODS.map((m) => [m, `/img/bunny/${m}.webp`])) as Record<Mood, string>
+const PICS = Object.fromEntries(MOODS.map((m) => [m, `/img/bunny/${m}.webp?v=2`])) as Record<Mood, string>
 
-// The product's wordmark: a mountain line with a map pin over "TripGuardian". Drawn here (not a picture) so it stays sharp at any size.
+// The product's logo (the shared `Logo`, ink on transparent) with an optional tagline under it.
 export function Brand({ tagline = false }: { tagline?: boolean }) {
   return (
     <div className="tg-brand">
-      <svg viewBox="0 0 220 56" width="150" aria-hidden="true" focusable="false">
-        <path d="M6 50 C 42 44, 62 20, 84 12 C 100 22, 118 40, 150 44 C 176 47, 198 46, 214 40" />
-        <g transform="translate(150 2)"><path d="M12 30 C 12 30 2 20 2 12.5 a10 10 0 0 1 20 0 C 22 20 12 30 12 30Z" className="tg-brand__pin" /><circle cx="12" cy="12.5" r="3.6" className="tg-brand__dot" /></g>
-      </svg>
-      <b className="tg-brand__name">TripGuardian</b>
+      <Logo size={tagline ? 84 : 60} />
       {tagline && <i className="tg-brand__tag">Chuyến đi của bạn, theo cách bạn chọn.</i>}
     </div>
   )

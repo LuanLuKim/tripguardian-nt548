@@ -107,13 +107,32 @@ def services_block(result: dict) -> dict | None:
             "sources": result.get("sources") or [], **({"crawled": result["crawled"]} if _known(result.get("crawled")) else {})}
 
 
+def clips_block(result: dict, heading: str, cards_of: Callable) -> dict | None:
+    """The clips place_clips picked (trip/infrastructure/reads.Reads.clips), for the chat's clip stage: each with its place;
+    `cards` = the cards of those places (name, photo, liked). `title` = the assistant's heading, else the place and what
+    was asked ("Đồi Đa Phú · mây buổi sáng") when a clip matched it, else the place. None without clips."""
+    clips = [c for c in result.get("_clips") or () if c.get("video_id")]
+    if not clips:
+        return None
+    places = [p for p in result.get("places") or () if p.get("clips")]
+    about = str(result.get("about") or "").strip()
+    names = [p["name"] for p in places]
+    named = " và ".join(names) if len(names) <= 2 else f"{names[0]}, {names[1]} và {len(names) - 2} nơi khác"
+    title = heading or (f"{about[:1].upper()}{about[1:]} · {named}" if about and any(p.get("matched") for p in places) else named)
+    return {"kind": "clips", "title": title, "about": about,
+            "clips": [{k: c.get(k) for k in ("video_id", "url", "handle", "caption", "posted", "place_id", "place", "matched")} for c in clips],
+            "cards": cards_of(list(dict.fromkeys(c["place_id"] for c in clips)))}
+
+
 def block_of(tools, name: str, args: dict, result, cards_of: Callable) -> dict | None:
     if not isinstance(result, dict) or "error" in result:
         return None
     if name == "find_services":
         return services_block(result)
     if name == "browse_tags":
-        return tags_block(result, cards_of)
+        return tags_block(result, cards_of, title=str(args.get("question") or "").strip() or None)
+    if name == "place_clips":
+        return clips_block(result, str(args.get("heading") or "").strip(), cards_of)
     if name == "find_dishes":
         return dish_block(tools, str(args.get("dish") or result.get("dish") or ""), list(result.get("ranked") or ()), cards_of)
     if name == "record_fact" and args.get("field") == "dish" and tools.knowledge is not None:
@@ -181,7 +200,7 @@ EVENT_ASK = re.compile(r"\b(su kien|le hoi|festival|show|concert|dem nhac|hoa nh
 SEASON_ASK = re.compile(r"\b(mua|san may|no hoa|hoa gi|co hong|da quy|thoi tiet)\b")
 SECTIONS = {"event": "Sự kiện sắp diễn ra", "season": "Đang vào mùa", "places": "Nơi đang được nhắc nhiều"}
 PLACE_KINDS = ("trend", "hot", "top")
-ROWS = {"event": 5, "season": 4, "places": 4}
+ROWS = {"event": 5, "season": 6, "places": 6}  # places: the stage shows them all (owner 2026-11-17: not cut to 4)
 
 
 def trend_kinds(folded_text: str) -> tuple[str, ...]:
@@ -220,7 +239,7 @@ def trends_block(rows: dict, sections: tuple[str, ...], cards_of: Callable) -> d
             if kind == "places" and not it.get("place_id"):
                 continue
             seen.add(it["name"])
-            row = {"title": it["name"][:1].upper() + it["name"][1:]}
+            row = {"title": it["name"][:1].upper() + it["name"][1:], **({"hot": it["hot_note"]} if it.get("hot") else {})}
             if kind == "event":
                 row.update(meta=it["text"].split(" · " + it["summary"])[0] if it.get("summary") else it["text"],
                            text=it.get("summary") or "", on=it["on"])

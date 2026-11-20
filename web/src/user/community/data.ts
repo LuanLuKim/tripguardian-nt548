@@ -7,8 +7,10 @@ import { useSyncExternalStore } from 'react'
 import { placeById } from '../../data/store'
 import { info } from '../lib'
 import { fold } from '../search'
+import { FEATURED } from './featured'
 
-export type Block = { t: 'p' | 'h' | 'q'; text: string } | { t: 'img'; src: string; cap: string }
+export type Block = { t: 'p' | 'h' | 'q'; text: string } | { t: 'img'; src: string; cap: string } | { t: 'tour'; title: string; ids: string[] } // tour: a gallery of the places that have a 3D model
+export type UserBlock = Exclude<Block, { t: 'tour' }> // what the composer makes: no gallery block
 export type Vis = 'public' | 'friends' | 'me'
 export const REACTS = [
   { k: 'like', label: 'Thích' },
@@ -36,11 +38,12 @@ export interface Post {
   comments: Comment[]
   demo?: boolean
   editorial?: boolean // written by TripGuardian from the corpus' evidence (corpus intro posts); never a person
+  featured?: boolean // pinned above the others, drawn as a banner (community/featured.ts)
   sources?: { domain: string; url?: string; title?: string }[]
   reviewCount?: number
   consent?: boolean // the author lets TripGuardian learn from this public post (kept for the harness to honour once posts live there)
 }
-export interface Draft { placeId: string | null; title: string; blocks: Block[]; tags: string[]; vis: Vis; facts: Partial<Facts>; consent: boolean; at: number }
+export interface Draft { placeId: string | null; title: string; blocks: UserBlock[]; tags: string[]; vis: Vis; facts: Partial<Facts>; consent: boolean; at: number }
 
 // ---------- sample posts ----------
 
@@ -247,7 +250,7 @@ let cache: { state: State; posts: Post[] } | null = null
 // Every post the viewer can read: the samples whose place is in the snapshot, then their own, newest first.
 export function posts(s: State = state): Post[] {
   if (cache && cache.state === s) return cache.posts
-  const seeds = [...SEED, ...editorial].filter((p) => placeById(p.placeId))
+  const seeds = [...SEED, ...editorial, FEATURED].filter((p) => placeById(p.placeId))
   const all = [...seeds, ...s.mine.filter((p) => placeById(p.placeId))].map((p) => ({ ...p, comments: [...p.comments, ...(s.comments[p.id] ?? [])] }))
   all.sort((a, b) => b.at - a.at)
   cache = { state: s, posts: all }
@@ -265,7 +268,7 @@ export const topReacts = (p: Post, s: State = state): ReactKey[] => {
 }
 
 // A word-for-word read of a post, for the search.
-const textOf = (p: Post) => fold([p.title, ...p.blocks.map((b) => (b.t === 'img' ? b.cap : b.text)), ...p.tags, info(p.placeId)?.name ?? ''].join(' '))
+const textOf = (p: Post) => fold([p.title, ...p.blocks.map((b) => (b.t === 'img' ? b.cap : b.t === 'tour' ? b.title : b.text)), ...p.tags, info(p.placeId)?.name ?? ''].join(' '))
 // Whole words, so "săn" does not find "sáng". While typing (`live`) the last word may still be unfinished: a prefix of one.
 const wordsIn = (hay: string, t: string[], live: boolean) => {
   const words = hay.split(' ')
@@ -351,9 +354,9 @@ export const photosOf = (p: Post) => {
 }
 export const excerptOf = (p: Post, n = 150) => {
   const t = p.blocks.find((b) => b.t === 'p')
-  const s = t && t.t !== 'img' ? t.text.replace(/\*+/g, '') : ''
+  const s = t && t.t !== 'img' && t.t !== 'tour' ? t.text.replace(/\*+/g, '') : ''
   return s.length > n ? `${s.slice(0, n).replace(/\s+\S*$/, '')}…` : s
 }
-export const readMinutes = (p: Post) => Math.max(1, Math.round(p.blocks.reduce((n, b) => n + (b.t === 'img' ? 0 : b.text.split(/\s+/).length), 0) / 200))
+export const readMinutes = (p: Post) => Math.max(1, Math.round(p.blocks.reduce((n, b) => n + (b.t === 'img' || b.t === 'tour' ? 0 : b.text.split(/\s+/).length), 0) / 200))
 export const VIS: Record<Vis, string> = { public: 'Công khai', friends: 'Bạn bè', me: 'Chỉ mình tôi' }
 export const FACT_LABELS: [keyof Facts, string][] = [['when', 'Đi ngày'], ['who', 'Đi cùng'], ['how', 'Phương tiện'], ['cost', 'Chi phí']]

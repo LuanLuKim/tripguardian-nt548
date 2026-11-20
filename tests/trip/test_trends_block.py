@@ -69,3 +69,12 @@ def test_a_season_row_carries_where_to_see_it_and_those_places_come_as_cards():
     b = trends_block(rows, ("season",), cards)
     assert b["sections"][0]["rows"][0]["see"] == ["0x1:0xa", "0x1:0xb"]
     assert [c["id"] for c in b["cards"]] == ["0x1:0xa", "0x1:0xb"]
+
+
+def test_a_hot_item_carries_its_note_to_the_row_and_a_plain_one_does_not():
+    rows = {"as_of": "2026-11-16", "items": [
+        {"kind": "season", "name": "hồng chín", "place_id": None, "text": "Đang vào mùa hồng chín (tháng 9–12)", "hot": True,
+         "hot_note": "39 clip TikTok của 34 người trong 30 ngày", "sources": SRC, "intro": None},
+        {"kind": "season", "name": "hoa cải trắng", "place_id": None, "text": "Đang vào mùa hoa cải trắng (tháng 11)", "sources": SRC, "intro": None}]}
+    got = trends_block(rows, ("season",), cards)["sections"][0]["rows"]
+    assert got[0]["hot"] == "39 clip TikTok của 34 người trong 30 ngày" and "hot" not in got[1]

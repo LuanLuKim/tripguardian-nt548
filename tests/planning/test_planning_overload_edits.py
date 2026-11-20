@@ -167,7 +167,7 @@ def test_keep_all_is_retired_and_an_overfull_edit_is_confirmed_with_a_warning():
     assert any(w.get('code') == 'picks_left_out' for w in out['warnings'])
 
 
-@pytest.mark.parametrize('preset', ['cost', 'fit', 'travel'])
+@pytest.mark.parametrize('preset', ['cost', 'fit', 'most'])
 @pytest.mark.parametrize('kind', ['swap', 'add_from_backup'])
 def test_backup_preview_apply_metrics_and_replay_preserve_selection_value(preset, kind):
     e, sid = overloaded_started(preset, backup=True)

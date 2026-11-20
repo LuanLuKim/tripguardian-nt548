@@ -1,5 +1,6 @@
 // Private analytics server (`python -m analytics serve`, src/analytics; docs/ANALYTICS.md). Vite proxies /api/analytics.
 import { useEffect, useState } from 'react'
+import { early } from './prefetch'
 
 export type Filters = { from?: string; to?: string; start_with?: string; app_version?: string }
 export type Step = { key: string; label: string; journeys: number; kept: number | null; median_min: number | null; stopped: number; last_before_stop: [string, number][] }
@@ -30,10 +31,25 @@ const qs = (f: Record<string, string | undefined>) => {
   return p.size ? `?${p}` : ''
 }
 
-export async function get<T>(path: string, f: Record<string, string | undefined> = {}): Promise<T> {
-  const res = await fetch(`/api/analytics/${path}${qs(f)}`)
+async function read<T>(path: string, f: Record<string, string | undefined>): Promise<T> {
+  const url = `/api/analytics/${path}${qs(f)}`
+  const res = await (path === 'today' && !qs(f) ? early('today', url) : fetch(url))
+  if (res.status === 401) window.dispatchEvent(new Event('tg-admin-401'))
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`)
   return res.json()
+}
+
+// Today's row can be mounted twice in a row (the overview screen redraws when its numbers arrive): one read serves both.
+let todayRead: { at: number; p: Promise<unknown> } | null = null
+
+export function get<T>(path: string, f: Record<string, string | undefined> = {}): Promise<T> {
+  if (path !== 'today' || qs(f)) return read<T>(path, f)
+  if (!todayRead || Date.now() - todayRead.at > 5000) {
+    const p = read<T>(path, f)
+    todayRead = { at: Date.now(), p }
+    p.catch(() => (todayRead = null))
+  }
+  return todayRead.p as Promise<T>
 }
 
 // { data, error } for one analytics read; reloads when `key` changes.

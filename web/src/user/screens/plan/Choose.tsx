@@ -1,5 +1,4 @@
-import * as Dialog from '@radix-ui/react-dialog'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { fmtMin, info } from '../../lib'
 import type { View, Variant } from '../../planning/types'
 import { PlacePhoto } from '../../ui/common'
@@ -7,7 +6,8 @@ import { Icon } from '../../ui/icons'
 import { Stamp } from '../../ui/Stamp'
 import { Page } from '../../ui/Shell'
 import { LongTripWarning } from '../../ui/LongTripWarning'
-import { KeepAll, NoHotel, Tradeoff } from './parts'
+import { useEditTicket } from '../Explore'
+import { KeepAll, NoHotel } from './parts'
 import { costText, placeName, visits, wayName } from './shared'
 
 // docs/UI_SPEC_USER_WEB.md Trang 8, mẫu docs/design/mock/designs/itinerary: three ways to go, one photo each, the places
@@ -17,11 +17,13 @@ import { costText, placeName, visits, wayName } from './shared'
 // paper); "Xem N phương án" lifts the blur. Changing a way already chosen goes straight to the cards.
 
 // The four directions of an overloaded trip (src/planning/overload.py LABEL / GAIN / TRADEOFF), named the same on every card.
-const WAY: Record<string, { label: string; gain: string; tradeoff: string }> = {
-  fit: { label: 'Giữ nơi hợp gu nhất', gain: 'Giữ những nơi khớp gu bạn nhất', tradeoff: 'Có thể phải đi xa hơn và tốn hơn để giữ nơi hợp gu' },
-  travel: { label: 'Di chuyển thuận lợi nhất', gain: 'Ít ngồi xe nhất, các nơi nằm gần nhau', tradeoff: 'Có thể bỏ nơi bạn thích nhưng nằm xa các nơi còn lại' },
-  cost: { label: 'Tiết kiệm nhất', gain: 'Chi phí địa điểm thấp nhất', tradeoff: 'Có thể bỏ nơi bạn thích nhưng tốn tiền hơn' },
-  most: { label: 'Giữ nhiều nơi bạn chọn nhất', gain: 'Ghé được nhiều nơi bạn chọn nhất', tradeoff: 'Có thể bỏ nơi bạn thích nhất nếu nơi đó chiếm nhiều thời gian' },
+// `reason` is why the way exists: the one thing it protects, said as what it lets go of first.
+const WAY: Record<string, { label: string; gain: string; tradeoff: string; reason: string }> = {
+  fit: { label: 'Giữ nơi hợp gu nhất', gain: 'Giữ những nơi khớp gu bạn nhất', tradeoff: 'Có thể phải đi xa hơn và tốn hơn để giữ nơi hợp gu', reason: 'Cho bạn những nơi hợp gu nhất: nơi ít hợp bạn nhất nhường chỗ trước.' },
+  // no longer offered (owner 2026-11-18: three ways, little driving is every way's); kept for plans picked before
+  travel: { label: 'Di chuyển thuận lợi nhất', gain: 'Ít ngồi xe nhất, các nơi nằm gần nhau', tradeoff: 'Có thể bỏ nơi bạn thích nhưng nằm xa các nơi còn lại', reason: 'Cho bạn ít ngồi xe nhất: nơi nằm xa các nơi khác nhường chỗ trước.' },
+  cost: { label: 'Tiết kiệm nhất', gain: 'Chi phí địa điểm thấp nhất', tradeoff: 'Có thể bỏ nơi bạn thích nhưng tốn tiền hơn', reason: 'Cho bạn chi phí địa điểm thấp nhất: nơi tốn nhất nhường chỗ trước.' },
+  most: { label: 'Giữ nhiều nơi bạn chọn nhất', gain: 'Ghé được nhiều nơi bạn chọn nhất', tradeoff: 'Có thể bỏ nơi bạn thích nhất nếu nơi đó chiếm nhiều thời gian', reason: 'Cho bạn ghé được nhiều nơi nhất: nơi chiếm nhiều thời gian nhất nhường chỗ trước.' },
 }
 const cap = (s?: string | null) => (s ? s[0].toUpperCase() + s.slice(1) : '')
 // At most three ways of the four directions, the best first (chủ dự án 13/11 and 15/11/2026; the fourth direction, `most`, is
@@ -68,7 +70,7 @@ function prosCons(w: Way, all: Way[]) {
   const cons = [WAY[w.way]?.tradeoff ?? cap(v.tradeoff)]
   if (dropped) cons.push(`Tạm bỏ ${dropped} nơi`)
   if (many && v.metrics.travel_min > minTravel) cons.push(`Đi lại nhiều hơn ≈${fmtMin(v.metrics.travel_min - minTravel)} so với cách ít đi lại nhất`)
-  if (v.robustness?.level === 'fragile') cons.push(`Lịch mong manh${v.robustness.reasons[0] ? `: ${v.robustness.reasons[0]}` : ''}`)
+  if (v.robustness?.level === 'fragile') cons.push(`Lịch sát giờ${v.robustness.reasons[0] ? `: ${v.robustness.reasons[0]}` : ''}`)
   return { pros: [...new Set(pros.filter(Boolean))].slice(0, 3), cons: [...new Set(cons.filter(Boolean))].slice(0, 3) }
 }
 
@@ -78,7 +80,6 @@ export function Choose({ variants, keepAll, overload, locked, current, busy, has
 }) {
   const ways = useMemo(() => waysOf(variants), [variants])
   const [sel, setSel] = useState<string | null>(current ? ways.find((w) => w.v.id === current)?.key ?? null : null)
-  const [cmp, setCmp] = useState(false)
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [why, setWhy] = useState(!current && variants.filter((v) => v.status !== 'unavailable').length > 1)
   const covers = useMemo(() => coverIds(ways.map((w) => w.v)), [ways])
@@ -94,6 +95,14 @@ export function Choose({ variants, keepAll, overload, locked, current, busy, has
     }
   }
   const days = variants[0]?.itinerary.length ?? 0
+  const offered = ways.filter((w) => usable(w.v)).length
+  const go = useRef<HTMLButtonElement>(null)
+  useEffect(() => { if (why) go.current?.focus({ preventScroll: true }) }, [why]) // the button takes focus without scrolling the page to it
+  const editTime = useEditTicket()
+  // The reason in numbers: the time the trip has against the time the places need, and any place whose opening hours never meet the days.
+  const closed = (overload?.leftover_reasons ?? []).filter((r) => r.reason === 'hours').map((r) => r.name)
+  const shortage = overload ? `Cả chuyến có khoảng ${fmtMin(overload.available)} để đi chơi, mà ${overload.selection_places} nơi cần ≈ ${fmtMin(overload.needed)}.${closed.length ? ` ${closed.join(', ')} còn không mở cửa trong các khung giờ bạn đi.` : ''}` : ''
+  const lowTime = !!overload && overload.available < days * 240 // under four hours a day on average: the days are probably set shorter than the person means
   return (
     <>
       <div className="tg-it-crumb"><button type="button" className="tg-it-crumb__back" aria-label="Quay lại" onClick={onCancel ?? onBack}><Icon name="arrowLeft" size={18} /></button><span>Lập lịch trình</span><Icon name="chevronRight" size={14} /><strong>Chọn phương án</strong></div>
@@ -164,21 +173,22 @@ export function Choose({ variants, keepAll, overload, locked, current, busy, has
           </div>
           {why && <section className="tg-it-why" aria-labelledby="tg-it-why-t">
             <Stamp icon="route" className="tg-it-why__stamp" />
-            <p className="tg-it-why__kicker">Vì sao có {ways.filter((w) => usable(w.v)).length} phương án?</p>
-            <h2 id="tg-it-why-t" className="tg-it-why__title">{overload ? <>{overload.selection_places} nơi khó vừa thoải mái trong {days} ngày. <em>Nên mình đưa ra {ways.filter((w) => usable(w.v)).length} cách đi.</em></> : <>Cùng {total} nơi, vẫn có {ways.filter((w) => usable(w.v)).length} cách đi. <em>Mỗi cách ưu tiên một điều.</em></>}</h2>
-            <p className="tg-it-why__desc">{overload ? overload.text : 'Xếp các nơi vào từng ngày luôn phải đánh đổi: đi gọn hơn, ghé được nhiều hơn, hay chậm lại một chút. Mình không chọn thay bạn.'}</p>
+            <p className="tg-it-why__kicker">Vì sao có {offered} phương án?</p>
+            <h2 id="tg-it-why-t" className="tg-it-why__title">{overload ? <>Lịch chưa đủ chỗ cho cả {overload.selection_places} nơi bạn chọn. <em>Mình xếp thành {offered} cách để bạn chọn.</em></> : <>Cùng {total} nơi, vẫn có {offered} cách đi. <em>Mỗi cách giữ một điều bạn coi trọng.</em></>}</h2>
+            <p className="tg-it-why__desc">{overload ? shortage : 'Xếp các nơi vào từng ngày luôn phải đánh đổi: đi gọn hơn, ghé được nhiều hơn, hay chậm lại một chút. Mình không chọn thay bạn, nên đặt các cách cạnh nhau cho bạn so.'}</p>
+            {overload && lowTime && <p className="tg-it-why__hint">Mỗi ngày chỉ có khoảng {fmtMin(Math.round(overload.available / Math.max(1, days)))} để đi chơi. Nếu bạn muốn đi lâu hơn, <button type="button" onClick={editTime}>chỉnh giờ đi chơi trong trò chuyện</button>.</p>}
             <ol className="tg-it-why__ways">{ways.filter((w) => usable(w.v)).map((w, i) => <li key={w.key}>
               <span aria-hidden="true">{i + 1}</span>
-              <div><b>{wayLabel(w)}</b><small>{WAY[w.way]?.gain ?? w.v.definition ?? w.v.why ?? w.v.robustness.reasons[0] ?? ''}</small></div>
+              <div><b>{wayLabel(w)}</b><small>{WAY[w.way]?.reason ?? w.v.definition ?? w.v.why ?? ''}</small></div>
               <em>{w.v.dropped_by_plan?.length ? `Tạm bỏ ${w.v.dropped_by_plan.length} nơi` : `Giữ cả ${keptCount(w.v)} nơi`}</em>
             </li>)}</ol>
-            <p className="tg-it-why__cat">{lockedNames.length ? `Luôn giữ ${lockedNames.join(', ')}` : 'Không có phương án nào đúng nhất'} · Chọn xong vẫn đổi được</p>
-            <button type="button" className="tg-it-why__go" autoFocus onClick={() => setWhy(false)}>Xem {ways.filter((w) => usable(w.v)).length} phương án<Icon name="arrow" size={16} /></button>
+            <p className="tg-it-why__cat">{lockedNames.length ? `Luôn giữ ${lockedNames.join(', ')}` : 'Không cách nào đúng tuyệt đối'} · Chọn xong vẫn đổi được</p>
+            <button type="button" className="tg-it-why__go" ref={go} onClick={() => setWhy(false)}>Xem {offered} phương án<Icon name="arrow" size={16} /></button>
           </section>}
         </div>
         {!why && <>
           {!variants.some(usable) && <div className="tg-it-note is-blocked"><Icon name="warn" size={18} /><span><b>Chưa tìm được hướng hợp lệ.</b> Giữ tất cả hợp lệ: {overload?.keep_all_valid ? 'có thể xem lại lịch gốc' : 'không'}.</span><button type="button" className="tg-btn tg-btn--primary tg-btn--sm" onClick={onBack}>Quay lại chọn nơi</button></div>}
-          <div className="tg-it-help"><span>Giờ giấc, đường đi và chi phí là ước tính từ dữ liệu địa điểm.</span><button type="button" className="tg-it-textbtn" onClick={() => setCmp(true)}>So sánh chi tiết <Icon name="arrow" size={14} /></button></div>
+          <div className="tg-it-help"><span>Giờ giấc, đường đi và chi phí là ước tính từ dữ liệu địa điểm.</span></div>
           {keepAll && <KeepAll variant={keepAll} busy={busy} onPick={onPick} />}
         </>}
       </Page>
@@ -188,12 +198,6 @@ export function Choose({ variants, keepAll, overload, locked, current, busy, has
           <button type="button" className="tg-btn tg-btn--primary" disabled={!chosen || busy} onClick={() => chosen && onPick(chosen.id)}>Xem lịch trình <Icon name="arrow" size={18} /></button>
         </div>
       </div>}
-      <Dialog.Root open={cmp} onOpenChange={setCmp}>
-        <Dialog.Portal><Dialog.Overlay className="tg tg-overlay" /><Dialog.Content className="tg tg-it-dlg is-wide" aria-describedby={undefined}>
-          <header><Dialog.Title>So sánh {ways.length} phương án</Dialog.Title><Dialog.Close className="tg-icon-btn" aria-label="Đóng"><Icon name="x" size={18} /></Dialog.Close></header>
-          <Tradeoff variants={ways.map((w) => w.v)} busy={busy} active={chosen?.id ?? null} onPick={(id) => { setSel(ways.find((w) => w.v.id === id)?.key ?? null); setCmp(false) }} />
-        </Dialog.Content></Dialog.Portal>
-      </Dialog.Root>
     </>
   )
 }

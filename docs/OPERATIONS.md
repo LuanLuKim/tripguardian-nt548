@@ -5,19 +5,20 @@ Production chạy trên gpu156, public qua Cloudflare tunnel. Trang này mô t�
 ## 1. Deploy
 
 ```sh
-./run.sh prod       # backup + migrate db → thumbnail → build web (build:prod) → SearXNG → 9router → harness :8769 → web/server.mjs :28899 → worker thông báo → chờ harness warm-up → tunnel → smoke test
+./run.sh prod       # (backup + migrate db) song song với (thumbnail → build web vào web/.deploy-build) → chép web/dist → SearXNG → 9router → harness :8769 → web/server.mjs :28899 → worker thông báo → chờ harness warm-up → tunnel → smoke test
 ./run.sh prod-stop  # dừng tất cả (tunnel gồm cả), không đụng cron
 ./run.sh prod-restart   # khởi động lại dịch vụ prod trên .prod_src/ hiện có: không build, không đông cứng, không migrate
 ./run.sh prod-rollback  # quay về bản đông cứng mà lần deploy trước thay ra (.prod_src.prev), rồi khởi động lại
 ./run.sh prod-check     # prod đang chạy bản nào, và config/ hiện tại có nạp được bằng code đó không
 ```
 
-- Tunnel chỉ mở sau khi harness warm xong (dòng `Journey warmup:` trong `logs/run/harness.log`, khoảng 2 phút), để khách đầu tiên không trả giá nạp lạnh; quá `WARMUP_WAIT` giây (mặc định 300) thì mở tunnel luôn.
+- Tunnel chỉ mở sau khi harness warm xong (dòng `Journey warmup:` trong `logs/run/harness.log`), để khách đầu tiên không trả giá nạp lạnh; quá `WARMUP_WAIT` giây (mặc định 600) thì mở tunnel luôn. Thứ tự warm (17/11/2026, sau lượt đầu mất 49 giây vì nạp lạnh): nạp hai mô hình embedding lên GPU (`Encoder warmup ready`) → với từng bản dữ liệu (bản đang dùng trước, rồi tối đa hai bản ghim gần đây), mở engine, chờ một lần tìm thật xong (`Assistant warmup ready`: vector spans, cache vùng) → mới nạp các hành trình gần đây. Làm lần lượt, không song song, vì các bản nạp cùng lúc tranh GPU và đĩa. GPU đang bận (ví dụ ComfyUI) thì mỗi bước chậm hơn, dòng bước của bot nói rõ khi mô hình ngữ nghĩa còn nguội.
+- Sao lưu + migrate DB chạy song song với thumbnail + build web (chủ dự án 20/11/2026); bản build chỉ được chép đè `web/dist` khi cả hai bên xong không lỗi, nên một bên lỗi thì site đang chạy giữ nguyên. Sao lưu giữ 14 bản mới nhất trong `data/backup/pg/` (mỗi bản ~340 MB), bản cũ hơn bị xóa.
 - `prod` dừng dịch vụ cũ trước khi bật bản mới: lệnh bị ngắt giữa chừng để prod tắt. Chạy tách khỏi terminal (`nohup ./run.sh prod > logs/run/deploy.log 2>&1 &`) và đọc dòng smoke ở cuối log.
 - Biến môi trường: `SKIP_CLEF=1` không bật Clef tự host (Judge fail-open, guard quy tắc tắt); `HARNESS_GPU` (mặc định `0` trong `run.sh`) là GPU harness nạp embedder. Từ 09/11/2026 Clef chưa host (không đủ GPU), prod chạy `SKIP_CLEF=1`; từ 13/11/2026 chủ dự án chỉ còn GPU 0 cho harness nên prod chạy `HARNESS_GPU=0 SKIP_CLEF=1` (trước đó `HARNESS_GPU=2`); `PUBLIC_PORT` (28899); `TUNNEL_TOKEN_FILE` (mặc định `~/.cloudflared/tripguardian.token`, không có file thì không có tunnel). Danh sách đầy đủ: đầu `run.sh`.
 - **Prod chạy từ bản đông cứng `.prod_src/`**, không phải `src/`: `prod` chép `src/` → `.prod_src.new/`, kiểm import, dừng dịch vụ cũ, đổi tên rồi khởi động harness + worker thông báo với `PYTHONPATH=.prod_src`. Trước khi đổi, `freeze_src` kiểm mọi `config/*.yaml` của các giai đoạn nạp được bằng bản chép (`scripts/config_check.py`) rồi ghi `.prod_src/RELEASE` (commit, số file `src/`/`config/` chưa commit, giờ đông cứng). Bản bị thay giữ lại ở `.prod_src.prev` cho `prod-rollback`; rollback chỉ đổi code, không đổi `web/dist`, `config/` hay database. Bản chép nằm cùng độ sâu với `src/` vì code tìm gốc repo bằng `Path(__file__).parents[N]`. Sửa `src/` (người hay agent, kể cả worker quá tải `spawn` nạp lại `planning` mỗi lượt) không vào prod tới lần deploy sau. Không sửa tay `.prod_src/`; nằm ngoài git.
 - **Chỉ `src/` được đông cứng; `config/` và `data/` prod đọc thẳng từ repo.** Sửa một file `config/*.yaml` có hiệu lực ở lần nạp kế của prod (worker quá tải nạp lại mỗi lượt, các tiến trình khác lúc khởi động lại), không đợi deploy. Mọi loader đều từ chối khóa lạ (`Settings(**raw)`, pydantic `extra="forbid"`), nên một khóa YAML mà `.prod_src/` chưa biết làm prod lỗi khi nạp. Tham số mới: đặt default trong code, chỉ ghi vào YAML sau khi đã deploy bản code biết khóa đó. Kiểm trước và sau khi sửa config: `./run.sh prod-check` (nạp mọi file settings bằng code prod; venv cài `src/` dạng editable nên script báo lỗi nếu code không thật sự nạp từ `.prod_src/`).
-- `web/server.mjs` chỉ phục vụ phần public: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media` (jpg), thumbnail `/media/thumb` (WebP) và proxy `/api/harness/*`, `/api/auth/*` (keep-alive); `/admin`, analytics, mọi `/api` khác và video trả 404. Cần Postgres đang chạy (`./run.sh db`).
+- `web/server.mjs` chỉ phục vụ phần public: landing, `/app`, `/assets`, `/img`, `/data`, ảnh `/media` (jpg), thumbnail `/media/thumb` (WebP) và proxy `/api/harness/*`, `/api/auth/*` (keep-alive); `/admin` cùng các route admin sau đăng nhập (`/api/analytics/*`, review API, `/data/snapshot-admin.json`: `docs/SECURITY.md` §1); mọi `/api` khác và video khác trả 404. `./run.sh prod` chạy thêm analytics `:8770` và review `:8765` (từ `.prod_src/`); cần `ADMIN_EMAIL` / `ADMIN_PASSWORD` trong `.env`, thiếu thì không ai vào được. `/data/snapshot-admin.json` và `/data/admin-overview.json` được nén brotli / gzip sẵn lúc `server.mjs` khởi động (và khi file đổi), trình duyệt giữ bản dùng ngay 5 phút rồi cập nhật ngầm (`private, max-age=300, stale-while-revalidate`); xuất lại snapshot admin thì chạy `python web/scripts/export_snapshot.py --view overview` nếu không đi qua exporter. Cùng hostname và cổng 28899 với bản người dùng nên không phải đổi route Cloudflare. Cần Postgres đang chạy (`./run.sh db`).
 - Route hostname → cổng nằm trong dashboard Cloudflare của tunnel; `prod` in ra các route nhận được để thấy ngay khi token sai.
 - Tiến trình chạy bằng `nohup`; tiến trình chết giữa chừng không tự lên lại. Sau khi máy khởi động lại, cron `@reboot` (§4) chạy lại `prod`.
 
@@ -77,6 +78,12 @@ tail -n 5 logs/run/keepalive.log
 ```
 
 Mỗi request giới hạn 15 giây; khóa file tránh chạy chồng. Log ghi giờ UTC, HTTP status, độ trễ, `ok`, xoay vòng khoảng 3 MiB (`keepalive.log`, `.1`, `.2`); exit code 1 khi lỗi. Ping không khởi động lại tiến trình và chưa gửi cảnh báo ra ngoài; `prod-stop` không gỡ cron nên khi stack dừng, ping ghi lỗi.
+
+### Mượn GPU cho việc nặng (video, huấn luyện)
+
+Harness không giữ VRAM khi rảnh: embedder online (SigLIP2 + bge-m3, khoảng 3,5 GB) chuyển sang RAM (giữ fp16) sau `embedder.idle_park_s` (`config/index.yaml`, mặc định 180 giây) không có lời gọi, và quay lại GPU ở lời gọi kế (một lần chép bộ nhớ, vài giây).
+
+Việc nặng chạy qua `scripts/gpu_lease.sh <lệnh>` (`flock -x /tmp/tripguardian-gpu.lease`): trong lúc giữ khóa, harness đẩy embedder sang RAM trong vòng 3 giây và trả lời bằng CPU (câu bge-m3 khoảng 0,1 giây, một ảnh SigLIP khoảng 1 giây); lệnh xong thì lần gọi kế đưa embedder về GPU. Nhiều job xếp hàng trên cùng khóa. Chỉ có hiệu lực với harness chạy bản code có `gpu_leased` (cần deploy một lần).
 
 ## 6. Sự cố thường gặp
 

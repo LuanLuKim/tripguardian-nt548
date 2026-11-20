@@ -8,14 +8,14 @@ import { toast } from '../store'
 import { go } from '../ui/common'
 import { Icon } from '../ui/icons'
 import { useTitle } from '../ui/Shell'
-import { FACT_LABELS, popularTags, publish, saveDraft, useStore, VIS, type Block, type Facts, type Vis } from './data'
+import { FACT_LABELS, popularTags, publish, saveDraft, useStore, VIS, type UserBlock, type Facts, type Vis } from './data'
 import { Avatar, PlacePic, postHref } from './parts'
 import '../css/posts.css'
 
 // The composer (docs/design/mock reference 8): a page to write on, not a form. Title, then blocks of text and photos that grow as you
 // type; photos are added from the toolbar, pasted or dropped. The settings (tags, who can read, trip details) wait in the
 // "Sẵn sàng đăng?" panel behind the Đăng bài button (tags, who can read, trip details), so the page stays for the writing.
-type Item = { id: string; b: Block }
+type Item = { id: string; b: UserBlock }
 const uid = () => Math.random().toString(36).slice(2, 9)
 const MAX_IMAGES = 12
 const MAX_TAGS = 5
@@ -52,7 +52,7 @@ export function Compose() {
   const preset = params.get('at')
   const [placeId, setPlaceId] = useState<string | null>(preset && info(preset) ? preset : start?.placeId && info(start.placeId) ? start.placeId : null)
   const [title, setTitle] = useState(start?.title ?? '')
-  const [items, setItems] = useState<Item[]>(() => (start?.blocks.length ? start.blocks : [{ t: 'p', text: '' } as Block]).map((b) => ({ id: uid(), b })))
+  const [items, setItems] = useState<Item[]>(() => (start?.blocks.length ? start.blocks : [{ t: 'p', text: '' } as UserBlock]).map((b) => ({ id: uid(), b })))
   const [tags, setTags] = useState<string[]>(start?.tags ?? [])
   const [vis, setVis] = useState<Vis>(start?.vis ?? 'friends')
   const [facts, setFacts] = useState<Partial<Facts>>(start?.facts ?? {})
@@ -84,7 +84,7 @@ export function Compose() {
     if (el) { el.focus(); const pos = at < 0 ? el.value.length : at; el.setSelectionRange(pos, pos) }
   }, [items])
 
-  const patch = (id: string, b: Block) => setItems((l) => l.map((i) => (i.id === id ? { ...i, b } : i)))
+  const patch = (id: string, b: UserBlock) => setItems((l) => l.map((i) => (i.id === id ? { ...i, b } : i)))
   // focusId gets the cursor afterwards: at its start (`caret` 0, a split paragraph) or its end (-1).
   const insertAfter = (id: string | null, add: Item[], focusId?: string, caret = -1) => {
     if (focusId) pending.current = { id: focusId, at: caret }
@@ -123,7 +123,7 @@ export function Compose() {
     if (pics.length > room) toast(`Chỉ thêm ${room} ảnh đầu, mỗi bài tối đa ${MAX_IMAGES} ảnh`)
     if (!added.length) return
     // Keep a text block after the photos so writing can go on.
-    const after = [...added, { id: uid(), b: { t: 'p', text: '' } as Block }]
+    const after = [...added, { id: uid(), b: { t: 'p', text: '' } as UserBlock }]
     insertAfter(focus.current, after, after[after.length - 1].id)
   }, [images]) // eslint-disable-line react-hooks/exhaustive-deps
 

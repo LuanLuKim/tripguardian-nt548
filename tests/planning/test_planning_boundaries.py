@@ -52,7 +52,8 @@ def test_the_public_api_is_the_plan_builder_and_its_settings():
     assert set(planning.__all__) == {"Engine", "TripIncomplete", "Settings", "Store", "build_lodging_variants", "build_plan", "build_variants",
                                      "load_settings", "render_lodging_variants", "render_text", "render_variants",
                                      "run_server", "PlanningProposal", "Tools", "create_engine", "run_proposal",
-                                     "EveStore", "eve_runner", "run_eve", "expert_runner", "fork_readonly"}
+                                     "EveStore", "eve_runner", "run_eve", "expert_runner", "fork_readonly",
+                                     "warm_workers"}
     for name in planning.__all__:
         assert hasattr(planning, name)
 

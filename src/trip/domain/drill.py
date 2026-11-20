@@ -19,6 +19,17 @@ ALIASES = {"ăn uống": ("ẩm thực", "ăn ngon", "ăn cho đã", "ăn vặt"
            "về đêm": ("chợ đêm", "phố đêm", "đi chơi đêm", "nightlife"),
            "cà phê": ("cafe", "coffee")}
 CANONICAL = {a: t for t, names in ALIASES.items() for a in names} | {t: t for t in TOPICS}
+# the aspects that pair with a topic the user chose or named, best first: the next photo card opens one of these
+AFTER = {"chill": ("cà phê", "ngắm đồi", "thiên nhiên", "về đêm"),
+         "cà phê": ("ngắm đồi", "săn mây", "chụp ảnh", "chill", "ăn uống"),
+         "săn mây": ("ngắm đồi", "cà phê", "cắm trại", "chụp ảnh"),
+         "ngắm đồi": ("săn mây", "chụp ảnh", "cà phê", "thiên nhiên"),
+         "chụp ảnh": ("ngắm đồi", "cà phê", "thiên nhiên", "về đêm"),
+         "thiên nhiên": ("cắm trại", "ngắm đồi", "săn mây", "ăn uống"),
+         "cắm trại": ("săn mây", "thiên nhiên", "về đêm", "ăn uống"),
+         "ăn uống": ("về đêm", "cà phê", "chill"),
+         "về đêm": ("ăn uống", "chill", "cà phê"),
+         "tâm linh": ("thiên nhiên", "chill", "ngắm đồi")}
 HEARD = re.compile("|".join(re.escape(t) for t in sorted(CANONICAL, key=len, reverse=True)))
 GROUPS = {"cà phê": {"cafe"}, "ăn uống": {"restaurant", "dessert", "market"}, "tâm linh": {"religious"},
           "thiên nhiên": {"nature", "garden_farm", "camping"}, "cắm trại": {"camping"},
@@ -102,8 +113,9 @@ def build(state: TripState, catalog, looks, cfg, *, cached_only: bool = False) -
         current = state.model_copy(update={"drills": (*drills, *state.drills[len(drills):])}) if cfg.discovery else state
         options = choose(spec["variants"], d.topic, current, catalog, looks, cfg)
         drills.append(d.model_copy(update={"tab": Tab(
-            qid=f"drill.{d.topic}", kind="drill", header=spec["header"], question=spec["question"],
-            why=f"Vì bạn nói “{d.quote}”." if d.quote else "Thử một góc khác của chuyến đi, bỏ qua cũng được.",
+            # no stock question: the agent asks it in its own words, from what the user said (word_cards); a card it
+            # did not word shows its label only, under the agent's reply
+            qid=f"drill.{d.topic}", kind="drill", header=spec["header"], question="", why="",
             visual=True, multi=True, options=tuple(options) + exits())})
                       if options else d.model_copy(update={"status": "none"}))
     return state.model_copy(update={"drills": tuple(drills)})
@@ -142,7 +154,7 @@ def discover(state: TripState, catalog, looks, cfg, turn: int) -> TripState:
     if any(d.status == "pending" and d.tab is not None for d in state.drills):
         return state
     known = {d.topic for d in state.drills} | answered
-    for topic in ("ăn uống", "thiên nhiên", "chill", "cà phê", "chụp ảnh", *TOPICS):
+    for topic in next_topics(state):
         if topic in known or topic not in cfg.drills:
             continue
         known.add(topic)
@@ -151,6 +163,14 @@ def discover(state: TripState, catalog, looks, cfg, turn: int) -> TripState:
         if any(d.status == "pending" and d.tab is not None for d in state.drills):
             return state
     return state
+
+
+def next_topics(state: TripState) -> list[str]:
+    """The order of the aspects to offer next: what pairs with the topics the user just chose or said (AFTER, the
+    latest first), then the rest. A garden cafe leads to hills and morning clouds, not to a random food card."""
+    lead = [t for d in sorted(state.drills, key=lambda d: -d.turn) if d.status != "skipped"  # a skip leads nowhere
+            for t in AFTER.get(d.topic, ())]
+    return list(dict.fromkeys((*lead, "ăn uống", "thiên nhiên", "chill", "cà phê", "chụp ảnh", *TOPICS)))
 
 
 def choose(variants, topic: str, state: TripState, catalog, looks, cfg) -> list[Option]:

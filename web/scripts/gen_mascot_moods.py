@@ -1,7 +1,7 @@
 """Generate the bunny mascot's extra moods for the sign-in screen through the 9router image endpoint.
 
-The bunny's own poses (idle, happy, wait, wow, sad, sleepy) were drawn by the project owner and cut out of their backdrop;
-they live in web/public/img/bunny/ next to the 9router-made ones. Each mood here is the reference (web/public/img/bunny/reference.png,
+The bunny's own poses (idle, happy, wait, wow, sad, sleepy, love, point, curious, map, cry, angry) were drawn by the project owner on
+one sheet and cut out of its backdrop by cut_mascot_sheet.py; they live in web/public/img/bunny/ next to the 9router-made ones. Each mood here is the reference (web/public/img/bunny/reference.png,
 sent in the `image` field so the character stays the same) in a new pose on a transparent background. Writes
 web/public/img/bunny/<mood>.webp (alpha kept, 720 px) and manifest.json (model, prompt, time). The key comes from .env and is
 never printed. Skips files that exist unless --force.
@@ -25,15 +25,28 @@ ROOT = WEB.parent
 OUT = WEB / 'public/img/bunny'
 REF = OUT / 'reference.png'
 MODEL = 'cx/gpt-6.1-sol'
-SAME = ('Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with mint bows, '
-        'the small teal backpack with a map and a shield-pin badge, same soft 3D plush render, same size and framing, full body centered), '
-        'transparent background, no text, no letters, no scenery, no ground shadow, new pose: ')
-# idle, happy, wait (thinking), wow, sad and sleepy are the owner's own drawings (see the docstring), not generated.
+SAME = ('Same exact bunny mascot as the reference image (the cream plush lop-eared bunny with two brown pigtails tied with small yellow bows, '
+        'the small brown canvas backpack, same soft 3D plush render, same size and framing, full body centered), '
+        'transparent background, no text, no letters, no numbers, no scenery, no ground shadow, new pose: ')
+# The poses on the owner's sheet (see the docstring) are cut out, not generated.
 MOODS = {
     'shy': 'covering both eyes shyly with its two paws, head turned slightly away, blushing.',
     'peek': 'covering its face with both paws but peeking through a small gap between the fingers with one eye, blushing.',
-    'curious': 'tilting its head to one side with one eyebrow raised, curious and puzzled, one ear flopped over, both paws down in front.',
-    'mail': 'holding a small cream envelope with a little mint heart seal in both paws, smiling gently, as if it just sent or received a letter.',
+    'mail': 'holding a small cream envelope with a little pink heart seal in both paws, smiling gently, as if it just sent or received a letter.',
+    # states for the product's own moments (weather, cafe, photo, tips, warnings, a finished plan, packing, food)
+    'umbrella': 'holding a small open yellow umbrella over its head with one paw, a few raindrops falling beside it, a calm cheerful smile.',
+    'cold': 'wearing a cozy cream knitted scarf, hugging itself with both paws and shivering a little, cheeks pink, a small puff of breath, a shy smile.',
+    'coffee': 'holding a small white coffee cup with gentle steam in both paws, eyes closed, a relaxed content smile.',
+    'camera': 'holding a small retro camera up to one eye with both paws, taking a photo, the other eye open, cheerful.',
+    'idea': 'one paw raised with the index finger up, a small glowing yellow lightbulb floating above its head, bright eyes, excited smile.',
+    'warn': 'holding up a small yellow triangle warning sign with an exclamation mark in one paw, a concerned but gentle expression, head slightly tilted.',
+    'calendar': 'holding a small calendar page with a big green check mark in both paws, proud happy smile.',
+    'thumbs_up': 'giving a confident thumbs up with one paw, smiling brightly at the viewer.',
+    'suitcase': 'holding the handle of a small cream suitcase with a brown strap in one paw, ready to travel, excited smile.',
+    # the chat assistant's own poses: holding a speech bubble, and a small headset for the avatar crop
+    'chat': 'holding a large white rounded speech bubble with three small dots inside it in one paw, the other paw waving hello, friendly attentive smile, looking at the viewer.',
+    'chat_head': 'wearing a small cream headset with a tiny microphone, one paw touching the headset, a small speech bubble with a heart floating beside its head, helpful cheerful smile, looking at the viewer.',
+    'eat': 'holding a small bowl of steaming noodles and a pair of chopsticks, mouth open about to take a bite, happy eyes.',
 }
 
 
@@ -54,13 +67,25 @@ def generate(url, key, prompt):
         return base64.b64decode(json.load(r)['data'][0]['b64_json'])
 
 
+def fit(img):
+    """Re-frame a generated picture like the cut-out ones: the alpha bounding box scaled to at most 688 x 660 px, centered, feet at y=695."""
+    box = img.getchannel('A').getbbox()
+    if not box:
+        return img.resize((720, 720), Image.LANCZOS)
+    pose = img.crop(box)
+    k = min(688 / pose.height, 660 / pose.width)
+    pose = pose.resize((round(pose.width * k), round(pose.height * k)), Image.LANCZOS)
+    out = Image.new('RGBA', (720, 720), (0, 0, 0, 0))
+    out.alpha_composite(pose, ((720 - pose.width) // 2, 695 - pose.height))
+    return out
+
+
 def one(job):
     name, pose, url, key = job
     prompt = SAME + pose
     for attempt in (1, 2):
         try:
-            img = Image.open(io.BytesIO(generate(url, key, prompt))).convert('RGBA')
-            img = img.resize((720, 720), Image.LANCZOS)
+            img = fit(Image.open(io.BytesIO(generate(url, key, prompt))).convert('RGBA'))
             img.save(OUT / f'{name}.webp', 'WEBP', quality=88, method=6)
             print('ok  ', name, flush=True)
             return name, {'model': MODEL, 'prompt': prompt, 'size': [720, 720], 'at': datetime.now(timezone.utc).isoformat(timespec='seconds')}

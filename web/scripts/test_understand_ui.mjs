@@ -62,15 +62,14 @@ try {
     await page.screenshot({ path: resolve(out, 'understand-error.png') })
     throw error
   })
-  await page.getByRole('heading', { name: 'Lịch sử chat' }).waitFor()
-  await page.getByRole('heading', { name: 'Những nơi đang hợp' }).waitFor()
-  assert.equal(await page.locator('.tg-cx__steps2 > li').count(), 7)
-  assert.equal(await page.getByRole('progressbar').getAttribute('aria-valuenow'), '0')
+  await page.getByRole('complementary', { name: 'Lịch sử chat' }).waitFor()
+  assert.equal(await page.getByText('Những nơi đang hợp').count(), 0, 'the right-hand board is gone')
+  assert.equal(await page.locator('.tg-tripbar').count(), 0, 'the welcome canvas has no trip bar yet')
   await page.screenshot({ path: resolve(out, 'understand-welcome.png') })
   await page.getByRole('button', { name: 'Tìm kiếm', exact: true }).click()
   await page.getByRole('textbox', { name: 'Tìm trong lịch sử' }).fill('gia đình')
-  assert.equal(await page.locator('.tg-history__entry').count(), 1)
-  await page.locator('.tg-history__entry').click()
+  assert.equal(await page.locator('.tg-find__item').count(), 1) // the palette filters as you type
+  await page.locator('.tg-find__item .tg-find__row').click()
   await page.getByText('Mình muốn đi cùng gia đình', { exact: true }).waitFor()
   assert.equal(await page.getByRole('heading', { name: /Chào Ngọc Hương/ }).count(), 0)
   await page.getByRole('button', { name: 'Cuộc trò chuyện mới' }).click()
@@ -84,10 +83,8 @@ try {
   await page.getByRole('textbox', { name: 'Tin nhắn' }).fill('3 ngày, mình đã đặt khách sạn')
   await page.getByRole('textbox', { name: 'Tin nhắn' }).press('Enter')
   await page.getByText('Mình đã ghi nhận chuyến đi của bạn.', { exact: true }).waitFor()
-  assert.equal(await page.locator('.tg-cx__steps2 > li').count(), 7)
-  assert.equal(await page.locator('.tg-cx__steps2 > .is-done').count(), 2) // trip (3 ngày) and lodging
-  assert.equal(await page.getByRole('progressbar').getAttribute('aria-valuenow'), '29')
-  await page.getByRole('button', { name: 'Sửa chỗ ở' }).click()
+  // trip (3 ngày) and lodging are filled: 2 of the 7 required groups
+  await page.getByRole('button', { name: /Thông tin chuyến, 2 trên 7/ }).click()
   await page.getByRole('dialog').waitFor()
   await page.keyboard.press('Escape')
   await page.getByRole('dialog').waitFor({ state: 'hidden' })
@@ -115,7 +112,7 @@ try {
   failSession = true
   await page.reload()
   await page.getByRole('heading', { name: 'Chưa kết nối được trợ lý' }).waitFor()
-  assert.equal(await page.getByRole('navigation', { name: 'Điều hướng chính' }).count(), 1)
+  assert.equal(await page.locator('.tg-dock .tg-hf__side').count(), 1) // the folded rail is still there
   assert.equal(await page.locator('.tg-flowbar').count(), 0)
   failSession = false
   await page.locator('.tg-workspace__state').getByRole('button', { name: 'Thử lại' }).click()
@@ -123,21 +120,25 @@ try {
   // Pin and delete from the row menu, like ChatGPT: a pinned chat moves to "Đã ghim"; deleting asks first and removes it.
   await page.reload()
   await page.getByText('Mình muốn đi cùng gia đình', { exact: true }).waitFor()
+  await page.locator('.tg-history__row', { hasText: 'Mình muốn đi cùng gia đình' }).hover() // the row's ⋯ shows on hover
   await page.getByRole('button', { name: 'Tùy chọn: Mình muốn đi cùng gia đình' }).click()
   await page.getByRole('button', { name: 'Ghim', exact: true }).click()
   await page.getByRole('region', { name: 'Đã ghim' }).getByText('Mình muốn đi cùng gia đình').waitFor()
   await page.screenshot({ path: resolve(out, 'understand-history-pinned.png') })
   await page.reload()
   await page.getByRole('region', { name: 'Đã ghim' }).getByText('Mình muốn đi cùng gia đình').waitFor() // remembered
+  await page.locator('.tg-history__row', { hasText: 'Mình muốn đi cùng gia đình' }).hover() // the row's ⋯ shows on hover
   await page.getByRole('button', { name: 'Tùy chọn: Mình muốn đi cùng gia đình' }).click()
   await page.getByRole('button', { name: 'Bỏ ghim', exact: true }).click()
   await page.getByRole('region', { name: 'Đã ghim' }).waitFor({ state: 'detached' })
+  await page.locator('.tg-history__row', { hasText: 'Mình muốn đi cùng gia đình' }).hover() // the row's ⋯ shows on hover
   await page.getByRole('button', { name: 'Tùy chọn: Mình muốn đi cùng gia đình' }).click()
   await page.getByRole('button', { name: 'Xóa', exact: true }).click()
   await page.getByRole('dialog', { name: 'Xóa cuộc trò chuyện này?' }).waitFor()
   await page.screenshot({ path: resolve(out, 'understand-history-delete.png') })
   await page.getByRole('button', { name: 'Hủy' }).click()
   assert.equal(await page.getByText('Mình muốn đi cùng gia đình', { exact: true }).count(), 1)
+  await page.locator('.tg-history__row', { hasText: 'Mình muốn đi cùng gia đình' }).hover() // the row's ⋯ shows on hover
   await page.getByRole('button', { name: 'Tùy chọn: Mình muốn đi cùng gia đình' }).click()
   await page.getByRole('button', { name: 'Xóa', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Xóa', exact: true }).click()

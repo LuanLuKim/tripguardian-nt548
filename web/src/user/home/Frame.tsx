@@ -1,14 +1,14 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { signOut, useAccount } from '../account'
 import { tripSummaries } from '../pd/api'
 import { useDecision } from '../pd/decision'
 import { loadLibrary, useUi } from '../store'
-import { hasTrip, STEPS, stepOf, useTrip, type StepId } from '../trip'
+import { hasTrip, STEPS, stepOf, useTrip } from '../trip'
 import { go, Link, PlacePhoto } from '../ui/common'
 import { Icon, Logo, type IconName } from '../ui/icons'
-import { useFlowNav } from '../ui/Shell'
+import { AssistantFloat } from '../ui/Assistant'
 import { Who } from './Who'
-import { HomeDialogs, openCreate } from './dialogs'
+import { HomeDialogs } from './dialogs'
 
 // The app frame of every page that is not a step of the trip flow (docs/design/mock/designs/homepage):
 // a sidebar card | the page (friends and your activity drop down from the icon in its top corner), and the trip in progress along the bottom while it is not yet confirmed.
@@ -27,8 +27,8 @@ export function Frame({ path, children }: { path: string; children: ReactNode })
           </div>
         </div>
         {bar && <JourneyBar />}
-        {path === '' && <button type="button" className="tg-hf__new" data-tour="new-trip" onClick={() => openCreate()}><Icon name="plus" size={20} />Tạo chuyến đi</button>}
       </div>
+      {path === '' && <AssistantFloat home />}
       <HomeDialogs />
     </div>
   )
@@ -56,26 +56,34 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/saved', label: 'Đã lưu', icon: 'heart' },
   { to: '/recent', label: 'Đã xem gần đây', icon: 'clock' },
 ]
-// The three steps of a trip, on the screens of the trip flow only (the chat, Lựa chọn, place pages, Lịch trình, Hoàn tất):
-// the user flips between them at once. Pages of the frame (home, trips, saved…) do not show them; the bar at the bottom leads back.
-const FLOW: { id: StepId; label: string; icon: IconName }[] = [
-  { id: 'understand', label: 'Trò chuyện', icon: 'chat' },
-  { id: 'explore', label: 'Lựa chọn', icon: 'grid' },
-  { id: 'plan', label: 'Lịch trình', icon: 'calendar' },
-]
-const FLOW_PATHS = ['/understand', '/explore', '/plan', '/done']
-const onStep = (path: string, id: StepId) => (id === 'understand' ? path === '/understand' : id === 'explore' ? path.startsWith('/explore') : path === '/plan' || path === '/done')
-
 const ACCOUNT_NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/profile', label: 'Cài đặt', icon: 'settings' },
   { to: '/support', label: 'Hỗ trợ', icon: 'info' },
 ]
 
-// The same sidebar beside the screens of the trip flow (Lựa chọn, place pages, Lịch trình, Hoàn tất), so it never disappears after the homepage.
-export function FlowSide({ path }: { path: string }) {
+// The sidebar of the trip-flow screens (the chat, Lựa chọn, place pages, Lịch trình, Hoàn tất) folds into a thin strip on the left edge so the
+// screen has the room: one arrow blinks on it, and the sidebar slides out while the pointer is on the strip (or focus is in it).
+export function RailDock({ path }: { path: string }) {
   const account = useAccount()
   useEffect(() => { if (account && !account.needs_consent) void loadLibrary() }, [account?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  return <div className="tg-home tg-flowside"><Sidebar path={path} /></div>
+  const [open, setOpen] = useState(false)
+  const timer = useRef<number>(0)
+  const set = (v: boolean, ms = 0) => { clearTimeout(timer.current); timer.current = window.setTimeout(() => setOpen(v), ms) }
+  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => { set(false) }, [path]) // a step was chosen: the sidebar folds back
+  return (<>
+    <div
+      className={`tg-dock ${open ? 'is-open' : ''}`}
+      onPointerEnter={() => set(true, 60)}
+      onPointerLeave={() => set(false, 280)}
+      onFocus={() => set(true)}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) set(false, 120) }}
+      onKeyDown={(e) => { if (e.key === 'Escape') set(false) }}
+    >
+      <button type="button" className="tg-dock__tab" aria-label="Mở thanh bên" aria-expanded={open} onClick={() => set(!open)}><Icon name="chevronRight" size={20} strokeWidth={2.6} /></button>
+      <div className="tg-home tg-flowside tg-dock__panel" inert={!open}><Sidebar path={path} /></div>
+    </div>
+  </>)
 }
 
 // The sidebar is a slim rail of icons (after Pinterest's): the name of each button shows as a tooltip on hover or focus.
@@ -84,8 +92,6 @@ export function Sidebar({ path }: { path: string }) {
   const saved = useUi((u) => u.saved.length)
   const account = useAccount()
   const guest = !!account?.guest
-  const { trip } = useTrip()
-  const flow = useFlowNav(path)
   const item = (n: { to: string; label: string; icon: IconName }) => {
     const on = n.to === '/' ? path === '' : path.startsWith(n.to)
     return (
@@ -99,25 +105,8 @@ export function Sidebar({ path }: { path: string }) {
   }
   return (
     <nav className="tg-hf__side" aria-label="Điều hướng chính">
-      <Link to="/" className="tg-hf__logo" aria-label="Về Khám phá"><Logo size={19} /></Link>
+      <Link to="/" className="tg-hf__logo" aria-label="Về Khám phá"><Logo size={48} /></Link>
       <div className="tg-hf__mids">
-        {FLOW_PATHS.some((x) => path.startsWith(x)) && (
-          <ul className="tg-hf__blk tg-hf__nav" aria-label="Chuyến đang lập">
-            {FLOW.map((f) => {
-              const on = onStep(path, f.id)
-              // A step the trip has not reached yet cannot open: Lựa chọn needs what the chat handed on, Lịch trình needs a pick.
-              const off = !on && ((f.id === 'explore' && !hasTrip(trip)) || (f.id === 'plan' && !trip.decisionId && !trip.planningId))
-              const tip = off ? `${f.label} · kể chuyến đi trước đã` : f.label
-              return (
-                <li key={f.id}>
-                  <button type="button" className={`tg-hf__item ${on ? 'is-on' : ''}`} data-tour={`nav-${f.id}`} data-tip={tip} aria-label={tip} aria-current={on ? 'page' : undefined} aria-disabled={off || undefined} aria-busy={flow.going === f.id || undefined} onClick={() => { if (!off && !on) void flow.goTo(f.id) }}>
-                    <Icon name={f.icon} size={26} />
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
         <ul className="tg-hf__blk tg-hf__nav">{NAV.map(item)}</ul>
         <ul className="tg-hf__blk tg-hf__nav">{ACCOUNT_NAV.map(item)}</ul>
       </div>

@@ -293,3 +293,19 @@ def test_a_dawn_place_that_opens_late_pulls_the_day_only_to_its_opening():
     assert first.place_id == "dawn" and first.start == 6 * 60 + 45
     assert s.ctxs[k].day.start >= 6 * 60 + 30                     # no hour of "free time" before it opens
     assert not any(i.kind == "free" and i.end <= first.start for i in s.results[k].items)
+
+
+def test_with_no_trip_length_the_places_fill_day_1_before_day_2():
+    # The user never said how long they stay (the frame is default_days long): two places in two areas are not given a day
+    # each; day 1 holds both (owner 2026-11-18). Places that no longer fit day 1 go on to day 2.
+    far = (CENTRE[0] + 0.05, CENTRE[1])
+    recs = [spot("c0", CENTRE, 0), spot("f0", far, 1)]
+    told = trip_of(recs, days=2)
+    assert all(assign(told, told.ctxs, sorted(told.by_place))[0])        # two days said: each gets a stop
+    unsaid = trip_of(recs, days=None, start_date=None)
+    per_day, left = assign(unsaid, unsaid.ctxs, sorted(unsaid.by_place))
+    assert not left and sorted(per_day[0]) == ["c0", "f0"] and not any(per_day[1:])
+    many = [spot(f"c{i}", CENTRE, i, visit=(120, 180, 240)) for i in range(5)]
+    full = trip_of(many, days=None, start_date=None)
+    per_day, _ = assign(full, full.ctxs, sorted(full.by_place))
+    assert len(per_day[0]) >= len(per_day[1]) > 0                         # day 1 as full as it holds, the rest on day 2

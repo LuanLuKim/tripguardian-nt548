@@ -13,7 +13,7 @@ from typing import Awaitable, Callable
 from corpus.ontology import load as load_ontology
 from corpus.retrieval import RetrievalEngine, card as place_card
 from corpus.serving import feature as served_feature
-from trip import SearchInput, squash
+from trip import SearchInput, clef_ask, squash
 from requirements import allowed
 
 from agents.assistant import run_loop
@@ -26,13 +26,21 @@ from .chunks import CHUNK_DAYS
 from .contracts import EvidenceInput, PlaceEvidence
 from .curation import ActionError, apply
 from .guard import TurnPlan, guard, names_in
-from .heuristics import common_wish, exact_command, general_wish
+from .heuristics import common_wish, exact_command, general_wish, route
 from .pipeline import Data, Result, run, wanted, why_not
 from .policy import DONE, NONE, policy
 from .rank import pet_access_priority, safety_priority
 from .scope import STEPS, replan_scope
 from .session import Pending, Session, State, Store
 from .settings import Settings
+
+# The one Clef question of Engine.route: answered within this or not at all (the message then goes to Trip).
+@dataclass(frozen=True)
+class _ClefTimeout:
+    clef_timeout_s: float = 1.5
+
+
+ROUTE_CLEF = _ClefTimeout()
 from .window import pages
 
 SEARCH_MAX = 60  # cards a search returns
@@ -414,6 +422,24 @@ class Engine:
             if action.get("type") == "answer" and action.get("qid") == "rethink" and action.get("chip") == "back":
                 out["goto"] = "understand"
             return out
+
+    def route(self, sid: str, text: str, ask=clef_ask) -> str:
+        """Which agent of the one chat answers this message: heuristics.route, and for the few it cannot tell one Clef
+        question (a zero-shot classifier, ~0.3 s; fails open to Trip, which still reads wishes). Read only."""
+        s = self._get(sid)
+        with self.store.lock(sid):
+            way = route(text, self._aliases(self._result(s).view))
+        if way != "unsure":
+            return way
+        answers = ask({"user_message": text}, {"lists": {"type": "choice", "criteria": {"A": "có", "B": "không"}, "instructions":
+            "Khách đang xem các danh sách địa điểm gợi ý cho chuyến Đà Lạt. Tin nhắn này có yêu cầu CHỌN, BỎ, THÊM vào "
+            "chuyến, LỌC, SO SÁNH hay SẮP XẾP các địa điểm đang có trong danh sách không? (Hỏi thông tin, kể về chuyến đi, "
+            "muốn khám phá kiểu nơi mới là không.)"}}, ROUTE_CLEF) or {}
+        try:
+            yes = float(((answers.get("lists") or {}).get("probabilities") or {}).get("A", 0))
+        except (TypeError, ValueError):
+            yes = 0.0
+        return "decision" if yes >= 0.5 else "trip"
 
     def turn(self, sid: str, text: str, emit: Emit) -> None:
         s = self._get(sid)

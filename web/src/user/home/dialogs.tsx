@@ -7,10 +7,11 @@ import { tripSummaries } from '../pd/api'
 import type { TripSummary } from '../pd/types'
 import { acceptFriend, friendTyping, importTrip, initials, loadThread, refreshFriends, removeFriend, requestFriend, searchPeople, sendMessage, sendTyping, useFriends, type Message, type Person } from '../social'
 import { toast } from '../store'
-import { hasTrip, STEPS, useTrip, type TripState } from '../trip'
+import { resumeTrip, startTrip } from '../startTrip'
+import { hasTrip, useTrip, type TripState } from '../trip'
 import { go } from '../ui/common'
 import { Icon } from '../ui/icons'
-import { themeOf } from './themes'
+import { THEMES, themeOf } from './themes'
 import { ThemeBlog } from './ThemeBlog'
 
 // The home frame's dialogs: one at a time, opened from anywhere in the frame (sidebar, home, friends column, trips).
@@ -40,24 +41,25 @@ export const openChat = (friend: Person) => set({ kind: 'chat', friend })
 export const openShare = (trip: TripSummary) => set({ kind: 'share', trip })
 const close = () => set(null)
 
-// A new trip: forget the current journey on this screen (it stays in Chuyến của tôi) and open Tìm hiểu.
+// A new trip: forget the current journey on this screen (it stays in Chuyến của tôi) and open Lựa chọn at once; the trip is made on the way
+// (startTrip) and what the user said or picked (`startText`) is the chat's first message beside the lists.
 export function useBegin() {
   const { trip, dispatch } = useTrip()
-  return (patch: Partial<Pick<TripState, 'startText' | 'startWith' | 'experience'>>) => {
-    dispatch({ type: 'reset' })
-    dispatch({ type: 'set', patch: { experience: hasTrip(trip) ? (familiar ? 'returning' : 'first') : null, ...patch } })
-    try { localStorage.removeItem('tg.tu.v1') } catch { /* nothing stored */ }
-    go('/understand')
+  return (patch: Partial<Pick<TripState, 'startText' | 'experience'>>) => {
+    const experience = patch.experience ?? (hasTrip(trip) ? (familiar ? 'returning' : 'first') : null)
+    startTrip(dispatch, { experience, startText: patch.startText ?? null }).catch(() => toast('Chưa mở được chuyến mới, bạn thử lại nhé.'))
+    go('/explore')
   }
 }
 
-// Open a journey of this account at the step it stopped on (or `to`).
+// Open a journey of this account at the step it stopped on (or `to`). A chat that never reached Lựa chọn moves on to it.
 export function useOpenJourney() {
   const { dispatch } = useTrip()
   return (j: { id: string; stage: TripSummary['stage'] }, to?: string) => {
     dispatch({ type: 'reset' })
     dispatch({ type: 'set', patch: { journeyId: j.id, decisionId: j.stage === 'trip' ? null : j.id, planningId: j.stage === 'planning' ? j.id : null } })
-    go(to ?? STEPS[{ trip: 0, decision: 1, planning: 2 }[j.stage]].path)
+    if (j.stage === 'trip') resumeTrip(dispatch, j.id).catch(() => toast('Chưa mở được chuyến này, bạn thử lại nhé.'))
+    go(to ?? (j.stage === 'planning' ? '/plan' : '/explore'))
   }
 }
 
@@ -84,25 +86,139 @@ const say = (e: unknown) => {
   return ERR[m] ?? (m.startsWith('nickname:') ? 'Nickname 3–24 ký tự: chữ thường không dấu, số, dấu chấm, gạch dưới.' : 'Chưa làm được, bạn thử lại nhé.')
 }
 
-// "Tạo chuyến đi" has no form of its own: it opens Tìm hiểu (the chat) at once, with the idea it was given, if any.
+// "Khám phá nơi muốn đến" (the home's button) shows a few kinds of trip to tap, so nobody has to type; words from the search box or a
+// theme go straight on. Either way Lựa chọn opens at once, and the picks are the chat's first message there.
 export function HomeDialogs() {
   const o = useHomeState()
   const begin = useBegin()
   const theme = o?.kind === 'theme' ? themeOf(o.id) : null
   const prompt = o?.kind === 'create' ? o.prompt : null
   useEffect(() => {
-    if (prompt === null) return
+    if (!prompt) return
     close()
-    if (prompt) begin({ startText: prompt, startWith: null })
-    else begin({ startWith: 'nothing', startText: null })
+    begin({ startText: prompt })
   }, [prompt]) // eslint-disable-line react-hooks/exhaustive-deps
-  // The theme's idea is what Tìm hiểu reads first.
   const start = (t: { prompt: string }) => openCreate(t.prompt)
   return (
     <>
       <ThemeBlog id={theme?.id ?? null} from={blogFrom} onPick={(id) => openTheme(id)} onStart={start} onClose={close} />
+      {o?.kind === 'create' && !o.prompt && <TagPicker onGo={(text) => { close(); begin({ startText: text || null }) }} />}
       {o && o.kind !== 'theme' && o.kind !== 'create' && <HomeDialog o={o} />}
     </>
+  )
+}
+
+// The kinds of trip a tap can say: the home's themes (photos), then lighter tags in groups. Nothing picked is fine: Lựa chọn opens with the best of the city.
+interface Tag { id: string; label: string; say: string }
+const WHO_TAGS: Tag[] = [
+  { id: 'solo', label: 'Một mình', say: 'mình đi một mình' },
+  { id: 'couple', label: 'Cặp đôi', say: 'mình đi hai người, cặp đôi' },
+  { id: 'family', label: 'Gia đình có trẻ nhỏ', say: 'mình đi cùng gia đình có trẻ nhỏ' },
+  { id: 'friends', label: 'Nhóm bạn', say: 'mình đi cùng nhóm bạn' },
+  { id: 'parents', label: 'Cùng bố mẹ', say: 'mình đi cùng bố mẹ lớn tuổi' },
+]
+const DO_TAGS: Tag[] = [
+  { id: 'photo', label: 'Chụp ảnh check-in', say: 'chụp ảnh check-in' },
+  { id: 'walk', label: 'Đi bộ nhẹ', say: 'đi bộ nhẹ nhàng' },
+  { id: 'trek', label: 'Trekking', say: 'trekking, leo núi' },
+  { id: 'horse', label: 'Cưỡi ngựa', say: 'cưỡi ngựa' },
+  { id: 'farm', label: 'Nông trại', say: 'nông trại, trải nghiệm làm nông' },
+  { id: 'night', label: 'Chợ đêm', say: 'dạo chợ đêm' },
+  { id: 'museum', label: 'Bảo tàng', say: 'bảo tàng, lịch sử' },
+  { id: 'village', label: 'Làng nghề', say: 'làng nghề, làng hoa' },
+  { id: 'spa', label: 'Nghỉ dưỡng', say: 'nghỉ dưỡng, thư giãn' },
+  { id: 'kids', label: 'Cho bé vui chơi', say: 'chỗ vui chơi cho trẻ nhỏ' },
+]
+const EAT_TAGS: Tag[] = [
+  { id: 'local', label: 'Món địa phương', say: 'món địa phương' },
+  { id: 'grill', label: 'Lẩu & nướng', say: 'lẩu, đồ nướng' },
+  { id: 'veg', label: 'Quán chay', say: 'quán chay' },
+  { id: 'snack', label: 'Bánh & ăn vặt', say: 'bánh và ăn vặt' },
+  { id: 'viewfood', label: 'Nhà hàng view đẹp', say: 'nhà hàng có view đẹp' },
+]
+const PACE_TAGS: Tag[] = [
+  { id: 'slow', label: 'Thong thả', say: 'nhịp thong thả, ít điểm mỗi ngày' },
+  { id: 'mid', label: 'Vừa phải', say: 'nhịp vừa phải' },
+  { id: 'busy', label: 'Đi nhiều điểm', say: 'nhịp nhanh, đi được nhiều điểm' },
+]
+const BUDGET_TAGS: Tag[] = [
+  { id: 'cheap', label: 'Tiết kiệm', say: 'ngân sách tiết kiệm' },
+  { id: 'fair', label: 'Vừa túi tiền', say: 'ngân sách vừa phải' },
+  { id: 'easy', label: 'Thoải mái', say: 'ngân sách thoải mái' },
+]
+const pickSay = (tags: Tag[], ids: string[]) => tags.filter((t) => ids.includes(t.id)).map((t) => t.say)
+
+export interface TagChoice { themes: string[]; who: string | null; doing: string[]; eat: string[]; pace: string | null; budget: string | null }
+export function tagWords(c: TagChoice) {
+  const kinds = THEMES.filter((t) => c.themes.includes(t.id)).map((t) => t.short.toLowerCase())
+  const doing = pickSay(DO_TAGS, c.doing)
+  const eat = pickSay(EAT_TAGS, c.eat)
+  const one = (tags: Tag[], id: string | null) => (id ? pickSay(tags, [id]) : [])
+  const parts = [
+    kinds.length ? `Mình muốn chuyến Đà Lạt có ${kinds.join(', ')}` : '',
+    doing.length ? `thích ${doing.join(', ')}` : '',
+    eat.length ? `muốn ăn ${eat.join(', ')}` : '',
+    ...one(PACE_TAGS, c.pace),
+    ...one(BUDGET_TAGS, c.budget),
+    ...one(WHO_TAGS, c.who),
+  ].filter(Boolean)
+  return parts.length ? parts.join('; ').replace(/^m/, 'M') + '.' : ''
+}
+
+const toggleIn = (set: (f: (l: string[]) => string[]) => void, id: string) => set((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))
+
+function TagGroup({ title, tags, value, onPick }: { title: string; tags: Tag[]; value: string[]; onPick: (id: string) => void }) {
+  return (
+    <section className="tg-tags-pick__grp">
+      <p className="tg-tags-pick__k">{title}</p>
+      <div className="tg-tags-pick__who" role="group" aria-label={title}>
+        {tags.map((t) => <button key={t.id} type="button" className="tg-chip" aria-pressed={value.includes(t.id)} onClick={() => onPick(t.id)}>{t.label}</button>)}
+      </div>
+    </section>
+  )
+}
+
+function TagPicker({ onGo }: { onGo: (text: string) => void }) {
+  const [themes, setThemes] = useState<string[]>([])
+  const [who, setWho] = useState<string | null>(null)
+  const [doing, setDoing] = useState<string[]>([])
+  const [eat, setEat] = useState<string[]>([])
+  const [pace, setPace] = useState<string | null>(null)
+  const [budget, setBudget] = useState<string | null>(null)
+  const one = (cur: string | null, set: (v: string | null) => void) => (id: string) => set(cur === id ? null : id)
+  return (
+    <Dialog.Root open onOpenChange={(v) => { if (!v) close() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="tg-hd__veil" />
+        <Dialog.Content className="tg tg-home tg-hd tg-tags-pick" aria-describedby="tg-tags-pick-d">
+          <div className="tg-hd__top">
+            <Dialog.Title>Bạn muốn một chuyến như thế nào?</Dialog.Title>
+            <Dialog.Close className="tg-hd__x" aria-label="Đóng"><Icon name="x" size={16} /></Dialog.Close>
+          </div>
+          <div className="tg-tags-pick__body">
+            <p id="tg-tags-pick-d" className="tg-tags-pick__lead">Chạm vài kiểu bạn thích, không cần gõ gì. Bỏ qua cũng được, mình gợi ý những nơi nổi bật nhất.</p>
+            <ul className="tg-tags-pick__grid" aria-label="Kiểu chuyến">
+              {THEMES.map((t) => (
+                <li key={t.id}><button type="button" aria-pressed={themes.includes(t.id)} onClick={() => toggleIn(setThemes, t.id)}>
+                  <img src={t.photo} alt="" loading="lazy" decoding="async" />
+                  <span>{t.tab}</span>
+                  {themes.includes(t.id) && <i aria-hidden="true"><Icon name="check" size={14} strokeWidth={3} /></i>}
+                </button></li>
+              ))}
+            </ul>
+            <TagGroup title="Thích làm gì" tags={DO_TAGS} value={doing} onPick={(id) => toggleIn(setDoing, id)} />
+            <TagGroup title="Ăn uống" tags={EAT_TAGS} value={eat} onPick={(id) => toggleIn(setEat, id)} />
+            <TagGroup title="Nhịp chuyến đi" tags={PACE_TAGS} value={pace ? [pace] : []} onPick={one(pace, setPace)} />
+            <TagGroup title="Ngân sách" tags={BUDGET_TAGS} value={budget ? [budget] : []} onPick={one(budget, setBudget)} />
+            <TagGroup title="Đi cùng ai" tags={WHO_TAGS} value={who ? [who] : []} onPick={one(who, setWho)} />
+          </div>
+          <div className="tg-tags-pick__go">
+            <button type="button" className="tg-btn tg-btn--ghost" onClick={() => onGo('')}>Bỏ qua</button>
+            <button type="button" className="tg-btn tg-btn--primary" onClick={() => onGo(tagWords({ themes, who, doing, eat, pace, budget }))}>Xem nơi hợp với mình<Icon name="arrow" size={16} /></button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 

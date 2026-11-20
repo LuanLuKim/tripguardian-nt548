@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Callable, Sequence
 
 from corpus.retrieval import read_span
@@ -206,6 +206,44 @@ class Knowledge:
             except Exception:  # no climate feed: the rain figures alone
                 pass
         return out
+
+    def month_days(self, first: date, last: date) -> dict:
+        """What the home calendar draws on each day of `first`..`last` (at most 62 days): the public holiday from the
+        CalendarDay view, and the forecast while Open-Meteo has one (16 days from today). A day with no figure for a
+        thing simply lacks it: beyond the forecast there is no `weather`; such a day carries `normal` instead, the month's
+        long-run figures (ClimateNormal), a separate key so a long-run average is never passed off as a forecast."""
+        if last < first or (last - first).days >= 62:
+            raise ValueError("the range must be 1 to 62 days, oldest first")
+        out: dict[str, dict] = {}
+        feed = self.more.feeds.calendar() if self.more.feeds.calendar else None
+        for d in feed or ():
+            if first.isoformat() <= d["date"] <= last.isoformat():
+                if d.get("holiday"):
+                    out[d["date"]] = {"holiday": d["holiday"]}
+        days = [(first + timedelta(days=i)).isoformat() for i in range((last - first).days + 1)]
+        try:
+            got = self.live.weather(self.center[1], self.center[2], days) if self.live.weather else {}
+        except Exception:  # live.Unavailable or a timeout: the calendar still has its holidays
+            got = {}
+        for iso, w in (got or {}).items():
+            if not isinstance(w, dict) or w.get("source") != "open-meteo" or w.get("rain_prob") is None:
+                continue
+            out.setdefault(iso, {})["weather"] = {k: (round(w[k]) if k in ("tmin_c", "tmax_c", "gust_kmh") and w.get(k) is not None else w.get(k))
+                                                  for k in ("rain_prob", "rain_mm", "tmin_c", "tmax_c", "gust_kmh", "storm")}
+        normals: dict[int, dict | None] = {}  # month -> the month's long-run figures, or None when the climate feed has none
+        for iso in days:
+            if "weather" in out.get(iso, {}):
+                continue
+            m = int(iso[5:7])
+            if m not in normals:
+                try:
+                    c = self.more.climate(m)
+                    normals[m] = {k: (round(c[k]) if k in ("tmax_c", "tmin_c") else c[k]) for k in ("tmax_c", "tmin_c", "rain_prob", "years") if c.get(k) is not None} or None
+                except Exception:  # no climate feed or no row for the month: the day just has no figures
+                    normals[m] = None
+            if normals[m]:
+                out.setdefault(iso, {})["normal"] = normals[m]
+        return {"from": first.isoformat(), "to": last.isoformat(), "days": dict(sorted(out.items()))}
 
     def _point(self, ref: str) -> tuple[str, tuple[float, float]]:
         if ref == "center":

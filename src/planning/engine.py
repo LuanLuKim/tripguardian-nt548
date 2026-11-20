@@ -5,14 +5,15 @@ version that undo / redo moves between.
 
 import asyncio
 import copy
-import hashlib
 import json
+import logging
 import secrets
 import threading
 import time
 import traceback
 import urllib.error
 import urllib.request
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from itertools import combinations
@@ -22,7 +23,6 @@ from typing import Awaitable, Callable
 import live
 from corpus.ontology import load as load_ontology
 from corpus.retrieval import RetrievalEngine
-from corpus.releases import Binding
 from corpus.serving import feature
 from trip import nights
 
@@ -36,7 +36,7 @@ from .ghosts import fill as fill_ghosts
 from .validate import NO_BUDGET_CAP
 from .ghosts import pool as ghost_pool
 from .model import Point
-from .objectives import LABEL, add_lodging_cost, metrics, score
+from .objectives import LABEL, add_lodging_cost, metrics
 from .stayprice import age_h
 from .overload import LABEL as CARD_LABEL, render_variant
 from .repair import repair_day
@@ -49,7 +49,6 @@ from .agent import AgentError
 from .assistant import PlanTurn, build_messages
 from .guard import TurnPlan, guard
 from agents.assistant import run_loop
-from .proposal import PlanningProposal
 from .policy import DONE, NONE as NO_PLAN_SAY, policy
 from .scope import LODGING_FETCH, LODGING_HOME, NONE, RELAYOUT, VARIANT, act_scope, widest
 from .session import ActCtx, ActionError, Session, State, Store
@@ -114,6 +113,25 @@ def _vnd(n: int) -> str:
 QUICK_EDITS = frozenset({"move_place", "add_from_backup", "drop_place"})
 
 
+def _given_up(results: list, unpinned: list) -> list:
+    """The days an `optimize` act re-lays, with the times of day its winning layout gave up ([[place, reasons], ...]
+    per day) added to each day's `unpinned`: the repair pass then keeps them given up on the day each place lands on
+    (and says why), as it does for a time of day the previous layout gave up."""
+    out = list(results)
+    for k, given in enumerate(unpinned[:len(out)]):
+        pairs = [(pid, tuple(reasons)) for pid, reasons in given if pid not in out[k].unpinned]
+        if pairs:
+            out[k] = replace(out[k], unpinned=out[k].unpinned + tuple(p for p, _ in pairs),
+                             pin_conflicts=out[k].pin_conflicts + tuple(pairs))
+    return out
+
+
+def _done(value) -> Future:
+    job: Future = Future()
+    job.set_result(value)
+    return job
+
+
 class _Base:
     """What create() computes once (no lodging yet) and the lodging crawl later fills in -- held in RAM, keyed by
     session id. Never persisted: a restart rebuilds it from Session.decision + states + log (Engine._ensure_base)."""
@@ -147,6 +165,8 @@ class _Base:
         self.better: dict = {}            # (day context, user order) -> better_order entry or None (spec §8)
         self.recovery: dict = {}
         self.generation = time.monotonic_ns()
+        self.searched = True              # False: an overloaded preview whose directions are not searched yet
+        self.main = None                  # that preview's full schedule (build.Schedule), reused by the search
 
 # Lodging cards: a stay feature that is never shown as a plus, and the values that read as one.
 NOT_A_STRENGTH = frozenset({"steep_or_stairs", "cold"})
@@ -192,7 +212,10 @@ class Engine:
         self._schedules: dict[str, list] = {}
         self._previews: dict[str, tuple[float, _Base]] = {}   # Decision Output hash -> (built at, base)
         self._previews_lock = threading.Lock()
+        self._searches: dict[str, Future] = {}   # decision key -> an overloaded preview's direction search
+        self._search_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="plan-search")
         self._epochs: dict[str, int] = {}
+        self._summaries: dict[tuple[str, str], dict] = {}   # (session id, itinerary fingerprint) -> the overview heading the Agent worded
         self._preview_tokens: dict[str, tuple[dict, float]] = {}
         self._lodging_options: dict[str, tuple[float, dict]] = {}   # places + trip context hash -> (built at, list)
         self.timings: dict[str, dict] = {}
@@ -237,14 +260,19 @@ class Engine:
         return prepare(decision, self.records, self.cfg, self.live_cfg, self.geocode_fn, self.matrix_fn, self.sun_fn,
                        weather, extra_nodes=extra_nodes, signals=signals)
 
-    def _build_base(self, decision: dict, cards: dict | None = None) -> _Base:
+    def _build_base(self, decision: dict, cards: dict | None = None, search: bool = True, *,
+                    quick: "_Base | None" = None) -> _Base:
         """One main plan, or the overload directions (overload.py via variants.plan_cards); never a variant per
-        objective. base.leftover is the main plan's own leftover: what no day had room for before any direction."""
-        trip = self._prepare(decision)
-        out = cards if cards is not None else plan_cards(trip)
+        objective. base.leftover is the main plan's own leftover: what no day had room for before any direction.
+        search=False: no direction search (Lựa chọn's preview); base.searched says whether one is still owed.
+        quick: that preview's base; its prepared trip and main schedule are reused, only the directions are searched."""
+        trip = quick.trip if quick is not None else self._prepare(decision)
+        out = cards if cards is not None else plan_cards(trip, search=search, main=quick.main if quick else None)
         warnings = list(out['warnings']) if cards is not None else list(trip.warnings) + out['warnings']
         base = _Base(trip, out["variants"], out["comparison"], out["ok"], warnings, out["back_to_decision"])
         base.overload, base.leftover = out["overload"], tuple(out["leftover"])
+        base.searched = not (base.overload or {}).get("pending")
+        base.main = out.get("_main")
         return base
 
     def _crawl_lodging(self, sid: str) -> None:
@@ -369,17 +397,48 @@ class Engine:
                             tuple(id(fn) for fn in (self.geocode_fn, self.matrix_fn, self.sun_fn, self.conditions_fn))))
 
     def _take_preview(self, decision: dict) -> "_Base | None":
-        """A base an earlier preview() built for exactly this Decision Output; create() owns it from here on."""
+        """A base an earlier preview() built for exactly this Decision Output; create() owns it from here on. An
+        overloaded preview's direction search (started in the background by preview()) is waited for; a preview whose
+        search never ran gives nothing, and create() builds in full."""
+        key = self._decision_key(decision)
         with self._previews_lock:
-            hit = self._previews.pop(self._decision_key(decision), None)
-        if hit and time.monotonic() - hit[0] < self.PREVIEW_TTL_S:
-            hit[1].trip.decision = with_booked_base(decision)
-            return hit[1]
-        return None
+            hit = self._previews.pop(key, None)
+            search = self._searches.pop(key, None)
+        if not hit or time.monotonic() - hit[0] >= self.PREVIEW_TTL_S:
+            return None
+        base = hit[1]
+        if not base.searched:
+            try:
+                base = search.result() if search is not None and not search.cancelled() else None
+            except Exception:
+                logging.getLogger(__name__).exception("background direction search failed")
+                base = None
+            if base is None:
+                return None
+        base.trip.decision = with_booked_base(decision)
+        return base
+
+    def _search_later(self, key: str, decision: dict, quick: _Base) -> None:
+        """Search an overloaded preview's directions on a background thread (overload.py runs each one in its own
+        process), so the plan opens with them when the user makes it. A search still queued for an older selection is
+        dropped: the user has moved on."""
+        with self._previews_lock:
+            if key in self._searches:
+                return
+            for old, job in list(self._searches.items()):
+                if job.cancel():
+                    self._searches.pop(old)
+            self._searches[key] = self._search_pool.submit(self._search_preview, key, decision, quick)
+
+    def _search_preview(self, key: str, decision: dict, quick: _Base) -> _Base:
+        """The full base (directions searched) create() takes; the preview itself keeps showing the main layout."""
+        return self._build_base(decision, quick=quick)
 
     def preview(self, decision: dict) -> dict:
         """Variants for a Decision Output not confirmed yet: what the schedule would look like now. Creates no
-        session and writes nothing; the base is cached by the output's hash so create() for it skips the build."""
+        session and writes nothing; the base is cached by the output's hash so create() for it skips the build. An
+        overloaded selection gets its main layout at once (what fits, the rest left over); its directions are searched
+        in the background for create() (synchronously for an Engine without background work)."""
         self._check_lodging(decision)
         key = self._decision_key(decision)
         with self._previews_lock:
@@ -387,17 +446,25 @@ class Engine:
         if hit and time.monotonic() - hit[0] < self.PREVIEW_TTL_S:
             base = hit[1]
         else:
-            base = self._build_base(decision)
+            base = self._build_base(decision, search=False)
             with self._previews_lock:
                 self._previews[key] = (time.monotonic(), base)
                 while len(self._previews) > self.PREVIEW_KEEP:
                     self._previews.pop(next(iter(self._previews)))
+            if not base.searched:
+                if self.background:
+                    self._search_later(key, decision, base)
+                else:
+                    full = self._search_preview(key, decision, base)
+                    with self._previews_lock:
+                        self._searches[key] = _done(full)
         return {"ok": base.ok, "days": len(base.trip.days), "warnings": base.warnings,
                 "back_to_decision": base.back_to_decision,
                 "variants": [{"id": v["id"], "objective": v["objective"], "label": v["label"], "metrics": v["metrics"],
                               "robustness": {"level": v["robustness"]["level"], "label": v["robustness"]["label"]},
                               "places": [[it["place_id"] for it in d["items"] if it["kind"] == "visit" and it.get("place_id")]
-                                         for d in v["itinerary"]]}
+                                         for d in v["itinerary"]],
+                              "itinerary": v["itinerary"]}   # the days with times and legs: Lựa chọn's split view reads them
                              for v in base.variants]}
 
     def lodging_options(self, decision: dict, offset: int = 0, limit: int | None = None) -> dict:
@@ -622,6 +689,27 @@ class Engine:
                      "route": route_of_day(cx.day, result, coords, self.live_cfg, mobility, self.route_fn)}
                     for cx, result in zip(active["ctxs"], active["results"])]
         return {"days": days}
+
+    def summary(self, sid: str) -> dict:
+        """{"title", "text", "source"}: the heading of the overview, worded by the Agent role from the active itinerary.
+        The model is asked outside the session lock; an answer is kept per itinerary, a plain fallback is not."""
+        from . import summary as words
+        with self.store.lock(sid):
+            s = self._get(sid)
+            base = self._ensure_base(sid)
+            active = self._active_itinerary(s, base)
+            days = active["itinerary"] if active else []
+            areas = {p.id: p.area for p in self._places_for(s, base).values()}
+        plan = words.facts(days, areas)
+        key = (sid, words.fingerprint(plan))
+        if key not in self._summaries:
+            out = words.summarize(plan, len(days))
+            if out["source"] != "agent":
+                return out
+            if len(self._summaries) >= 256:
+                self._summaries.pop(next(iter(self._summaries)))
+            self._summaries[key] = out
+        return self._summaries[key]
 
     def _view(self, s: Session, results=None, active=None) -> dict:
         base = self._ensure_base(s.id)
@@ -1476,6 +1564,13 @@ class Engine:
         repair pass (the same one a RELAYOUT uses) re-applies them on top, seeded from this fresh layout -- a
         place the user moved or locked lands back on its pinned day regardless of where the automatic clustering
         would have put it, and repair_day still refuses to let a locked place leave its day."""
+        sched = self._fresh_layout(base, s)
+        results = self._repair_pass(s, sched.ctxs, sched.results, set(range(len(sched.ctxs))))
+        return results, sched.ctxs
+
+    def _fresh_layout(self, base: _Base, s: Session):
+        """schedule_trip's own automatic layout of the session's places with its pace, day windows and lodging, before
+        any of the user's moves or orders are applied (build.Schedule)."""
         selected = next((v for v in base.variants if v["id"] == s.state.chosen_variant), None)
         obj = s.state.objective_override or (selected["objective"] if selected else "least_travel")
         by_place = self._places_for(s, base)
@@ -1492,9 +1587,7 @@ class Engine:
                 ctxs[day] = replace(ctxs[day], day=window_override(ctxs[day].day, lo, hi))   # never past departure
         t2 = replace(t2, ctxs=ctxs)
         weights = dict(self.cfg.objective_weights.get(obj, self.cfg.objective_weights["least_travel"]))
-        sched = schedule_trip(t2, weights)
-        results = self._repair_pass(s, sched.ctxs, sched.results, set(range(len(sched.ctxs))))
-        return results, sched.ctxs
+        return schedule_trip(t2, weights)
 
     def _attach_lodging(self, card: dict, s: Session, base: _Base) -> None:
         home = self._home_for(s, base)
@@ -1650,6 +1743,8 @@ class Engine:
             return self._batch_results(base, s2, old_state, prev_results, action["acts"])
         if t == "reoptimize" and "_plan_dropped" not in action:
             action = self._resolve_reoptimize(base, s2, action)
+        if t == "optimize" and action.get("unpinned"):
+            prev_results = _given_up(prev_results, action["unpinned"])
         if t == "set_lodging" and action.get("_point"):
             self._ensure_lodging_node(base, s2.decision, action["_point"])
         self._ensure_ghost_nodes(base, s2)
@@ -1934,8 +2029,58 @@ class Engine:
             results = self._compute_results(base, trial, old, results, action)
         return trial.state, results
 
-    def recommend(self, sid: str) -> dict:
-        """One proposal over a deterministic baseline; only validated drafts become session state."""
+    OPTIMIZE_SCOPES = ("keep_mine", "all")
+
+    def _optimize_inputs(self, s: Session, base: _Base, active: dict, scope: str) -> dict:
+        """What optimize.optimize needs for the session's plan as shown: each day's frame before any dawn pull, the places
+        that may not change day, and the hard rules of each day. scope "keep_mine": a place the user moved and a day the
+        user put in their own order stay as they are; "all": only locks, set times and dawn places stay."""
+        from .layout import allowed
+        results = active["results"]
+        by_place = self._places_for(s, base)
+        home = self._home_for(s, base)
+        trip, frames = self._ctxs_for(base.trip, by_place, home, s.state)
+        tc = s.decision["trip_context"]
+        anchors = {c["id"] for c in s.decision["confirmed"] if c.get("role") == "anchor"}
+        day_of = {pid: k for k, r in enumerate(results) for pid in r.order}
+        locked = set(s.state.locked) | {c["id"] for c in s.decision["confirmed"] if c.get("role") == "locked"}
+        # held: what may never change day; a dawn place is also kept on its day by the search (its day's early start
+        # follows it), but the automatic layout below may place it elsewhere: the real edit path checks that plan
+        held = {pid: k for pid, k in day_of.items() if pid in locked or by_place[pid].start_time is not None}
+        frozen: set = set()
+        if scope == "keep_mine":
+            held.update({pid: day_of[pid] for pid in s.state.assignment if pid in day_of})
+            frozen = {k for k in s.state.order_override if k < len(results)}
+            held.update({pid: k for k in frozen for pid in results[k].order})
+        fixed = {**{pid: k for pid, k in day_of.items()
+                    if any(self.cfg.pins[f]["anchor"] == "sunrise" for f in by_place[pid].pins)}, **held}
+        rule = allowed(replace(trip, by_place=by_place), frames)
+        may = lambda k, pid: k not in frozen and rule(k, pid)   # noqa: E731
+        points = {pid: (p.lat, p.lng) for pid, p in by_place.items() if p.lat is not None and p.lng is not None}
+        # The automatic layout of these same places is always a candidate: it knows times of day, opening hours and
+        # meals, so a plan the user scrambled can always get back to it (when it keeps what must stay where it is).
+        seeds = []
+        fresh = self._fresh_layout(base, s)
+        days = [list(r.order) for r in fresh.results]
+        if not fresh.leftover and len(days) == len(results) and \
+                sorted(p for d in days for p in d) == sorted(day_of) and \
+                all(pid in days[k] for pid, k in held.items()) and \
+                all(sorted(days[k]) == sorted(results[k].order) for k in frozen):
+            seeds.append(list(fresh.results))
+        return {"frames": frames, "current": results, "by_place": by_place, "travel": frames[0].travel if frames else None,
+                "fixed": fixed, "may": may, "hard": pets.filters(tc), "anchors": anchors,
+                "max_leg": (tc.get("pace") or {}).get("max_leg_min"), "points": points,
+                "home_at": self._home_latlng(s, base, home), "frozen": frozen, "seeds": seeds}
+
+    def recommend(self, sid: str, scope: str = "keep_mine") -> dict:
+        """"Tối ưu lịch" (docs/PLANNING.md §Tối ưu lịch): optimize.py's deterministic search over the plan as shown, no
+        model. The best layout it finds is laid out again through the edit path itself (an `optimize` act: moves and
+        day orders) and kept only when that real layout still beats the current one on optimize.objective; otherwise
+        the plan stays as it is. proposal: status accepted (changed or already best) | fallback, the objective's terms
+        before and after."""
+        from .optimize import improves, objective, optimize
+        if scope not in self.OPTIMIZE_SCOPES:
+            raise ActionError(f"unknown optimize scope {scope!r}")
         self._get(sid)
         with self.store.lock(sid):
             base = self._ensure_base(sid)
@@ -1951,82 +2096,41 @@ class Engine:
                     return {'id': sid, 'view': self._view(session),
                             'proposal': {'status': 'fallback', 'diagnostics': ['choose_overload_profile']}}
                 self.act(sid, {'type': 'pick_variant', 'id': base.variants[0]['id']})
-            previous = self._turn_current(session, base)
-            view = self._view(session)
-            def stable_view(value):
-                return {k: v for k, v in value.items() if k not in {'suggestions', 'recommendations'}}
-            snapshot = {'session': session.model_dump(mode='json'), 'view': stable_view(view)}
-            fingerprint = hashlib.sha256(json.dumps(snapshot, sort_keys=True, default=str).encode()).hexdigest()
-            diagnostics = {f'warning:{i}': w for i, w in enumerate(view['warnings'])}
-            fields = {'fingerprint': fingerprint, 'variants': view['variants'], 'diagnostics': diagnostics,
-                      'state': view['state'], 'itinerary': view['itinerary'],
-                      'hard_filters': session.decision['trip_context'].get('hard_filters') or []}
-            binding_data = session.decision.get('corpus_binding')
-            binding = Binding.model_validate(binding_data) if binding_data is not None else None
-            aliases = {c['id']: {'id': c['id']} for c in session.decision.get('confirmed') or []
-                       if c['id'] in self.by_id}
-            fields['corpus_binding'] = binding.model_dump(mode='json') if binding is not None else None
-            fields['corpus_context'] = self._grounded_context(aliases, '', binding)
-            status, log = 'fallback', []
-            try:
-                if self.proposal_agent is None:
-                    raise ActionError('proposal_unavailable')
-                async def call():
-                    return await asyncio.wait_for(self.proposal_agent(fields), timeout=self.cfg.total_s)
-                raw = asyncio.run(call())
-                proposal = PlanningProposal.model_validate(raw).model_dump(mode='json')
-                current = {'session': session.model_dump(mode='json'), 'view': stable_view(self._view(session))}
-                current_fp = hashlib.sha256(json.dumps(current, sort_keys=True, default=str).encode()).hexdigest()
-                if proposal['fingerprint'] != fingerprint or current_fp != fingerprint:
-                    raise ActionError('stale_fingerprint')
-                if any(reason not in diagnostics for reason in proposal['reasons']):
-                    raise ActionError('unknown_diagnostic')
-                state, results = self._proposal_trial(base, session, session.state, previous, proposal)
-                def membership(rs):
-                    return sorted(pid for r in rs for pid in r.order)
-                if membership(results) != membership(previous):
-                    raise ActionError('membership_changed')
-                anchors = {c['id'] for c in session.decision['confirmed'] if c.get('role') == 'anchor'}
-                decision_locked = {c['id'] for c in session.decision['confirmed']
-                                   if c.get('role') == 'locked'}
-                protected = anchors | decision_locked | set(session.state.locked)
-                def slots(rs):
-                    return [(day, item) for day, result in enumerate(rs) for item in result.items
-                            if item.place_id in protected]
-                if slots(results) != slots(previous):
-                    raise ActionError('protected_slot_changed')
-                _, ctxs = self._ctxs_for(base.trip, self._places_for(session, base),
-                                         self._home_for(session, base), state, results)
-                from .validate import validate
-                tc = session.decision['trip_context']
-                if validate(ctxs, results, tc.get('hard_filters') or [], anchors,
-                            NO_BUDGET_CAP, (tc.get('pace') or {}).get('max_leg_min')):
-                    raise ActionError('validation_failed')
-                # Compare both validated schedules with the CURRENT objective, never the
-                # proposed variant's objective. score() includes travel as its tie-breaker.
-                objective = session.state.objective_override or next(
-                    v['objective'] for v in base.variants if v['id'] == session.state.chosen_variant)
-                baseline_metrics = metrics(ctxs, previous)
-                draft_metrics = metrics(ctxs, results)
-                if objective in CARD_LABEL:
-                    objective = "least_travel"
-                if score(objective, draft_metrics) > score(objective, baseline_metrics):
-                    raise ActionError('objective_worse')
-                committed = session.model_copy(deep=True)
-                committed.states = session.states[:session.position + 1] + [state]
-                committed.log = session.log[:session.position] + [{'action': {'type': 'recommend', 'proposal': proposal},
-                                                                  'at': _now()}]
-                committed.position += 1
-                self._view(committed, results)
-                self.store.save(committed)
-                session.states, session.log, session.position = committed.states, committed.log, committed.position
-                self._schedules[sid] = self._schedules.get(sid, [None] * session.position)[:session.position] + [results]
-                self._epochs[sid] = self._epochs.get(sid, 0) + 1
-                self._queue_suggestions(session)
-                status, log = 'accepted', proposal['reasons']
-            except Exception as exc:
-                log = [str(exc) if isinstance(exc, ActionError) else type(exc).__name__]
-            return {'id': sid, 'view': self._view(session), 'proposal': {'status': status, 'diagnostics': log}}
+                session = self._get(sid)
+            active = self._active_itinerary(session, base)
+            if not active or not active["results"]:
+                return {'id': sid, 'view': self._view(session),
+                        'proposal': {'status': 'fallback', 'diagnostics': ['no_valid_baseline']}}
+            started = time.perf_counter()
+            inputs = self._optimize_inputs(session, base, active, scope)
+            keep = frozenset(inputs.pop("frozen"))
+            now, best = optimize(**inputs, keep=keep,
+                                 budget_s=float(self.cfg.realistic.get("optimize_budget_s", 4.0)))
+            self.timings.setdefault(sid, {})["optimize_ms"] = (time.perf_counter() - started) * 1000
+            if best is now:
+                return {'id': sid, 'view': self._view(session),
+                        'proposal': {'status': 'accepted', 'diagnostics': ['already_best'], 'changed': False,
+                                     'before': now.parts, 'after': now.parts}}
+            action = {'type': 'optimize', 'days': [list(day) for day in best.days],
+                      # the times of day the winning layout gave up (and why): the edit path re-lays the same days
+                      'unpinned': [[[pid, list(dict(r.pin_conflicts).get(pid, ()))] for pid in r.unpinned]
+                                   for r in best.results]}
+            previous = active["results"]
+            trial = _apply(session.state, action, self._act_ctx(session, base, previous))
+            s2 = session.model_copy(update={"states": session.states[:session.position + 1] + [trial],
+                                            "position": session.position + 1})
+            results = self._compute_results(base, s2, session.state, previous, action)
+            _, ctxs = self._ctxs_for(base.trip, self._places_for(s2, base), self._home_for(s2, base), s2.state, results)
+            key, parts = objective(ctxs, results, hard=inputs["hard"], anchors=inputs["anchors"],
+                                   max_leg=inputs["max_leg"])
+            if not improves((key, parts), now):
+                return {'id': sid, 'view': self._view(session),
+                        'proposal': {'status': 'fallback', 'diagnostics': ['not_better'], 'changed': False,
+                                     'before': now.parts, 'after': now.parts}}
+            out = self.act(sid, action)
+            return {'id': sid, 'view': out['view'],
+                    'proposal': {'status': 'accepted', 'diagnostics': ['optimized'], 'changed': True,
+                                 'before': now.parts, 'after': parts}}
 
     # ---------- confirm ----------
 

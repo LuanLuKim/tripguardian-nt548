@@ -10,6 +10,7 @@ import planning.overload as overload
 
 def timeout_engine(monkeypatch):
     monkeypatch.setattr(overload, "_in_children", lambda *a, **kw: {})
+    monkeypatch.setattr(overload, "_pooled", lambda *a, **kw: {})
     records = [spot(f"c{i}", CENTRE, i, visit=(180, 210, 240)) for i in range(4)]
     e = Engine(records, cfg=CFG, live_cfg=FakeLive(), store=Store(None), geocode_fn=no_geocode,
                matrix_fn=fake_matrix, sun_fn=lambda *a: (360, 1050), background=False)

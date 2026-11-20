@@ -198,7 +198,7 @@ def test_compare_needs_two_to_four_places(k):
 
 def test_status_open_now_from_firm_hours(k):
     out = k.more.status("0xa:0x1", S)
-    assert out["open_now"] is True and out["hours_today"] == "07:00-22:00" and out["closure"] == "no closure report in the data"
+    assert out["open_now"] is True and out["hours_today"] == "07:00-22:00"
     assert out["corpus_status"] == "VERIFIED" and out["last_seen"] == "2026-10-11"
 
 
@@ -215,17 +215,10 @@ def test_open_state_handles_midnight_and_uncertain():
     assert open_state({"status": "UNCERTAIN", "value": ALL_DAY}, NOW) == (None, None)
 
 
-def test_status_reports_a_closure_from_the_pulse(recs):
-    pulse = lambda **kw: {"items": [{"kind": "closed", "name": "Quán Đã Đóng", "place_id": None,  # noqa: E731
-                                     "text": "Google Maps ghi đóng cửa vĩnh viễn (tra ngày 07/10)"}]}
-    kk = make(recs, pulse=pulse)
-    out = kk.more.status("Quán Đã Đóng", S)
-    assert out["status"] == "closed_reported" and "07/10" in out["closure"]["text"]
-    recs[1]["identity"]["name"] = "Quán Đã Đóng"
-    kk2 = make(recs, pulse=pulse)
-    assert "07/10" in kk2.more.status("0xb:0x1", S)["closure"]["text"]
+def test_status_of_a_place_not_in_the_corpus_is_an_error_never_a_closure_report(recs):
+    kk = make(recs)
     with pytest.raises(ValueError, match="unknown place"):
-        kk.more.status("không có", S)
+        kk.more.status("Quán Đã Đóng", S)
 
 
 # ---------- find_dishes ----------
@@ -472,3 +465,68 @@ def test_find_cards_keep_an_up_to_price_as_none_and_max(recs):
     assert card["price"] == [None, 100000] and card["price_from"] == 100000
     assert all(p["price"][0] is None or p["price"][0] >= 1000 for p in out["places"] if isinstance(p.get("price"), list))
 
+
+
+def test_month_days_has_holiday_and_only_a_real_forecast(recs):
+    fc = {"rain_prob": 0.7, "rain_mm": 6.2, "tmin_c": 13.6, "tmax_c": 21.2, "gust_kmh": 31.4, "storm": False, "source": "open-meteo", "fetched_at": "x"}
+    far = {"rain_prob": 0.2, "source": "climate", "fetched_at": "x"}  # a long-run average is no forecast for that day
+    weather = lambda lat, lng, days: {days[0]: fc, days[1]: far}  # noqa: E731
+    kk = make(recs, live=LiveTools(weather=weather), feeds=Feeds(now=lambda: NOW, calendar=lambda: CAL))
+    out = kk.month_days(date(2026, 12, 24), date(2026, 12, 25))
+    assert out["days"]["2026-12-24"]["weather"] == {"rain_prob": 0.7, "rain_mm": 6.2, "tmin_c": 14, "tmax_c": 21, "gust_kmh": 31, "storm": False}
+    assert "holiday" not in out["days"]["2026-12-24"] and "lunar" not in out["days"]["2026-12-24"]
+    assert out["days"]["2026-12-25"]["holiday"] == "Giáng sinh" and "weather" not in out["days"]["2026-12-25"]
+    broken = make(recs, live=LiveTools(weather=lambda *a: 1 / 0), feeds=Feeds(now=lambda: NOW, calendar=lambda: CAL))
+    assert broken.month_days(date(2026, 12, 25), date(2026, 12, 25))["days"]["2026-12-25"]["holiday"] == "Giáng sinh"
+    # a day with no forecast carries the month's long-run figures under its own key, never under `weather`
+    norm = make(recs, live=LiveTools(weather=weather), feeds=Feeds(now=lambda: NOW, calendar=lambda: CAL, climate=lambda: {"12": {"tmax_c": 21.4, "tmin_c": 13.2, "rain_prob": 0.18, "years": 11}}))
+    day = norm.month_days(date(2026, 12, 24), date(2026, 12, 25))["days"]
+    assert "normal" not in day["2026-12-24"] and day["2026-12-25"]["normal"] == {"tmax_c": 21, "tmin_c": 13, "rain_prob": 0.18, "years": 11}
+    assert "weather" not in day["2026-12-25"]
+    with pytest.raises(ValueError, match="range"):
+        kk.month_days(date(2026, 12, 1), date(2027, 3, 1))
+
+
+def _clip(vid, author, text, score=100, posted="2026-01-01"):
+    return {"video_id": vid, "url": f"https://www.tiktok.com/@{author}/video/{vid}", "author": author, "caption": text[:40],
+            "posted": posted, "plays": 1000, "score": score, "text": text}
+
+
+CLIPS = {
+    "0xd:0x1": [_clip("1", "an", "đồi chè xanh mướt buổi chiều", score=900),
+                _clip("2", "binh", "săn mây lúc bình minh trên đồi chè", score=200),
+                _clip("3", "chi", "mây buổi sáng phủ kín đồi", score=150, posted="2026-03-01"),
+                _clip("4", "an", "săn mây cùng bạn", score=800)],  # same author as clip 1
+    "0xa:0x1": [_clip("5", "dung", "cà phê săn mây view đồi thông", score=300), _clip("6", "binh", "săn mây sớm", score=999)],
+}
+
+
+def test_clips_put_what_was_asked_first_one_per_author_places_take_turns(recs):
+    kk = make(recs, feeds=Feeds(now=lambda: NOW, clips=lambda: CLIPS))
+    out = kk.more.clips(["0xd:0x1", "0xa:0x1"], "săn mây")
+    rows = out["_clips"]
+    assert [r["video_id"] for r in rows if r["matched"]][:2] == ["4", "6"]  # each place's best match, the places in turn
+    assert len({r["handle"] for r in rows}) == len(rows)  # one clip per author on the stage
+    assert {r["video_id"] for r in rows} == {"4", "6", "3", "5"}  # "1" and "2" lose to authors already shown
+    assert all(r["matched"] for r in rows if r["video_id"] != "1")
+    assert out["places"][0] == {"id": "0xd:0x1", "name": "Đồi Chè Cầu Đất", "clips": 2, "matched": 2}
+    assert out["shown"] == 4 and "note" not in out
+
+
+def test_clips_without_an_ask_follow_the_place_score_and_a_place_without_clips_says_so(recs):
+    kk = make(recs, feeds=Feeds(now=lambda: NOW, clips=lambda: CLIPS))
+    assert [r["video_id"] for r in kk.more.clips(["0xd:0x1"], "")["_clips"]] == ["1", "2", "3"]
+    none = kk.more.clips(["0xb:0x1"], "săn mây")
+    assert none["shown"] == 0 and none["_clips"] == [] and "do not mention clips" in none["note"]
+    assert make(recs).more.clips(["0xd:0x1"], "")["shown"] == 0  # no clip feed at all
+
+
+def test_clips_block_titles_and_cards():
+    from trip.api.blocks import clips_block
+    result = {"about": "săn mây", "places": [{"id": "0xd:0x1", "name": "Đồi Chè Cầu Đất", "clips": 1, "matched": 1}],
+              "_clips": [{"video_id": "4", "url": "u", "handle": "an", "caption": "c", "posted": None, "place_id": "0xd:0x1",
+                          "place": "Đồi Chè Cầu Đất", "matched": True}]}
+    block = clips_block(result, "", lambda ids: [{"id": i} for i in ids])
+    assert block["kind"] == "clips" and block["title"] == "Săn mây · Đồi Chè Cầu Đất" and block["cards"] == [{"id": "0xd:0x1"}]
+    assert clips_block(result, "Mây ở Cầu Đất", lambda ids: [])["title"] == "Mây ở Cầu Đất"
+    assert clips_block({**result, "_clips": []}, "", lambda ids: []) is None

@@ -88,3 +88,14 @@ button.tg-chip:not([aria-pressed='true']):not(.is-on):hover { border-color: var(
   .tg *, .tg *::before, .tg *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
   .tg-skel { animation: none; }
 }
+/* A blinking "|" must never show on plain text (caret browsing, a stray selection): only the fields people type in have a caret. */
+body.tg-body { caret-color: transparent; }
+body.tg-body :is(input, textarea, select, [contenteditable]:not([contenteditable='false'])) { caret-color: auto; }
+body.tg-body :is(button, nav, summary, [role='tab'], [role='tooltip'], [role='menuitem']) { user-select: none; -webkit-user-select: none; }
+/* Hover tag (replaces the browser's title bubble): data-tag="text" on any button shows the night-coloured tag below it, like the sidebar's. */
+:where([data-tag]) { position: relative; }
+[data-tag]::after { content: attr(data-tag); position: absolute; z-index: 60; top: calc(100% + 10px); left: 50%; translate: -50% -4px; padding: 7px 13px; border-radius: 10px; background: var(--tg-night); color: #fff; font: 500 0.8rem/1.2 var(--tg-sans); white-space: nowrap; box-shadow: 0 10px 22px -8px rgba(0, 0, 0, 0.5); opacity: 0; pointer-events: none; transition: opacity 140ms, translate 220ms var(--tg-ease); }
+[data-tag]::before { content: ''; position: absolute; z-index: 60; top: calc(100% + 4px); left: 50%; translate: -50% -4px; border: 6px solid transparent; border-top: 0; border-bottom-color: var(--tg-night); opacity: 0; pointer-events: none; transition: opacity 140ms, translate 220ms var(--tg-ease); }
+[data-tag]:is(:hover, :focus-visible)::after, [data-tag]:is(:hover, :focus-visible)::before { opacity: 1; translate: -50% 0; transition-delay: 90ms; }
+[data-tag]:disabled::after, [data-tag]:disabled::before { display: none; }
+@media (hover: none) { [data-tag]::after, [data-tag]::before { display: none; } }

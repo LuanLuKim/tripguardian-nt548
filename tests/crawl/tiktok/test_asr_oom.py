@@ -5,6 +5,9 @@ import json
 
 import pytest
 
+pytest.importorskip("soundfile")  # corpus.llm.asr needs the asr extra (soundfile, torch); plain CI installs skip
+pytest.importorskip("torch")
+
 from corpus.crawl.tiktok import asr
 
 

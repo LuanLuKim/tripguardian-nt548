@@ -5,7 +5,9 @@ import os
 import time
 import types
 
-import torch
+import pytest
+
+torch = pytest.importorskip("torch")  # torch lives in the asr extra; plain CI installs skip this file
 
 from corpus.index import embedder as emb_mod
 from corpus.index.embedder import Embedder, gpu_leased

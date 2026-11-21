@@ -4,6 +4,10 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+pytest.importorskip("torch")  # scripts/clef_server.py is a GPU model server; plain CI installs skip it
+
 SPEC = importlib.util.spec_from_file_location("clef_server", Path(__file__).resolve().parent.parent / "scripts" / "clef_server.py")
 server = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(server)

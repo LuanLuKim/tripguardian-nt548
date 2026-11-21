@@ -1,6 +1,6 @@
 # Thiết kế: vận hành TripGuardian cho đồ án NT548 (nhóm 8)
 
-> Spec làm việc (`RULE.md` §0.1). Trạng thái: **bản 3** (2026-11-21): thêm triển khai thật lên AWS Academy Learner Lab, chia việc theo mảng × người. Bản 2 (chỉ Compose trên runner, không cloud) còn giữ làm phần diễn tập trong CI. Hướng dẫn từng mảng: `docs/nt548/`.
+> Spec làm việc (`RULE.md` §0.1). Trạng thái: **bản 3** (2026-11-21): thêm triển khai thật lên AWS Academy Learner Lab, chia việc theo khối × cặp. Bản 2 (chỉ Compose trên runner, không cloud) còn giữ làm phần diễn tập trong CI. Hướng dẫn từng mảng: `docs/nt548/`.
 > Repo: fork `LuanLuKim/tripguardian-nt548` (public) của TripGuardian. Hạn nộp: **thứ Sáu 04/12/2026**.
 
 ## 1. Mục đích
@@ -10,7 +10,7 @@ NT548 (DevOps) lấy TripGuardian làm sản phẩm và xây phần vận hành 
 Chủ dự án chốt:
 - 20/11: chỉ làm trên nền TripGuardian, phần NT548 nằm ở đường dẫn có tiền tố `nt548`.
 - 21/11: triển khai lên **AWS Academy Learner Lab** (50 USD, không GPU). Cloudflare: chờ chủ dự án trả lời (§11). Kubernetes chỉ làm nếu còn thời gian.
-- 21/11: **mọi thành viên làm mọi mảng**: mỗi mảng chia phần, mỗi người ít nhất một phần trong mỗi mảng, và tự viết phần báo cáo cho phần mình làm.
+- 21/11: chia theo **khối**, mỗi khối do **một cặp hai người** làm trọn; hai cặp làm song song, không chờ nhau. Mỗi người tự viết phần báo cáo cho phần mình làm. Mỗi thành viên có Learner Lab riêng.
 
 ## 2. Mục tiêu, không làm, thất bại
 
@@ -127,32 +127,41 @@ docs/plans/2026-11-20-nt548-devops-design.md   file này
 
 File của TripGuardian chỉ sửa qua PR lên TripGuardian. Ngoại lệ hiện có: `workflow_dispatch` trong `.github/workflows/test.yml`; hai dòng trỏ tới `docs/nt548/` trong `README.md`.
 
-## 7. Chia việc: mảng × người
+## 7. Chia việc: khối × cặp
 
-Mỗi ô là một issue. Mỗi người có ít nhất một ô trong mỗi mảng, và tự viết phần báo cáo cho các ô của mình. **L** = LuanLuKim, **H** = hohoangluan, **Đ** = Đình Long (`dinhlong06`), **Q** = Quỳnh (`DontMadWhenBad`).
+Bốn khối, hai cặp. Mỗi cặp làm trọn hai khối; hai cặp làm song song và chỉ gặp nhau ở **hợp đồng giữa khối** (§7.1), nên không cặp nào phải chờ cặp kia. Trong cặp, hai người tự chia issue con và review PR cho nhau. Mỗi người tự viết phần báo cáo cho phần mình làm.
 
-| Mảng | L | H | Đ | Q |
-|---|---|---|---|---|
-| **A. IaC (Terraform)** | A1 VPC, subnet 2 AZ, IGW, route, security group | A2 bootstrap: S3 state + máy ops (Postgres + runner) | A3 launch template + user-data app (Docker, kéo image, compose) | A4 `nt548-aws-up` / `nt548-aws-down`, hẹn giờ xóa, Budget, tag chi phí |
-| **B. Load balancer, blue/green** | B4 không rớt request khi đổi màu (deregistration delay, k6 trong lúc đổi) | B3 `deploy.sh aws`: up màu / weight / promote / rollback | B1 Compose + Nginx blue/green để diễn tập trong CI (#2 cũ) | B2 ALB + 2 target group + listener trọng số + health check + sticky |
-| **C. Scalability** | C3 `canary_watch` đọc CloudWatch theo target group, tự rollback | C4 scale trong Compose: 1 vs 2 harness, bảng đo | C1 ASG mỗi màu, target tracking theo CPU | C2 k6 + workflow bắn tải từ Actions, bảng scale-out (#3 cũ) |
-| **D. CI/CD** | D1 dependency, `test.yml` xanh, `nt548-ci.yml` (#1 cũ) | D3 self-hosted runner an toàn + `nt548-deploy-aws.yml` | D2 Dockerfile harness / web / llm-fake + build push GHCR theo sha | D4 bảo vệ `main`, check bắt buộc, tag release + changelog |
-| **E. Monitoring** | E2 dashboard CloudWatch (ALB, TG, ASG) bằng Terraform | E3 alarm (5xx, latency, unhealthy host) → SNS email | E1 log container → CloudWatch Logs | E4 kiểm sống từ ngoài: workflow cron gọi URL public, mở issue khi lỗi |
-| **F. AI ops** (#4) | #14 trọng số `URL@weight`, #18 nghiên cứu | #15 `/metrics` theo upstream | #16 eval gate, #17 canary model chạy trên AWS | #13 LLM giả |
-| **G. DataOps** (#5) | #11 workflow đổi / lùi release dữ liệu | #8 R1, #12 nghiên cứu | #10 `data_check` | #9 dữ liệu mẫu tổng hợp |
-| **H. Báo cáo, slide** (#7) | phần của mình + tổng hợp kiến trúc | phần của mình | phần của mình + ghép báo cáo | phần của mình + slide |
+| Cặp | Khối | Issue |
+|---|---|---|
+| **H + Đ** (hohoangluan, Đình Long `dinhlong06`) | **T8. Hạ tầng AWS:** Terraform (bootstrap, VPC, ALB + 2 target group, ASG mỗi màu + scale theo CPU), monitoring CloudWatch, giữ chi phí | #21 (con #22–#27) |
+| | **T5. DataOps:** dữ liệu mẫu (R1), `data_check`, đổi / lùi release dữ liệu trên AWS | #5 |
+| **L + Q** (LuanLuKim, Quỳnh `DontMadWhenBad`) | **T9. CI/CD và phát hành:** CI xanh, image GHCR, compose của app, diễn tập blue/green trong CI, workflow deploy lên AWS qua runner, canary tự rollback, đo tải k6 | #28 (con #1, #2, #3, #29) |
+| | **T4. AI ops:** LLM giả, trọng số + `/metrics` trong `model_gateway`, eval gate, canary model | #4 |
+| Cả bốn | **T7. Báo cáo, slide** | #7 |
 
 Không bắt buộc: T6 Kubernetes `kind` (#6), Cloudflare (chờ §11).
 
+### 7.1 Hợp đồng giữa khối (chốt trước ngày 23/11, đổi phải báo cặp kia)
+
+| Ranh giới | Bên cung cấp | Hợp đồng |
+|---|---|---|
+| Image → máy app | T9 → T8 | `ghcr.io/luanlukim/tripguardian-nt548/{harness,web,llm-fake}:<sha>` (public) và `ops/nt548/compose/app.yml` chạy cả stack một màu trên một máy, nghe cổng `8080`, health check `GET /` trả 200. Trong lúc chờ, T8 dùng image giữ chỗ `traefik/whoami` ở cổng `8080` |
+| Terraform → workflow deploy | T8 → T9 | `ops/nt548/terraform/envs/demo` nhận biến `image_tag_blue`, `image_tag_green`, `weight_blue` (0–100), `data_release_blue`, `data_release_green`; xuất `alb_dns_name`, `target_group_arn_{blue,green}`, `asg_name_{blue,green}`. Workflow chỉ gọi `terraform apply -var …`, không tự gọi API ELB |
+| Dữ liệu mẫu → app | T5 → T9 | `ops/nt548/sample-data/<release>/` mount chỉ đọc vào harness qua biến `DATA_RELEASE`. Chưa có (R1 chưa xong) thì harness stub |
+| LLM | T4 → T9 | `llm-fake` tương thích OpenAI ở cổng `8000`; harness trỏ `*_BASE_URL` vào `model-gateway` |
+
+Mỗi cặp thử trên Learner Lab của mình bằng biến `name_prefix`. Lab của LuanLuKim là bản demo chung, chỉ ghép ở mốc 28/11.
+
 ### Lịch
 
-| Ngày | Mốc |
-|---|---|
-| 21–23/11 | D1 CI xanh · R1 (#8) · R2 quyền `LabRole` · A1 + A2 bootstrap chạy được |
-| 24–27/11 | A3, B2, C1: ALB + ASG chạy image thật · D2, D3: deploy từ Actions · B1, #13, #10 |
-| 28/11–01/12 | B3, B4, C2, C3: canary, rollback, đo tải · E1–E4 · F, G hoàn tất trên AWS |
-| 02–03/12 | Báo cáo, slide, chạy thử demo hai lần từ đầu (`aws-up` → demo → `aws-down`) |
-| 04/12 | Nộp |
+| Ngày | H + Đ | L + Q |
+|---|---|---|
+| 21–23/11 | R2 quyền `LabRole`, bootstrap, VPC · R1 (#8) | CI xanh (#1), Dockerfile + GHCR, `app.yml` · LLM giả (#13), trọng số gateway (#14) |
+| 24–27/11 | ALB + ASG với image giữ chỗ, scale CPU · `data_check` (#10), dữ liệu mẫu (#9) | Diễn tập blue/green trong CI (#2), `nt548-deploy-aws` trên lab của mình · `/metrics` (#15), eval gate (#16) |
+| 28/11 | **Ghép trên lab demo:** image thật chạy sau ALB thật | |
+| 29/11–01/12 | Dashboard + alarm, giữ chi phí · đổi release dữ liệu (#11) | Canary tự rollback + k6 đo scale-out (#3) · canary model (#17) |
+| 02–03/12 | Báo cáo, slide, chạy thử demo hai lần từ đầu (`aws-up` → demo → `aws-down`) | |
+| 04/12 | Nộp | |
 
 Rủi ro lớn nhất:
 - **R1:** harness có khởi động được với dữ liệu mẫu không. Không được thì dùng harness stub. Mọi phần hạ tầng vẫn làm được, vì không phụ thuộc nội dung trả lời.
@@ -182,4 +191,3 @@ Cổng, công cụ bắn tải, định dạng log, cách sinh dữ liệu mẫu
 ## 11. Còn chờ chủ dự án
 
 - Cloudflare: có domain / zone không; đặt trước ALB (DNS proxied + WAF) hay bỏ.
-- Mỗi thành viên có Learner Lab riêng không (giả định ở §5.4).

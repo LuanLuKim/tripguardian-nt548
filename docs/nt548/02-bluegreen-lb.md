@@ -48,9 +48,42 @@ Người chưa có cookie: `split_clients` nhận chuỗi rỗng → luôn rơi 
 
 Khi một màu có N harness, `web/server.mjs` chỉ biết một `HARNESS_PORT`. Hai cách, chọn một và ghi lý do: (a) Nginx route thẳng `/api/harness/*` tới nhóm harness của màu, sticky theo cookie; (b) mỗi web đi kèm một harness, scale theo cặp.
 
+## Image
+
+Build context là gốc repo (riêng `llm-fake` là `ops/nt548/llm_fake`). Mỗi Dockerfile có file `<tên>.dockerignore` dạng allowlist, nên `data/`, `.env`, `web/public/data` không vào image.
+
+| Image | Dockerfile | Chạy |
+|---|---|---|
+| `harness` | `ops/nt548/compose/harness.Dockerfile` (python:3.12-slim, cài dependency của `pyproject.toml` + fastapi, uvicorn; `PYTHONPATH=/app/src`) | mặc định `harness_stub.py`; `python -m harness serve` khi có dữ liệu mẫu; cũng chạy `scripts/model_gateway.py` |
+| `web` | `ops/nt548/compose/web.Dockerfile` (node:24-slim, `npm ci && npm run build:prod`) | `node server.mjs`, cổng `PORT` (8080) |
+| `llm-fake` | `ops/nt548/llm_fake/Dockerfile` | `server.py` cổng 8000 (`04-aiops.md` §LLM giả) |
+
+`web/public/data` không có trong git nên web trong image chưa có dữ liệu địa điểm; giao diện vẫn lên, `GET /` trả 200.
+
+## `app.yml`: một màu trên một máy (hợp đồng với T8)
+
+```sh
+COLOR=blue IMAGE_TAG=<sha> docker compose -f ops/nt548/compose/app.yml up -d
+# build từ checkout thay vì kéo GHCR:
+docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml up -d --build
+```
+
+```mermaid
+flowchart LR
+  ALB[":8080"] --> W["web<br/>(network_mode: service:harness)"]
+  W -->|127.0.0.1:8769| H["harness<br/>(stub mặc định)"]
+  H --> G["model-gateway :30000"]
+  G -->|"@LLM_WEIGHT_V1"| F1["llm-fake-v1"]
+  G -->|"@LLM_WEIGHT_V2"| F2["llm-fake-v2"]
+```
+
+- `web/server.mjs` chỉ gọi harness qua `127.0.0.1`, nên web dùng chung network namespace với harness; cổng `8080` publish trên service `harness`.
+- Biến: `COLOR`, `IMAGE_TAG` (mặc định `main`), `REGISTRY`, `HARNESS_CMD` (mặc định là stub), `DATABASE_URL` (chỉ harness thật), `DATA_RELEASE` (mặc định `r-a`, mount `ops/nt548/sample-data/<release>` chỉ đọc vào `/data`), `LLM_WEIGHT_V1` / `LLM_WEIGHT_V2`, `FAKE_V{1,2}_DELAY_MS` / `_ERROR_RATE` / `_ERROR_STATUS` để bơm lỗi (#39).
+- Stub (`ops/nt548/compose/harness_stub.py`): `/api/harness/me`, `/api/auth/*` trả 401; `/api/harness/*` khác trả 200; mọi trả lời có header `X-Color`, `X-Image-Tag`; `GET /api/harness/nt548-version` trả màu và tag.
+
 ## Các bước
 
-1. `ops/nt548/compose/harness.Dockerfile` (python:3.12-slim, `pip install .`, `online_device: cpu`) và `web.Dockerfile` (node:24, `npm ci && npm run build:prod`, chạy `node web/server.mjs`).
+1. Image và `app.yml`: đã có, xem §Image và §`app.yml`.
 2. `ops/nt548/compose/docker-compose.yml`: `postgres:16`, `nginx`, `web-blue`, `harness-blue`, `web-green`, `harness-green`. Mỗi màu đọc tag image từ biến (`BLUE_TAG`, `GREEN_TAG`). Migration: chạy `migrations/*.sql` một lần lúc `postgres` lên.
 3. Dữ liệu: mount `ops/nt548/sample-data/` (T5 làm) chỉ đọc. Chưa có thì dùng harness stub (`ops/nt548/compose/harness_stub.py`: trả 200 / 401 cho đúng các route web gọi, có header `X-Color`) để làm tiếp phần LB.
 4. `ops/nt548/deploy.sh`:

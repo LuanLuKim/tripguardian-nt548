@@ -29,8 +29,11 @@ flowchart LR
 1. **Sửa dependency thiếu.** Thêm `trafilatura`, `cryptography`, `fastapi` vào `dependencies` trong `pyproject.toml`, chạy `uv lock`. Đây là file của TripGuardian: mở PR lên `hohoangluan/tripguardian`, đồng thời merge cùng thay đổi vào fork để CI chạy được.
 2. **Test cần `torch` / `soundfile`** (2 file, extra `asr`): thêm `pytest.importorskip("torch")` ở đầu file. Cũng là thay đổi của TripGuardian → cùng PR với bước 1.
 3. Chạy lại `test.yml`, ghi vào issue: số test, thời gian, test nào đỏ. Test đo thời gian (`tests/agents/test_runtime.py`, `tests/planning/test_planning_overload_parallel.py`, …) có thể đỏ ngẫu nhiên; liệt kê, đừng sửa code sản phẩm.
-4. `nt548-ci.yml`: chạy trên `pull_request` và `push: main`; job `ruff check --select F,E9 ops/nt548 tests/nt548`, `docker compose -f ops/nt548/compose/docker-compose.yml config`, `nginx -t` trong container `nginx:1.27-alpine`, `pytest tests/nt548`.
-5. `nt548-images.yml`: trên `push: main` và `workflow_dispatch`. Build `ops/nt548/compose/harness.Dockerfile` và `web.Dockerfile`, push `:sha` + `:main`. Image **không** chứa `data/`, `.env`, key.
+4. `nt548-ci.yml` (`pull_request`, `push: main`), hai job:
+   - `lint-test`: `ruff check --select F,E9 ops/nt548 tests/nt548`, `pytest tests/nt548`, `docker compose … config` của `app.yml`;
+   - `app-smoke`: build ba image từ commit, chạy `app.yml` một màu, kiểm `GET /` trên `:8080` trả 200, stub harness báo đúng màu, gateway trả lời qua LLM giả và có `/metrics`, image không chứa `.env` / `data/`.
+   Khi có `docker-compose.yml` hai màu (#2) thì thêm `config` của nó và `nginx -t`.
+5. `nt548-images.yml` (`push: main`, `workflow_dispatch`): build `harness`, `web`, `llm-fake` (bảng ở `02-bluegreen-lb.md` §Image), push `ghcr.io/luanlukim/tripguardian-nt548/<image>:<sha đầy đủ>` và `:main`, label `org.opencontainers.image.revision`. Cache theo image (`type=gha`). Lần push đầu tiên, admin vào trang package trên GitHub đặt **Public** cho cả ba (package mới mặc định private), để máy app kéo được mà không cần đăng nhập.
 6. Bảo vệ nhánh `main` (Settings → Branches): bắt PR, 1 review, check `pytest`, `web`, `nt548-ci` xanh.
 
 ## Bật Actions

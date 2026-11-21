@@ -1,56 +1,90 @@
-# 04. AI ops: chia luồng model và chặn bằng eval (T4, LuanLuKim + Quỳnh)
+# 04. AI ops: AIOps cho TripGuardian (T4, LuanLuKim + Quỳnh)
 
-Đọc xong làm được: đổi model / prompt theo kiểu canary như đổi code; có số liệu theo từng bản model; bản model kém không được nhận toàn bộ traffic.
+Chủ dự án chốt 21/11: **AI ops của đồ án = AIOps**, tức dùng AI / ML để vận hành hệ thống. Phần LLMOps cũ (eval gate #16, canary model #17) thành không bắt buộc. Issue cha: #4.
 
-## Ở TripGuardian đã có gì
+Đọc xong làm được: hệ thống tự phát hiện bất thường trên metric và log, tự viết tóm tắt sự cố, và có số đo chứng minh cách đó phát hiện sớm hơn ngưỡng tĩnh.
 
-Code gọi model theo **vai trò** (Agent, Extractor, Judge, ASR); model cụ thể nằm trong config, key trong `.env` (`docs/LLM_PROVIDER.md`). `scripts/model_gateway.py` là cổng tương thích OpenAI đứng trước các model tự host:
-
-| Có sẵn | Thiếu (NT548 thêm) |
-|---|---|
-| Nhiều upstream (`--gemma-url` lặp lại), chọn upstream có ít request đang chờ nhất | Trọng số theo upstream (canary 10 %) |
-| Upstream lỗi kết nối / 502 / 503 / 504 bị bỏ qua `--cooldown` giây | Đếm request, lỗi, độ trễ theo upstream, xuất ra `/metrics` |
-| `GET /v1/models` | Ghi bản model đang chạy vào nhãn image / `RELEASE.json` |
-
-## Kiến trúc
+## Chuỗi AIOps của đồ án
 
 ```mermaid
 flowchart LR
-  H[harness: vai trò Agent] -->|AGENT_BASE_URL| GW["model_gateway<br/>--gemma-url http://llm-v1@90<br/>--gemma-url http://llm-v2@10"]
-  GW --> V1["llm-fake v1"]
-  GW --> V2["llm-fake v2<br/>(chậm hơn / lỗi theo cấu hình)"]
-  GW --> M["/metrics<br/>theo upstream"]
-  E["eval gate"] -->|bộ câu cố định| GW
+  subgraph O["Quan sát"]
+    M["/metrics gateway (#15)"]
+    CW["CloudWatch: ALB, TG, ASG (#26)"]
+    LG["CloudWatch Logs (#26)"]
+  end
+  subgraph D["Phát hiện"]
+    AD["CloudWatch Anomaly Detection<br/>+ detect.py: EWMA, Isolation Forest (#36)"]
+    LP["mẫu log Drain3 (#37)"]
+  end
+  subgraph C["Chẩn đoán"]
+    IS["tóm tắt sự cố (#38)<br/>metric + mẫu log + deploy gần nhất → LLM"]
+  end
+  subgraph A["Hành động"]
+    GI["GitHub issue nhãn incident"]
+    RB["canary_watch tự rollback (#3)"]
+  end
+  M & CW --> AD
+  LG --> LP
+  AD & LP --> IS --> GI
+  AD -.-> RB
+  EV["bơm lỗi + đo MTTD / MTTR / báo nhầm (#39)"] -.đánh giá.-> D & C & A
 ```
 
-## LLM giả
+## Ở TripGuardian đã có gì
 
-CI công khai không giữ được key model, và đồ án không chấm chất lượng câu trả lời. Viết `ops/nt548/llm_fake/server.py` (FastAPI, tương thích `POST /v1/chat/completions`, có stream):
-- trả câu cố định theo `model` + hash của prompt (tất định, test được);
-- `FAKE_DELAY_MS`, `FAKE_ERROR_RATE`, `FAKE_VERSION` qua biến môi trường để giả bản model tốt / xấu.
+| Có sẵn | NT548 thêm |
+|---|---|
+| `scripts/model_gateway.py`: nhiều upstream, cooldown khi lỗi, trọng số `URL@weight` (#14) | `/metrics` theo upstream (#15) |
+| `scikit-learn` trong dependency | Detector của #36 |
+| Workers AI làm dự phòng cho Clef (`docs/LLM_PROVIDER.md`) | Dùng cho tóm tắt sự cố (#38) khi có key trong GitHub Secret |
+
+## `/metrics` của gateway (#15)
+
+Định dạng Prometheus text. Khi có `MODEL_GATEWAY_API_KEY` thì cần gửi cùng bearer key.
+
+| Metric | Loại | Ý nghĩa |
+|---|---|---|
+| `gateway_requests_total{model,upstream,status}` | counter | `status` là mã HTTP; `error` khi upstream không trả lời; upstream `none` khi không còn upstream nào |
+| `gateway_upstream_latency_seconds{model,upstream}` | histogram | Thời gian tới khi upstream trả status (với Gemma stream là tới byte đầu) |
+| `gateway_upstream_up` | gauge | 1 khi upstream không trong cooldown |
+| `gateway_upstream_outstanding` | gauge | Số request đang chờ |
+| `gateway_upstream_weight` | gauge | Trọng số (1 khi không dùng `@weight`) |
 
 ## Các bước
 
-1. Thêm cú pháp `URL@weight` cho `--gemma-url` và `--clef-url`: chọn upstream theo trọng số trong số upstream đang không cooldown; không ghi trọng số thì như cũ. Giữ hành vi cũ để PR được lên TripGuardian. Test ở `tests/test_model_gateway.py` (đã có) thêm ca trọng số.
-2. Đếm theo upstream; `GET /metrics` dạng Prometheus text (`gateway_requests_total{upstream=…,status=…}`, `gateway_latency_seconds_bucket`).
-3. Thêm `llm-fake-v1`, `llm-fake-v2`, `model-gateway` vào compose (02); trỏ `AGENT_BASE_URL` và các `*_BASE_URL` khác của harness vào gateway.
-4. **Eval gate** (`ops/nt548/eval_gate.py`): gửi bộ câu cố định qua gateway tới từng upstream, đo tỷ lệ trả lời hợp lệ (JSON đúng schema khi vai trò yêu cầu), lỗi, p95. Dưới ngưỡng thì không tăng trọng số. Bộ câu lấy dạng từ `config/bench_assistant*.yaml`, không chép nội dung crawl.
-5. Workflow `nt548-model-canary.yml` (`workflow_dispatch`, input: upstream mới, trọng số): dựng gateway + 2 fake, eval gate, tăng 10 → 50 → 100 hoặc rollback; in bảng `/metrics`.
+1. **#36 phát hiện bất thường trên metric (LuanLuKim):**
+   - Alarm CloudWatch Anomaly Detection cho độ trễ p95, 5xx và số request theo target group (module `ops/nt548/terraform/modules/aiops`).
+   - Script `ops/nt548/aiops/detect.py` dùng EWMA / z-score và Isolation Forest, so với ngưỡng tĩnh trên cùng dữ liệu.
+2. **#37 gom mẫu log (Quỳnh):** Drain3 trên log container. Mẫu mới xuất hiện hoặc mẫu lỗi tăng đột biến được tính là bất thường. So với lệnh `pattern` của CloudWatch Logs Insights.
+3. **#38 tóm tắt sự cố (LuanLuKim):**
+   - Workflow chạy định kỳ trên runner `nt548-aws`. Khi alarm chuyển sang ALARM, workflow gom metric, top mẫu log và các lần deploy gần nhất.
+   - LLM viết tóm tắt cùng giả thuyết nguyên nhân, rồi mở issue nhãn `incident`.
+   - Lệnh gợi ý không tự chạy. Chỉ `canary_watch` được tự rollback.
+4. **#39 bơm lỗi và đánh giá (Quỳnh):**
+   - Kịch bản: LLM giả lỗi 30 %, chậm thêm 2 s, tắt một máy app, deploy bản trả 500, tải tăng đột biến.
+   - Đo MTTD của từng cách phát hiện, MTTR có tự động và không tự động, và số lần báo nhầm khi tải bình thường.
 
-## Nghiên cứu ghi vào báo cáo
+## Nghiên cứu ghi vào báo cáo (#18)
 
-- MLOps / LLMOps khác DevOps ở đâu: model và prompt là "phiên bản" giống code; chất lượng phải đo bằng eval, không chỉ bằng HTTP 200.
-- Shadow traffic (gửi song song, không trả cho người dùng) vs canary: ưu nhược, vì sao chọn canary.
-- Với model thật (ngoài phạm vi CI): eval gate dùng `config/prod_journey_cases.yaml` + `scripts/prod_journey_e2e.py --only <tập nhỏ>`; chỉ chạy khi có key, không chạy trên PR.
+- AIOps: chuỗi quan sát → phát hiện → chẩn đoán → hành động; các chỉ số MTTD, MTTR, báo nhầm.
+- Phát hiện bất thường: ngưỡng tĩnh, thống kê, ML; ưu nhược của từng cách.
+- Log: thuật toán Drain.
+- Phân tích canary tự động: Kayenta, Argo Rollouts.
+- LLM trong xử lý sự cố, và rủi ro bịa nguyên nhân.
+- Công cụ thương mại (DevOps Guru, Datadog Watchdog, Dynatrace Davis) và vì sao nhóm không dùng.
+- Predictive scaling: nêu làm hướng mở rộng.
+- LLMOps khác AIOps ở đâu.
 
 ## Kiểm thử
 
 | Kiểm | Đạt |
 |---|---|
-| Trọng số 90/10, 1.000 request | v2 nhận 7–13 % |
-| v2 lỗi 30 % | eval gate chặn, trọng số giữ 0 |
-| v2 sập | gateway cooldown v2, 100 % về v1, không lỗi phía harness |
+| Chuỗi tổng hợp có gai | `detect.py` báo đúng điểm gai, không báo ở đoạn ổn định |
+| LLM giả lỗi 30 % trên stack | Có ít nhất một cách phát hiện báo trong vài phút; mẫu log lỗi lên đầu danh sách |
+| Sự cố giả | Issue `incident` tự mở, nêu đúng nguyên nhân đã gây ra |
+| Đủ kịch bản #39 | Bảng MTTD / MTTR / báo nhầm chạy lại được bằng một lệnh |
 
 ## Xong khi
 
-`nt548-model-canary.yml` chạy xanh với v2 tốt và chặn được v2 xấu; PR trọng số gửi lên TripGuardian.
+Bảng số của #39 có trong `REPORT.md` §6 và cho thấy cách nào phát hiện tốt hơn ngưỡng tĩnh (hoặc kết luận rõ là không tốt hơn).

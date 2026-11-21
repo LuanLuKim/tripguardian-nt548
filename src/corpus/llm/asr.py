@@ -1,16 +1,21 @@
 """ASR role (docs/LLM_PROVIDER.md): local ChunkFormer on the GPU, Silero VAD in front of it.
 
 The model id is config (.env ASR_MODEL), loaded once per process. Audio I/O goes through soundfile: torchaudio >= 2.9
-needs torchcodec for files.
+needs torchcodec for files. torch and soundfile (the asr extra) load on first use, so CLIs that only reach this module
+through the corpus command table start without them.
 """
+
+from __future__ import annotations
 
 import os
 import re
 from functools import cache
+from typing import TYPE_CHECKING
 
-import soundfile as sf
-import torch
 from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    import torch
 
 from ..crawl.common.files import ROOT
 
@@ -27,6 +32,7 @@ def name() -> str:
 
 @cache
 def _asr():
+    import torch
     from chunkformer import ChunkFormerModel  # heavy import, only when a video is transcribed
 
     m = ChunkFormerModel.from_pretrained(name())
@@ -41,6 +47,9 @@ def _vad():
 
 
 def read(path) -> torch.Tensor:
+    import soundfile as sf
+    import torch
+
     audio, rate = sf.read(str(path), dtype="float32")
     if rate != RATE:
         raise ValueError(f"{path}: {rate} Hz, expected {RATE}")
@@ -48,6 +57,8 @@ def read(path) -> torch.Tensor:
 
 
 def write(path, audio: torch.Tensor) -> None:
+    import soundfile as sf
+
     sf.write(str(path), audio.numpy(), RATE)
 
 
@@ -88,6 +99,7 @@ def alt_name() -> str:
 
 @cache
 def _alt():
+    import torch
     from transformers import pipeline  # heavy import, only when asr_alt runs
 
     gpu = torch.cuda.is_available()

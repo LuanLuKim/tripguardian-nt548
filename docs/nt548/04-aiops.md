@@ -51,6 +51,56 @@ flowchart LR
 | `gateway_upstream_outstanding` | gauge | Số request đang chờ |
 | `gateway_upstream_weight` | gauge | Trọng số (1 khi không dùng `@weight`) |
 
+## Phát hiện bất thường trên metric (#36)
+
+`ops/nt548/aiops/detect.py` (numpy + scikit-learn, không cần AWS trừ lệnh `cloudwatch`):
+
+```sh
+python ops/nt548/aiops/detect.py synth spike --seed 1 --out spike.csv   # chuỗi tổng hợp t,value,label
+python ops/nt548/aiops/detect.py run spike.csv                           # alarm của từng detector, chấm điểm nếu có nhãn
+python ops/nt548/aiops/detect.py compare --seeds 20                      # bảng dưới
+python ops/nt548/aiops/detect.py cloudwatch --metric TargetResponseTime --stat p95     --dim TargetGroup=<…> --dim LoadBalancer=<…> --minutes 180 --out tg.csv   # trên runner, LabInstanceProfile
+```
+
+- Mỗi detector học "bình thường" từ `--train` điểm đầu (mặc định 200). Alarm bật khi `--persist` điểm liên tiếp bị gắn cờ (mặc định 2, kiểu "M of M datapoints" của CloudWatch).
+- `static`: ngưỡng cố định, mặc định 1,5 × max của đoạn train, như người vận hành đặt tay.
+- `ewma`: trung bình và phương sai EWMA (α = 0,05), cờ khi lệch quá 4 sd. Điểm bị cờ không cập nhật ước lượng.
+- `iforest`: Isolation Forest trên giá trị, độ thay đổi, độ lệch so với trung bình trượt, và pha chu kỳ (khi biết `--period`).
+- `combined`: `ewma` hoặc `iforest`. Đây là tín hiệu mà tóm tắt sự cố (#38) nghe.
+- Chấm điểm: sự cố được tính là bắt được nếu alarm bật trong lúc lỗi hoặc tối đa 10 điểm sau đó. Alarm bật ở chỗ không có lỗi là báo nhầm.
+
+Chuỗi tổng hợp giống độ trễ: nền 200, nhiễu sd 10, 720 điểm, một lỗi sau 1/3 chuỗi. Các kịch bản: `spike` (+150 trong 5 điểm), `drift` (+0,5 mỗi điểm trong 200 điểm rồi giữ +100), `seasonal_spike` (chu kỳ biên độ 60, gai +120 ở đáy chu kỳ), `level_shift` (+60 từ đó trở đi), `quiet` (không lỗi). Kết quả `compare --seeds 20` (21/11/2026), độ trễ tính bằng số điểm:
+
+| scenario | detector | detected / faults | median delay (points) | false alarms |
+|---|---|---|---|---|
+| spike | static | 18 / 20 | 1 | 0 |
+| spike | ewma | 20 / 20 | 1 | 0 |
+| spike | iforest | 16 / 20 | 1 | 6 |
+| spike | combined | 20 / 20 | 1 | 6 |
+| drift | static | 0 / 20 | - | 0 |
+| drift | ewma | 0 / 20 | - | 0 |
+| drift | iforest | 15 / 20 | 117 | 0 |
+| drift | combined | 15 / 20 | 117 | 0 |
+| seasonal_spike | static | 0 / 20 | - | 0 |
+| seasonal_spike | ewma | 0 / 20 | - | 0 |
+| seasonal_spike | iforest | 16 / 20 | 1 | 3 |
+| seasonal_spike | combined | 16 / 20 | 1 | 3 |
+| level_shift | static | 0 / 20 | - | 0 |
+| level_shift | ewma | 20 / 20 | 1 | 0 |
+| level_shift | iforest | 17 / 20 | 1 | 0 |
+| level_shift | combined | 20 / 20 | 1 | 0 |
+| quiet | static | 0 / 0 | - | 0 |
+| quiet | ewma | 0 / 0 | - | 0 |
+| quiet | iforest | 0 / 0 | - | 6 |
+| quiet | combined | 0 / 0 | - | 6 |
+
+Đọc bảng:
+- Ngưỡng tĩnh chỉ bắt được gai lớn. Nó không thấy mức tăng +60 hay rò rỉ chậm dưới vạch, và không thấy gai nằm dưới đỉnh chu kỳ.
+- EWMA nhanh, không báo nhầm, nhưng tự thích nghi theo rò rỉ chậm nên bỏ sót `drift`, và nhiễu bởi chu kỳ.
+- Isolation Forest là cách duy nhất bắt được `drift` và `seasonal_spike`. Đổi lại nó báo nhầm khoảng 6 lần trên 20 chuỗi × ~520 điểm, và bỏ sót vài gai vượt ra ngoài miền dữ liệu train (cây chỉ chia trong miền đã thấy).
+- Ghép hai cách (`combined`) bắt đủ `spike` và `level_shift`, giữ được phần mạnh của iforest; báo nhầm bằng của iforest.
+- Số trên metric thật của lab và số bơm lỗi (#39) chưa có.
+
 ## Các bước
 
 1. **#36 phát hiện bất thường trên metric (LuanLuKim):**

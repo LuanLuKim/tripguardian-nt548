@@ -11,6 +11,10 @@ gemma26b-a4b is an OpenAI-compatible server (vLLM; llama-server as rollback), pr
 --gemma-url the requests go to the upstream with the fewest outstanding requests; an upstream that refuses
 the connection or answers 502/503/504 is skipped for --cooldown seconds and the request goes to the next one.
 Several --clef-url (clef_server.py replicas) are balanced the same way.
+A URL may end in @<weight> (http://llm-v1:8000@90 --gemma-url http://llm-v2:8000@10): once any upstream of a model
+has a weight, its requests are split at random in proportion to the weights of the upstreams that are not cooling down
+(no suffix counts as 1). An upstream at weight 0 gets traffic only when every weighted one is down: a canary at 0 is
+off, yet still a fallback.
 clef-flash is a decision model, not a text generator: the chat request is turned
 into a SystemOne request and the answers come back as JSON in the message content.
 Clef needs `questions` (top-level, or inside a JSON user message); the `state` is
@@ -22,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import time
 import uuid
 from collections.abc import Callable
@@ -119,20 +124,49 @@ def sse(completion_body: dict[str, Any]):
 DOWN_STATUS = (502, 503, 504)
 
 
+def parse_upstream(spec: str) -> tuple[str, float | None]:
+    """"http://host:port@90" -> ("http://host:port", 90.0); no numeric @suffix -> (spec, None)."""
+    url, sep, tail = spec.rpartition("@")
+    if not sep or "/" in tail:
+        return spec, None
+    try:
+        weight = float(tail)
+    except ValueError:
+        return spec, None
+    if weight < 0:
+        raise ValueError(f"negative weight in {spec!r}")
+    return url, weight
+
+
 class Upstream:
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, weight: float | None = None) -> None:
         self.url = url.rstrip("/")
+        self.weight = weight
         self.outstanding = 0
         self.down_until = 0.0
 
 
 class Upstreams:
-    """Least-outstanding-requests choice over several servers of the same model, with a cooldown for failed ones."""
+    """Choice over several servers of the same model, with a cooldown for failed ones.
 
-    def __init__(self, urls: list[str], cooldown_s: float = 30.0, clock: Callable[[], float] = time.monotonic) -> None:
-        self.items = [Upstream(url) for url in urls]
+    Least outstanding requests by default; a random split by weight once any URL carries @<weight>.
+    """
+
+    def __init__(
+        self,
+        urls: list[str],
+        cooldown_s: float = 30.0,
+        clock: Callable[[], float] = time.monotonic,
+        rng: random.Random | None = None,
+    ) -> None:
+        self.items = [Upstream(*parse_upstream(url)) for url in urls]
+        self.weighted = any(item.weight is not None for item in self.items)
         self.cooldown_s = cooldown_s
         self.clock = clock
+        self.rng = rng or random.Random()
+
+    def weight(self, item: Upstream) -> float:
+        return 1.0 if item.weight is None else item.weight
 
     def acquire(self, exclude: tuple[Upstream, ...] = ()) -> Upstream | None:
         now = self.clock()
@@ -141,7 +175,12 @@ class Upstreams:
         usable = [item for item in pool if item.down_until <= now] or pool
         if not usable:
             return None
-        chosen = min(usable, key=lambda item: item.outstanding)
+        if self.weighted:
+            # weight 0 is a fallback only: used when no upstream with traffic is left
+            live = [item for item in usable if self.weight(item) > 0]
+            chosen = self.rng.choices(live, weights=[self.weight(i) for i in live])[0] if live else min(usable, key=lambda item: item.outstanding)
+        else:
+            chosen = min(usable, key=lambda item: item.outstanding)
         chosen.outstanding += 1
         return chosen
 
@@ -159,11 +198,12 @@ def build_app(
     transport: httpx.AsyncBaseTransport | None = None,
     cooldown_s: float = 30.0,
     clock: Callable[[], float] = time.monotonic,
+    rng: random.Random | None = None,
 ) -> FastAPI:
     app = FastAPI(title="model-gateway")
     client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=10.0), transport=transport, limits=httpx.Limits(max_connections=None, max_keepalive_connections=64))
-    upstreams = Upstreams([gemma_urls] if isinstance(gemma_urls, str) else list(gemma_urls), cooldown_s, clock)
-    clefs = Upstreams([clef_urls] if isinstance(clef_urls, str) else list(clef_urls), cooldown_s, clock)
+    upstreams = Upstreams([gemma_urls] if isinstance(gemma_urls, str) else list(gemma_urls), cooldown_s, clock, rng)
+    clefs = Upstreams([clef_urls] if isinstance(clef_urls, str) else list(clef_urls), cooldown_s, clock, rng)
 
     def authorize(request: Request) -> None:
         if api_key and request.headers.get("authorization") != f"Bearer {api_key}":
@@ -262,8 +302,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=30000)
-    parser.add_argument("--clef-url", action="append", help="repeat for several clef_server.py replicas (default http://127.0.0.1:30001)")
-    parser.add_argument("--gemma-url", action="append", help="repeat for several upstreams (default http://127.0.0.1:30002, llama.cpp)")
+    parser.add_argument("--clef-url", action="append", help="repeat for several clef_server.py replicas (default http://127.0.0.1:30001); URL@weight splits by weight")
+    parser.add_argument("--gemma-url", action="append", help="repeat for several upstreams (default http://127.0.0.1:30002, llama.cpp); URL@weight splits by weight")
     parser.add_argument("--cooldown", type=float, default=30.0, help="seconds a failed upstream is skipped")
     args = parser.parse_args()
     app = build_app(

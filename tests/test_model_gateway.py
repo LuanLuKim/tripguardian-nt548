@@ -98,6 +98,57 @@ def test_least_outstanding_picks_the_idle_upstream():
     assert upstreams.acquire().url == first.url
 
 
+def test_url_weight_suffix_is_parsed_and_plain_urls_are_untouched():
+    assert gateway.parse_upstream("http://a:1@90") == ("http://a:1", 90.0)
+    assert gateway.parse_upstream("http://a:1@0.5") == ("http://a:1", 0.5)
+    assert gateway.parse_upstream("http://a:1") == ("http://a:1", None)
+    assert gateway.parse_upstream("http://user@host:1/v1") == ("http://user@host:1/v1", None)  # userinfo, not a weight
+
+
+def test_weights_split_traffic_90_10():
+    import random
+
+    upstreams = gateway.Upstreams(["http://v1@90", "http://v2@10"], clock=lambda: 0.0, rng=random.Random(7))
+    picks = []
+    for _ in range(1000):
+        item = upstreams.acquire()
+        picks.append(item.url)
+        upstreams.release(item)
+    share = picks.count("http://v2") / len(picks)
+    assert 0.07 <= share <= 0.13
+
+
+def test_weight_zero_is_off_but_takes_over_when_the_rest_is_down():
+    import random
+
+    now = [0.0]
+    upstreams = gateway.Upstreams(["http://v1@100", "http://v2@0"], cooldown_s=10.0, clock=lambda: now[0], rng=random.Random(1))
+    assert {upstreams.acquire().url for _ in range(50)} == {"http://v1"}
+    upstreams.mark_down(upstreams.items[0])
+    assert upstreams.acquire().url == "http://v2"
+
+
+def test_weighted_route_sends_canary_share_and_survives_canary_down():
+    import random
+
+    handlers = {"http://v1:1": ok("v1"), "http://v2:2": lambda r: resp(503, {"error": "down"})}
+    calls = []
+
+    def route(request):
+        base = f"{request.url.scheme}://{request.url.host}:{request.url.port}"
+        calls.append(base)
+        return handlers[base](request)
+
+    app = gateway.build_app(
+        "http://clef", ["http://v1:1@50", "http://v2:2@50"], "", transport=httpx.MockTransport(route), rng=random.Random(3)
+    )
+    client = TestClient(app)
+    # v2 is down: every request still ends on v1, and v2 is tried at most once before its cooldown
+    for _ in range(20):
+        assert client.post("/v1/chat/completions", json=BODY).json() == {"served_by": "v1"}
+    assert calls.count("http://v2:2") == 1
+
+
 CLEF_BODY = {"model": "clef-flash", "state": {"message": "hi"}, "questions": {"q": {"type": "noul", "instructions": "yes?"}}}
 CLEF_ANSWER = {"model": "clef-flash", "answers": {"q": {"type": "noul", "noul": 0.9}}, "usage": {"input_tokens": 5}}
 

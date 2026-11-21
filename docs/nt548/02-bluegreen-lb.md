@@ -55,7 +55,7 @@ Build context là gốc repo (riêng `llm-fake` là `ops/nt548/llm_fake`). Mỗi
 | Image | Dockerfile | Chạy |
 |---|---|---|
 | `harness` | `ops/nt548/compose/harness.Dockerfile` (python:3.12-slim, cài dependency của `pyproject.toml` + fastapi, uvicorn; `PYTHONPATH=/app/src`) | mặc định `harness_stub.py`; `python -m harness serve` khi có dữ liệu mẫu; cũng chạy `scripts/model_gateway.py` |
-| `web` | `ops/nt548/compose/web.Dockerfile` (node:24-slim, `npm ci && npm run build:prod`) | `node server.mjs`, cổng `PORT` (8080) |
+| `web` | `ops/nt548/compose/web.Dockerfile` (node:24-slim, `npm ci && npm run build:prod`) | `node server.mjs` trên `127.0.0.1:PORT` (28899); `node edge.mjs` mở ra `0.0.0.0:8080` |
 | `llm-fake` | `ops/nt548/llm_fake/Dockerfile` | `server.py` cổng 8000 (`04-aiops.md` §LLM giả) |
 
 `web/public/data` không có trong git nên web trong image chưa có dữ liệu địa điểm; giao diện vẫn lên, `GET /` trả 200.
@@ -70,14 +70,14 @@ docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml u
 
 ```mermaid
 flowchart LR
-  ALB[":8080"] --> W["web<br/>(network_mode: service:harness)"]
+  ALB[":8080"] --> E["edge<br/>0.0.0.0:8080"] -->|127.0.0.1:28899| W["web<br/>(network_mode: service:harness)"]
   W -->|127.0.0.1:8769| H["harness<br/>(stub mặc định)"]
   H --> G["model-gateway :30000"]
   G -->|"@LLM_WEIGHT_V1"| F1["llm-fake-v1"]
   G -->|"@LLM_WEIGHT_V2"| F2["llm-fake-v2"]
 ```
 
-- `web/server.mjs` chỉ gọi harness qua `127.0.0.1`, nên web dùng chung network namespace với harness; cổng `8080` publish trên service `harness`.
+- `web/server.mjs` chỉ nghe và chỉ gọi harness trên `127.0.0.1`, nên web, `edge` và harness dùng chung một network namespace; `edge` (`ops/nt548/compose/edge.mjs`, TCP pass-through) mở `0.0.0.0:8080`, publish trên service `harness`.
 - Biến: `COLOR`, `IMAGE_TAG` (mặc định `main`), `REGISTRY`, `HARNESS_CMD` (mặc định là stub), `DATABASE_URL` (chỉ harness thật), `DATA_RELEASE` (mặc định `r-a`, mount `ops/nt548/sample-data/<release>` chỉ đọc vào `/data`), `LLM_WEIGHT_V1` / `LLM_WEIGHT_V2`, `FAKE_V{1,2}_DELAY_MS` / `_ERROR_RATE` / `_ERROR_STATUS` để bơm lỗi (#39).
 - Stub (`ops/nt548/compose/harness_stub.py`): `/api/harness/me`, `/api/auth/*` trả 401; `/api/harness/*` khác trả 200; mọi trả lời có header `X-Color`, `X-Image-Tag`; `GET /api/harness/nt548-version` trả màu và tag.
 

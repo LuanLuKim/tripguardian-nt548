@@ -34,18 +34,29 @@ services:
     volumes:
       - ${SAMPLE_DATA:-../sample-data}/${DATA_RELEASE:-r-a}:/data:ro
     ports:
-      - "8080:8080"   # web shares this network namespace (web/server.mjs reaches the harness on 127.0.0.1 only)
+      - "8080:8080"   # edge (0.0.0.0:8080 -> web 127.0.0.1:28899) shares this network namespace, as does web
     depends_on: [model-gateway]
     restart: unless-stopped
     logging: *logging
 
   web:
-    image: ${REGISTRY:-ghcr.io/luanlukim/tripguardian-nt548}/web:${IMAGE_TAG:-main}
+    image: &web_image ${REGISTRY:-ghcr.io/luanlukim/tripguardian-nt548}/web:${IMAGE_TAG:-main}
     network_mode: service:harness
     environment:
-      PORT: "8080"
+      PORT: "28899"   # web/server.mjs listens on 127.0.0.1 only; edge publishes it
       HARNESS_PORT: "8769"
     depends_on: [harness]
+    restart: unless-stopped
+    logging: *logging
+
+  edge:
+    image: *web_image
+    command: ["node", "edge.mjs"]
+    network_mode: service:harness
+    environment:
+      EDGE_PORT: "8080"
+      UPSTREAM_PORT: "28899"
+    depends_on: [web]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 10s

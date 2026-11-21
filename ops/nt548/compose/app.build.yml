@@ -7,6 +7,8 @@ services:
     build: {context: ../../.., dockerfile: ops/nt548/compose/harness.Dockerfile}
   web:
     build: {context: ../../.., dockerfile: ops/nt548/compose/web.Dockerfile}
+  edge:
+    build: {context: ../../.., dockerfile: ops/nt548/compose/web.Dockerfile}
   llm-fake-v1:
     build: {context: ../llm_fake}
   llm-fake-v2:

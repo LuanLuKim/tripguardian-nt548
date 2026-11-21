@@ -1,4 +1,5 @@
-# Web image: the built SPA served by web/server.mjs (proxies /api/harness/* to 127.0.0.1:HARNESS_PORT).
+# Web image: the built SPA served by web/server.mjs (loopback :PORT, proxies /api/harness/* to 127.0.0.1:HARNESS_PORT),
+# and edge.mjs, which exposes it on 0.0.0.0:8080.
 # Build context: repo root; only web/ goes in (web.Dockerfile.dockerignore). web/public/data is not in git, so the
 # image has no place data until the sample data (T5) provides it.
 #   docker build -f ops/nt548/compose/web.Dockerfile -t web .
@@ -10,10 +11,11 @@ COPY web/ ./
 RUN npm run build:prod
 
 FROM node:24-slim
-ENV NODE_ENV=production PORT=8080 HARNESS_PORT=8769
+ENV NODE_ENV=production PORT=28899 HARNESS_PORT=8769
 WORKDIR /app/web
 COPY --from=build /app/web/dist dist
 COPY web/server.mjs server.mjs
+COPY ops/nt548/compose/edge.mjs edge.mjs
 ARG REVISION=unknown
 LABEL org.opencontainers.image.source="https://github.com/LuanLuKim/tripguardian-nt548" \
       org.opencontainers.image.revision="${REVISION}"

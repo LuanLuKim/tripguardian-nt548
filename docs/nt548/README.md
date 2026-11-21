@@ -33,14 +33,14 @@ Không có server. Mọi thứ chạy trên runner GitHub (miễn phí với rep
 | T1 | CI/CD, image GHCR, bảo vệ nhánh | LuanLuKim | [01-ci-cd.md](01-ci-cd.md) | — |
 | T2 | Compose + Nginx blue/green, `deploy.sh` | Đình Long (`dinhlong06`) | [02-bluegreen-lb.md](02-bluegreen-lb.md) | T1 |
 | T3 | Canary tự động, scale, đo tải | Quỳnh (`DontMadWhenBad`) | [03-canary-scale.md](03-canary-scale.md) | T2 |
-| T4 | AI ops: LLM giả, chia luồng model, eval gate | hohoangluan | [04-aiops.md](04-aiops.md) | T2 |
-| T5 | DataOps: dữ liệu mẫu, kiểm release, đổi release | hohoangluan | [05-dataops.md](05-dataops.md) | T1 |
+| T4 | AI ops: LLM giả, chia luồng model, eval gate | LuanLuKim + Quỳnh | [04-aiops.md](04-aiops.md) | T2 |
+| T5 | DataOps: dữ liệu mẫu, kiểm release, đổi release | hohoangluan + Đình Long | [05-dataops.md](05-dataops.md) | T1 |
 | T6 | Demo Kubernetes `kind` | Quỳnh | [06-k8s-demo.md](06-k8s-demo.md) | T2 |
 | T7 | Sync TripGuardian tự động, báo cáo, slide | Đình Long | [07-sync-report.md](07-sync-report.md) | T1–T6 |
 
 Thứ tự: T1 → T2 → (T3, T4, T6 song song) → T7. T5 bắt đầu ngay sau T1, vì nó trả lời câu hỏi rủi ro nhất: harness có chạy được với dữ liệu mẫu không.
 
-Mỗi mảng có một issue trên GitHub (nhãn `nt548`). Ghi tiến độ vào issue, không ghi vào file này.
+Mỗi mảng có một issue trên GitHub (nhãn `nt548`). T4 (#4, nhãn `aiops`) và T5 (#5, nhãn `dataops`) chia thành issue con, mỗi issue con một người. Ghi tiến độ vào issue, không ghi vào file này.
 
 ## Trạng thái (2026-11-20)
 

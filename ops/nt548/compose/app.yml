@@ -1,0 +1,87 @@
+# One color of the NT548 stack on one machine (design §7.1, contract with T8): web on :8080, GET / -> 200.
+#   COLOR=blue IMAGE_TAG=<sha> docker compose -f ops/nt548/compose/app.yml up -d
+# Variables (all optional): COLOR, IMAGE_TAG (default main), REGISTRY, HARNESS_CMD (default: the stub),
+# DATABASE_URL (real harness only), DATA_RELEASE (default r-a), SAMPLE_DATA, LLM_WEIGHT_V1 / LLM_WEIGHT_V2 (gateway split),
+# FAKE_V{1,2}_DELAY_MS / FAKE_V{1,2}_ERROR_RATE / FAKE_V{1,2}_ERROR_STATUS (fault injection, #39).
+name: tg-${COLOR:-blue}
+
+x-image: &harness_image ${REGISTRY:-ghcr.io/luanlukim/tripguardian-nt548}/harness:${IMAGE_TAG:-main}
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
+services:
+  harness:
+    image: *harness_image
+    # The real one: HARNESS_CMD="python -m harness serve" once DATA_RELEASE holds sample data (T5) and DATABASE_URL is set.
+    command: ${HARNESS_CMD:-python ops/nt548/compose/harness_stub.py}
+    environment:
+      COLOR: ${COLOR:-blue}
+      IMAGE_TAG: ${IMAGE_TAG:-main}
+      DATA_DIR: /data
+      DATA_RELEASE: ${DATA_RELEASE:-r-a}
+      DATABASE_URL: ${DATABASE_URL:-}
+      # every model role goes through the gateway to the fake LLMs (no key, no GPU)
+      AGENT_BASE_URL: http://model-gateway:30000/v1
+      AGENT_MODEL: gemma26b-a4b
+      AGENT_API_KEY: fake
+      NAVIGATOR_BASE_URL: http://model-gateway:30000/v1
+      NAVIGATOR_MODEL: gemma26b-a4b
+      NAVIGATOR_API_KEY: fake
+      WRITER_BASE_URL: http://model-gateway:30000/v1
+      WRITER_MODEL: gemma26b-a4b
+      WRITER_API_KEY: fake
+    volumes:
+      - ${SAMPLE_DATA:-../sample-data}/${DATA_RELEASE:-r-a}:/data:ro
+    ports:
+      - "8080:8080"   # web shares this network namespace (web/server.mjs reaches the harness on 127.0.0.1 only)
+    depends_on: [model-gateway]
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    image: ${REGISTRY:-ghcr.io/luanlukim/tripguardian-nt548}/web:${IMAGE_TAG:-main}
+    network_mode: service:harness
+    environment:
+      PORT: "8080"
+      HARNESS_PORT: "8769"
+    depends_on: [harness]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    logging: *logging
+
+  model-gateway:
+    image: *harness_image
+    command: >-
+      python scripts/model_gateway.py --port 30000 --cooldown 10
+      --gemma-url http://llm-fake-v1:8000@${LLM_WEIGHT_V1:-100}
+      --gemma-url http://llm-fake-v2:8000@${LLM_WEIGHT_V2:-0}
+      --clef-url http://llm-fake-v1:8000
+    depends_on: [llm-fake-v1, llm-fake-v2]
+    restart: unless-stopped
+    logging: *logging
+
+  llm-fake-v1:
+    image: ${REGISTRY:-ghcr.io/luanlukim/tripguardian-nt548}/llm-fake:${IMAGE_TAG:-main}
+    environment:
+      FAKE_VERSION: v1
+      FAKE_DELAY_MS: ${FAKE_V1_DELAY_MS:-0}
+      FAKE_ERROR_RATE: ${FAKE_V1_ERROR_RATE:-0}
+      FAKE_ERROR_STATUS: ${FAKE_V1_ERROR_STATUS:-500}
+    restart: unless-stopped
+    logging: *logging
+
+  llm-fake-v2:
+    image: ${REGISTRY:-ghcr.io/luanlukim/tripguardian-nt548}/llm-fake:${IMAGE_TAG:-main}
+    environment:
+      FAKE_VERSION: v2
+      FAKE_DELAY_MS: ${FAKE_V2_DELAY_MS:-0}
+      FAKE_ERROR_RATE: ${FAKE_V2_ERROR_RATE:-0}
+      FAKE_ERROR_STATUS: ${FAKE_V2_ERROR_STATUS:-500}
+    restart: unless-stopped
+    logging: *logging

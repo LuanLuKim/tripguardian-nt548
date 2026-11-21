@@ -1,0 +1,8 @@
+*
+!web/
+web/node_modules
+web/dist
+web/shots
+web/public/data
+web/.env
+web/.env.*

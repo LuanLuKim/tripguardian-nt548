@@ -5,7 +5,11 @@ import threading
 import time
 import types
 
+import pytest
+
 from corpus.index.embedder import Embedder
+
+pytest.importorskip("torch")  # the loaders reach torch (dtype, no_grad) even with a fake transformers
 
 
 def test_two_threads_load_the_text_model_once(monkeypatch):

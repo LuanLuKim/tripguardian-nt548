@@ -1,5 +1,7 @@
 """python -m planning bench: the case file loads, every case is well formed, and the helpers agree (no model call)."""
 
+import pytest
+
 from planning import bench
 
 
@@ -28,6 +30,7 @@ def test_tools_used_reads_the_turn_log():
     assert bench.tools_used(log) == {"plan", "move_place"}
 
 
+@pytest.mark.corpus
 def test_a_move_and_a_reorder_on_the_full_bench_plan_are_applied_not_refused():
     """Root cause of move 0.0 / reorder 0.0 (2026-10-30): the bench plan is full, so every move leaves the day past its end or
     a sunrise place off its time; the assistant took each act back. Now only physical / impossible violations are refused;

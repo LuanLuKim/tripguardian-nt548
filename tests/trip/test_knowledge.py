@@ -34,6 +34,9 @@ def test_place_and_similar(knowledge, kids_hard_state):
 
 
 def test_weather_at_the_center(knowledge):
+    from corpus.views import climate_normals
+    if not climate_normals("dalat"):
+        pytest.skip("no built climate view (data/ is not in git): python -m corpus views climate dalat")
     out = knowledge.weather(date(2026, 11, 1))
     assert out == {"date": "2026-11-01", "rain_prob": 0.4, "rain_mm": 2.5, "source": "open-meteo",
                    "fetched_at": "2026-10-28T08:00:00Z",

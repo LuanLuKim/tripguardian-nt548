@@ -20,6 +20,12 @@ from bench import prod_cases
 CASES = prod_cases.load()
 
 
+@pytest.fixture(autouse=True)
+def no_service_corpus(monkeypatch):
+    """No corpus here (module docstring): the service listing is empty, like `records` in the tests that stub it."""
+    monkeypatch.setattr(runner, "service_records", lambda: {})
+
+
 def test_loads_about_forty_unique_cases():
     assert 40 <= len(CASES) <= 60
     assert len({c.id for c in CASES}) == len(CASES)
@@ -284,6 +290,8 @@ def test_evidence_must_occur_in_actual_user_text(monkeypatch):
 def test_offline_recheck_preserves_other_checks_and_source(monkeypatch, tmp_path):
     import json
 
+    if not (runner.OUT / "recheck.py").is_file():
+        pytest.skip("prod e2e matrix is not in git (.superpowers/ is ignored)")
     spec = importlib.util.spec_from_file_location("matrix_recheck", runner.OUT / "recheck.py")
     offline = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(offline)

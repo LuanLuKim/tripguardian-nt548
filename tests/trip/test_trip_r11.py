@@ -19,6 +19,8 @@ def field(value):
 
 
 def matrix_state(name):
+    if not MATRIX.is_dir():
+        pytest.skip("prod e2e matrix is not in git (.superpowers/ is ignored)")
     context = json.loads((MATRIX / f"{name}.json").read_text())["search_input_context"]
     frame = context["frame"]
     return TripState.model_validate({

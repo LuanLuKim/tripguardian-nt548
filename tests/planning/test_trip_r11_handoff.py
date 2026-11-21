@@ -23,6 +23,8 @@ def field(value):
     ("day_trip_early_flight", "bus", "09:45"),
 ])
 def test_readback_and_public_planning_share_window_and_routed_exit(case, mode, start):
+    if not MATRIX.is_dir():
+        pytest.skip("prod e2e matrix is not in git (.superpowers/ is ignored)")
     context = json.loads((MATRIX / f"{case}.json").read_text())["search_input_context"]
     frame = {key: field({**value, "how": mode}) for key in ("arrive", "leave")
              if (value := context["frame"][key])}

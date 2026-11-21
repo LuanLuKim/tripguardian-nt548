@@ -81,6 +81,9 @@ def test_extractor_on_uit_switch_moves_only_the_extractor(monkeypatch):
     monkeypatch.setenv("UIT_API_BASE_URL", "https://uit/v1")
     monkeypatch.setenv("UIT_API_MODEL", "uit-gemma")
     monkeypatch.setenv("EXTRACTOR_ON_UIT", "1")
+    # the default extractor's endpoint (.env on a dev machine), read once the switch is off
+    for name, value in {"LLM_API_KEY": "x", "EXTRACTOR_BASE_URL": "http://lan/v1", "EXTRACTOR_MODEL": "lan-gemma"}.items():
+        monkeypatch.setenv(name, value)
     client, model = roles.EXTRACTOR.client()
     assert str(client.base_url).startswith("https://uit") and model == "uit-gemma" and roles.EXTRACTOR.parallel() == 38
     monkeypatch.delenv("EXTRACTOR_ON_UIT")

@@ -80,7 +80,9 @@ def test_v2_cases_load_and_follow_the_documented_format():
     link = next(c for c in items if c.id == "link-maps")
     assert link.turns[-1][0].endswith("17z") and "https://www.google.com/maps" in link.turns[-1][0]
     ok, skipped = runnable(items)
-    assert not skipped and all(c.photos for c in items if c.family == "photo")  # the fixtures are in tests/fixtures/perceive/app/
+    # the fixtures are in tests/fixtures/perceive/; only photos from the local data/ and web/shots/ (not in git) may be missing
+    assert all(any(p.startswith(("data/", "web/shots/")) for p in c.photos) for c in items if c.id in skipped)
+    assert all(c.photos for c in items if c.family == "photo")
     assert next(c for c in items if c.id == "photo-what").photo_sure is False
     assert next(c for c in items if c.id == "rule-r3").blocked == "R3"
 

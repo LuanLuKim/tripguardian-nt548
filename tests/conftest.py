@@ -1,7 +1,16 @@
 import os
 import uuid
+from pathlib import Path
 
 import pytest
+
+SNAPSHOT = Path(__file__).resolve().parents[1] / "data" / "snapshot" / "current"
+
+
+def pytest_runtest_setup(item):
+    """Marker corpus: skipped without data/snapshot/current (pyproject markers); data/ is not in git."""
+    if item.get_closest_marker("corpus") and not SNAPSHOT.exists():
+        pytest.skip("no data/snapshot/current: python -m corpus snapshot")
 
 
 @pytest.fixture

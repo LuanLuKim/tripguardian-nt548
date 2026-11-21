@@ -57,6 +57,8 @@ def test_served_groups_reads_the_current_release(tmp_path):
 
 def _page(name):
     pw = pytest.importorskip("playwright.sync_api")
+    if not os.path.isfile(os.path.join(FIXTURES, name)):
+        pytest.skip(f"saved Maps page {name} is not in git (tests/fixtures/gmaps/ is ignored)")
     return pw, open(os.path.join(FIXTURES, name), encoding="utf-8").read()
 
 

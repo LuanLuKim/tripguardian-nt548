@@ -1,0 +1,67 @@
+name: nt548-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ruff "pytest>=8" "fastapi>=0.110" "uvicorn>=0.29" httpx
+      - run: ruff check --select F,E9 ops/nt548 tests/nt548
+      - run: python -m pytest -q tests/nt548
+      - run: docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml config --quiet
+
+  app-smoke:
+    # app.yml as a T8 machine runs it, images built from this commit: GET / -> 200 on :8080, the stub names its color,
+    # and a chat completion goes web-free through model-gateway to the fake LLM.
+    runs-on: ubuntu-latest
+    env:
+      COLOR: green
+      IMAGE_TAG: ci-${{ github.sha }}
+      COMPOSE: docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml
+    steps:
+      - uses: actions/checkout@v4
+      - run: $COMPOSE build
+      - run: $COMPOSE up -d
+      - name: wait for GET / on :8080
+        run: |
+          for i in $(seq 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ || true)
+            [ "$code" = 200 ] && echo "GET / -> 200 after ${i}s" && exit 0
+            sleep 1
+          done
+          $COMPOSE ps; $COMPOSE logs; exit 1
+      - name: harness stub names its color
+        run: |
+          curl -sf http://127.0.0.1:8080/api/harness/nt548-version | tee /dev/stderr | grep -q '"color": "green"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/harness/me)" = 401
+      - name: gateway answers through the fake LLM
+        run: |
+          $COMPOSE exec -T model-gateway python -c "
+          import httpx
+          r = httpx.post('http://127.0.0.1:30000/v1/chat/completions', json={'model': 'gemma26b-a4b', 'messages': [{'role': 'user', 'content': 'hi'}]}, timeout=10)
+          print(r.status_code, r.text); assert r.status_code == 200 and '[fake v1]' in r.text
+          m = httpx.get('http://127.0.0.1:30000/metrics', timeout=10).text
+          assert 'gateway_requests_total' in m, m"
+      - name: no secret or data in the images
+        run: |
+          for img in harness web llm-fake; do
+            docker run --rm --entrypoint sh "ghcr.io/luanlukim/tripguardian-nt548/$img:$IMAGE_TAG" -c '
+              for f in /app/.env /app/data /app/web/.env /app/web/public/data /app/web/dist/data/snapshot.json; do
+                if [ -e "$f" ]; then echo "found $f"; exit 1; fi
+              done'
+          done
+      - if: always()
+        run: $COMPOSE logs --no-color | tail -n 200; $COMPOSE down -v

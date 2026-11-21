@@ -1,4 +1,4 @@
-# 04. AI ops: AIOps cho TripGuardian (T4, LuanLuKim + Quỳnh)
+# 04. AI ops: AIOps cho TripGuardian (T4, LuanLuKim + DontMadWhenBad)
 
 Chủ dự án chốt 21/11: **AI ops của đồ án = AIOps**, tức dùng AI / ML để vận hành hệ thống. Phần LLMOps cũ (eval gate #16, canary model #17) thành không bắt buộc. Issue cha: #4.
 
@@ -56,12 +56,12 @@ flowchart LR
 1. **#36 phát hiện bất thường trên metric (LuanLuKim):**
    - Alarm CloudWatch Anomaly Detection cho độ trễ p95, 5xx và số request theo target group (module `ops/nt548/terraform/modules/aiops`).
    - Script `ops/nt548/aiops/detect.py` dùng EWMA / z-score và Isolation Forest, so với ngưỡng tĩnh trên cùng dữ liệu.
-2. **#37 gom mẫu log (Quỳnh):** Drain3 trên log container. Mẫu mới xuất hiện hoặc mẫu lỗi tăng đột biến được tính là bất thường. So với lệnh `pattern` của CloudWatch Logs Insights.
+2. **#37 gom mẫu log (DontMadWhenBad):** Drain3 trên log container. Mẫu mới xuất hiện hoặc mẫu lỗi tăng đột biến được tính là bất thường. So với lệnh `pattern` của CloudWatch Logs Insights.
 3. **#38 tóm tắt sự cố (LuanLuKim):**
    - Workflow chạy định kỳ trên runner `nt548-aws`. Khi alarm chuyển sang ALARM, workflow gom metric, top mẫu log và các lần deploy gần nhất.
    - LLM viết tóm tắt cùng giả thuyết nguyên nhân, rồi mở issue nhãn `incident`.
    - Lệnh gợi ý không tự chạy. Chỉ `canary_watch` được tự rollback.
-4. **#39 bơm lỗi và đánh giá (Quỳnh):**
+4. **#39 bơm lỗi và đánh giá (DontMadWhenBad):**
    - Kịch bản: LLM giả lỗi 30 %, chậm thêm 2 s, tắt một máy app, deploy bản trả 500, tải tăng đột biến.
    - Đo MTTD của từng cách phát hiện, MTTR có tự động và không tự động, và số lần báo nhầm khi tải bình thường.
 

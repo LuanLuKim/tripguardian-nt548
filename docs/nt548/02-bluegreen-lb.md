@@ -1,4 +1,4 @@
-# 02. Load balancer và blue/green bằng Compose + Nginx (T2, Đình Long)
+# 02. Load balancer và blue/green bằng Compose + Nginx (T2, dinhlong06)
 
 Đọc xong làm được: một lệnh dựng stack hai màu, đổi traffic giữa hai màu không rớt request, rollback < 1 phút, và workflow diễn tập toàn bộ trong CI.
 

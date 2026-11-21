@@ -133,9 +133,9 @@ Bốn khối, hai cặp. Mỗi cặp làm trọn hai khối; hai cặp làm song
 
 | Cặp | Khối | Issue |
 |---|---|---|
-| **H + Đ** (hohoangluan, Đình Long `dinhlong06`) | **T8. Hạ tầng AWS:** Terraform (bootstrap, VPC, ALB + 2 target group, ASG mỗi màu + scale theo CPU), monitoring CloudWatch, giữ chi phí | #21 (con #22–#27) |
+| **hohoangluan + `dinhlong06`** | **T8. Hạ tầng AWS:** Terraform (bootstrap, VPC, ALB + 2 target group, ASG mỗi màu + scale theo CPU), monitoring CloudWatch, giữ chi phí | #21 (con #22–#27) |
 | | **T5. DataOps:** dữ liệu mẫu (R1), `data_check`, đổi / lùi release dữ liệu trên AWS | #5 |
-| **L + Q** (LuanLuKim, Quỳnh `DontMadWhenBad`) | **T9. CI/CD và phát hành:** CI xanh, image GHCR, compose của app, diễn tập blue/green trong CI, workflow deploy lên AWS qua runner, canary tự rollback, đo tải k6 | #28 (con #1, #2, #3, #29) |
+| **LuanLuKim + `DontMadWhenBad`** | **T9. CI/CD và phát hành:** CI xanh, image GHCR, compose của app, diễn tập blue/green trong CI, workflow deploy lên AWS qua runner, canary tự rollback, đo tải k6 | #28 (con #1, #2, #3, #29) |
 | | **T4. AI ops = AIOps** (chủ dự án 21/11): phát hiện bất thường trên metric, gom mẫu log, tóm tắt sự cố, bơm lỗi đo MTTD / MTTR; nền là LLM giả + trọng số + `/metrics` trong `model_gateway`. Eval gate, canary model: không bắt buộc | #4 |
 | Cả bốn | **T7. Báo cáo, slide** | #7 |
 
@@ -154,7 +154,7 @@ Mỗi cặp thử trên Learner Lab của mình bằng biến `name_prefix`. Lab
 
 ### Lịch
 
-| Ngày | H + Đ | L + Q |
+| Ngày | hohoangluan + dinhlong06 | LuanLuKim + DontMadWhenBad |
 |---|---|---|
 | 21–23/11 | R2 quyền `LabRole`, bootstrap, VPC · R1 (#8) | CI xanh (#1), Dockerfile + GHCR, `app.yml` · LLM giả (#13), trọng số gateway (#14) |
 | 24–27/11 | ALB + ASG với image giữ chỗ, scale CPU · `data_check` (#10), dữ liệu mẫu (#9) | Diễn tập blue/green trong CI (#2), `nt548-deploy-aws` trên lab của mình · `/metrics` (#15), eval gate (#16) |

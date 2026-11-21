@@ -1,4 +1,4 @@
-# 06. Demo Kubernetes bằng `kind` trong CI (T6, Quỳnh)
+# 06. Demo Kubernetes bằng `kind` trong CI (T6, DontMadWhenBad)
 
 Phần điểm cộng, làm sau khi 02 chạy. Thiếu thời gian thì bỏ, không ảnh hưởng phần chính.
 

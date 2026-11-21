@@ -1,4 +1,4 @@
-# 03. Canary tự động và scale (T3, Quỳnh)
+# 03. Canary tự động và scale (T3, DontMadWhenBad)
 
 Đọc xong làm được: canary tự promote hoặc tự rollback dựa trên số đo; scale harness / web lên N bản và có bảng số đo trước / sau.
 

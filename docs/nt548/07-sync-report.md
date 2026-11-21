@@ -1,4 +1,4 @@
-# 07. Sync TripGuardian và báo cáo cuối (T7, Đình Long)
+# 07. Sync TripGuardian và báo cáo cuối (T7, dinhlong06)
 
 ## Sync
 

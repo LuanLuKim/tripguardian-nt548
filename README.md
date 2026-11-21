@@ -109,4 +109,4 @@ Quy tắc làm việc: `RULE.md`. Hướng dẫn cho coding agent: `AGENTS.md`.
 
 ## Tác giả
 
-Hồ Hoàng Luân · [github.com/hohoangluan](https://github.com/hohoangluan). Góp ý, báo lỗi: [Issues](https://github.com/hohoangluan/tripguardian/issues).
+[hohoangluan](https://github.com/hohoangluan) · [dinhlong06](https://github.com/dinhlong06) · [LuanLuKim](https://github.com/LuanLuKim) · [pngochuong](https://github.com/pngochuong). Góp ý, báo lỗi: [Issues](https://github.com/hohoangluan/tripguardian/issues).

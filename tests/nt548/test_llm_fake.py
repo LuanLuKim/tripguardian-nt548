@@ -1,6 +1,7 @@
 """ops/nt548/llm_fake/server.py: OpenAI-compatible, deterministic, with injected delay and errors."""
 
 import importlib.util
+import sys
 import json
 import random
 import time
@@ -14,6 +15,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("llm_fake", Path(__file__).resolve().parents[2] / "ops/nt548/llm_fake/server.py")
 fake = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = fake  # dataclasses look their module up there
 spec.loader.exec_module(fake)
 
 MSGS = [{"role": "user", "content": "Gợi ý quán cà phê ở Đà Lạt"}]

@@ -35,7 +35,7 @@ Hai cặp làm song song, chỉ gặp nhau ở **hợp đồng giữa khối** (
 | hohoangluan + Đình Long (`dinhlong06`) | T8. Hạ tầng AWS: Terraform, ALB, ASG + scale, CloudWatch, giữ chi phí | #21 (con #22–#27) | `08-aws-infra.md` (cặp viết khi làm) |
 | | T5. DataOps: dữ liệu mẫu, `data_check`, đổi / lùi release | #5 (con #8–#12) | [05-dataops.md](05-dataops.md) |
 | LuanLuKim + Quỳnh (`DontMadWhenBad`) | T9. CI/CD và phát hành: CI, GHCR, diễn tập blue/green, deploy lên AWS, canary, k6 | #28 (con #1, #2, #3, #29) | [01-ci-cd.md](01-ci-cd.md), [02-bluegreen-lb.md](02-bluegreen-lb.md), [03-canary-scale.md](03-canary-scale.md) |
-| | T4. AI ops: LLM giả, trọng số + `/metrics` trong gateway, eval gate | #4 (con #13–#18) | [04-aiops.md](04-aiops.md) |
+| | T4. AI ops (AIOps): phát hiện bất thường, mẫu log, tóm tắt sự cố, đo MTTD / MTTR; nền là LLM giả + `/metrics` gateway | #4 (con #13–#15, #18, #36–#39; #16, #17 không bắt buộc) | [04-aiops.md](04-aiops.md) |
 | Cả bốn | T7. Báo cáo, slide (mỗi người viết phần của mình) | #7 | [07-sync-report.md](07-sync-report.md) |
 | — | T6. Kubernetes `kind` (không bắt buộc) | #6 | [06-k8s-demo.md](06-k8s-demo.md) |
 

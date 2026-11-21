@@ -1,4 +1,4 @@
-# 04. AI ops: chia luồng model và chặn bằng eval (T4, hohoangluan)
+# 04. AI ops: chia luồng model và chặn bằng eval (T4, LuanLuKim + Quỳnh)
 
 Đọc xong làm được: đổi model / prompt theo kiểu canary như đổi code; có số liệu theo từng bản model; bản model kém không được nhận toàn bộ traffic.
 

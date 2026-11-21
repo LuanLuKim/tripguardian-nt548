@@ -1,4 +1,4 @@
-# 05. DataOps: dữ liệu mẫu, kiểm release, đổi release (T5, hohoangluan)
+# 05. DataOps: dữ liệu mẫu, kiểm release, đổi release (T5, hohoangluan + Đình Long)
 
 Đọc xong làm được: stack chạy với dữ liệu mẫu nhỏ được phép public; một release dữ liệu hỏng bị chặn trước khi dùng; đổi và lùi release dữ liệu theo cùng quy trình blue/green như code.
 

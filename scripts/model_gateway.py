@@ -6,6 +6,7 @@ One public port, routed by the `model` field or by path prefix:
     POST /v1/clef-flash[/chat/completions]        forced to clef-flash
     POST /v1/gemma26b-a4b[/chat/completions]      forced to gemma26b-a4b
     GET  /v1/models
+    GET  /metrics                                 per-upstream requests, latency, cooldown, weight (Prometheus text)
 
 gemma26b-a4b is an OpenAI-compatible server (vLLM; llama-server as rollback), proxied as is. With several
 --gemma-url the requests go to the upstream with the fewest outstanding requests; an upstream that refuses
@@ -35,7 +36,7 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 CLEF = "clef-flash"
 GEMMA = "gemma26b-a4b"
@@ -191,6 +192,67 @@ class Upstreams:
         item.down_until = self.clock() + self.cooldown_s
 
 
+LATENCY_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0)
+
+
+def label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+class Metrics:
+    """Per-upstream counters for GET /metrics (Prometheus text format, no client library).
+
+    Latency is the time until the upstream answered (status and headers): for a streamed Gemma reply that is the time
+    to the first byte, not the whole generation.
+    """
+
+    def __init__(self) -> None:
+        self.requests: dict[tuple[str, str, str], int] = {}
+        self.latency: dict[tuple[str, str], list[float]] = {}  # bucket counts..., then sum, then count
+
+    def observe(self, model: str, upstream: str, status: str, seconds: float) -> None:
+        key = (model, upstream, status)
+        self.requests[key] = self.requests.get(key, 0) + 1
+        if upstream == "none":
+            return
+        row = self.latency.setdefault((model, upstream), [0.0] * (len(LATENCY_BUCKETS) + 2))
+        for i, bound in enumerate(LATENCY_BUCKETS):
+            if seconds <= bound:
+                row[i] += 1
+        row[-2] += seconds
+        row[-1] += 1
+
+    def render(self, pools: dict[str, Upstreams], now: float) -> str:
+        out = [
+            "# HELP gateway_requests_total Upstream calls by model, upstream and outcome (HTTP status, error = no answer, upstream none = nothing available).",
+            "# TYPE gateway_requests_total counter",
+        ]
+        for (model, upstream, status), n in sorted(self.requests.items()):
+            out.append(f'gateway_requests_total{{model="{label(model)}",upstream="{label(upstream)}",status="{label(status)}"}} {n}')
+        out += [
+            "# HELP gateway_upstream_latency_seconds Time until the upstream answered with a status.",
+            "# TYPE gateway_upstream_latency_seconds histogram",
+        ]
+        for (model, upstream), row in sorted(self.latency.items()):
+            tags = f'model="{label(model)}",upstream="{label(upstream)}"'
+            for bound, n in zip(LATENCY_BUCKETS, row):
+                out.append(f'gateway_upstream_latency_seconds_bucket{{{tags},le="{bound}"}} {int(n)}')
+            out.append(f'gateway_upstream_latency_seconds_bucket{{{tags},le="+Inf"}} {int(row[-1])}')
+            out.append(f"gateway_upstream_latency_seconds_sum{{{tags}}} {row[-2]:.6f}")
+            out.append(f"gateway_upstream_latency_seconds_count{{{tags}}} {int(row[-1])}")
+        gauges = (
+            ("gateway_upstream_up", "1 when the upstream is not in cooldown.", lambda pool, item: int(item.down_until <= now)),
+            ("gateway_upstream_outstanding", "Requests in flight to the upstream.", lambda pool, item: item.outstanding),
+            ("gateway_upstream_weight", "Traffic weight (1 when no URL of the model carries @weight).", lambda pool, item: pool.weight(item)),
+        )
+        for name, help_text, value in gauges:
+            out += [f"# HELP {name} {help_text}", f"# TYPE {name} gauge"]
+            for model, pool in pools.items():
+                for item in pool.items:
+                    out.append(f'{name}{{model="{label(model)}",upstream="{label(item.url)}"}} {value(pool, item):g}')
+        return "\n".join(out) + "\n"
+
+
 def build_app(
     clef_urls: list[str] | str,
     gemma_urls: list[str] | str,
@@ -204,6 +266,7 @@ def build_app(
     client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=10.0), transport=transport, limits=httpx.Limits(max_connections=None, max_keepalive_connections=64))
     upstreams = Upstreams([gemma_urls] if isinstance(gemma_urls, str) else list(gemma_urls), cooldown_s, clock, rng)
     clefs = Upstreams([clef_urls] if isinstance(clef_urls, str) else list(clef_urls), cooldown_s, clock, rng)
+    metrics = Metrics()
 
     def authorize(request: Request) -> None:
         if api_key and request.headers.get("authorization") != f"Bearer {api_key}":
@@ -224,15 +287,19 @@ def build_app(
             while True:
                 chosen = clefs.acquire(tuple(tried_clef))
                 if chosen is None:
+                    metrics.observe(CLEF, "none", "502", 0.0)
                     raise HTTPException(status_code=502, detail="no clef upstream available")
                 tried_clef.append(chosen)
+                start = time.perf_counter()
                 try:
                     upstream = await client.post(f"{chosen.url}/v1/systemone", json=request_body)
                 except httpx.TransportError:
+                    metrics.observe(CLEF, chosen.url, "error", time.perf_counter() - start)
                     clefs.mark_down(chosen)
                     continue
                 finally:
                     clefs.release(chosen)
+                metrics.observe(CLEF, chosen.url, str(upstream.status_code), time.perf_counter() - start)
                 if upstream.status_code in DOWN_STATUS:
                     clefs.mark_down(chosen)
                     continue
@@ -247,15 +314,19 @@ def build_app(
         while True:
             chosen = upstreams.acquire(tuple(tried))
             if chosen is None:
+                metrics.observe(GEMMA, "none", "502", 0.0)
                 raise HTTPException(status_code=502, detail="no gemma upstream available")
             tried.append(chosen)
             body["model"] = GEMMA
+            start = time.perf_counter()
             try:
                 upstream = await client.send(client.build_request("POST", f"{chosen.url}/v1/chat/completions", json=body), stream=True)
             except httpx.TransportError:
+                metrics.observe(GEMMA, chosen.url, "error", time.perf_counter() - start)
                 upstreams.release(chosen)
                 upstreams.mark_down(chosen)
                 continue
+            metrics.observe(GEMMA, chosen.url, str(upstream.status_code), time.perf_counter() - start)
             if upstream.status_code in DOWN_STATUS:
                 await upstream.aclose()
                 upstreams.release(chosen)
@@ -277,6 +348,11 @@ def build_app(
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/metrics")
+    async def metrics_text(request: Request) -> PlainTextResponse:
+        authorize(request)  # same bearer key as the model routes; Prometheus / CloudWatch agent send it as a header
+        return PlainTextResponse(metrics.render({GEMMA: upstreams, CLEF: clefs}, clock()), media_type="text/plain; version=0.0.4")
 
     @app.get("/v1/models")
     async def models(request: Request) -> dict[str, Any]:

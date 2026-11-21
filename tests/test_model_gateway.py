@@ -149,6 +149,64 @@ def test_weighted_route_sends_canary_share_and_survives_canary_down():
     assert calls.count("http://v2:2") == 1
 
 
+def metric(text, name, **labels):
+    """Value of one sample in Prometheus text, or None."""
+    want = ",".join(f'{k}="{v}"' for k, v in labels.items())
+    for line in text.splitlines():
+        if line.startswith(f"{name}{{{want}}} "):
+            return float(line.rsplit(" ", 1)[1])
+    return None
+
+
+def test_metrics_count_requests_per_upstream_and_outcome():
+    def refuse(request):
+        raise httpx.ConnectError("refused")
+
+    # least outstanding takes the first idle upstream, so the broken ones are listed first and tried once each
+    app, _ = make_app({"http://b:2": lambda r: resp(503), "http://c:3": refuse, "http://a:1": ok("a")})
+    client = TestClient(app)
+    for _ in range(6):
+        assert client.post("/v1/chat/completions", json=BODY).json() == {"served_by": "a"}
+    text = client.get("/metrics").text
+    g = "gemma26b-a4b"
+    assert metric(text, "gateway_requests_total", model=g, upstream="http://a:1", status="200") == 6
+    assert metric(text, "gateway_requests_total", model=g, upstream="http://b:2", status="503") == 1  # then cooling
+    assert metric(text, "gateway_requests_total", model=g, upstream="http://c:3", status="error") == 1
+    assert metric(text, "gateway_upstream_latency_seconds_count", model=g, upstream="http://a:1") == 6
+    assert metric(text, "gateway_upstream_latency_seconds_bucket", model=g, upstream="http://a:1", le="+Inf") == 6
+    assert metric(text, "gateway_upstream_up", model=g, upstream="http://a:1") == 1
+    assert metric(text, "gateway_upstream_up", model=g, upstream="http://b:2") == 0
+    assert metric(text, "gateway_upstream_outstanding", model=g, upstream="http://a:1") == 0  # streams were released
+
+
+def test_metrics_show_weights_and_no_upstream_case():
+    app = gateway.build_app(
+        "http://clef", ["http://v1:1@90", "http://v2:2@10"], "", transport=httpx.MockTransport(lambda r: resp(503))
+    )
+    client = TestClient(app)
+    assert client.post("/v1/chat/completions", json=BODY).status_code == 502
+    text = client.get("/metrics").text
+    assert metric(text, "gateway_upstream_weight", model="gemma26b-a4b", upstream="http://v1:1") == 90
+    assert metric(text, "gateway_upstream_weight", model="gemma26b-a4b", upstream="http://v2:2") == 10
+    assert metric(text, "gateway_requests_total", model="gemma26b-a4b", upstream="none", status="502") == 1
+    assert "# TYPE gateway_upstream_latency_seconds histogram" in text
+
+
+def test_metrics_need_the_api_key_when_one_is_set():
+    app = gateway.build_app("http://clef", "http://x:1", "secret", transport=httpx.MockTransport(lambda r: resp(200)))
+    client = TestClient(app)
+    assert client.get("/metrics").status_code == 401
+    assert client.get("/metrics", headers={"authorization": "Bearer secret"}).status_code == 200
+
+
+def test_clef_calls_are_counted_too():
+    app, _ = make_clef_app({"http://c1:1": lambda r: resp(200, CLEF_ANSWER)})
+    client = TestClient(app)
+    client.post("/v1/clef-flash", json=CLEF_BODY)
+    text = client.get("/metrics").text
+    assert metric(text, "gateway_requests_total", model="clef-flash", upstream="http://c1:1", status="200") == 1
+
+
 CLEF_BODY = {"model": "clef-flash", "state": {"message": "hi"}, "questions": {"q": {"type": "noul", "instructions": "yes?"}}}
 CLEF_ANSWER = {"model": "clef-flash", "answers": {"q": {"type": "noul", "noul": 0.9}}, "usage": {"input_tokens": 5}}
 

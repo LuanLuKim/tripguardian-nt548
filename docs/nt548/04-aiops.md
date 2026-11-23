@@ -107,13 +107,53 @@ Chuỗi tổng hợp giống độ trễ: nền 200, nhiễu sd 10, 720 điểm,
    - Alarm CloudWatch Anomaly Detection cho độ trễ p95, 5xx và số request theo target group (module `ops/nt548/terraform/modules/aiops`).
    - Script `ops/nt548/aiops/detect.py` dùng EWMA / z-score và Isolation Forest, so với ngưỡng tĩnh trên cùng dữ liệu.
 2. **#37 gom mẫu log (DontMadWhenBad):** Drain3 trên log container. Mẫu mới xuất hiện hoặc mẫu lỗi tăng đột biến được tính là bất thường. So với lệnh `pattern` của CloudWatch Logs Insights.
-3. **#38 tóm tắt sự cố (LuanLuKim):**
+3. **#38 tóm tắt sự cố (LuanLuKim), bản tổng hợp xong, xem §Tóm tắt sự cố:**
    - Workflow chạy định kỳ trên runner `nt548-aws`. Khi alarm chuyển sang ALARM, workflow gom metric, top mẫu log và các lần deploy gần nhất.
    - LLM viết tóm tắt cùng giả thuyết nguyên nhân, rồi mở issue nhãn `incident`.
    - Lệnh gợi ý không tự chạy. Chỉ `canary_watch` được tự rollback.
 4. **#39 bơm lỗi và đánh giá (DontMadWhenBad):**
    - Kịch bản: LLM giả lỗi 30 %, chậm thêm 2 s, tắt một máy app, deploy bản trả 500, tải tăng đột biến.
    - Đo MTTD của từng cách phát hiện, MTTR có tự động và không tự động, và số lần báo nhầm khi tải bình thường.
+
+## Tóm tắt sự cố (#38)
+
+`ops/nt548/aiops/incident.py` nối phần phát hiện với phần hành động: alarm → bằng chứng → tóm tắt → issue GitHub nhãn `incident`. Workflow: `.github/workflows/nt548-incident.yml`.
+
+```sh
+python ops/nt548/aiops/incident.py demo deploy_500                 # sự cố tổng hợp: deploy hỏng, 5xx tăng
+python ops/nt548/aiops/incident.py demo llm_slow                   # LLM chậm, deploy cũ 3 giờ trước không bị đổ lỗi
+python ops/nt548/aiops/incident.py demo traffic                    # tải tăng, gợi ý kiểm ASG
+python ops/nt548/aiops/incident.py summarize --series tg.csv --alarm alarm.json --logs patterns.json --deploys runs.json
+python ops/nt548/aiops/incident.py watch --prefix nt548- --repo LuanLuKim/tripguardian-nt548 --post   # trên runner
+```
+
+Các bước:
+
+1. **Gom bằng chứng, đánh số E1…En:**
+   - alarm (tên, metric, lúc vào ALARM);
+   - metric trước và sau alarm: trung vị, tỉ lệ, đỉnh;
+   - `detect.py` trên cùng metric: detector nào bắt, lúc nào; ngưỡng tĩnh có bắt không;
+   - mẫu log tăng (đầu vào của #37);
+   - các lần chạy `nt548-deploy-aws` kết thúc trong 30 phút trước alarm (`gh run list`).
+2. **Viết tóm tắt:**
+   - Luật cố định luôn chạy và sinh giả thuyết + lệnh gợi ý. Ví dụ: có deploy ngay trước alarm thì giả thuyết đầu là deploy đó, lệnh gợi ý là rollback.
+   - Có LLM (biến `INCIDENT_LLM_BASE_URL`, `INCIDENT_LLM_MODEL`, secret `INCIDENT_LLM_API_KEY`; endpoint kiểu OpenAI, ví dụ Workers AI) thì LLM viết lại tóm tắt và giả thuyết **chỉ từ danh sách bằng chứng**.
+3. **Mở issue:** mỗi alarm một issue đang mở. Alarm lặp lại thì comment vào issue đó, nhận ra nhờ dấu `<!-- nt548-incident: <alarm> -->` trong thân issue.
+
+Giảm rủi ro LLM bịa nguyên nhân:
+- Prompt chỉ chứa số liệu đã gom, không có câu hỏi mở.
+- Mỗi giả thuyết phải dẫn mã bằng chứng. Thiếu dẫn, dẫn mã không có, JSON hỏng, hoặc gọi LLM lỗi thì bỏ **cả** câu trả lời, dùng mẫu cố định. Issue ghi rõ ai viết và vì sao bỏ LLM.
+- Lệnh gợi ý chỉ lấy từ luật cố định. LLM không đề xuất lệnh. Không lệnh nào tự chạy; chỉ `canary_watch` (#3) được tự rollback.
+- Log và commit message được đưa vào issue dưới dạng code inline, nên không phá được markdown.
+
+Cách chạy:
+- Workflow `nt548-incident`, chạy tay: `source=demo` chạy trên runner GitHub, không cần AWS, tóm tắt hiện ở job summary; `post=true` thì mở issue thật.
+- `source=watch` chạy trên runner `nt548-aws` (#22). Thêm `schedule` vài phút một lần khi runner đã có.
+
+Còn lại:
+- Chạy `watch` trên alarm thật của lab: cần ALB (#24) và module `aiops` (#36).
+- Đầu vào mẫu log thật từ #37. Định dạng: `[{pattern, count, baseline, level}]`; `baseline` là số dòng của cùng mẫu ở cửa sổ trước đó.
+- Kiểm "nêu đúng nguyên nhân" bằng sự cố bơm thật (#39).
 
 ## Nghiên cứu ghi vào báo cáo (#18)
 

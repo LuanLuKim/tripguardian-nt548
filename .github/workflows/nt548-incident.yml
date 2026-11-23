@@ -1,0 +1,70 @@
+name: nt548-incident
+
+# #38 AIOps: CloudWatch alarm in ALARM -> evidence -> summary -> GitHub issue labelled `incident`
+# (ops/nt548/aiops/incident.py, docs/nt548/04-aiops.md).
+# - demo: a synthetic incident on a GitHub runner, no AWS. The summary goes to the job summary; post=true also opens
+#   (or comments on) the `incident` issue.
+# - watch: the alarms of the lab, on the self-hosted runner (credentials from LabInstanceProfile). A `schedule`
+#   trigger is added once that runner (#22) exists; before that a cron job would queue for a runner that is not there.
+# LLM (optional): repository variable INCIDENT_LLM_BASE_URL (+ INCIDENT_LLM_MODEL) and secret INCIDENT_LLM_API_KEY.
+# Without them the fixed template writes the summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        type: choice
+        options: [demo, watch]
+        default: demo
+      case:
+        description: demo case
+        type: choice
+        options: [deploy_500, llm_slow, traffic]
+        default: deploy_500
+      post:
+        description: open / comment on the `incident` issue
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read   # gh run list: the deploys before the alarm
+
+concurrency:
+  group: nt548-incident
+  cancel-in-progress: false
+
+env:
+  INCIDENT_LLM_BASE_URL: ${{ vars.INCIDENT_LLM_BASE_URL }}
+  INCIDENT_LLM_MODEL: ${{ vars.INCIDENT_LLM_MODEL }}
+  INCIDENT_LLM_API_KEY: ${{ secrets.INCIDENT_LLM_API_KEY }}
+  GH_TOKEN: ${{ github.token }}
+  CASE: ${{ inputs.case }}
+  POST: ${{ inputs.post && '--post' || '' }}
+
+jobs:
+  demo:
+    if: inputs.source == 'demo'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy scikit-learn
+      - run: |
+          python ops/nt548/aiops/incident.py demo "$CASE" --repo "$GITHUB_REPOSITORY" $POST --out incident.md
+          cat incident.md >> "$GITHUB_STEP_SUMMARY"
+
+  watch:
+    if: inputs.source == 'watch'
+    runs-on: [self-hosted, nt548-aws]
+    env:
+      AWS_DEFAULT_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --user numpy scikit-learn boto3
+      - run: |
+          python3 ops/nt548/aiops/incident.py watch --prefix nt548- --repo "$GITHUB_REPOSITORY" $POST --out incident.md
+          [ -s incident.md ] && cat incident.md >> "$GITHUB_STEP_SUMMARY" || echo "no alarm in ALARM" >> "$GITHUB_STEP_SUMMARY"

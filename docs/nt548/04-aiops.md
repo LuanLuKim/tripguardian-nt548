@@ -101,6 +101,34 @@ Chuỗi tổng hợp giống độ trễ: nền 200, nhiễu sd 10, 720 điểm,
 - Ghép hai cách (`combined`) bắt đủ `spike` và `level_shift`, giữ được phần mạnh của iforest; báo nhầm bằng của iforest.
 - Số trên metric thật của lab và số bơm lỗi (#39) chưa có.
 
+### Trên AWS: CloudWatch Anomaly Detection (module `aiops`)
+
+`ops/nt548/terraform/modules/aiops` tạo, cho **mỗi màu × mỗi metric**, một alarm có ngưỡng là dải dự báo `ANOMALY_DETECTION_BAND(m1, band_width)`. CloudWatch tự học dải này từ lịch sử của chính metric. Alarm bật khi 2 trong 3 điểm một phút nằm ngoài dải.
+
+| Khóa | Metric (`AWS/ApplicationELB`, theo `TargetGroup` + `LoadBalancer`) | Bật khi |
+|---|---|---|
+| `<màu>-latency` | `TargetResponseTime` p95 | trên dải |
+| `<màu>-errors` | `HTTPCode_Target_5XX_Count` Sum | trên dải |
+| `<màu>-requests` | `RequestCount` Sum | ngoài dải, cả hai phía (mất traffic cũng là sự cố) |
+
+Tên alarm là `<name_prefix>-<màu>-<khóa>-anomaly`. Đây là tiền tố mà `incident.py watch --prefix` đọc (#38). T8 gắn module vào `envs/demo` cạnh ALB:
+
+```hcl
+module "aiops" {
+  source         = "../../modules/aiops"
+  name_prefix    = var.name_prefix
+  alb_arn_suffix = module.alb.alb_arn_suffix                       # aws_lb.arn_suffix
+  target_groups  = { blue = module.alb.tg_arn_suffix_blue, green = module.alb.tg_arn_suffix_green }
+  alarm_actions  = []                                              # hoặc SNS topic của #26
+}
+```
+
+- Tên output của module `alb` ở trên chỉ là ví dụ, T8 đặt tên thật. Module cần `arn_suffix`, không cần ARN.
+- Kiểm không cần AWS: `terraform -chdir=ops/nt548/terraform/modules/aiops init -backend=false`, rồi `validate` và `test` (3 test, provider giả).
+- Giới hạn trên Learner Lab: `nt548-aws-down` xóa ALB mỗi buổi, nên mỗi buổi là một metric mới, chưa có lịch sử. Dải của CloudWatch rộng và kém tin cậy trong những giờ đầu (CloudWatch học từ tối đa 2 tuần dữ liệu). Vì vậy so sánh trên lab dựa vào `detect.py`: nó học "bình thường" từ chính các phút đầu của buổi. Kết quả của alarm CloudWatch được ghi riêng.
+- Chi phí (ước tính, kiểm lại): mỗi alarm anomaly tính như 3 metric alarm, khoảng 0,30 USD/tháng. 6 alarm tính theo giờ thì không đáng kể so với ALB.
+- R2: cần `cloudwatch:PutMetricAlarm` trong `LabRole`. Ghi vào bảng quyền của #22.
+
 ## Các bước
 
 1. **#36 phát hiện bất thường trên metric (LuanLuKim):**

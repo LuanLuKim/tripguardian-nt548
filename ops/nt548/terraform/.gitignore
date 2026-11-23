@@ -1,0 +1,8 @@
+# Terraform working files (NT548): never commit state, plans or the provider cache.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+# modules do not pin providers; envs/ commit their own .terraform.lock.hcl
+modules/**/.terraform.lock.hcl

@@ -55,11 +55,11 @@ _LuanLuKim, DontMadWhenBad._ Hướng dẫn chi tiết: `01-ci-cd.md`. Phần c�
   Không đổi code sản phẩm.
 - Kết quả: run của PR #47 (21/11) có `pytest` 5.542 qua, 0 đỏ, 433 skip trong 3 phút 46 giây; job `web` (type check + build) 23 giây.
 
-**4.2 Image và stack một màu (#2, draft #44).**
+**4.2 Image và stack một màu (#2, #44, đã merge 24/11).**
 - `harness.Dockerfile`, `web.Dockerfile`, `ops/nt548/compose/app.yml` chạy cả stack một màu trên một máy, cổng `8080`.
 - `nt548-ci` có job `app-smoke`: build 3 image, chạy `app.yml`, kiểm `GET /` trả 200. Job cũng kiểm stub báo đúng màu, gateway trả lời qua LLM giả, và image không chứa `.env` / `data/`.
 - `nt548-images` đẩy `:sha` lên GHCR sau mỗi merge.
-- Chờ DontMadWhenBad review.
+- `nt548-ci` có thêm job `app-real` (PR #63): cùng stack với **harness thật**. Dữ liệu mẫu do `make.py` dựng và qua `data_check`; Postgres chạy cạnh stack. Kết quả: 40/40 nơi của `r-a` tìm được qua `:8080`, nơi chỉ `r-b` có thì vắng, journey vẫn mở sau khi restart harness. Harness thật cần `APP_BASE_URL` bằng địa chỉ công khai, vì web đổi header `Host`; trên AWS là DNS của ALB.
 
 **4.3 Deploy lên AWS (#29, draft #50).** `nt548-deploy-aws` gọi `ops/nt548/deploy_aws.sh`. Script chỉ thay đổi AWS qua `terraform apply` của `envs/demo`, theo hợp đồng với T8.
 
@@ -76,7 +76,7 @@ _LuanLuKim, DontMadWhenBad._ Hướng dẫn chi tiết: `01-ci-cd.md`. Phần c�
 - 7 test chạy script với `terraform` / `aws` giả: thứ tự trọng số, màu hỏng không nhận traffic, canary hỏng thì lùi, tag lạ bị từ chối.
 - Chưa chạy thật: cần runner, ALB và `envs/demo` của T8.
 
-**4.4 Kiểm Terraform trong CI (draft #49).** Workflow `nt548-terraform` chạy `fmt -check`, `validate` và `terraform test` (provider giả) cho mọi module trong `ops/nt548/terraform`, kể cả module của T8 khi thêm vào.
+**4.4 Kiểm Terraform trong CI (#49).** Workflow `nt548-terraform` chạy `fmt -check`, `validate` và `terraform test` (provider giả) cho mọi module trong `ops/nt548/terraform`, kể cả module của T8 khi thêm vào.
 
 **Còn đo:** thời gian rollback tay trên lab (mục tiêu < 1 phút), k6 không rớt request khi đổi màu (#3).
 
@@ -96,7 +96,7 @@ _LuanLuKim, DontMadWhenBad._ Hướng dẫn chi tiết: `04-aiops.md`.
 - Endpoint `/metrics` (Prometheus) đếm request theo upstream và mã trả về, đo histogram độ trễ, báo trạng thái cooldown và trọng số.
 - 16/16 test của gateway qua.
 
-**6.2 Phát hiện bất thường (#36, `detect.py` đã merge, module AWS ở draft #49).** Bốn cách trên cùng chuỗi:
+**6.2 Phát hiện bất thường (#36, `detect.py` và module AWS #49 đã merge).** Bốn cách trên cùng chuỗi:
 - ngưỡng tĩnh, như người vận hành đặt tay;
 - EWMA z-score;
 - Isolation Forest, trên giá trị, độ thay đổi, độ lệch so với trung bình trượt, và pha chu kỳ;
@@ -119,7 +119,7 @@ Kết luận trên dữ liệu tổng hợp:
 - Trên AWS, module Terraform `modules/aiops` tạo alarm CloudWatch Anomaly Detection (dải dự báo do CloudWatch học) cho p95 độ trễ, 5xx và số request theo từng target group.
 - Giới hạn: ALB bị xóa mỗi buổi, nên metric mới chưa có lịch sử và dải của CloudWatch kém tin cậy trong những giờ đầu. Vì vậy so sánh trên lab dựa vào `detect.py`.
 
-**6.3 Chẩn đoán và hành động: tóm tắt sự cố (#38, PR #48).** `incident.py` gom bằng chứng và đánh số E1…En:
+**6.3 Chẩn đoán và hành động: tóm tắt sự cố (#38, #48, #60).** `incident.py` gom bằng chứng và đánh số E1…En:
 - alarm;
 - metric trước và sau alarm;
 - detector nào bắt;
@@ -140,6 +140,15 @@ Ba sự cố tổng hợp cho đúng nguyên nhân đã gài:
 | Deploy hỏng, 5xx tăng 32 lần | deploy `a1b2c3d` 7 phút trước alarm (high) | rollback qua `nt548-deploy-aws` |
 | LLM chậm, deploy cũ 3 giờ trước | mẫu log timeout của gateway; không đổ lỗi deploy cũ | đọc `/metrics` của gateway |
 | Tải tăng 4 lần, không deploy | tải tăng, không phải đổi code | kiểm hoạt động scale của ASG |
+
+Thử với LLM thật ngày 24/11 (chạy trên máy, ba sự cố trên):
+
+| LLM | Câu trả lời qua kiểm bằng chứng | Nhận xét |
+|---|---|---|
+| `gpt-6.1-sol` (qua 9router) | 3 / 3 | Tóm tắt đủ số liệu hơn mẫu cố định, nhưng rất thận trọng: một giả thuyết, độ tin `medium`, kể cả ca deploy hỏng |
+| `llama-3.3-70b` (Cloudflare Workers AI) | 1 / 2 trước khi sửa, 10 / 10 sau | Lỗi ban đầu: Workers AI cắt câu trả lời ở 256 token nên JSON hỏng. Sửa bằng JSON mode + `max_tokens`. Kết luận quyết đoán hơn, đôi khi suy diễn yếu |
+
+Vì vậy (#60) giả thuyết của luật luôn đứng đầu, và LLM chỉ viết tóm tắt và thêm giả thuyết, mỗi dòng ghi nguồn `rule` / `LLM`. Kiểm bằng chứng là phần không thể bỏ: không có nó, câu trả lời hỏng hoặc bịa của LLM sẽ đi thẳng vào issue.
 
 **Còn lại:**
 - chạy trên metric thật của lab (cần ALB của T8);

@@ -39,6 +39,26 @@ flowchart LR
 | `scikit-learn` trong dependency | Detector của #36 |
 | Workers AI làm dự phòng cho Clef (`docs/LLM_PROVIDER.md`) | Dùng cho tóm tắt sự cố (#38) khi có key trong GitHub Secret |
 
+## LLM giả (#13)
+
+`ops/nt548/llm_fake/server.py` (FastAPI) đứng sau `model_gateway` thay cho model thật: `GET /v1/models`, `POST /v1/chat/completions` (thường và stream), `GET /healthz`. Cùng `model` + `messages` thì cùng câu trả lời; câu trả lời mở đầu bằng `[fake <version>]` nên đếm được bản nào phục vụ.
+
+| Biến | Mặc định | Dùng để |
+|---|---|---|
+| `FAKE_VERSION` | `v1` | tên bản, có trong câu trả lời, header `X-Fake-Version`, `system_fingerprint` |
+| `FAKE_MODELS` | `gemma26b-a4b` | danh sách của `/v1/models` (model khác vẫn được trả lời) |
+| `FAKE_DELAY_MS` | `0` | chậm thêm mỗi lần gọi |
+| `FAKE_ERROR_RATE` | `0` | tỉ lệ lần gọi trả lỗi (0–1) |
+| `FAKE_ERROR_STATUS` | `500` | mã lỗi; `502` / `503` / `504` làm gateway cho upstream nghỉ (cooldown) |
+| `FAKE_SEED` | ngẫu nhiên | lặp lại được chuỗi lỗi |
+
+```sh
+docker build -t llm-fake ops/nt548/llm_fake
+docker run -p 8000:8000 -e FAKE_VERSION=v2 -e FAKE_ERROR_RATE=0.3 llm-fake
+```
+
+Test (`tests/nt548/test_llm_fake.py`) chạy cả gateway thật trước hai bản giả: chia 90/10 đúng tỉ lệ, và bản canary trả 503 thì gateway chuyển sang v1, người gọi không thấy lỗi.
+
 ## `/metrics` của gateway (#15)
 
 Định dạng Prometheus text. Khi có `MODEL_GATEWAY_API_KEY` thì cần gửi cùng bearer key.

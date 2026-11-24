@@ -1,0 +1,81 @@
+# NT548 T5.4 (#11): gate a data release with data_check, then rehearse switch + rollback on the real harness.
+# Runs on a GitHub runner with a throwaway Postgres; sample data is synthetic (ops/nt548/sample-data/make.py).
+# The AWS step (data_release_green + weight_blue through Terraform, canary 10 -> 100) joins once T8 and #29 land.
+name: nt548-data-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: "release to roll out (r-b; r-b-drop / r-b-nocoords are broken on purpose and must be stopped)"
+        type: choice
+        options: [r-b, r-b-drop, r-b-nocoords]
+        default: r-b
+      baseline:
+        description: "release running now"
+        type: choice
+        options: [r-a]
+        default: r-a
+  pull_request:
+    paths:
+      - "ops/nt548/data_*"
+      - "ops/nt548/sample-data/**"
+      - ".github/workflows/nt548-data-release.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nt548-data-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: rehearsal
+          POSTGRES_DB: tg
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:rehearsal@127.0.0.1:5432/tg
+      CANDIDATE: ${{ inputs.candidate || 'r-b' }}
+      BASELINE: ${{ inputs.baseline || 'r-a' }}
+      SAMPLE: ${{ github.workspace }}/ops/nt548/sample-data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+      - name: Build synthetic releases
+        run: python ops/nt548/sample-data/make.py --broken
+      - name: Gate, switch, pin, roll back
+        run: |
+          export WORK="$RUNNER_TEMP/rehearsal"
+          mkdir -p "$WORK" && bash ops/nt548/data_rehearsal.sh
+      - name: A broken release is stopped by the gate
+        if: env.CANDIDATE == 'r-b'
+        run: |
+          for bad in r-b-drop r-b-nocoords; do
+            if python ops/nt548/data_check.py "$SAMPLE/$bad" --baseline "$SAMPLE/$BASELINE"; then
+              echo "::error::data_check let $bad through"; exit 1
+            fi
+          done
+          echo "- gate: r-b-drop and r-b-nocoords refused" >> "$GITHUB_STEP_SUMMARY"
+      - name: Harness logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-logs
+          path: |
+            ${{ runner.temp }}/rehearsal/*.log
+            ops/nt548/sample-data/releases.json
+            ops/nt548/sample-data/build.log
+          if-no-files-found: ignore

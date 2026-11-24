@@ -1,8 +1,9 @@
 """Switch and roll back a corpus data release per color, and check what a running harness serves (T5.4, #11).
 
-  stage <data dir> --release <sample dir>... --current <sample dir>
+  stage <data dir> --release <sample dir>... --current <sample dir> [--skip-check]
       Build one color's DATA_DIR: copy the release of every --release (a make.py output dir such as
-      ops/nt548/sample-data/r-a), then point releases/current at --current through corpus.releases.publish (which
+      ops/nt548/sample-data/r-a), run data_check on --current against the release the DATA_DIR serves now (a red check
+      stops here, the pointer does not move), then point releases/current at it through corpus.releases.publish (which
       validates hashes first). Running it again with another --current is the data switch; with the old one, the
       rollback. Keeping the old release next to the new one lets journeys pinned to it still open.
 
@@ -19,6 +20,7 @@ Exit 0 = as expected, 1 = not. Stdlib + corpus' public API only.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import shutil
 import sys
@@ -48,7 +50,27 @@ def served(sample: Path) -> dict[str, str]:
             if r.get("status") in SERVED}
 
 
-def stage(data: Path, releases: list[Path], current: Path) -> str:
+def _data_check():
+    spec = importlib.util.spec_from_file_location("data_check", Path(__file__).with_name("data_check.py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault(spec.name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
+def gate(data: Path, release_id: str) -> None:
+    """data_check the release about to be served against the one this DATA_DIR serves now (if another); a red check
+    stops the switch, so a broken release never reaches a color even when stage is called by hand."""
+    pointer = data / "releases" / "current"
+    running = pointer.read_text(encoding="utf-8").strip() if pointer.is_file() else None
+    report = _data_check().check(data / "releases" / release_id, data if running and running != release_id else None)
+    for r in report.results:
+        print(f"  {r['status']:4}  {r['check']:8} {r['reason']}")
+    if report.failed:
+        raise SystemExit(f"data_check refused {release_id}; {data} still serves {running or 'nothing'}")
+
+
+def stage(data: Path, releases: list[Path], current: Path, check: bool = True) -> str:
     from corpus.releases import publish
     (data / "releases").mkdir(parents=True, exist_ok=True)
     for sample in {*releases, current}:
@@ -57,6 +79,10 @@ def stage(data: Path, releases: list[Path], current: Path) -> str:
         if not target.exists():
             shutil.copytree(source, target)
     release_id = release_of(current).name
+    if check:
+        gate(data, release_id)
+    else:
+        print(f"WARNING: data_check skipped for {release_id} (--skip-check)")
     publish(release_id, data)  # validates every artifact hash, then swaps the pointer atomically
     print(f"{data}: releases {sorted(p.name for p in (data / 'releases').iterdir() if p.is_dir())}, current {release_id}")
     return release_id
@@ -136,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("data", type=Path)
     st.add_argument("--release", type=Path, action="append", default=[])
     st.add_argument("--current", type=Path, required=True)
+    st.add_argument("--skip-check", action="store_true",
+                    help="switch without data_check (emergency rollback to a release that passed before)")
     sm = sub.add_parser("smoke")
     sm.add_argument("url")
     sm.add_argument("--expect", type=Path, required=True)
@@ -146,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     sm.add_argument("--want", type=int, default=200)
     args = parser.parse_args(argv)
     if args.command == "stage":
-        stage(args.data, args.release, args.current)
+        stage(args.data, args.release, args.current, check=not args.skip_check)
         return 0
     return smoke(args)
 

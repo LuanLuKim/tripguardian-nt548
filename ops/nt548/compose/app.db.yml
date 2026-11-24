@@ -1,0 +1,18 @@
+# A Postgres next to one color, for runs without the ops machine (CI job app-real, a laptop). On AWS the database is
+# the ops machine's container (#22) and DATABASE_URL points there instead; this file is not used.
+#   docker compose -f app.yml -f app.db.yml up -d postgres
+#   docker compose -f app.yml -f app.db.yml run --rm --no-deps harness python -m db migrate
+#   HARNESS_CMD="python -m harness serve" DATABASE_URL=postgresql://tg:tg@postgres:5432/tg \
+#     APP_BASE_URL=http://127.0.0.1:8080 docker compose -f app.yml -f app.db.yml up -d
+services:
+  postgres:
+    image: postgres:16 # has citext, which the migrations need
+    environment:
+      POSTGRES_USER: tg
+      POSTGRES_PASSWORD: tg # throwaway: the container is only reachable on the compose network
+      POSTGRES_DB: tg
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tg", "-d", "tg"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

@@ -1,7 +1,7 @@
 # One color of the NT548 stack on one machine (design §7.1, contract with T8): web on :8080, GET / -> 200.
 #   COLOR=blue IMAGE_TAG=<sha> docker compose -f ops/nt548/compose/app.yml up -d
 # Variables (all optional): COLOR, IMAGE_TAG (default main), REGISTRY, HARNESS_CMD (default: the stub),
-# DATABASE_URL (real harness only), DATA_RELEASE (default r-a), SAMPLE_DATA, LLM_WEIGHT_V1 / LLM_WEIGHT_V2 (gateway split),
+# DATABASE_URL + APP_BASE_URL (real harness only), DATA_RELEASE (default r-a), SAMPLE_DATA, LLM_WEIGHT_V1 / LLM_WEIGHT_V2 (gateway split),
 # FAKE_V{1,2}_DELAY_MS / FAKE_V{1,2}_ERROR_RATE / FAKE_V{1,2}_ERROR_STATUS (fault injection, #39).
 name: tg-${COLOR:-blue}
 
@@ -21,6 +21,9 @@ services:
       DATA_DIR: /data
       DATA_RELEASE: ${DATA_RELEASE:-r-a}
       DATABASE_URL: ${DATABASE_URL:-}
+      # the public origin (http://<alb dns name> on AWS). web rewrites Host on the way in, so the real harness only
+      # accepts a sign-in or a new journey whose Origin equals this; empty refuses every write (the stub ignores it).
+      APP_BASE_URL: ${APP_BASE_URL:-}
       # every model role goes through the gateway to the fake LLMs (no key, no GPU)
       AGENT_BASE_URL: http://model-gateway:30000/v1
       AGENT_MODEL: gemma26b-a4b

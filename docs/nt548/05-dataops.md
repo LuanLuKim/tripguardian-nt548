@@ -1,6 +1,6 @@
-# 05. DataOps: dữ liệu mẫu, kiểm release, đổi release (T5, hohoangluan + dinhlong06)
+# 05. DataOps: dữ liệu mẫu, kiểm release, đổi release (T5, hohoangluan)
 
-Đọc xong làm được: stack chạy với dữ liệu mẫu nhỏ được phép public; một release dữ liệu hỏng bị chặn trước khi dùng; đổi và lùi release dữ liệu theo cùng quy trình blue/green như code.
+Đọc xong làm được: dựng dữ liệu mẫu được phép public, chặn một release dữ liệu hỏng trước khi dùng, đổi và lùi release dữ liệu theo blue/green giống như code.
 
 ## Ở TripGuardian đã có gì
 
@@ -15,60 +15,105 @@ flowchart LR
   J[journey] -. ghim release id .-> REL
 ```
 
-- Journey ghim release; release mất thì API trả 409 `stale_data_version` (`docs/ARCHITECTURE.md`).
-- Rollback dữ liệu = publish lại release cũ, không xóa artifact.
-- Dữ liệu thật 274 GB, chứa nội dung crawl → **không** đưa lên repo public hay image.
+- `corpus.releases.rebuild` dựng release từ input đã lưu, không gọi mạng hay model. `publish` kiểm hash rồi mới đổi pointer, và lùi release cũng dùng `publish`.
+- Journey ghim release. Release mất thì API trả 409 `stale_data_version` (`docs/ARCHITECTURE.md`).
+- Dữ liệu thật nặng 274 GB và chứa nội dung crawl, nên **không** đưa lên repo public hay vào image.
 
-## R1: dữ liệu mẫu (làm đầu tiên)
+## R1: harness cần gì để khởi động (#8)
 
-Câu hỏi: harness cần tối thiểu file nào để khởi động và trả lời các API đọc cơ bản?
+`ops/nt548/r1_probe.sh` chạy harness thật hai lần trên cùng một Postgres: một lần với `DATA_DIR` rỗng, một lần với release mẫu `r-a`. Kết quả đo ngày 24/11 trên WSL, Python 3.12, Postgres 16:
 
-1. Đọc `src/harness/__main__.py`, `corpus.snapshot`, `corpus.index` (public API) để liệt kê file harness mở lúc khởi động.
-2. Thử chạy `python -m harness serve` với `DATA_DIR` trỏ vào thư mục rỗng, ghi lỗi đầu tiên, thêm đúng file đó, lặp lại.
-3. Sinh dữ liệu **tổng hợp** (tên nơi, tọa độ, giờ mở cửa giả; không chép review / ảnh thật) bằng `ops/nt548/sample-data/make.py`, đủ cho 2 release `r-a`, `r-b` (khác nhau vài nơi). `tests/fixtures/` (7,4 MB) là nguồn tham khảo định dạng.
-4. Không khởi động được trong 2 ngày công → ghi lại lý do, nhóm dùng harness stub (02) và mảng này chỉ làm `data_check` trên file mẫu.
+| `DATA_DIR` | Lên sau | `/api/auth/guest` | `/api/harness/places` | Lỗi đầu tiên trong log |
+|---|---|---|---|---|
+| rỗng | 5,2 s | 200 | 500 | `FileNotFoundError: no .../snapshot/current` |
+| `r-a` (40 nơi) | 6,0 s | 200 | 200, trả nơi mẫu | `ModuleNotFoundError: torch` (warmup encoder, không chặn) |
 
-Ghi kết quả R1 vào issue T5 sớm: T2, T3, T4 phụ thuộc nó.
+Kết luận: harness thật chạy được với dữ liệu tổng hợp, **không cần harness stub** cho API đọc. Các thứ cần có:
 
-## Kiểm release và đổi release
+| Cần | Ghi chú |
+|---|---|
+| Postgres + `python -m db migrate` (`DATABASE_URL`) | đăng nhập, journey, event; migration cần extension `citext` (image `postgres:16` có sẵn) |
+| `DATA_DIR/releases/current` + `releases/<id>/` | `manifest.json`, `serving/places.json`, `snapshot/<v>/dalat/*.lance` (8 bảng), `index/<v>/{places,styles}.json`, `intel/places/*.json`, `normalization.json`, `projection/serving.json`, `quality.json`; khoảng 900 KB cho 40 nơi |
+| Không cần | GPU, `torch`, model, key. Thiếu encoder thì chỉ mất tìm kiếm bằng vector; tìm theo tên vẫn chạy |
+
+Harness không ghi vào `DATA_DIR` khi phục vụ API đọc, nên mount `:ro` được (`ops/nt548/compose/app.yml`). Harness nạp `.env` ở gốc repo, nên chạy probe từ một checkout không có `.env`.
+
+## Dữ liệu mẫu (#9)
+
+`python ops/nt548/sample-data/make.py [--out DIR] [--seed 548] [--places 40] [--broken]` sinh input Maps **tổng hợp**: tên nơi gắn "(mẫu)", tọa độ trong vùng Đà Lạt, giờ mở cửa và một thuộc tính đều giả. Sau đó chính `corpus.releases.rebuild` dựng release, nên manifest, hash, snapshot và index có cùng định dạng với release thật. Thời gian dựng khoảng 3 s mỗi release.
+
+| Thư mục | Nội dung |
+|---|---|
+| `<out>/r-a/` | 40 nơi |
+| `<out>/r-b/` | `r-a` bỏ 2 nơi, thêm 3 nơi, đổi tên 1 nơi; `quality.json` so với `r-a` |
+| `<out>/r-b-drop/`, `<out>/r-b-nocoords/` | chỉ khi có `--broken`: mất 20 % nơi / một nơi không có tọa độ; `data_check` phải chặn |
+| `<out>/releases.json` | alias → release id, số nơi, sha256 của input |
+
+Mỗi thư mục alias là một `DATA_DIR` (`releases/<id>/` + `releases/current`). Input có tính tất định (cùng seed → cùng sha256). Release id và timestamp thì không, vì `rebuild` đóng dấu mới như với release thật. Thư mục sinh ra nằm trong `.gitignore`.
+
+## Kiểm release (#10)
+
+`python ops/nt548/data_check.py <release | DATA_DIR> [--baseline <release đang chạy>] [--json]`, ngưỡng ở `ops/nt548/data_check.yaml`. Exit 0 = qua, 1 = chặn. Một kiểm đỏ thì các kiểm phụ thuộc phía sau báo `skip`, nên mỗi release hỏng chỉ ra một lý do rõ ràng.
+
+| Kiểm | Bằng | Chặn khi |
+|---|---|---|
+| `manifest` | đọc `manifest.json` | thiếu, sai `release_id`, không có artifact |
+| `hashes` | sha256 từng artifact | artifact thiếu hoặc bị sửa |
+| `release` | `corpus.releases.validate` | snapshot / index không khớp `eligible_ids` |
+| `schema` | `corpus.snapshot` | nơi thiếu `id`, tên, `lat`, `lng`; ít hơn `min_places` |
+| `coords` | `config/cities.yaml` | tọa độ không phải số hoặc nằm ngoài vùng thành phố |
+| `index` | `corpus.index` | nơi được phục vụ mà không có trong index |
+| `drop` | so với `--baseline` | số nơi giảm quá `max_place_drop` (10 %) |
+
+## Đổi và lùi release (#11)
+
+`ops/nt548/data_release.py`:
+- `stage <DATA_DIR> --release <alias>... --current <alias>` dựng `DATA_DIR` của một màu và đổi pointer bằng `corpus.releases.publish`. Chạy lại với `--current` cũ là lùi release.
+- `smoke <url> --expect <alias> [--not <alias>]` đăng nhập guest, tìm từng nơi của release theo tên. Nơi phải có thì phải trả về, nơi chỉ release kia có thì phải vắng. Thêm `--create-journey` / `--open-journey --want 200|409` để kiểm journey ghim release.
+
+`ops/nt548/data_rehearsal.sh` diễn tập trên một máy với harness thật, hai màu dùng chung Postgres. Workflow `nt548-data-release.yml` chạy đúng script này trên GitHub runner, kèm service `postgres:16`. Workflow chạy khi gọi tay (`candidate`: `r-b`, `r-b-drop`, `r-b-nocoords`) và khi có PR đụng tới các file DataOps.
 
 ```mermaid
 sequenceDiagram
-  participant WF as nt548-data-release.yml
-  participant DC as data_check.py
-  participant DP as deploy.sh
-  WF->>DC: kiểm r-b
-  alt đỏ
-    DC-->>WF: lỗi + lý do, dừng
-  else xanh
-    WF->>DP: up green (code như cũ, DATA_RELEASE=r-b)
-    WF->>DP: canary 10 → 100 (03)
-  end
+  participant G as data_check
+  participant B as blue (r-a)
+  participant N as green (r-a + r-b)
+  G->>G: r-b vs r-a, đỏ thì dừng
+  B->>B: phục vụ r-a, guest tạo journey (ghim r-a)
+  N->>N: pointer → r-b, phục vụ r-b, journey r-a vẫn mở (200)
+  Note over N: màu chỉ có r-b: journey r-a → 409 stale_data_version
+  N->>N: pointer → r-a (rollback), phục vụ r-a
 ```
 
-`ops/nt548/data_check.py <release dir>` kiểm (ngưỡng ở `ops/nt548/data_check.yaml`):
+Journey ghim release cũ được xử lý bằng cách màu mới mount **cả hai** release, còn pointer trỏ release mới. Journey mới dùng release mới, journey cũ mở lại đúng dữ liệu của nó. Chỉ dọn release cũ khi không còn journey nào ghim nó. Kết quả đo ngày 24/11: cả chuỗi chạy trong 67 s, mỗi lần harness lên mất 6 s.
 
-| Kiểm | Lý do |
-|---|---|
-| manifest có, hash từng artifact khớp | release bị sửa / chép thiếu |
-| schema file serving / snapshot đúng (đọc bằng public API của `corpus`, không tự parse) | code đọc được |
-| số nơi không giảm quá 10 % so với release đang chạy | crawl hỏng làm mất nơi |
-| mọi nơi có trường bắt buộc (id, tên, tọa độ) | thẻ nơi không vỡ |
-| index tồn tại cho mọi nơi trong serving | tìm kiếm không thiếu |
+Workflow chưa có bước AWS. Trên AWS, việc đổi dữ liệu là đặt `data_release_green` rồi chuyển `weight_blue` qua Terraform, canary 10 → 100 (hợp đồng §7.1 ở `docs/plans/2026-11-20-nt548-devops-design.md`, `ops/nt548/deploy_aws.sh` của #29). Bước này cần ALB và ASG của T8 (#24, #25).
 
-Mỗi màu đọc release theo `DATA_RELEASE` (mount `sample-data/<id>` vào chỗ harness đọc). Đổi dữ liệu = màu rảnh lên với release mới, chạy canary như code. Journey đã ghim `r-a` mà màu mới chỉ có `r-b` thì được 409: ghi cách xử lý vào báo cáo (mount cả hai release, pointer trỏ release mới).
+## Nghiên cứu cho báo cáo (#12)
 
-## Nghiên cứu ghi vào báo cáo
+**DataOps** đưa cách làm của DevOps vào dữ liệu: dữ liệu có phiên bản bất biến, mỗi phiên bản đi qua kiểm tự động trước khi dùng, và được triển khai / lùi bằng cùng một quy trình như code (pipeline, canary, rollback). Mục tiêu là release dữ liệu hỏng không tới được người dùng, và nếu có tới thì lùi lại được trong vài phút.
 
-DataOps là gì (dữ liệu có phiên bản, kiểm tự động, triển khai như code), so với cách TripGuardian đang làm, công cụ ngoài (DVC, Great Expectations, lakeFS) và vì sao nhóm chỉ viết kiểm nhỏ.
+| Ý tưởng | Ở TripGuardian | Công cụ ngoài tương ứng |
+|---|---|---|
+| Phiên bản theo nội dung | release id + sha256 từng artifact trong `manifest.json` | DVC: file `.dvc` giữ hash, dữ liệu nằm ở remote storage |
+| Nhánh / commit dữ liệu, chuyển nguyên tử | pointer `releases/current` ghi bằng `os.replace` | lakeFS: branch, commit, merge trên object storage (S3), không chép dữ liệu |
+| Kiểm chất lượng trước khi dùng | `corpus.releases.validate` + `data_check.py` | Great Expectations: bộ "expectation" chạy thành checkpoint, sinh báo cáo |
+| Người dùng ghim phiên bản | journey ghim `corpus_binding`, mất thì 409 | lakeFS / DVC: đọc theo commit cố định |
+| Dựng lại được | `rebuild` chỉ từ input đã lưu, ghi `inputs` + `fingerprint` | DVC pipeline (`dvc.yaml`, `dvc repro`) |
+
+Nhóm chỉ viết kiểm nhỏ (`data_check.py`, khoảng 200 dòng) vì các lý do sau:
+- Định dạng release đã có sẵn phiên bản, hash và pointer nguyên tử, nên DVC và lakeFS sẽ làm lại phần đã có.
+- lakeFS cần thêm một server và S3, tốn ngân sách Learner Lab.
+- Great Expectations kéo theo nhiều phụ thuộc và cấu hình, trong khi cả bảy kiểm cần có chỉ đọc qua public API của `corpus`.
+- Dữ liệu mẫu khoảng 900 KB, kiểm chạy trong vài giây trong CI.
+
+Nếu đưa dữ liệu thật 274 GB lên AWS, DVC (remote S3) là bước tiếp theo hợp lý để chép release giữa các máy.
 
 ## Kiểm thử
 
-| Kiểm | Đạt |
-|---|---|
-| `r-b` hỏng hash / mất 20 % nơi / thiếu tọa độ | `data_check` đỏ, workflow dừng |
-| `r-a` → `r-b` qua canary, rồi lùi về `r-a` | API đọc trả đúng dữ liệu từng release |
-
-## Xong khi
-
-R1 có kết luận; `data_check` có test; `nt548-data-release.yml` chạy được với dữ liệu mẫu.
+| Kiểm | Ở đâu | Đạt |
+|---|---|---|
+| Input tất định; `r-a`, `r-b` qua `validate`, harness bind được | `tests/nt548/test_sample_data.py` | xanh |
+| `r-a`, `r-b` qua; sửa artifact / mất 20 % nơi / thiếu tọa độ / thiếu manifest bị chặn kèm lý do | `tests/nt548/test_data_check.py` | xanh |
+| Gate, đổi r-a → r-b, journey ghim, 409, rollback trên harness thật | `ops/nt548/data_rehearsal.sh`, `nt548-data-release.yml` | xanh (67 s) |
+| `r-b-drop`, `r-b-nocoords` dừng ở gate, không màu nào lên | như trên, `candidate=r-b-drop` | dừng, exit 1 |

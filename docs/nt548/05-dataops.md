@@ -53,22 +53,25 @@ Mỗi thư mục alias là một `DATA_DIR` (`releases/<id>/` + `releases/curren
 
 ## Kiểm release (#10)
 
-`python ops/nt548/data_check.py <release | DATA_DIR> [--baseline <release đang chạy>] [--json]`, ngưỡng ở `ops/nt548/data_check.yaml`. Exit 0 = qua, 1 = chặn. Một kiểm đỏ thì các kiểm phụ thuộc phía sau báo `skip`, nên mỗi release hỏng chỉ ra một lý do rõ ràng.
+`python ops/nt548/data_check.py <release | DATA_DIR> [--baseline <release đang chạy>] [--json]`, ngưỡng ở `ops/nt548/data_check.yaml`. Exit 0 = qua, 1 = chặn, 2 = sai tham số. Một kiểm đỏ thì các kiểm phụ thuộc phía sau báo `skip`, nên mỗi release hỏng chỉ ra một lý do rõ ràng.
 
 | Kiểm | Bằng | Chặn khi |
 |---|---|---|
-| `manifest` | đọc `manifest.json` | thiếu, sai `release_id`, không có artifact |
+| `manifest` | đọc `manifest.json` | thiếu, sai `release_id`, không có artifact, artifact thiếu `path` / `sha256` |
 | `hashes` | sha256 từng artifact | artifact thiếu hoặc bị sửa |
 | `release` | `corpus.releases.validate` | snapshot / index không khớp `eligible_ids` |
 | `schema` | `corpus.snapshot` | nơi thiếu `id`, tên, `lat`, `lng`; ít hơn `min_places` |
-| `coords` | `config/cities.yaml` | tọa độ không phải số hoặc nằm ngoài vùng thành phố |
+| `coords` | `config/cities.yaml` | tọa độ không phải số, nằm ngoài vùng thành phố, hoặc thành phố không có vùng (`area`) để kiểm |
 | `index` | `corpus.index` | nơi được phục vụ mà không có trong index |
 | `drop` | so với `--baseline` | số nơi giảm quá `max_place_drop` (10 %) |
 
 ## Đổi và lùi release (#11)
 
 `ops/nt548/data_release.py`:
-- `stage <DATA_DIR> --release <alias>... --current <alias>` dựng `DATA_DIR` của một màu và đổi pointer bằng `corpus.releases.publish`. Chạy lại với `--current` cũ là lùi release.
+- `stage <DATA_DIR> --release <thư mục>... --current <thư mục>` dựng `DATA_DIR` của một màu. `--release` và `--current` nhận **đường dẫn** thư mục `make.py` sinh ra (ví dụ `ops/nt548/sample-data/r-a`), không phải tên alias.
+  - Trước khi đổi pointer, `stage` chạy `data_check` trên release sắp phục vụ, so với release mà `DATA_DIR` đang phục vụ. Đỏ thì dừng, pointer giữ nguyên. Vì vậy gọi tay cũng không đưa được release hỏng lên.
+  - Qua gate thì đổi pointer bằng `corpus.releases.publish`. Chạy lại với `--current` cũ là lùi release, cũng qua gate.
+  - `--skip-check` bỏ gate, chỉ dành cho lùi khẩn cấp về một release đã từng qua; lệnh in cảnh báo.
 - `smoke <url> --expect <alias> [--not <alias>]` đăng nhập guest, tìm từng nơi của release theo tên. Nơi phải có thì phải trả về, nơi chỉ release kia có thì phải vắng. Thêm `--create-journey` / `--open-journey --want 200|409` để kiểm journey ghim release.
 
 `ops/nt548/data_rehearsal.sh` diễn tập trên một máy với harness thật, hai màu dùng chung Postgres. Workflow `nt548-data-release.yml` chạy đúng script này trên GitHub runner, kèm service `postgres:16`. Workflow chạy khi gọi tay (`candidate`: `r-b`, `r-b-drop`, `r-b-nocoords`) và khi có PR đụng tới các file DataOps.
@@ -104,7 +107,7 @@ Workflow chưa có bước AWS. Trên AWS, việc đổi dữ liệu là đặt 
 Nhóm chỉ viết kiểm nhỏ (`data_check.py`, khoảng 200 dòng) vì các lý do sau:
 - Định dạng release đã có sẵn phiên bản, hash và pointer nguyên tử, nên DVC và lakeFS sẽ làm lại phần đã có.
 - lakeFS cần thêm một server và S3, tốn ngân sách Learner Lab.
-- Great Expectations kéo theo nhiều phụ thuộc và cấu hình, trong khi cả bảy kiểm cần có chỉ đọc qua public API của `corpus`.
+- Great Expectations kéo theo nhiều phụ thuộc và cấu hình, trong khi bảy kiểm cần có chỉ là: đọc `manifest.json` và hash file, đọc `config/cities.yaml`, và đọc snapshot / index qua public API của `corpus`.
 - Dữ liệu mẫu khoảng 900 KB, kiểm chạy trong vài giây trong CI.
 
 Nếu đưa dữ liệu thật 274 GB lên AWS, DVC (remote S3) là bước tiếp theo hợp lý để chép release giữa các máy.
@@ -115,5 +118,6 @@ Nếu đưa dữ liệu thật 274 GB lên AWS, DVC (remote S3) là bước ti�
 |---|---|---|
 | Input tất định; `r-a`, `r-b` qua `validate`, harness bind được | `tests/nt548/test_sample_data.py` | xanh |
 | `r-a`, `r-b` qua; sửa artifact / mất 20 % nơi / thiếu tọa độ / thiếu manifest bị chặn kèm lý do | `tests/nt548/test_data_check.py` | xanh |
-| Gate, đổi r-a → r-b, journey ghim, 409, rollback trên harness thật | `ops/nt548/data_rehearsal.sh`, `nt548-data-release.yml` | xanh (67 s) |
-| `r-b-drop`, `r-b-nocoords` dừng ở gate, không màu nào lên | như trên, `candidate=r-b-drop` | dừng, exit 1 |
+| Gate, đổi r-a → r-b, journey ghim, 409, rollback trên harness thật | `ops/nt548/data_rehearsal.sh`, `nt548-data-release.yml` | xanh: 67 s trên WSL, job 1 phút 50 giây trên GitHub |
+| `stage` không đổi pointer khi `data_check` đỏ; lùi release qua cùng gate; `--skip-check` | `tests/nt548/test_data_release.py` | xanh |
+| `r-b-drop`, `r-b-nocoords` dừng ở gate, không màu nào lên | như trên, `candidate=r-b-drop` | dừng, exit 1: `40 -> 32 places (20% drop, limit 10%)` ([run 24/11](https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45371363748)) |

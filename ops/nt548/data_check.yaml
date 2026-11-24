@@ -1,0 +1,5 @@
+# Thresholds for ops/nt548/data_check.py (T5.3, #10). Release layout: docs/CORPUS.md (releases).
+max_place_drop: 0.10        # a candidate may lose at most this share of the running release's places
+min_places: 1               # a release with fewer served places is refused outright
+# every served record must carry these (dotted paths into the snapshot record); null or "" counts as missing
+required_fields: [id, identity.name, identity.lat, identity.lng]

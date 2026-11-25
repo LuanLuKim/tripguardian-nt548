@@ -45,16 +45,25 @@ resource "aws_ecs_task_definition" "harness" {
   family                   = "nt548-ecs-lab-harness"
   requires_compatibilities = ["EC2"]
   network_mode             = "bridge"
-  memory                   = "384"
+  memory                   = local.real_harness ? "896" : "384"
+  execution_role_arn       = one(data.aws_iam_role.harness_execution[*].arn)
 
   container_definitions = jsonencode([
     {
       name      = "harness"
-      image     = "ghcr.io/luanlukim/tripguardian-nt548/harness:main"
-      cpu       = 256
-      memory    = 256
+      image     = local.real_harness ? "${aws_ecr_repository.harness.repository_url}:${var.harness_image_tag}" : "ghcr.io/luanlukim/tripguardian-nt548/harness:main"
+      cpu       = local.real_harness ? 512 : 256
+      memory    = local.real_harness ? 768 : 256
       essential = true
-      command   = ["python", "ops/nt548/compose/harness_stub.py", "--host", "0.0.0.0"]
+      command   = local.real_harness ? ["python", "-m", "harness", "serve", "--host", "0.0.0.0"] : ["python", "ops/nt548/compose/harness_stub.py", "--host", "0.0.0.0"]
+
+      environment = local.real_harness ? [
+        { name = "APP_BASE_URL", value = "http://127.0.0.1:28899" }
+      ] : []
+
+      secrets = local.real_harness ? [
+        { name = "DATABASE_URL", valueFrom = "/nt548/ecs-lab/harness/database-url" }
+      ] : []
 
       portMappings = [
         {
@@ -110,7 +119,7 @@ resource "aws_appautoscaling_target" "harness" {
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.lab.name}/${aws_ecs_service.harness.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = 1
+  min_capacity       = local.real_harness ? 2 : 1
   max_capacity       = 2
 }
 

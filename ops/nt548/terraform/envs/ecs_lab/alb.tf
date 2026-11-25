@@ -46,7 +46,7 @@ resource "aws_lb_target_group" "harness" {
   vpc_id      = module.network.vpc_id
 
   health_check {
-    path    = "/api/harness/nt548-version"
+    path    = local.real_harness ? "/api/auth/options" : "/api/harness/nt548-version"
     matcher = "200"
   }
 }

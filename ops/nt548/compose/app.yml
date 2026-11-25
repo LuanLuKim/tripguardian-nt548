@@ -2,7 +2,8 @@
 #   COLOR=blue IMAGE_TAG=<sha> docker compose -f ops/nt548/compose/app.yml up -d
 # Variables (all optional): COLOR, IMAGE_TAG (default main), REGISTRY, HARNESS_CMD (default: the stub),
 # DATABASE_URL (real harness only), DATA_RELEASE (default r-a), SAMPLE_DATA, LLM_WEIGHT_V1 / LLM_WEIGHT_V2 (gateway split),
-# FAKE_V{1,2}_DELAY_MS / FAKE_V{1,2}_ERROR_RATE / FAKE_V{1,2}_ERROR_STATUS (fault injection, #39).
+# FAKE_V{1,2}_DELAY_MS / FAKE_V{1,2}_ERROR_RATE / FAKE_V{1,2}_ERROR_STATUS (fault injection, #39),
+# LANGSMITH_TRACING + LANGSMITH_API_KEY (agent traces of the real harness to project nt548-<color>).
 name: tg-${COLOR:-blue}
 
 x-image: &harness_image ${REGISTRY:-ghcr.io/luanlukim/tripguardian-nt548}/harness:${IMAGE_TAG:-main}
@@ -31,6 +32,14 @@ services:
       WRITER_BASE_URL: http://model-gateway:30000/v1
       WRITER_MODEL: gemma26b-a4b
       WRITER_API_KEY: fake
+      # agent traces to LangSmith, off by default (docs/nt548/04-aiops.md §Trace của agent). Inputs and outputs are
+      # hidden: what users type stays on the instance; run names, timings, tokens and errors go out.
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_ENDPOINT: ${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}
+      LANGSMITH_PROJECT: nt548-${COLOR:-blue}
+      LANGSMITH_HIDE_INPUTS: ${LANGSMITH_HIDE_INPUTS:-true}
+      LANGSMITH_HIDE_OUTPUTS: ${LANGSMITH_HIDE_OUTPUTS:-true}
     volumes:
       - ${SAMPLE_DATA:-../sample-data}/${DATA_RELEASE:-r-a}:/data:ro
     ports:

@@ -173,3 +173,56 @@ def test_cli_demo_writes_markdown(tmp_path):
     assert incident.main(["demo", "deploy_500", "--out", str(out)]) == 0
     text = out.read_text(encoding="utf-8")
     assert text.startswith("<!-- nt548-incident: nt548-demo-5xx -->") and "### Suggested commands" in text
+
+
+def test_failing_model_calls_in_the_traces_are_the_first_suspect():
+    inc = case("llm_errors")
+    err = inc.of("trace_error")[0]
+    assert err.facts["run_type"] == "llm" and err.facts["count"] >= 10
+    hyp, cmds = incident.rules(inc)
+    assert err.id in hyp[0]["evidence"] and "model calls fail" in hyp[0]["text"] and hyp[0]["confidence"] == "high"
+    assert cmds[0]["cmd"] == incident.GATEWAY_CMD
+
+
+def test_without_traces_the_same_5xx_has_no_cause():
+    alarm, series, logs, deploys, _ = incident.demo("llm_errors")
+    hyp, _ = incident.rules(incident.build(alarm, series, logs, deploys))
+    assert "does not point at a cause" in hyp[0]["text"]
+
+
+def test_slower_model_calls_in_the_traces_point_at_the_llm():
+    inc = case("llm_slow")
+    hyp, cmds = incident.rules(inc)
+    assert "slower in the traces" in hyp[0]["text"] and inc.of("trace")[0].id in hyp[0]["evidence"]
+    assert [c["cmd"] for c in cmds].count(incident.GATEWAY_CMD) == 1
+
+
+def test_trace_errors_are_grouped_and_tool_failures_named():
+    t = incident.utc("2026-11-28T10:00:00Z")
+    at = lambda m: (t + incident.dt.timedelta(minutes=m)).isoformat()
+    runs = [{"run_type": "chain", "name": "LangGraph", "root": True, "start_time": at(m), "end_time": at(m + 0.1),
+             "error": None} for m in range(-20, 0)]
+    runs += [{"run_type": "tool", "name": "search_places", "root": False, "start_time": at(m), "end_time": at(m + 0.1),
+              "error": "KeyError: 'area'Traceback (most recent call last):\n ...", "url": "https://smith.langchain.com/r/1"} for m in range(1, 5)]
+    runs += [{"run_type": "chain", "name": "LangGraph", "root": True, "start_time": at(m), "end_time": None,
+              "error": "KeyError: 'area'"} for m in range(1, 5)]
+    alarm = {"name": "nt548-green-errors-anomaly", "metric": "HTTPCode_Target_5XX_Count", "stat": "Sum",
+             "time": t.isoformat()}
+    inc = incident.build(alarm, None, traces=runs)
+    trace, err = inc.of("trace")[0], inc.of("trace_error")
+    assert "20 turns in the 30 min before" in trace.text and "0% -> 100%" in trace.text
+    assert len(err) == 1 and err[0].facts == {"run_type": "tool", "name": "search_places", "count": 4}
+    assert "`KeyError: 'area'`" in err[0].text and "Traceback" not in err[0].text
+    hyp, _ = incident.rules(inc)
+    assert any("Tool `search_places` fails" in h["text"] for h in hyp)
+
+
+def test_trace_project_follows_the_color_of_the_alarm():
+    assert incident.trace_project("nt548-{color}", "nt548-blue-latency-anomaly") == "nt548-blue"
+    assert incident.trace_project("nt548-{color}", "nt548-demo-5xx") == ""
+    assert incident.trace_project("harness", "anything") == "harness"
+
+
+def test_langsmith_failure_gives_no_traces(monkeypatch):
+    monkeypatch.setitem(sys.modules, "langsmith", None)  # import fails
+    assert incident.langsmith_runs("nt548-blue", incident.utc("2026-11-28T10:00:00Z")) == []

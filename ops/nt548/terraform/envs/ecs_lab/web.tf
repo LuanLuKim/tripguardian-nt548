@@ -25,11 +25,16 @@ resource "aws_ecs_task_definition" "web" {
 }
 
 resource "aws_ecs_service" "web" {
-  name            = "web"
-  cluster         = aws_ecs_cluster.lab.id
-  task_definition = aws_ecs_task_definition.web.arn
-  launch_type     = "EC2"
-  desired_count   = 1
+  name                 = "web"
+  cluster              = aws_ecs_cluster.lab.id
+  task_definition      = aws_ecs_task_definition.web.arn
+  desired_count        = 1
+  force_new_deployment = true
+
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.workers.name
+    weight            = 1
+  }
 
   depends_on = [aws_ecs_service.harness, aws_vpc_security_group_ingress_rule.harness_alb_from_app]
 }

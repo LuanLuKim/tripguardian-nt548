@@ -1,4 +1,6 @@
 terraform {
+  required_version = ">= 1.7"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -24,20 +26,19 @@ data "aws_ssm_parameter" "ecs_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
 }
 
-resource "aws_instance" "worker" {
-  ami                         = data.aws_ssm_parameter.ecs_ami.value
-  instance_type               = "t3.small"
-  subnet_id                   = module.network.public_subnet_ids[0]
-  vpc_security_group_ids      = [module.network.sg_app_id]
-  associate_public_ip_address = true
-  iam_instance_profile        = "LabInstanceProfile"
-
-  user_data = <<-SCRIPT
+locals {
+  worker_user_data = <<-SCRIPT
     #!/bin/bash
     echo 'ECS_CLUSTER=${aws_ecs_cluster.lab.name}' >> /etc/ecs/ecs.config
   SCRIPT
+}
 
-  tags = { Name = "nt548-ecs-lab-worker" }
+removed {
+  from = aws_instance.worker
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 resource "aws_ecs_task_definition" "harness" {
@@ -70,12 +71,22 @@ resource "aws_ecs_task_definition" "harness" {
 }
 
 resource "aws_ecs_service" "harness" {
-  name                  = "harness"
-  cluster               = aws_ecs_cluster.lab.id
-  task_definition       = aws_ecs_task_definition.harness.arn
-  launch_type           = "EC2"
-  desired_count         = 1
-  wait_for_steady_state = true
+  name                               = "harness"
+  cluster                            = aws_ecs_cluster.lab.id
+  task_definition                    = aws_ecs_task_definition.harness.arn
+  desired_count                      = 1
+  wait_for_steady_state              = true
+  force_new_deployment               = true
+  deployment_minimum_healthy_percent = 50
+
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.workers.name
+    weight            = 1
+  }
+
+  placement_constraints {
+    type = "distinctInstance"
+  }
 
   load_balancer {
     target_group_arn = aws_lb_target_group.harness.arn
@@ -84,7 +95,7 @@ resource "aws_ecs_service" "harness" {
   }
 
   depends_on = [
-    aws_instance.worker,
+    aws_ecs_cluster_capacity_providers.lab,
     aws_lb_listener.harness,
     aws_vpc_security_group_egress_rule.harness_alb_to_tasks,
     aws_vpc_security_group_ingress_rule.ecs_internal_ports
@@ -100,7 +111,7 @@ resource "aws_appautoscaling_target" "harness" {
   resource_id        = "service/${aws_ecs_cluster.lab.name}/${aws_ecs_service.harness.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   min_capacity       = 1
-  max_capacity       = 3
+  max_capacity       = 2
 }
 
 resource "aws_appautoscaling_policy" "harness_cpu" {

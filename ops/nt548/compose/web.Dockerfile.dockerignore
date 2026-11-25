@@ -1,0 +1,9 @@
+*
+!web/
+!ops/nt548/compose/edge.mjs
+web/node_modules
+web/dist
+web/shots
+web/public/data
+web/.env
+web/.env.*

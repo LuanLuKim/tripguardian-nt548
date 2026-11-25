@@ -100,6 +100,9 @@ def check(path: Path, baseline: Path | None = None, config: dict | None = None) 
     problems = [p for p, bad in ((f"release_id {manifest.get('release_id')!r} is not the dir name {release.name!r}",
                                   manifest.get("release_id") != release.name),
                                  ("no artifacts listed", not manifest.get("artifacts")),
+                                 ("an artifact entry lacks path or sha256",
+                                  any(not isinstance(a, dict) or not isinstance(a.get("path"), str)
+                                      or not isinstance(a.get("sha256"), str) for a in manifest.get("artifacts") or [])),
                                  ("no city", not manifest.get("city"))) if bad]
     if not report.add("manifest", not problems, "; ".join(problems)):
         return skip_rest("manifest")
@@ -138,19 +141,23 @@ def check(path: Path, baseline: Path | None = None, config: dict | None = None) 
     report.add("schema", not (missing or too_few), reason)
 
     area = (yaml.safe_load((ROOT / "config" / "cities.yaml").read_text(encoding="utf-8")).get(city) or {}).get("area")
-    outside = []
-    for r in records:
-        lat, lng = _field(r, "identity.lat"), _field(r, "identity.lng")
-        if lat in (None, "") or lng in (None, ""):
-            continue  # already reported by schema
-        try:
-            lat, lng = float(lat), float(lng)
-        except (TypeError, ValueError):
-            outside.append(f"{r['id']}: not a number")
-            continue
-        if area and not (area[0] <= lat <= area[2] and area[1] <= lng <= area[3]):
-            outside.append(f"{r['id']}: ({lat}, {lng}) outside {city}")
-    report.add("coords", not outside, "; ".join(outside[:5]))
+    if not (isinstance(area, list) and len(area) == 4):
+        # a city without an area would pass every coordinate: refuse instead of checking nothing
+        report.add("coords", False, f"no area for city {city!r} in config/cities.yaml: coordinates cannot be checked")
+    else:
+        outside = []
+        for r in records:
+            lat, lng = _field(r, "identity.lat"), _field(r, "identity.lng")
+            if lat in (None, "") or lng in (None, ""):
+                continue  # already reported by schema
+            try:
+                lat, lng = float(lat), float(lng)
+            except (TypeError, ValueError):
+                outside.append(f"{r['id']}: not a number")
+                continue
+            if not (area[0] <= lat <= area[2] and area[1] <= lng <= area[3]):
+                outside.append(f"{r['id']}: ({lat}, {lng}) outside {city}")
+        report.add("coords", not outside, "; ".join(outside[:5]))
 
     from corpus.index import Index
     try:

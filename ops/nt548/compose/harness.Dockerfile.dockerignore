@@ -1,0 +1,11 @@
+*
+!pyproject.toml
+!config/
+!migrations/
+!src/
+!scripts/model_gateway.py
+!ops/nt548/compose/harness_stub.py
+**/__pycache__
+**/*.pyc
+**/.env
+**/.env.*

@@ -76,3 +76,26 @@ def test_missing_manifest_and_cli_exit_codes(sample, tmp_path):
     assert report.failed and statuses(report) == {"manifest": "fail"}
     assert data_check.main([str(sample / "r-a")]) == 0
     assert data_check.main([str(sample / "r-b-drop"), "--baseline", str(sample / "r-a")]) == 1
+
+
+def test_artifact_entry_without_hash_is_refused_with_its_reason(sample, tmp_path):
+    import json
+    broken = tmp_path / "r-a"
+    shutil.copytree(sample / "r-a", broken)
+    manifest_path = data_check.release_dir(broken) / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["artifacts"][0]["sha256"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    report = data_check.check(broken)
+    assert report.failed and statuses(report)["manifest"] == "fail" and statuses(report)["hashes"] == "skip"
+    assert "an artifact entry lacks path or sha256" in reason(report, "manifest")
+
+
+def test_city_without_area_fails_coords_instead_of_passing_all(sample, tmp_path, monkeypatch):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "cities.yaml").write_text("dalat:\n  name: Da Lat\n", encoding="utf-8")
+    monkeypatch.setattr(data_check, "ROOT", tmp_path)
+    report = data_check.check(sample / "r-a")
+    assert report.failed and statuses(report)["coords"] == "fail"
+    assert "no area for city 'dalat'" in reason(report, "coords")
+    assert [r["check"] for r in report.results].count("coords") == 1

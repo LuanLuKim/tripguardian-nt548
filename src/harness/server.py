@@ -819,7 +819,8 @@ def handler(harness, accounts, base_url: str = "", test_login: bool = False,
     return Handler
 
 
-def run(harness, accounts, port=8769, base_url="", test_login=False, social=None, library=None, mailer=None):
+def run(harness, accounts, port=8769, base_url="", test_login=False, social=None, library=None, mailer=None,
+        *, host="127.0.0.1"):
     def sweep():
         last = 0.0
         while True:  # guests whose page closed or whose sessions ran out are deleted with their trips, even when nobody new arrives
@@ -833,4 +834,4 @@ def run(harness, accounts, port=8769, base_url="", test_login=False, social=None
             time.sleep(LEAVERS_EVERY_S)
     threading.Thread(target=sweep, daemon=True).start()
     cfg = protection_settings()
-    ProtectedHTTPServer(("127.0.0.1", port), handler(harness, accounts, base_url, test_login, cfg, social, library, mailer), cfg).serve_forever()
+    ProtectedHTTPServer((host, port), handler(harness, accounts, base_url, test_login, cfg, social, library, mailer), cfg).serve_forever()

@@ -1,7 +1,7 @@
 # Harness image (python -m harness serve, or the stub until sample data exists) and the model gateway.
 # Build context: repo root. No data/, .env or key goes in (harness.Dockerfile.dockerignore is an allowlist).
 #   docker build -f ops/nt548/compose/harness.Dockerfile -t harness .
-FROM python:3.12-slim
+FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/src
 WORKDIR /app
 # Dependencies first (cached while only src/ changes); fastapi + uvicorn run scripts/model_gateway.py.
@@ -20,3 +20,11 @@ LABEL org.opencontainers.image.source="https://github.com/LuanLuKim/tripguardian
 RUN useradd --create-home --uid 10001 app
 USER app
 CMD ["python", "ops/nt548/compose/harness_stub.py"]
+
+FROM runtime AS ecs-lab
+COPY ops/nt548/sample-data/make.py ops/nt548/sample-data/make.py
+RUN python ops/nt548/sample-data/make.py --out /home/app/sample-data
+ENV DATA_DIR=/home/app/sample-data/r-a
+CMD ["python", "-m", "harness", "serve", "--host", "0.0.0.0"]
+
+FROM runtime AS default

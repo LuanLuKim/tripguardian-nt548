@@ -5,6 +5,7 @@
 !src/
 !scripts/model_gateway.py
 !ops/nt548/compose/harness_stub.py
+!ops/nt548/sample-data/make.py
 **/__pycache__
 **/*.pyc
 **/.env

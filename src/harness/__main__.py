@@ -147,6 +147,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     serve = sub.add_parser("serve")
     serve.add_argument("--port", type=int, default=8769)
+    serve.add_argument("--host", default="127.0.0.1")
     imp = sub.add_parser("import-files", help="load data/harness/sessions + feedback.jsonl into Postgres (once)")
     imp.add_argument("sessions", type=Path)
     imp.add_argument("feedback", type=Path, nargs="?")
@@ -184,8 +185,9 @@ def main():
     # the overload search's standing workers (planning.overload pool), so the first overloaded trip does not start them
     threading.Thread(target=_warm_planning_workers, name="planning-workers-warm", daemon=True).start()
     test_login = os.environ.get("TG_TEST_LOGIN") == "1"  # walk-throughs only; refused when APP_BASE_URL is https
-    print(f"Journey harness: http://127.0.0.1:{args.port} (app {version})")
-    run(harness, accounts, args.port, os.environ.get("APP_BASE_URL", ""), test_login, Social(pool()), Library(pool()), mailer_from_env())
+    print(f"Journey harness: http://{args.host}:{args.port} (app {version})")
+    run(harness, accounts, args.port, os.environ.get("APP_BASE_URL", ""), test_login,
+        Social(pool()), Library(pool()), mailer_from_env(), host=args.host)
 
 
 def _warm_planning_workers() -> None:

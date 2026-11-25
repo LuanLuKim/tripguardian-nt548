@@ -1,7 +1,7 @@
 // Public server for the built web (web/dist): what a Cloudflare tunnel may expose, and nothing else.
 //   public : landing, /app (SPA), /assets, /img, /data (snapshot, covers), /media photos (jpg only),
 //            /media/thumb WebP thumbnails (web/scripts/make_thumbs.py), /media/tiktok/<id>/frames/*.jpg clip posters (clips play in TikTok's player), /media/landing/*.mp4 films (Range),
-//            /api/harness/* and /api/auth/* (Google sign-in) proxied to the harness on 127.0.0.1:8769 (JSON and SSE).
+//            /api/harness/* and /api/auth/* (Google sign-in) proxied to the harness (default 127.0.0.1:8769; JSON and SSE).
 //   admin  : /admin (the SPA shell, which shows the sign-in form) and /api/analytics/* (the analytics server enforces
 //            its own sign-in) are proxied; the review API (/api/queue, /api/decision(s), /api/labels*) and
 //            /data/snapshot-admin.json are sent only after analytics confirms the `tg_admin` cookie (/api/analytics/me).
@@ -18,7 +18,7 @@ import { constants as Z, brotliCompress, createBrotliCompress, createGzip, gzip 
 import { promisify } from 'node:util'
 
 const PORT = Number(process.argv[2] ?? process.env.PORT ?? 28899)
-const HARNESS = { host: '127.0.0.1', port: Number(process.env.HARNESS_PORT ?? 8769), agent: new Agent({ keepAlive: true, maxSockets: 64 }), active: 0 }
+const HARNESS = { host: process.env.HARNESS_HOST ?? '127.0.0.1', port: Number(process.env.HARNESS_PORT ?? 8769), agent: new Agent({ keepAlive: true, maxSockets: 64 }), active: 0 }
 // Admin: the analytics server (sign-in, numbers) and the review server (queue, labels), both on loopback.
 const ANALYTICS = { host: '127.0.0.1', port: Number(process.env.ANALYTICS_PORT ?? 8770), agent: new Agent({ keepAlive: true, maxSockets: 16 }), active: 0 }
 const REVIEW = { host: '127.0.0.1', port: Number(process.env.REVIEW_PORT ?? 8765), agent: new Agent({ keepAlive: true, maxSockets: 16 }), active: 0 }

@@ -8,11 +8,17 @@ hypothesis must cite evidence ids that exist; if one does not, or there is no LL
 the fixed template summary is used. Suggested commands
 always come from the fixed rules and are never run: a person decides (only canary_watch of #3 rolls back on its own).
 
+Agent traces (optional): when the harness traces to LangSmith (LANGSMITH_TRACING in ops/nt548/compose/app.yml), the
+runs of the agent before vs since the alarm are evidence too: failed turns, turn time, LLM call time, and which runs
+(model call, tool) failed. They tell a failing model behind model-gateway from a failing app.
+
     python ops/nt548/aiops/incident.py demo deploy_500 --out incident.md        # synthetic incident, no AWS / GitHub
-    python ops/nt548/aiops/incident.py summarize --series tg.csv --alarm alarm.json --logs patterns.json --deploys runs.json
+    python ops/nt548/aiops/incident.py summarize --series tg.csv --alarm alarm.json --logs patterns.json --deploys runs.json \
+        --traces traces.json
     python ops/nt548/aiops/incident.py watch --prefix nt548- --repo owner/name --post   # runner: alarms now in ALARM
 
 LLM settings (environment): INCIDENT_LLM_BASE_URL (".../v1"), INCIDENT_LLM_API_KEY, INCIDENT_LLM_MODEL.
+Traces (environment, watch only): LANGSMITH_API_KEY; the project is --traces-project (default nt548-{color}).
 """
 
 from __future__ import annotations
@@ -37,16 +43,19 @@ detect = importlib.util.module_from_spec(_spec)
 sys.modules.setdefault(_spec.name, detect)  # dataclasses look their module up there
 _spec.loader.exec_module(detect)
 
-DEMOS = ("deploy_500", "llm_slow", "traffic")
+DEMOS = ("deploy_500", "llm_slow", "traffic", "llm_errors")
 DEPLOY_WINDOW_MIN = 30  # a deploy that finished this long before the alarm is a suspect
+TRACE_WINDOW_MIN = 30  # agent traces this long before the alarm are the baseline
 ROLLBACK_CMD = "gh workflow run nt548-deploy-aws.yml -f action=rollback"
+GATEWAY_CMD = ("docker compose -f ops/nt548/compose/app.yml exec model-gateway python -c \"import urllib.request as u; "
+               "print(u.urlopen('http://localhost:30000/metrics').read().decode())\" | grep gateway_upstream")
 MARKER = "<!-- nt548-incident: {} -->"
 
 
 @dataclass
 class Evidence:
     id: str
-    kind: str  # alarm | metric | detector | log | deploy
+    kind: str  # alarm | metric | detector | log | deploy | trace | trace_error
     text: str
     facts: dict = field(default_factory=dict)  # what the rules read; not shown
 
@@ -87,9 +96,9 @@ def code(s: str) -> str:
 # ---------- evidence ----------
 
 def build(alarm: dict, series: detect.Series | None, logs: list[dict] | None = None,
-          deploys: list[dict] | None = None) -> Incident:
+          deploys: list[dict] | None = None, traces: list[dict] | None = None) -> Incident:
     """alarm: {name, metric, stat, dims, reason?, time?}. Without `time`, the alarm starts at the first `combined`
-    alarm of detect.py on `series` (synthetic runs, #39)."""
+    alarm of detect.py on `series` (synthetic runs, #39). traces: agent runs, see trace_evidence."""
     ev: list[Evidence] = []
 
     def add(kind: str, text: str, **facts) -> None:
@@ -157,7 +166,58 @@ def build(alarm: dict, series: detect.Series | None, logs: list[dict] | None = N
                 f"{code(d.get('displayTitle', ''))}) finished {lead:.0f} min before the alarm, "
                 f"conclusion {d.get('conclusion') or 'running'}", sha=sha, lead=lead)
 
+    trace_evidence(add, traces or [], started)
     return Incident(alarm.get("name", f"detect-{metric}"), metric, stat, started, ev, alarm.get("dims", {}))
+
+
+def _secs(r: dict) -> float | None:
+    return (utc(r["end_time"]) - utc(r["start_time"])).total_seconds() if r.get("end_time") else None
+
+
+def _trace_window(runs: list[dict]) -> dict:
+    roots = [r for r in runs if r.get("root")]
+    turn = [s for r in roots if (s := _secs(r)) is not None]
+    llm = [s for r in runs if r.get("run_type") == "llm" and (s := _secs(r)) is not None]
+    return {"turns": len(roots), "failed": sum(1 for r in roots if r.get("error")),
+            "p95": float(np.percentile(turn, 95)) if turn else None,
+            "llm": float(np.median(llm)) if llm else None}
+
+
+def trace_evidence(add, runs: list[dict], started: dt.datetime) -> None:
+    """Agent runs (LangSmith or a JSON file): [{run_type: chain|llm|tool|..., name, start_time, end_time, error,
+    root, url?}], one per run of the trace tree. Adds one `trace` evidence (before vs since the alarm) and up to 3
+    `trace_error` evidences (failed runs since the alarm, grouped by run type, name and first line of the error)."""
+    lo = started - dt.timedelta(minutes=TRACE_WINDOW_MIN)
+    before = [r for r in runs if lo <= utc(r["start_time"]) < started]
+    since = [r for r in runs if utc(r["start_time"]) >= started]
+    if not before and not since:
+        return
+    b, s = _trace_window(before), _trace_window(since)
+
+    def rate(w: dict) -> float | None:
+        return w["failed"] / w["turns"] if w["turns"] else None
+
+    def pct(x: float | None) -> str:
+        return "-" if x is None else f"{100 * x:.0f}%"
+
+    def sec(x: float | None) -> str:
+        return "-" if x is None else f"{x:.2g} s"
+
+    add("trace", f"agent traces (LangSmith): {b['turns']} turns in the {TRACE_WINDOW_MIN} min before the alarm, "
+        f"{s['turns']} since; failed turns {pct(rate(b))} -> {pct(rate(s))}; p95 turn time {sec(b['p95'])} -> "
+        f"{sec(s['p95'])}; median model call {sec(b['llm'])} -> {sec(s['llm'])}",
+        fail_before=rate(b) or 0.0, fail_since=rate(s) or 0.0, llm_before=b["llm"], llm_since=s["llm"])
+
+    failed = [r for r in since if r.get("error") and not r.get("root")] or [r for r in since if r.get("error")]
+    groups: dict[tuple, list[dict]] = {}
+    for r in failed:
+        # LangSmith stores the exception, then its traceback with no line break between them
+        first = re.split(r"Traceback \(most recent call last\)|\n", str(r["error"]).strip())[0][:120] or "error"
+        groups.setdefault((r.get("run_type", "?"), r.get("name", "?"), first), []).append(r)
+    for (kind, name, err), rs in sorted(groups.items(), key=lambda kv: len(kv[1]), reverse=True)[:3]:
+        url = next((r["url"] for r in rs if r.get("url")), "")
+        add("trace_error", f"{len(rs)} {kind} run(s) {code(name)} failed since the alarm: {code(err)}"
+            + (f", e.g. {url}" if url else ""), run_type=kind, name=name, count=len(rs))
 
 
 # ---------- writing: fixed rules, then optionally an LLM over the same evidence ----------
@@ -175,6 +235,23 @@ def rules(inc: Incident) -> tuple[list[dict], list[dict]]:
                     "confidence": "high" if errors else "medium"})
         cmds.append({"cmd": ROLLBACK_CMD, "why": f"go back to the color that ran before {d.facts['sha']}",
                      "evidence": [d.id]})
+    gateway = {"cmd": GATEWAY_CMD, "why": "per-upstream latency and cooldown in the gateway (#15), on an app instance"}
+    tid = [e.id for e in inc.of("trace")]
+    llm_err = [e for e in inc.of("trace_error") if e.facts["run_type"] == "llm"]
+    if llm_err:
+        hyp.append({"text": f"The agent's model calls fail ({llm_err[0].facts['count']} failed runs in the traces): "
+                            "the LLM behind model-gateway returns errors, and the app fails with it.",
+                    "evidence": [llm_err[0].id] + tid + mid, "confidence": "medium" if inc.of("deploy") else "high"})
+        cmds.append({**gateway, "evidence": [llm_err[0].id]})
+    for e in [e for e in inc.of("trace_error") if e.facts["run_type"] == "tool"][:2]:
+        hyp.append({"text": f"Tool {code(e.facts['name'])} fails inside the agent ({e.facts['count']} failed runs).",
+                    "evidence": [e.id] + tid, "confidence": "medium"})
+    t = inc.of("trace")[0].facts if inc.of("trace") else {}
+    if not llm_err and t.get("llm_before") and t.get("llm_since") and t["llm_since"] >= 2 * t["llm_before"]:
+        hyp.append({"text": f"Model calls got {t['llm_since'] / t['llm_before']:.1f}x slower in the traces: the time "
+                            "goes to the LLM behind model-gateway, not to the app.",
+                    "evidence": tid + mid, "confidence": "medium"})
+        cmds.append({**gateway, "evidence": tid})
     for e in errors[:2]:
         hyp.append({"text": f"New or growing error lines {code(e.facts['pattern'])} point at where it fails.",
                     "evidence": [e.id] + mid, "confidence": "medium"})
@@ -190,11 +267,8 @@ def rules(inc: Incident) -> tuple[list[dict], list[dict]]:
             hyp.append({"text": "Latency rose with no deploy before it: a slow upstream (the LLM behind "
                                 "model-gateway) or a saturated app instance.",
                         "evidence": mid or [inc.evidence[0].id], "confidence": "low"})
-            cmds.append({"cmd": "docker compose -f ops/nt548/compose/app.yml exec model-gateway python -c \"import "
-                                "urllib.request as u; print(u.urlopen('http://localhost:30000/metrics').read().decode())\""
-                                " | grep gateway_upstream",
-                         "why": "per-upstream latency and cooldown in the gateway (#15), on an app instance",
-                         "evidence": mid})
+            if all(c["cmd"] != GATEWAY_CMD for c in cmds):
+                cmds.append({**gateway, "evidence": mid})
     if not hyp:
         hyp.append({"text": "The evidence gathered does not point at a cause.", "evidence": [inc.evidence[0].id],
                     "confidence": "low"})
@@ -371,9 +445,31 @@ def from_cloudwatch(a: dict) -> dict:
             "time": a["StateUpdatedTimestamp"]}
 
 
-def demo(case: str, seed: int = 0, now: dt.datetime | None = None) -> tuple[dict, detect.Series, list, list]:
-    """A synthetic incident (alarm, series, log patterns, deploys) for each case in DEMOS; the fault starts at
-    point 180 of 240 (one per minute)."""
+def demo_traces(rng: np.random.Generator, t0: float, n: int, at: int, llm_s: tuple[float, float],
+                fail_since: float = 0.0, error: str = "") -> list[dict]:
+    """One agent turn a minute over the last 90 points: a root chain, one model call, one tool call. Since point
+    `at` the model call takes llm_s[1] s instead of llm_s[0] and fails with probability fail_since."""
+    runs = []
+    for i in range(n - 90, n):
+        start = t0 + i * 60.0 + float(rng.uniform(0, 30))
+        after = i >= at
+        llm = max(0.05, float(rng.normal(llm_s[after], 0.1 * llm_s[after])))
+        err = error if after and rng.random() < fail_since else None
+        tool = 0.0 if err else 0.1  # a failed model call ends the turn before any tool
+        iso = lambda x: utc(x).isoformat()
+        runs.append({"run_type": "chain", "name": "LangGraph", "root": True, "start_time": iso(start),
+                     "end_time": iso(start + llm + tool + 0.05), "error": err})
+        runs.append({"run_type": "llm", "name": "ChatOpenAI", "root": False, "start_time": iso(start + 0.01),
+                     "end_time": iso(start + 0.01 + llm), "error": err})
+        if not err:
+            runs.append({"run_type": "tool", "name": "search_places", "root": False, "start_time": iso(start + llm),
+                         "end_time": iso(start + llm + tool), "error": None})
+    return runs
+
+
+def demo(case: str, seed: int = 0, now: dt.datetime | None = None) -> tuple[dict, detect.Series, list, list, list]:
+    """A synthetic incident (alarm, series, log patterns, deploys, agent traces) for each case in DEMOS; the fault
+    starts at point 180 of 240 (one per minute)."""
     if case not in DEMOS:
         raise ValueError(f"unknown demo {case}; one of {', '.join(DEMOS)}")
     rng = np.random.default_rng(seed)
@@ -381,7 +477,7 @@ def demo(case: str, seed: int = 0, now: dt.datetime | None = None) -> tuple[dict
     now = now or dt.datetime(2026, 11, 28, 10, 0, tzinfo=dt.timezone.utc)
     t0 = now.timestamp() - n * step
     at_t = utc(t0 + at * step)
-    deploys, logs = [], []
+    deploys, logs, traces = [], [], []
     if case == "deploy_500":
         v = rng.poisson(1.0, n).astype(float)
         v[at:] += rng.poisson(30.0, n - at)
@@ -400,12 +496,44 @@ def demo(case: str, seed: int = 0, now: dt.datetime | None = None) -> tuple[dict
                     "updatedAt": (at_t - dt.timedelta(hours=3)).isoformat()}]  # too early to be a suspect
         logs = [{"pattern": "model-gateway upstream <*> timeout after <*> s", "count": 310, "baseline": 2,
                  "level": "WARNING"}]
+        traces = demo_traces(rng, t0, n, at, (0.8, 2.6))
+    elif case == "llm_errors":  # #39: the fake LLM fails 30 % of calls; no deploy, no log pattern explains it
+        v = rng.poisson(0.5, n).astype(float)
+        v[at:] += rng.poisson(12.0, n - at)
+        alarm = {"name": "nt548-demo-blue-errors", "metric": "HTTPCode_Target_5XX_Count", "stat": "Sum"}
+        traces = demo_traces(rng, t0, n, at, (0.8, 0.8), 0.3, "OpenAIAPIError('Error code: 500 - injected "
+                                                              "failure (FAKE_ERROR_RATE)')Traceback (most recent call "
+                                                              "last):\n  File ...")  # as LangSmith stored it, 25/11
     else:  # traffic
         v = 100 + rng.normal(0, 8, n)
         v[at:] += 300
         alarm = {"name": "nt548-demo-requests", "metric": "RequestCount", "stat": "Sum",
                  "dims": {"AutoScalingGroupName": "nt548-blue"}}
-    return alarm, detect.Series(np.maximum(v, 0), None, step, t0), logs, deploys
+    return alarm, detect.Series(np.maximum(v, 0), None, step, t0), logs, deploys, traces
+
+
+def trace_project(template: str, alarm_name: str) -> str:
+    """The LangSmith project of the color an alarm is about: nt548-{color} + nt548-blue-latency-anomaly ->
+    nt548-blue. '' when the template wants a color and the alarm name has none."""
+    if "{color}" not in template:
+        return template
+    m = re.search(r"-(blue|green)-", alarm_name)
+    return template.format(color=m.group(1)) if m else ""
+
+
+def langsmith_runs(project: str, since: dt.datetime, limit: int = 2000) -> list[dict]:
+    """Runs of a LangSmith project started since `since`, in the shape trace_evidence reads. [] on any failure:
+    the incident is written without traces."""
+    try:
+        from langsmith import Client
+
+        return [{"run_type": r.run_type, "name": r.name, "start_time": utc(r.start_time).isoformat(),
+                 "end_time": utc(r.end_time).isoformat() if r.end_time else None, "error": r.error,
+                 "root": r.parent_run_id is None, "url": getattr(r, "url", None)}
+                for r in Client().list_runs(project_name=project, start_time=since, limit=limit)]
+    except Exception as e:  # no package, no project yet, network, auth
+        print(f"LangSmith traces of {project} not read: {type(e).__name__}", file=sys.stderr)
+        return []
 
 
 def llm_env() -> dict | None:
@@ -437,10 +565,13 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--alarm", type=Path, help="JSON {name, metric, stat, time?, reason?, dims?}")
     s.add_argument("--logs", type=Path, help="JSON [{pattern, count, baseline, level}] (#37)")
     s.add_argument("--deploys", type=Path, help="JSON of gh run list --json databaseId,displayTitle,headSha,...")
+    s.add_argument("--traces", type=Path, help="JSON [{run_type, name, start_time, end_time, error, root, url?}]")
     w = sub.add_parser("watch", help="every CloudWatch alarm now in ALARM -> one incident each (runner)")
     w.add_argument("--prefix", default="nt548-")
     w.add_argument("--minutes", type=int, default=180)
     w.add_argument("--logs", type=Path)
+    w.add_argument("--traces-project", default="nt548-{color}",
+                   help="LangSmith project of the harness ({color} from the alarm name); read when LANGSMITH_API_KEY is set")
     for sp in (d, s, w):
         sp.add_argument("--repo", help="owner/name; with --post the summary goes to an `incident` issue there")
         sp.add_argument("--post", action="store_true")
@@ -449,12 +580,12 @@ def main(argv: list[str] | None = None) -> int:
     if a.post and not a.repo:
         p.error("--post needs --repo")
 
-    work: list[tuple[dict, detect.Series | None, list | None, list | None]] = []
+    work: list[tuple[dict, detect.Series | None, list | None, list | None, list | None]] = []
     if a.cmd == "demo":
         work.append(demo(a.case, a.seed))
     elif a.cmd == "summarize":
         alarm = load_json(a.alarm) or {"name": f"detect-{a.series.stem}", "metric": a.series.stem}
-        work.append((alarm, detect.read_csv(a.series), load_json(a.logs), load_json(a.deploys)))
+        work.append((alarm, detect.read_csv(a.series), load_json(a.logs), load_json(a.deploys), load_json(a.traces)))
     else:
         import boto3
 
@@ -467,13 +598,16 @@ def main(argv: list[str] | None = None) -> int:
             alarm = from_cloudwatch(x)
             series = detect.cloudwatch(alarm["metric"], alarm["dims"], a.minutes, alarm["stat"], alarm["period"],
                                        alarm["namespace"])
-            work.append((alarm, series, load_json(a.logs), deploys))
+            project = trace_project(a.traces_project, alarm["name"])
+            traces = (langsmith_runs(project, utc(alarm["time"]) - dt.timedelta(minutes=TRACE_WINDOW_MIN))
+                      if project and os.environ.get("LANGSMITH_API_KEY") else [])
+            work.append((alarm, series, load_json(a.logs), deploys, traces))
         if not found:
             print(f"no alarm with prefix {a.prefix} in ALARM", file=sys.stderr)
 
     bodies = []
-    for alarm, series, logs, deploys in work:
-        inc = build(alarm, series, logs, deploys)
+    for alarm, series, logs, deploys, traces in work:
+        inc = build(alarm, series, logs, deploys, traces)
         bodies.append(write(inc, llm_env()))
         if a.post:
             print(post(inc, bodies[-1], a.repo), file=sys.stderr)

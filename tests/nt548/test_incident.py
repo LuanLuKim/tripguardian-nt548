@@ -87,8 +87,38 @@ def test_valid_llm_answer_is_used(monkeypatch):
                                                                      "confidence": "high"}]}
     monkeypatch.setattr(incident, "ask_llm", lambda *a, **k: json.dumps(answer))
     body = incident.write(inc, {"base_url": "http://llm", "api_key": "", "model": "m"})
-    assert "Errors since the deploy." in body and "1. the deploy [E1, E2] (high)" in body
+    assert "Errors since the deploy." in body and ". the deploy [E1, E2] (high, LLM)" in body
+    # the rule hypotheses stay first, so a hedging LLM cannot push the deploy out of first place
+    assert "1. The deploy of a1b2c3d" in body and "(high, rule)" in body
+    assert body.index("(high, rule)") < body.index("(high, LLM)")
     assert incident.ROLLBACK_CMD in body  # commands still come from the fixed rules
+
+
+def test_a_format_slip_is_asked_again_a_made_up_cause_is_not(monkeypatch):
+    good = json.dumps({"summary": "5xx rose.", "hypotheses": [{"text": "x", "evidence": ["E2"], "confidence": "low"}]})
+    llm = {"base_url": "http://llm"}
+    for answers, calls, why in (([good[:60], good], 2, ""),                      # cut off, then whole
+                                (['{"summary": "s", "hypotheses": [{"text": "x", "evidence": ["E99"]}]}', good], 1,
+                                 "cites evidence that does not exist: E99"),
+                                (["no json", "still no json"], 2, "no JSON in the answer")):
+        seen = []
+        monkeypatch.setattr(incident, "ask_llm", lambda *a, _q=list(answers), **k: seen.append(1) or _q.pop(0))
+        answer, got = incident.llm_answer(case("deploy_500"), llm)
+        assert (len(seen), got, answer is not None) == (calls, why, not why)
+
+
+def test_request_uses_json_mode_and_drops_it_when_the_endpoint_refuses(monkeypatch):
+    sent = []
+
+    def fake(url, body, headers, timeout):
+        sent.append(body)
+        if "response_format" in body:
+            raise incident.urllib.error.HTTPError(url, 400, "unsupported", {}, None)
+        return "{}"
+    monkeypatch.setattr(incident, "_complete", fake)
+    assert incident.ask_llm(case("traffic"), "http://llm/v1", "k", "m") == "{}"
+    assert sent[0]["response_format"] == {"type": "json_object"} and sent[0]["max_tokens"] == incident.MAX_TOKENS
+    assert "response_format" not in sent[1] and sent[1]["max_tokens"] == incident.MAX_TOKENS
 
 
 def test_llm_failure_does_not_fail_the_incident(monkeypatch):

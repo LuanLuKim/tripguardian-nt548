@@ -3,8 +3,9 @@
 Evidence is gathered first and numbered E1..En: the alarm, the alarming metric before vs since the alarm, the
 detectors of detect.py on that metric, top log patterns (#37, optional JSON) and deploys shortly before the alarm
 (GitHub runs, optional JSON). An LLM (any OpenAI-compatible endpoint: Workers AI, llm-fake) then writes the summary
-and cause hypotheses from that evidence only. Every hypothesis must cite evidence ids that exist; if one does not,
-or there is no LLM, the whole LLM answer is dropped and a fixed rule-based template is used. Suggested commands
+and extra cause hypotheses from that evidence only; the rule-based hypotheses always stay, listed first. Every LLM
+hypothesis must cite evidence ids that exist; if one does not, or there is no LLM, the whole LLM answer is dropped and
+the fixed template summary is used. Suggested commands
 always come from the fixed rules and are never run: a person decides (only canary_watch of #3 rolls back on its own).
 
     python ops/nt548/aiops/incident.py demo deploy_500 --out incident.md        # synthetic incident, no AWS / GitHub
@@ -24,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -230,15 +232,44 @@ Evidence:
 """
 
 
-def ask_llm(inc: Incident, base_url: str, api_key: str = "", model: str = "", timeout: float = 30) -> str:
-    body = {"model": model or "default", "temperature": 0,
+MAX_TOKENS = 1024  # Workers AI cuts answers at 256 tokens by default, which leaves the JSON unclosed
+FORMAT_SLIPS = ("no JSON in the answer", "answer is not valid JSON")
+
+
+def ask_llm(inc: Incident, base_url: str, api_key: str = "", model: str = "", timeout: float = 60) -> str:
+    """One chat completion in JSON mode; an endpoint that rejects response_format (HTTP 400 / 422) is asked again
+    without it."""
+    body = {"model": model or "default", "temperature": 0, "max_tokens": MAX_TOKENS,
+            "response_format": {"type": "json_object"},
             "messages": [{"role": "user", "content": PROMPT + "\n".join(f"{e.id} ({e.kind}): {e.text}"
                                                                           for e in inc.evidence)}]}
-    req = urllib.request.Request(base_url.rstrip("/") + "/chat/completions", json.dumps(body).encode(),
-                                 {"Content-Type": "application/json", **({"Authorization": f"Bearer {api_key}"}
-                                                                         if api_key else {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {api_key}"} if api_key else {})}
+    url = base_url.rstrip("/") + "/chat/completions"
+    try:
+        return _complete(url, body, headers, timeout)
+    except urllib.error.HTTPError as e:
+        if e.code not in (400, 422):
+            raise
+        return _complete(url, {k: v for k, v in body.items() if k != "response_format"}, headers, timeout)
+
+
+def _complete(url: str, body: dict, headers: dict, timeout: float) -> str:
+    with urllib.request.urlopen(urllib.request.Request(url, json.dumps(body).encode(), headers), timeout=timeout) as r:
         return json.load(r)["choices"][0]["message"]["content"]
+
+
+def llm_answer(inc: Incident, llm: dict) -> tuple[dict | None, str]:
+    """(answer, '') or (None, why). A format slip (no JSON, cut-off JSON) is asked once more; an answer that cites
+    evidence that does not exist is not: asking again would only fish for a different made-up cause."""
+    why = ""
+    for _ in range(2):
+        try:
+            answer, why = check_llm(ask_llm(inc, **llm), inc.ids())
+        except Exception as e:  # network, HTTP, shape: fall back, never fail the incident
+            return None, f"LLM call failed: {type(e).__name__}"
+        if answer or why not in FORMAT_SLIPS:
+            return answer, why
+    return None, why
 
 
 def check_llm(text: str, ids: set[str]) -> tuple[dict | None, str]:
@@ -271,21 +302,22 @@ def check_llm(text: str, ids: set[str]) -> tuple[dict | None, str]:
 def write(inc: Incident, llm: dict | None = None) -> str:
     """Markdown body of the incident issue. llm: {base_url, api_key, model} or None for the template only."""
     hyp, cmds = rules(inc)
+    hyp = [{**h, "by": "rule"} for h in hyp]
     summary, by = template_summary(inc), "fixed template (no LLM configured)"
     if llm and llm.get("base_url"):
-        try:
-            answer, why = check_llm(ask_llm(inc, **llm), inc.ids())
-        except Exception as e:  # network, HTTP, shape: fall back, never fail the incident
-            answer, why = None, f"LLM call failed: {type(e).__name__}"
+        answer, why = llm_answer(inc, llm)
         if answer:
-            summary, hyp = answer["summary"].strip(), answer["hypotheses"]
-            by = f"LLM `{llm.get('model') or 'default'}`, every hypothesis checked against the evidence ids"
+            # the rules stay first: they are tested and decisive, the LLM tends to hedge (tried 24/11)
+            summary = answer["summary"].strip()
+            hyp += [{**h, "by": "LLM"} for h in answer["hypotheses"]]
+            by = (f"LLM `{llm.get('model') or 'default'}` (summary, extra causes checked against the evidence ids)"
+                  " + fixed rules")
         else:
             by = f"fixed template (LLM answer rejected: {why})"
     out = [MARKER.format(inc.alarm), f"## Incident: {code(inc.alarm)}", "",
            f"**Started:** {hm(inc.started)} · **Metric:** {inc.metric} {inc.stat} · **Written by:** {by}", "",
            "### Summary", "", summary, "", "### Likely causes (each cites the evidence below)", ""]
-    out += [f"{i}. {h['text']} [{', '.join(map(str, h['evidence']))}] ({h['confidence']})"
+    out += [f"{i}. {h['text']} [{', '.join(map(str, h['evidence']))}] ({h['confidence']}, {h['by']})"
             for i, h in enumerate(hyp, 1)]
     out += ["", "### Suggested commands (not run: a person decides)", ""]
     out += [f"- {code(c['cmd'])}: {c['why']} [{', '.join(c['evidence'])}]" for c in cmds] or ["- none"]

@@ -8,6 +8,7 @@ name: nt548-incident
 #   trigger is added once that runner (#22) exists; before that a cron job would queue for a runner that is not there.
 # LLM (optional): repository variable INCIDENT_LLM_BASE_URL (+ INCIDENT_LLM_MODEL) and secret INCIDENT_LLM_API_KEY.
 # Without them the fixed template writes the summary.
+# Agent traces (optional, watch): secret LANGSMITH_API_KEY; the harness traces to project nt548-<color> (app.yml).
 
 on:
   workflow_dispatch:
@@ -19,7 +20,7 @@ on:
       case:
         description: demo case
         type: choice
-        options: [deploy_500, llm_slow, traffic]
+        options: [deploy_500, llm_slow, traffic, llm_errors]
         default: deploy_500
       post:
         description: open / comment on the `incident` issue
@@ -39,6 +40,7 @@ env:
   INCIDENT_LLM_BASE_URL: ${{ vars.INCIDENT_LLM_BASE_URL }}
   INCIDENT_LLM_MODEL: ${{ vars.INCIDENT_LLM_MODEL }}
   INCIDENT_LLM_API_KEY: ${{ secrets.INCIDENT_LLM_API_KEY }}
+  LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
   GH_TOKEN: ${{ github.token }}
   CASE: ${{ inputs.case }}
   POST: ${{ inputs.post && '--post' || '' }}
@@ -64,7 +66,7 @@ jobs:
       AWS_DEFAULT_REGION: us-east-1
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install --user numpy scikit-learn boto3
+      - run: python3 -m pip install --user numpy scikit-learn boto3 langsmith
       - run: |
           python3 ops/nt548/aiops/incident.py watch --prefix nt548- --repo "$GITHUB_REPOSITORY" $POST --out incident.md
           [ -s incident.md ] && cat incident.md >> "$GITHUB_STEP_SUMMARY" || echo "no alarm in ALARM" >> "$GITHUB_STEP_SUMMARY"

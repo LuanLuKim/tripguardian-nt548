@@ -1,4 +1,4 @@
-# 02. Load balancer và blue/green bằng Compose + Nginx (T2, dinhlong06)
+# 02. Load balancer và blue/green bằng Compose + Nginx (T2, DontMadWhenBad)
 
 Đọc xong làm được: một lệnh dựng stack hai màu, đổi traffic giữa hai màu không rớt request, rollback < 1 phút, và workflow diễn tập toàn bộ trong CI.
 
@@ -84,28 +84,43 @@ flowchart LR
 ## Các bước
 
 1. Image và `app.yml`: đã có, xem §Image và §`app.yml`.
-2. `ops/nt548/compose/docker-compose.yml`: `postgres:16`, `nginx`, `web-blue`, `harness-blue`, `web-green`, `harness-green`. Mỗi màu đọc tag image từ biến (`BLUE_TAG`, `GREEN_TAG`). Migration: chạy `migrations/*.sql` một lần lúc `postgres` lên.
-3. Dữ liệu: mount `ops/nt548/sample-data/` (T5 làm) chỉ đọc. Chưa có thì dùng harness stub (`ops/nt548/compose/harness_stub.py`: trả 200 / 401 cho đúng các route web gọi, có header `X-Color`) để làm tiếp phần LB.
+2. Hai màu trên một máy, đã làm (#2). Không viết một `docker-compose.yml` hai màu riêng. Mỗi màu là một stack `app.yml` (project `tg-blue`, `tg-green`), cổng máy lấy từ biến `HOST_PORT`; Nginx (`ops/nt548/lb/`) đứng trước, gọi vào `host.docker.internal`. Lý do: máy app của T8 và buổi diễn tập chạy **cùng** một file, không có hai cấu hình phải giữ khớp nhau.
+
+   ```mermaid
+   flowchart LR
+     C[client] --> N["nginx :8080<br/>split_clients theo tg_session"]
+     N -->|"upstream blue<br/>hash consistent"| B1["tg-blue :8081"] & B2["tg-blue-2 :8091"]
+     N -->|upstream green| G1["tg-green :8082"]
+   ```
+
+   - Một màu nhiều bản: `deploy.sh up blue <tag> 2` thêm `tg-blue-2` trên cổng 8091. Nginx giữ người dùng trên một bản (`hash $split_key consistent`), nên phiên trong RAM không bị dựng lại liên tục. Đây là cách (a) của §Cấu hình chính: Nginx chọn cặp web + harness của màu.
+   - Khách chưa có cookie: khóa chia là `$request_id`, nghĩa là mỗi request chia riêng theo %.
+   - Postgres chung hai màu: chưa làm, vì stub không cần DB. Làm khi harness thật chạy hai màu (sau #63, `app.db.yml`).
+3. Dữ liệu: stub mặc định; `HARNESS_CMD` + `DATA_RELEASE` cho harness thật (05-dataops.md).
 4. `ops/nt548/deploy.sh`:
 
    | Lệnh | Làm gì |
    |---|---|
-   | `up <color> <tag>` | `docker compose up -d` màu đó với tag, chờ healthcheck |
-   | `weight <green%>` | ghi `ops/nt548/state/weight.conf`, `nginx -s reload` |
-   | `promote` | `weight 100` (hoặc 0 nếu màu mới là blue), ghi `state/active` |
-   | `rollback` | trọng số về màu cũ |
-   | `status` | màu, tag, trọng số, health |
+   | `up <color> <tag> [n]` | `docker compose up -d --wait` màu đó với tag, n bản; ghi lại upstream của Nginx |
+   | `lb` | dựng Nginx; toàn bộ traffic vào màu active (mặc định blue) |
+   | `weight <pct>` | pct % người dùng sang màu **mới** (màu chưa active); `nginx -t`, `nginx -s reload`, chờ tới khi worker mới phục vụ |
+   | `promote` | màu mới nhận 100 % và thành màu active |
+   | `rollback` | 0 % sang màu mới: mọi người về màu active |
+   | `status` | JSON: màu active, trọng số, tag và mã HTTP của từng bản |
+   | `down [color]` | dừng một màu, hoặc tất cả |
 
-5. `.github/workflows/nt548-bluegreen.yml`: chạy sau `nt548-images.yml` và trên PR chạm `ops/nt548/**`. Dựng blue (tag cũ), bắn tải nền, `up green <sha>`, `weight 10`, `weight 100`, `rollback`, kiểm không có request lỗi do đổi màu.
+   Trạng thái (trọng số, màu active, file include của Nginx, access log) nằm trong `NT548_STATE`, mặc định `ops/nt548/state/`, không vào git.
+   `nginx -s reload` chỉ là một tín hiệu. Ngay sau lệnh, worker cũ vẫn phục vụ thêm một lúc: lần chạy CI đầu đo được chỉ 84,5 % sang green sau `weight 100`. Vì vậy `deploy.sh` chỉ trả về khi không còn worker cũ nào phục vụ.
+5. `.github/workflows/nt548-bluegreen.yml`: chạy trên PR chạm `ops/nt548/**` và trên `main`. Build image một lần, gắn hai tag `old` và `new`, rồi chạy `ops/nt548/bluegreen_rehearsal.sh` (chạy được trên máy bằng đúng lệnh đó). Stub trả `IMAGE_TAG`, nên phân biệt được hai màu.
 
 ## Kiểm thử
 
-| Kiểm | Cách | Đạt |
-|---|---|---|
-| Sticky | 100 request cùng cookie | cùng một `color` và `up` trong log |
-| Chia đúng % | 1.000 cookie ngẫu nhiên, `weight 10` | 7–13 % sang green |
-| Không rớt khi đổi | vòng `curl` / k6 chạy suốt `weight` và `rollback` | 0 lỗi kết nối, 0 status 502 |
-| Rollback nhanh | đo thời gian lệnh `rollback` tới khi 100 % về màu cũ | < 1 phút (thường vài giây) |
+| Kiểm | Cách (`ops/nt548/lb_check.py`) | Đạt | CI 26/11 (PR #68) |
+|---|---|---|---|
+| Sticky | `sticky`: 20 người dùng × 100 request | mỗi người một màu | 0 / 20 người bị đổi màu |
+| Chia đúng % | `split`: 1.000 cookie mới, `weight 10` | 7–13 % sang green | 9,1 % |
+| Không rớt khi đổi | `load` chạy suốt `weight 10` → `100` → `rollback` → `promote` | 0 lỗi kết nối, 0 5xx | 5.726 request, 0 lỗi kết nối, 0 5xx |
+| Rollback nhanh | `wait-color` sau `deploy.sh rollback` | < 1 phút | lệnh 0,8 s, 100 % về blue sau thêm 0,1 s |
 
 ## Xong khi
 

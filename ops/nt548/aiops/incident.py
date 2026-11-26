@@ -542,6 +542,15 @@ def llm_env() -> dict | None:
             "model": os.environ.get("INCIDENT_LLM_MODEL", "")} if base else None
 
 
+def log_patterns():
+    """ops/nt548/aiops/log_patterns.py (#37), loaded only by `watch --log-group` (it needs drain3)."""
+    spec = importlib.util.spec_from_file_location("log_patterns", Path(__file__).with_name("log_patterns.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault(spec.name, mod)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def load_json(path: Path | None) -> list | dict | None:
     return json.loads(path.read_text(encoding="utf-8")) if path else None
 
@@ -570,6 +579,9 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--prefix", default="nt548-")
     w.add_argument("--minutes", type=int, default=180)
     w.add_argument("--logs", type=Path)
+    w.add_argument("--log-group", help="CloudWatch Logs group of the color ({color} from the alarm name): top log "
+                                       "patterns of the last --log-window-min minutes (log_patterns.py, #37)")
+    w.add_argument("--log-window-min", type=float, default=10)
     w.add_argument("--traces-project", default="nt548-{color}",
                    help="LangSmith project of the harness ({color} from the alarm name); read when LANGSMITH_API_KEY is set")
     for sp in (d, s, w):
@@ -601,7 +613,14 @@ def main(argv: list[str] | None = None) -> int:
             project = trace_project(a.traces_project, alarm["name"])
             traces = (langsmith_runs(project, utc(alarm["time"]) - dt.timedelta(minutes=TRACE_WINDOW_MIN))
                       if project and os.environ.get("LANGSMITH_API_KEY") else [])
-            work.append((alarm, series, load_json(a.logs), deploys, traces))
+            logs = load_json(a.logs)
+            group = trace_project(a.log_group, alarm["name"]) if a.log_group else None
+            if group:
+                lp = log_patterns()
+                now = dt.datetime.now(dt.timezone.utc)
+                lines = lp.cloudwatch_lines(group, now - dt.timedelta(minutes=2 * a.log_window_min), now)
+                logs = lp.top(lines, now, a.log_window_min)
+            work.append((alarm, series, logs, deploys, traces))
         if not found:
             print(f"no alarm with prefix {a.prefix} in ALARM", file=sys.stderr)
 

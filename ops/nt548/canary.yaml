@@ -1,0 +1,10 @@
+# Canary thresholds of ops/nt548/canary_watch.py (docs/nt548/03-canary-scale.md). The new color is compared with the
+# old one over the same minutes, not with fixed numbers: a slow machine slows both colors.
+min_requests: 50        # per color, before any decision
+max_5xx_ratio: 0.02     # roll back when the new color's 5xx share is above this ...
+max_5xx_vs_old: 2.0     # ... and above this many times the old color's share
+max_p95_vs_old: 1.5     # roll back when the new p95 is this many times the old one ...
+min_p95_gap_ms: 100     # ... and at least this much slower (2 ms against 3 ms on the stub is noise)
+steps: [10, 50, 100]    # % of users on the new color; 100 = promote
+step_seconds: 120       # watch each step this long
+max_wait_seconds: 120   # then wait at most this much more for min_requests, else roll back (fail safe)

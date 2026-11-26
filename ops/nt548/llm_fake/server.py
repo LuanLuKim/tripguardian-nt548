@@ -12,6 +12,10 @@ The reply is deterministic: the same model + messages give the same text. Enviro
     FAKE_ERROR_RATE   share of completions answered with FAKE_ERROR_STATUS, 0..1 (default 0)
     FAKE_ERROR_STATUS status of an injected error (default 500)
     FAKE_SEED         seed of the error draw, so a run can be repeated (default: random)
+    FAKE_BAD_JSON_RATE share of JSON-mode replies (response_format json_object) that are broken JSON, 0..1 (default 0):
+                      a model version that answers but breaks the format, for the eval gate (#16)
+
+With response_format {"type": "json_object"} the reply is a JSON object {"answer", "version"}.
 
 usage: python ops/nt548/llm_fake/server.py [--host 0.0.0.0] [--port 8000]
 """
@@ -43,12 +47,15 @@ class Settings:
     delay_ms: int = 0
     error_rate: float = 0.0
     error_status: int = 500
+    bad_json_rate: float = 0.0
     seed: int | None = None
     rng: random.Random = field(init=False)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.error_rate <= 1.0:
             raise ValueError(f"FAKE_ERROR_RATE must be within 0..1, got {self.error_rate}")
+        if not 0.0 <= self.bad_json_rate <= 1.0:
+            raise ValueError(f"FAKE_BAD_JSON_RATE must be within 0..1, got {self.bad_json_rate}")
         if self.delay_ms < 0:
             raise ValueError(f"FAKE_DELAY_MS must be >= 0, got {self.delay_ms}")
         self.rng = random.Random(self.seed)
@@ -63,6 +70,7 @@ class Settings:
             delay_ms=int(env.get("FAKE_DELAY_MS", "0")),
             error_rate=float(env.get("FAKE_ERROR_RATE", "0")),
             error_status=int(env.get("FAKE_ERROR_STATUS", "500")),
+            bad_json_rate=float(env.get("FAKE_BAD_JSON_RATE", "0")),
             seed=int(seed) if seed else None,
         )
 
@@ -104,6 +112,11 @@ def create_app(settings: Settings) -> FastAPI:
             return JSONResponse({"error": {"message": "injected failure (FAKE_ERROR_RATE)", "type": "server_error"}},
                                 settings.error_status, headers)
         text = reply_text(settings.version, model, messages)
+        fmt = body.get("response_format") if isinstance(body.get("response_format"), dict) else {}
+        if fmt.get("type") == "json_object":
+            text = json.dumps({"answer": text, "version": settings.version}, ensure_ascii=False)
+            if settings.bad_json_rate and settings.rng.random() < settings.bad_json_rate:
+                text = text[: len(text) // 2]  # cut off mid-object, as a model hitting max_tokens does
         cid = "chatcmpl-fake-" + hashlib.sha256(text.encode()).hexdigest()[:16]
         created = int(time.time())
         log.info("completion model=%s version=%s stream=%s", model, settings.version, bool(body.get("stream")))

@@ -1,0 +1,10 @@
+# The one Service users reach. spec.selector.color is the blue/green switch: kubectl patch flips every new
+# connection to the other Deployment at once (no percentage split; that needs a mesh or Argo Rollouts).
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector: {app: tg, color: blue}
+  ports:
+    - {port: 8080, targetPort: http, name: http}

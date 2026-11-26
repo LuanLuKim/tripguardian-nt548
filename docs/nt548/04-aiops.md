@@ -12,6 +12,7 @@ flowchart LR
     M["/metrics gateway (#15)"]
     CW["CloudWatch: ALB, TG, ASG (#26)"]
     LG["CloudWatch Logs (#26)"]
+    TR["trace agent harness<br/>LangSmith"]
   end
   subgraph D["Phát hiện"]
     AD["CloudWatch Anomaly Detection<br/>+ detect.py: EWMA, Isolation Forest (#36)"]
@@ -27,6 +28,7 @@ flowchart LR
   M & CW --> AD
   LG --> LP
   AD & LP --> IS --> GI
+  TR --> IS
   AD -.-> RB
   EV["bơm lỗi + đo MTTD / MTTR / báo nhầm (#39)"] -.đánh giá.-> D & C & A
 ```
@@ -171,7 +173,8 @@ module "aiops" {
 python ops/nt548/aiops/incident.py demo deploy_500                 # sự cố tổng hợp: deploy hỏng, 5xx tăng
 python ops/nt548/aiops/incident.py demo llm_slow                   # LLM chậm, deploy cũ 3 giờ trước không bị đổ lỗi
 python ops/nt548/aiops/incident.py demo traffic                    # tải tăng, gợi ý kiểm ASG
-python ops/nt548/aiops/incident.py summarize --series tg.csv --alarm alarm.json --logs patterns.json --deploys runs.json
+python ops/nt548/aiops/incident.py demo llm_errors                 # LLM giả lỗi 30 % (#39): chỉ trace chỉ ra nguyên nhân
+python ops/nt548/aiops/incident.py summarize --series tg.csv --alarm alarm.json --logs patterns.json --deploys runs.json --traces traces.json
 python ops/nt548/aiops/incident.py watch --prefix nt548- --repo LuanLuKim/tripguardian-nt548 --post   # trên runner
 ```
 
@@ -182,15 +185,18 @@ Các bước:
    - metric trước và sau alarm: trung vị, tỉ lệ, đỉnh;
    - `detect.py` trên cùng metric: detector nào bắt, lúc nào; ngưỡng tĩnh có bắt không;
    - mẫu log tăng (đầu vào của #37);
-   - các lần chạy `nt548-deploy-aws` kết thúc trong 30 phút trước alarm (`gh run list`).
+   - các lần chạy `nt548-deploy-aws` kết thúc trong 30 phút trước alarm (`gh run list`);
+   - trace của agent, nếu có (xem §Trace của agent).
 2. **Viết tóm tắt:**
    - Luật cố định luôn chạy và sinh giả thuyết + lệnh gợi ý. Ví dụ: có deploy ngay trước alarm thì giả thuyết đầu là deploy đó, lệnh gợi ý là rollback.
-   - Có LLM (biến `INCIDENT_LLM_BASE_URL`, `INCIDENT_LLM_MODEL`, secret `INCIDENT_LLM_API_KEY`; endpoint kiểu OpenAI, ví dụ Workers AI) thì LLM viết lại tóm tắt và giả thuyết **chỉ từ danh sách bằng chứng**.
+   - Có LLM (biến `INCIDENT_LLM_BASE_URL`, `INCIDENT_LLM_MODEL`, secret `INCIDENT_LLM_API_KEY`; endpoint kiểu OpenAI, ví dụ Workers AI) thì LLM viết lại tóm tắt và thêm giả thuyết **chỉ từ danh sách bằng chứng**.
+   - Giả thuyết của luật luôn được giữ và đứng đầu. Giả thuyết của LLM nối sau. Mỗi dòng ghi nguồn (`rule` / `LLM`).
 3. **Mở issue:** mỗi alarm một issue đang mở. Alarm lặp lại thì comment vào issue đó, nhận ra nhờ dấu `<!-- nt548-incident: <alarm> -->` trong thân issue.
 
 Giảm rủi ro LLM bịa nguyên nhân:
 - Prompt chỉ chứa số liệu đã gom, không có câu hỏi mở.
 - Mỗi giả thuyết phải dẫn mã bằng chứng. Thiếu dẫn, dẫn mã không có, JSON hỏng, hoặc gọi LLM lỗi thì bỏ **cả** câu trả lời, dùng mẫu cố định. Issue ghi rõ ai viết và vì sao bỏ LLM.
+- Lời gọi bật JSON mode (`response_format`; endpoint từ chối thì gọi lại không có) và `max_tokens` 1024. JSON hỏng hoặc bị cắt được hỏi lại **một** lần. Dẫn mã bằng chứng không có thì không hỏi lại, vì hỏi lại chỉ để LLM bịa một nguyên nhân khác.
 - Lệnh gợi ý chỉ lấy từ luật cố định. LLM không đề xuất lệnh. Không lệnh nào tự chạy; chỉ `canary_watch` (#3) được tự rollback.
 - Log và commit message được đưa vào issue dưới dạng code inline, nên không phá được markdown.
 
@@ -198,10 +204,56 @@ Cách chạy:
 - Workflow `nt548-incident`, chạy tay: `source=demo` chạy trên runner GitHub, không cần AWS, tóm tắt hiện ở job summary; `post=true` thì mở issue thật.
 - `source=watch` chạy trên runner `nt548-aws` (#22). Thêm `schedule` vài phút một lần khi runner đã có.
 
+Thử với LLM thật ngày 24/11, ba sự cố demo, chạy trên máy:
+
+| LLM | Đường gọi | Kết quả |
+|---|---|---|
+| `cx/gpt-6.1-sol` | 9router của chủ dự án (chỉ gọi được từ máy trong tailnet, runner GitHub không tới được) | 3 / 3 câu trả lời qua kiểm; tóm tắt đủ số liệu hơn mẫu cố định. Rất thận trọng: mỗi ca chỉ 1 giả thuyết, độ tin `medium`, kể cả ca deploy hỏng mà luật chấm `high` |
+| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Cloudflare Workers AI (endpoint công khai, workflow gọi được nếu có secret) | Trước khi sửa: 1 / 2 qua. JSON bị cắt, vì mặc định Workers AI chỉ trả 256 token. Sau khi thêm JSON mode + `max_tokens`: 10 / 10 qua. Kết luận quyết đoán hơn sol, nhưng có câu suy diễn yếu (ba detector cùng báo → "có thể do chính metric") |
+
+Vì sol hay rào đón, còn Llama đôi khi kết luận quá tay, nên giả thuyết của luật luôn được giữ ở đầu danh sách. LLM chỉ làm tóm tắt dễ đọc hơn và thêm góc nhìn, không thay kết luận của luật.
+
 Còn lại:
 - Chạy `watch` trên alarm thật của lab: cần ALB (#24) và module `aiops` (#36).
 - Đầu vào mẫu log thật từ #37. Định dạng: `[{pattern, count, baseline, level}]`; `baseline` là số dòng của cùng mẫu ở cửa sổ trước đó.
 - Kiểm "nêu đúng nguyên nhân" bằng sự cố bơm thật (#39).
+
+## Trace của agent (LangSmith)
+
+Metric và log cho biết **có** sự cố. Trace cho biết lượt chat nào hỏng và hỏng ở bước nào: lần gọi model, tool nào, mất bao lâu. Harness đã chạy trên LangGraph + `langchain_openai`, và gói `langsmith` đi kèm `langchain_core`. Vì vậy bật trace chỉ cần biến môi trường, không sửa code sản phẩm.
+
+| Biến (`ops/nt548/compose/app.yml`, service `harness`) | Mặc định | Ý nghĩa |
+|---|---|---|
+| `LANGSMITH_TRACING` | `false` | `true` để gửi trace |
+| `LANGSMITH_API_KEY` | trống | key của LangSmith |
+| `LANGSMITH_PROJECT` | `nt548-<màu>` | mỗi màu một project, nên so được blue với green |
+| `LANGSMITH_HIDE_INPUTS` / `LANGSMITH_HIDE_OUTPUTS` | `true` | không gửi tin nhắn và câu trả lời |
+| `LANGSMITH_ENDPOINT` | `https://api.smith.langchain.com` | đổi khi dùng vùng khác |
+
+Dữ liệu gửi đi (kiểm ngày 25/11 bằng một endpoint giả ghi lại request):
+- **Có gửi:** tên run (`LangGraph`, `ChatOpenAI`, tên tool), loại run, thời gian, token, chuỗi lỗi.
+- **Không gửi:** `inputs` / `outputs` là `{}`. Chữ người dùng gõ không có trong dữ liệu.
+- Không bật trên prod khi chủ dự án chưa đồng ý.
+
+`incident.py` dùng trace như sau:
+- Bằng chứng `trace`: trong 30 phút trước alarm so với sau alarm, gồm số lượt, tỉ lệ lượt lỗi, p95 thời gian một lượt, trung vị một lần gọi model.
+- Bằng chứng `trace_error`: tối đa 3 nhóm run lỗi sau alarm, gom theo loại, tên và dòng đầu của lỗi (cắt trước `Traceback`).
+- Luật:
+  - lần gọi model lỗi → giả thuyết "model sau `model-gateway` lỗi" (độ tin `high` khi không có deploy trước đó);
+  - tool lỗi → nêu tên tool;
+  - gọi model chậm gấp ≥ 2 lần → giả thuyết "thời gian nằm ở LLM, không ở app".
+
+  Lệnh gợi ý là xem `/metrics` của gateway.
+- `watch` đọc trace khi có `LANGSMITH_API_KEY` (secret của workflow). Project lấy theo màu trong tên alarm (`--traces-project nt548-{color}`). Đọc lỗi thì tóm tắt vẫn được viết, chỉ thiếu trace.
+- `summarize --traces runs.json` nhận cùng dạng: `[{run_type, name, start_time, end_time, error, root, url?}]`.
+
+Ví dụ `demo llm_errors`: 5xx tăng, không có deploy, không có mẫu log. Không có trace thì luật chỉ nói được "bằng chứng không chỉ ra nguyên nhân". Có trace thì giả thuyết đầu là "lần gọi model lỗi (20 run `ChatOpenAI` lỗi `Error code: 500`)".
+
+Giới hạn:
+- Chỉ harness thật (`HARNESS_CMD="python -m harness serve"`) mới có trace; stub thì không.
+- Tool bị crash được `src/agents/assistant/lc.py` bắt lại và trả JSON lỗi cho model đọc, nên LangSmith ghi run đó là **thành công**. Muốn thấy phải sửa code sản phẩm, việc này nằm ngoài phạm vi đồ án.
+- Gói miễn phí giới hạn số trace mỗi tháng và thời gian lưu (kiểm lại trên trang giá của LangSmith). Tự host LangSmith cần bản enterprise. Nếu cần tự host thì Langfuse là lựa chọn mã nguồn mở tương đương.
+- Chưa chạy với LangSmith thật (chưa có key), và chưa có trên lab (chờ ASG #25 đưa biến vào máy app).
 
 ## Nghiên cứu ghi vào báo cáo (#18)
 

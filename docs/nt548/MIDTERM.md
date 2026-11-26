@@ -1,6 +1,6 @@
 # Báo cáo tiến độ giữa kỳ NT548, nhóm 8 (27/11/2026)
 
-> Tình trạng đồ án đến ngày 26/11, kèm bằng chứng chạy lại được và kế hoạch tới hạn nộp **04/12/2026**. Báo cáo cuối kỳ: `REPORT.md`. Thiết kế: `docs/plans/2026-11-20-nt548-devops-design.md` (bản 3). Việc theo dõi bằng issue GitHub; số issue (#N) và PR dẫn thẳng tới bằng chứng.
+> Tình trạng đồ án đến ngày 26/11, kèm bằng chứng chạy lại được và kế hoạch tới hạn nộp **04/12/2026**. Repo: <https://github.com/LuanLuKim/tripguardian-nt548>. Báo cáo cuối kỳ: `REPORT.md`. Thiết kế: `docs/plans/2026-11-20-nt548-devops-design.md` (bản 3). Việc theo dõi bằng issue GitHub; số issue (#N) và PR dẫn thẳng tới bằng chứng.
 
 ## 1. Ý tưởng đồ án
 
@@ -23,7 +23,7 @@ Bốn khối, hai cặp làm song song, chỉ gặp nhau ở hợp đồng giữ
 
 | Thành viên | Khối phụ trách | Đã xong | Đang / sẽ làm |
 |---|---|---|---|
-| LuanLuKim (trưởng nhóm) | T9 CI/CD, T4 AIOps, T7 báo cáo | CI xanh (#1); image + stack một màu (#44); stack với harness thật (#63); gateway chia trọng số + `/metrics` (#14, #15); phát hiện bất thường (#36); tóm tắt sự cố (#38); kiểm Terraform trong CI (#49) | Deploy lên AWS (#29, draft #50); báo cáo, slide |
+| LuanLuKim (trưởng nhóm) | T9 CI/CD, T4 AIOps, T7 báo cáo | CI xanh (#1); image + stack một màu (#44); gateway chia trọng số + `/metrics` (#14, #15); phát hiện bất thường (#36); tóm tắt sự cố (#38); kiểm Terraform trong CI (#49) | Stack với harness thật (PR #63, CI xanh, chờ merge); deploy lên AWS (#29, draft #50); báo cáo, slide |
 | DontMadWhenBad | T9 CI/CD, T4 AIOps, T6 Kubernetes | LLM giả (#13); blue/green + Nginx (#2); canary tự rollback, k6, scale (#3); mẫu log Drain3 (#37); bơm lỗi, đo MTTD / MTTR (#39); eval gate model (#16); nghiên cứu AIOps (#18); demo kind (#6) | Mẫu log và bơm lỗi trên lab |
 | hohoangluan | T5 DataOps | Dữ liệu mẫu (#9); harness thật chạy với dữ liệu mẫu (#8); `data_check` (#10); đổi / lùi release (#11); nghiên cứu DVC, lakeFS, Great Expectations (#12) | Đổi release trên AWS |
 | dinhlong06 | T8 AWS | Module mạng: VPC 2 AZ, subnet public, security group (#23); trace LangSmith làm bằng chứng sự cố (#66) | Kiểm quyền lab (#22); ALB (#24); ASG (#25); CloudWatch (#26); bật / tắt + chi phí (#27) |
@@ -68,7 +68,7 @@ Hai lỗi lộ ra nhờ đo và đã sửa:
 
 | Kiểm | Kết quả | Chạy lại |
 |---|---|---|
-| Harness thật trên dữ liệu mẫu + Postgres | 40/40 nơi của `r-a` tìm được qua `:8080`; journey vẫn mở sau khi restart harness | job `app-real` của `nt548-ci` |
+| Harness thật trên dữ liệu mẫu + Postgres | 40/40 nơi của `r-a` tìm được qua `:8080`; journey vẫn mở sau khi restart harness | job `app-real` của `nt548-ci` (PR #63, chờ merge) |
 | Đổi release `r-a` → `r-b` rồi lùi | journey cũ vẫn mở khi đổi; màu thiếu release trả 409; lùi lại phục vụ `r-a` | `nt548-data-release`, `candidate=r-b` |
 | Release mất 20 % nơi | gate chặn: `40 -> 32 places (20% drop, limit 10%)`, không màu nào lên (job đỏ là đúng) | `nt548-data-release`, `candidate=r-b-drop` |
 

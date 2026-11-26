@@ -9,6 +9,7 @@ error-level template grows to at least `spike` times its baseline. The output is
     docker compose -p tg-blue logs --timestamps --no-color --since 30m > blue.log
     python ops/nt548/aiops/log_patterns.py top blue.log --window-min 10 --out patterns.json
     python ops/nt548/aiops/incident.py summarize --series tg.csv --alarm alarm.json --logs patterns.json
+    python ops/nt548/aiops/log_patterns.py top --log-group /nt548/app-blue --minutes 20 --window-min 10   # lab (#26)
 
 Accepted lines: `docker compose logs --timestamps` (`<service>  | <ISO time> <message>`), or `<ISO time> <message>`.
 A line with no time (a traceback line) takes the time of the line before it.
@@ -78,6 +79,27 @@ def parse(lines: Iterable[str]) -> list[Line]:
     return out
 
 
+def cloudwatch_lines(group: str, start: datetime, end: datetime, client=None) -> list[Line]:
+    """CloudWatch Logs events of a group (awslogs driver, #26). The service is the stream name without its task id
+    (`<prefix>/<container>/<id>` -> `<container>`). boto3 on the runner, credentials from LabInstanceProfile."""
+    if client is None:
+        import boto3
+        client = boto3.client("logs")
+    out = []
+    pages = client.get_paginator("filter_log_events").paginate(
+        logGroupName=group, startTime=int(start.timestamp() * 1000), endTime=int(end.timestamp() * 1000))
+    for page in pages:
+        for e in page.get("events", []):
+            parts = e.get("logStreamName", "").split("/")
+            service = parts[1] if len(parts) >= 3 else parts[0]
+            message = e.get("message", "").rstrip()
+            inner = ISO_TIME.match(message)  # the app's own logging time, as in parse()
+            out.append(Line(datetime.fromtimestamp(e["timestamp"] / 1000, timezone.utc), service,
+                            (inner["msg"] if inner else message).strip()))
+    out.sort(key=lambda x: x.t)
+    return out
+
+
 def level(message: str) -> str:
     if ERROR_WORDS.search(message) or HTTP_5XX.search(message):
         return "ERROR"
@@ -110,21 +132,25 @@ def top(lines: list[Line], at: datetime | None = None, window_min: float = 10.0,
     w = timedelta(minutes=window_min)
     window = [x for x in lines if at - w < x.t <= at]
     base = [x for x in lines if at - 2 * w < x.t <= at - w]
-    tm = miner()  # the service stays out of the mined text (compose numbers replicas: web-1, web-2)
+    # The service stays out of the mined text (compose numbers replicas: web-1, web-2). The level goes first: Drain
+    # would merge `... HTTP/1.1" 200 -` and `... HTTP/1.1" 502 -` (one token apart) and hide the errors among the
+    # successes; with the level as the first token the two never share a template.
+    def text(x: Line) -> str:
+        return f"{level(x.message)} {x.message}"
+
+    tm = miner()
     for x in base + window:  # first pass: templates settle on every line
-        tm.add_log_message(x.message)
+        tm.add_log_message(text(x))
     ids: dict[tuple[str, int], str] = {}
     worst: dict[tuple[str, int], str] = {}
 
     def cluster(x: Line) -> tuple[str, int]:
-        c = tm.match(x.message, full_search_strategy="fallback")
+        c = tm.match(text(x), full_search_strategy="fallback")
         service = re.sub(r"-\d+$", "", x.service)
         cid = (service, c.cluster_id if c else -1)
-        template = c.get_template() if c else x.message
+        template = c.get_template().split(" ", 1)[-1] if c else x.message
         ids.setdefault(cid, f"[{service}] {template}" if service else template)
-        lv = level(x.message)  # a template is as bad as its worst line
-        if cid not in worst or LEVELS.index(lv) < LEVELS.index(worst[cid]):
-            worst[cid] = lv
+        worst[cid] = level(x.message)  # one level per template, see text()
         return cid
 
     now, before = Counter(map(cluster, window)), Counter(map(cluster, base))
@@ -155,6 +181,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("top", help="top templates of the last window against the window before")
     t.add_argument("log", type=Path, nargs="?", help="log file (default stdin)")
+    t.add_argument("--log-group", help="read CloudWatch Logs instead (the last --minutes)")
+    t.add_argument("--minutes", type=float, default=20)
     t.add_argument("--at", help="end of the window, ISO time (default: the last line)")
     t.add_argument("--window-min", type=float, default=10.0)
     t.add_argument("--spike", type=float, default=3.0, help="an error template this many times its baseline is a spike")
@@ -163,8 +191,13 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--out", type=Path, help="JSON for incident.py --logs (default: a table on stdout)")
     a = ap.parse_args(argv)
 
-    text = a.log.read_text(encoding="utf-8", errors="replace").splitlines() if a.log else sys.stdin
-    patterns = top(parse(text), parse_time(a.at) if a.at else None, a.window_min, a.spike, a.min_count, a.limit)
+    at = parse_time(a.at) if a.at else None
+    if a.log_group:
+        end = at or datetime.now(timezone.utc)
+        lines = cloudwatch_lines(a.log_group, end - timedelta(minutes=a.minutes), end)
+    else:
+        lines = parse(a.log.read_text(encoding="utf-8", errors="replace").splitlines() if a.log else sys.stdin)
+    patterns = top(lines, at, a.window_min, a.spike, a.min_count, a.limit)
     if a.out:
         a.out.write_text(json.dumps(patterns, indent=2, ensure_ascii=False), encoding="utf-8")
     print(table(patterns))

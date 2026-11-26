@@ -111,3 +111,50 @@ def test_cli_writes_the_incident_input(tmp_path):
     patterns = json.loads(out.read_text(encoding="utf-8"))
     assert {"pattern", "count", "baseline", "level"} <= set(patterns[0])
     assert patterns[0]["anomaly"] == "new"
+
+
+def test_errors_one_token_away_from_successes_stay_apart():
+    """The stub's access lines differ only in the status: 502 must not hide inside the 200 template."""
+    base = datetime(2026, 11, 26, 11, 0, tzinfo=timezone.utc)
+    log = []
+    for i in range(1200):
+        t = base + timedelta(seconds=i)
+        status = 502 if i >= 600 and i % 3 == 0 else 200
+        log.append(f'harness-1  | {t:%Y-%m-%dT%H:%M:%S}.000000000Z harness-stub POST /api/harness/nt548-chat '
+                   f'"POST /api/harness/nt548-chat HTTP/1.1" {status} -')
+    first = lp.top(lp.parse(log), window_min=10)[0]
+    assert first["anomaly"] == "new" and first["level"] == "ERROR" and '" 502 -' in first["pattern"]
+
+
+class FakeLogs:
+    """boto3 logs client with filter_log_events pages."""
+
+    def __init__(self, events):
+        self.events, self.calls = events, []
+
+    def get_paginator(self, name):
+        assert name == "filter_log_events"
+        fake = self
+
+        class P:
+            def paginate(self, **kw):
+                fake.calls.append(kw)
+                return [{"events": fake.events[:2]}, {"events": fake.events[2:]}]
+
+        return P()
+
+
+def test_cloudwatch_lines_take_service_from_the_stream_and_feed_top():
+    t = int(T0.timestamp() * 1000)
+    events = []
+    for i in range(1200):
+        bad = i >= 600 and i % 3 == 0
+        msg = ("2026-11-26 11:00:00,001 ERROR llm_fake injected error status=500 model=m version=v1" if bad
+               else "2026-11-26 11:00:00,001 INFO llm_fake completion model=m version=v1 stream=False")
+        events.append({"timestamp": t + 1000 * i, "logStreamName": "app/llm-fake-v1/abc123", "message": msg})
+    client = FakeLogs(events)
+    lines = lp.cloudwatch_lines("/nt548/app-blue", T0, T0 + timedelta(minutes=20), client)
+    assert client.calls[0]["logGroupName"] == "/nt548/app-blue" and len(lines) == 1200
+    assert lines[0].service == "llm-fake-v1" and lines[0].message.startswith("INFO llm_fake")
+    first = lp.top(lines, window_min=10)[0]
+    assert first["anomaly"] == "new" and "injected error" in first["pattern"]

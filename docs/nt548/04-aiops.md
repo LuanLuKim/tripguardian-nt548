@@ -157,6 +157,19 @@ module "aiops" {
    - Alarm CloudWatch Anomaly Detection cho độ trễ p95, 5xx và số request theo target group (module `ops/nt548/terraform/modules/aiops`).
    - Script `ops/nt548/aiops/detect.py` dùng EWMA / z-score và Isolation Forest, so với ngưỡng tĩnh trên cùng dữ liệu.
 2. **#37 gom mẫu log (DontMadWhenBad):** Drain3 trên log container. Mẫu mới xuất hiện hoặc mẫu lỗi tăng đột biến được tính là bất thường. So với lệnh `pattern` của CloudWatch Logs Insights.
+   - Đã có `ops/nt548/aiops/log_patterns.py`. Script đếm từng mẫu trong `--window-min` phút cuối, so với cùng mẫu ở cửa sổ ngay trước đó (baseline), và xuất JSON đúng đầu vào `incident.py --logs`:
+
+     ```sh
+     docker compose -p tg-blue logs --timestamps --no-color --since 30m > blue.log
+     python ops/nt548/aiops/log_patterns.py top blue.log --window-min 10 --out patterns.json
+     ```
+
+   - Một mẫu là bất thường khi:
+     - `new`: không có dòng nào ở baseline, trong khi baseline có log. Buổi vừa bật, chưa có baseline, thì không mẫu nào bị tính là mới;
+     - `spike`: mẫu mức ERROR tăng tới ít nhất `--spike` lần (mặc định 3) so với baseline.
+   - Phần biến đổi được che: số thành `<NUM>`, địa chỉ thành `<IP>`, id thành `<ID>`. Mã HTTP 3 chữ số được giữ, vì nó phân biệt lượt lỗi với lượt thành công. Số thứ tự bản sao của Compose (`web-1`, `web-2`) bị bỏ khỏi tên service.
+   - Test `tests/nt548/test_log_patterns.py` dùng log giả theo đúng dạng `llm-fake` in ra khi bật `FAKE_ERROR_RATE=0.3`. Kết quả: hai mẫu lỗi (`injected error status=500` và dòng access `500 Internal Server Error`) đứng đầu danh sách, nhãn `new`.
+   - Còn lại cho #37: chạy trên log Compose thật khi diễn tập; đọc CloudWatch Logs của lab (#26); so với `pattern` của Logs Insights; nối vào `incident.py watch`.
 3. **#38 tóm tắt sự cố (LuanLuKim), bản tổng hợp xong, xem §Tóm tắt sự cố:**
    - Workflow chạy định kỳ trên runner `nt548-aws`. Khi alarm chuyển sang ALARM, workflow gom metric, top mẫu log và các lần deploy gần nhất.
    - LLM viết tóm tắt cùng giả thuyết nguyên nhân, rồi mở issue nhãn `incident`.

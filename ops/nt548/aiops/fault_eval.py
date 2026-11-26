@@ -155,7 +155,7 @@ def analyze(run_dir: Path) -> dict:
         users_5xx = int(np.sum((req[:, 0] >= tf) & (req[:, 0] < sc["t_end"]) & (req[:, 1] >= 500))) if len(req) else 0
         row = {"name": sc["name"], "metric": sc["metric"], "methods": m, "logs": logs,
                "auto": sc["recovered_by"].endswith("(auto)"), "recover_cmd_s": round(sc["t_recovered"] - tr, 1),
-               "mttr_s": round(tr - tf, 1), "recovered_by": sc["recovered_by"], "user_5xx": users_5xx,
+               "mttr_s": round(sc.get("t_cut", tr) - tf, 1), "recovered_by": sc["recovered_by"], "user_5xx": users_5xx,
                "normal": round(float(np.mean(series_[:max(1, int((tf - t0) // STEP_S))])), 1),
                "fault_peak": round(float(np.max(series_[int((tf - t0) // STEP_S):] or [0])), 1)}
         results["scenarios"].append(row)
@@ -217,11 +217,13 @@ def load(out: Path, stop: Path, workers: int) -> subprocess.Popen:
     return subprocess.Popen(cmd, stdout=subprocess.DEVNULL)
 
 
-def dump_logs(path: Path, since: float) -> None:
-    with path.open("w", encoding="utf-8") as f:
+def dump_logs(path: Path, since: float, until: float | None = None, append: bool = False) -> None:
+    """Container logs of every color in [since, until). Called before `recover` too: bad_deploy's recover removes green."""
+    window = ["--since", f"{since:.9f}"] + (["--until", f"{until:.9f}"] if until else [])
+    with path.open("a" if append else "w", encoding="utf-8") as f:
         for project in ("tg-blue", "tg-blue-2", "tg-green"):
             subprocess.run(["docker", "compose", "-p", project, "-f", str(NT548 / "compose/app.yml"), "logs", "--timestamps", "--no-color",
-                            "--since", str(int(since) - 1), "harness", "llm-fake-v1"],
+                            *window, "harness", "llm-fake-v1"],
                            stdout=f, stderr=subprocess.DEVNULL, check=False)
 
 
@@ -282,14 +284,18 @@ def run(out: Path, tag: str, normal_s: float, fault_s: float, after_s: float, qu
             inject()
             if name != "bad_deploy":  # canary_watch decides when bad_deploy ends
                 time.sleep(fault_s)
+            t_cut = time.time()  # logs are saved before recover, outside the measured recovery
+            dump_logs(out / f"{name}.log", t_start, until=t_cut)
             t_recover = time.time()
             recover()
             t_recovered = time.time()
             time.sleep(after_s)
-            done.append({"name": name, "metric": metric, "t_start": t_start, "t_fault": t_fault,
+            done.append({"name": name, "metric": metric, "t_start": t_start, "t_fault": t_fault, "t_cut": t_cut,
                          "t_recover": t_recover, "t_recovered": t_recovered, "t_end": time.time(),
                          "recovered_by": by})
-        dump_logs(out / f"{name}.log", t_start)
+            dump_logs(out / f"{name}.log", t_cut, append=True)
+        if name == "quiet":
+            dump_logs(out / f"{name}.log", t_start)
         print(json.dumps(done[-1]), flush=True)
     stop.touch()
     base.wait()

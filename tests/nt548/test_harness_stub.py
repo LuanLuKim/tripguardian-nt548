@@ -52,3 +52,47 @@ def test_version_route_names_color_and_tag(base):
 
 def test_unknown_path_is_404(base):
     assert call(base + "/elsewhere")[0] == 404
+
+
+@pytest.mark.parametrize("spec, expected", [
+    ("", (None, 0.0, 0.0)), ("500", (500, 1.0, 0.0)), ("503@0.3", (503, 0.3, 0.0)),
+    ("delay:800", (None, 1.0, 0.8)), ("delay:200@0.5", (None, 0.5, 0.2)), ("404", (None, 0.0, 0.0)), ("junk", (None, 0.0, 0.0)),
+])
+def test_fault_spec(spec, expected):
+    assert stub.fault(spec) == expected
+
+
+def test_fault_500_spares_the_version_route(base, monkeypatch):
+    monkeypatch.setenv("NT548_FAULT", "500")
+    status, _, body = call(base + "/api/harness/journeys")
+    assert status == 500 and "NT548_FAULT" in body["error"]
+    assert call(base + "/api/harness/nt548-version")[0] == 200
+
+
+def test_chat_through_the_gateway_maps_upstream_errors(base, monkeypatch):
+    from http.server import BaseHTTPRequestHandler
+
+    class Upstream(BaseHTTPRequestHandler):
+        status = 200
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            data = json.dumps({"system_fingerprint": "llm-fake-v1"}).encode()
+            self.send_response(Upstream.status)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args):
+            pass
+
+    up = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
+    threading.Thread(target=up.serve_forever, daemon=True).start()
+    monkeypatch.setenv("AGENT_BASE_URL", f"http://127.0.0.1:{up.server_address[1]}/v1")
+    try:
+        status, _, body = call(base + "/api/harness/nt548-chat", "POST")
+        assert status == 200 and body["model"] == "llm-fake-v1"
+        Upstream.status = 500
+        assert call(base + "/api/harness/nt548-chat", "POST")[0] == 502
+    finally:
+        up.shutdown()

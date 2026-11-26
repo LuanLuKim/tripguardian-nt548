@@ -157,6 +157,21 @@ module "aiops" {
    - Alarm CloudWatch Anomaly Detection cho độ trễ p95, 5xx và số request theo target group (module `ops/nt548/terraform/modules/aiops`).
    - Script `ops/nt548/aiops/detect.py` dùng EWMA / z-score và Isolation Forest, so với ngưỡng tĩnh trên cùng dữ liệu.
 2. **#37 gom mẫu log (DontMadWhenBad):** Drain3 trên log container. Mẫu mới xuất hiện hoặc mẫu lỗi tăng đột biến được tính là bất thường. So với lệnh `pattern` của CloudWatch Logs Insights.
+   - Đã có `ops/nt548/aiops/log_patterns.py`. Script đếm từng mẫu trong `--window-min` phút cuối, so với cùng mẫu ở cửa sổ ngay trước đó (baseline), và xuất JSON đúng đầu vào `incident.py --logs`:
+
+     ```sh
+     docker compose -p tg-blue logs --timestamps --no-color --since 30m > blue.log
+     python ops/nt548/aiops/log_patterns.py top blue.log --window-min 10 --out patterns.json
+     ```
+
+   - Một mẫu là bất thường khi:
+     - `new`: không có dòng nào ở baseline, trong khi baseline có log. Buổi vừa bật, chưa có baseline, thì không mẫu nào bị tính là mới;
+     - `spike`: mẫu mức ERROR tăng tới ít nhất `--spike` lần (mặc định 3) so với baseline.
+   - Phần biến đổi được che: số thành `<NUM>`, địa chỉ thành `<IP>`, id thành `<ID>`. Mã HTTP 3 chữ số được giữ, vì nó phân biệt lượt lỗi với lượt thành công. Số thứ tự bản sao của Compose (`web-1`, `web-2`) bị bỏ khỏi tên service.
+   - Test `tests/nt548/test_log_patterns.py` dùng log giả theo đúng dạng `llm-fake` in ra khi bật `FAKE_ERROR_RATE=0.3`. Kết quả: hai mẫu lỗi (`injected error status=500` và dòng access `500 Internal Server Error`) đứng đầu danh sách, nhãn `new`.
+   - Mức log đứng đầu chuỗi đem gom. Nếu không, Drain gộp `... HTTP/1.1" 200 -` với `... HTTP/1.1" 502 -` (chỉ khác một từ), và lỗi bị giấu trong mẫu của lượt thành công.
+   - CloudWatch Logs: `log_patterns.py top --log-group /nt548/app-blue --minutes 20` đọc log group của lab, lấy tên service từ log stream. `incident.py watch --log-group /nt548/app-{color}` đưa top mẫu log của 10 phút cuối vào bằng chứng; màu lấy từ tên alarm.
+   - Còn lại cho #37: chạy thật trên lab (cần log group của #26); so với lệnh `pattern` của Logs Insights.
 3. **#38 tóm tắt sự cố (LuanLuKim), bản tổng hợp xong, xem §Tóm tắt sự cố:**
    - Workflow chạy định kỳ trên runner `nt548-aws`. Khi alarm chuyển sang ALARM, workflow gom metric, top mẫu log và các lần deploy gần nhất.
    - LLM viết tóm tắt cùng giả thuyết nguyên nhân, rồi mở issue nhãn `incident`.
@@ -269,14 +284,107 @@ python ops/nt548/eval_gate.py --upstream v1=http://llm-fake-v1:8000 --upstream v
 
 ## Nghiên cứu ghi vào báo cáo (#18)
 
-- AIOps: chuỗi quan sát → phát hiện → chẩn đoán → hành động; các chỉ số MTTD, MTTR, báo nhầm.
-- Phát hiện bất thường: ngưỡng tĩnh, thống kê, ML; ưu nhược của từng cách.
-- Log: thuật toán Drain.
-- Phân tích canary tự động: Kayenta, Argo Rollouts.
-- LLM trong xử lý sự cố, và rủi ro bịa nguyên nhân.
-- Công cụ thương mại (DevOps Guru, Datadog Watchdog, Dynatrace Davis) và vì sao nhóm không dùng.
-- Predictive scaling: nêu làm hướng mở rộng.
-- LLMOps khác AIOps ở đâu.
+Mỗi mục: khái niệm, lựa chọn của nhóm, và chỗ trong code. Số đo nằm ở `REPORT.md` §6 (từ #39).
+
+### AIOps là gì
+
+- AIOps ("AI for IT operations") là dùng dữ liệu vận hành và học máy để tự động hóa một phần việc trực sự cố. Chuỗi việc gồm bốn bước:
+
+  | Bước | Đầu vào / làm gì | Trong đồ án |
+  |---|---|---|
+  | quan sát | metric, log, trace | CloudWatch, access log của Nginx, log container, LangSmith |
+  | phát hiện | điểm nào bất thường | `detect.py`, `log_patterns.py` |
+  | tương quan / chẩn đoán | ghép bằng chứng thành giả thuyết nguyên nhân | `incident.py` |
+  | hành động | rollback, scale, mở issue | `canary_watch.py`, ASG, issue `incident` |
+
+- Chỉ số:
+  - **MTTD**: từ lúc lỗi bắt đầu tới lúc hệ thống báo.
+  - **MTTR**: từ lúc lỗi bắt đầu tới lúc dịch vụ trở lại bình thường. Nhóm dùng nghĩa "khôi phục"; có tài liệu dùng nghĩa "sửa xong", lâu hơn nhiều.
+  - **Báo nhầm**: alarm khi không có lỗi. Báo nhầm nhiều thì người trực bỏ qua cả alarm thật ("alert fatigue"). Vì vậy bộ phát hiện tốt phải vừa sớm vừa ít nhầm, không chỉ sớm.
+
+### Phát hiện bất thường trên metric
+
+| Cách | Ý tưởng | Ưu | Nhược |
+|---|---|---|---|
+| Ngưỡng tĩnh | người đặt một con số (ví dụ 5xx > 10 / phút) | đơn giản, ai cũng hiểu | phải chỉnh tay theo từng metric; không theo được chu kỳ ngày / đêm; đặt thấp thì báo nhầm, đặt cao thì báo muộn |
+| Thống kê (z-score, EWMA) | điểm cách trung bình động quá k độ lệch chuẩn | rẻ, giải thích được ("cao hơn 4 sd") | giả định gần phân phối chuẩn; lỗi tăng chậm có thể bị học thành "bình thường mới" |
+| Học máy (Isolation Forest) | cây ngẫu nhiên tách được điểm bất thường sau ít lần cắt | không cần nhãn, dùng được nhiều đặc trưng cùng lúc | khó giải thích; phải chọn tỉ lệ bất thường (`contamination`) |
+| Dải dự báo (CloudWatch Anomaly Detection) | mô hình học từ lịch sử của metric, alarm khi ra ngoài dải | có sẵn, theo chu kỳ ngày / tuần | cần lịch sử; trên Learner Lab mỗi buổi là một metric mới |
+
+Lựa chọn của nhóm, trong `detect.py`:
+- EWMA **không cập nhật** trung bình bằng điểm đã bị đánh dấu, để lỗi kéo dài không thành "bình thường".
+- Isolation Forest học trên các phút đầu của buổi, đặc trưng là giá trị, độ thay đổi và độ lệch so với trung bình trượt.
+- Alarm cần 2 điểm liền nhau, giống "M out of M datapoints" của CloudWatch, để giảm báo nhầm.
+
+### Log: gom mẫu bằng Drain
+
+- Log thô không đếm trực tiếp được. Mỗi dòng có phần biến (id, địa chỉ, thời gian, số), nên hai lỗi giống nhau vẫn là hai chuỗi khác nhau.
+- Cần gom về **mẫu** (template), ví dụ `upstream <IP> returned <NUM>`, rồi đếm theo mẫu.
+- Drain (He và cộng sự, ICWS 2017) gom trực tuyến bằng một cây có độ sâu cố định:
+  - tách nhóm theo số từ của dòng, rồi theo vài từ đầu;
+  - trong nhóm, dòng gia nhập mẫu giống nó nhất nếu đủ ngưỡng giống; từ khác nhau thành `<*>`.
+
+  Mỗi dòng chỉ đi qua vài nút, nên đủ nhanh để chạy trên log của cả stack. Drain3 là bản mở rộng mã nguồn mở, thêm che (masking) theo regex và lưu trạng thái.
+- Bất thường của nhóm: mẫu **mới** (không có ở cửa sổ trước) hoặc mẫu lỗi **tăng vọt** (≥ 3 lần).
+- Bài học: Drain gộp `... HTTP/1.1" 200 -` với `... HTTP/1.1" 502 -`, vì hai dòng chỉ khác một từ, và lỗi bị giấu trong lượt thành công. Nhóm đưa mức log (ERROR / INFO) lên đầu chuỗi đem gom, và giữ mã HTTP 3 chữ số khi che số.
+- CloudWatch Logs Insights có lệnh `pattern` làm việc tương tự trên lab. So sánh hai cách còn chờ log group của #26.
+
+### Phân tích canary tự động
+
+- Kayenta (Netflix và Google, dùng trong Spinnaker):
+  - so bản canary với một bản **baseline** khởi động cùng lúc, không so với production đã chạy lâu. Bản mới khởi động có cache lạnh, so với bản chạy lâu sẽ không công bằng;
+  - mỗi metric được so phân phối bằng kiểm định Mann-Whitney U, không giả định phân phối chuẩn, rồi cộng thành một điểm. Điểm dưới ngưỡng thì rollback.
+- Argo Rollouts (AnalysisTemplate) và Flagger: đổi trọng số theo bước, mỗi bước truy vấn Prometheus / Datadog và so với điều kiện thành công. Hỏng quá số lần cho phép thì hủy.
+- `canary_watch.py` của nhóm là bản nhỏ của cùng ý:
+  - so màu mới với màu cũ **trong cùng khoảng thời gian**, nên máy chậm thì cả hai cùng chậm;
+  - cần tối thiểu 50 request mỗi màu, vì ít mẫu thì 1 lỗi trong 5 request đã là 20 %;
+  - dùng ngưỡng tỉ lệ (5xx > 2 % và > 2 lần màu cũ; p95 > 1,5 lần và chậm hơn 100 ms) thay cho kiểm định thống kê, để người đọc hiểu ngay vì sao rollback.
+
+  Mann-Whitney trên độ trễ là hướng mở rộng.
+
+### LLM trong xử lý sự cố
+
+- Lợi ích: đọc nhanh nhiều nguồn (metric, log, deploy, trace) và viết tóm tắt người trực đọc ngay được.
+- Rủi ro:
+  - **bịa nguyên nhân** nghe hợp lý nhưng không có trong dữ liệu;
+  - tự tin sai;
+  - log chứa chữ do người dùng gõ, có thể là lời dặn chèn vào prompt.
+- Biện pháp trong `incident.py` (§Tóm tắt sự cố):
+  - prompt chỉ có bằng chứng đã gom, mỗi giả thuyết phải dẫn mã bằng chứng;
+  - giả thuyết của luật cố định luôn đứng đầu;
+  - lệnh gợi ý chỉ lấy từ luật, không lệnh nào tự chạy.
+- Người quyết định cuối cùng: hệ thống chỉ tự rollback trong `canary_watch`, nơi luật rõ và lùi lại không mất gì.
+
+### Công cụ thương mại và vì sao nhóm không dùng
+
+| Công cụ | Làm gì |
+|---|---|
+| Amazon DevOps Guru | học máy trên metric CloudWatch, sự kiện CloudTrail, cấu hình; đưa ra "insight" khi có bất thường |
+| Datadog Watchdog | tự tìm bất thường trên metric, APM và log đã gửi vào Datadog |
+| Dynatrace Davis | AI dựa trên sơ đồ phụ thuộc giữa các dịch vụ (topology) để chỉ ra nguyên nhân gốc |
+
+Lý do không dùng:
+- tốn tiền theo tài nguyên hoặc host, trong khi mỗi thành viên có 50 USD Learner Lab;
+- Learner Lab giới hạn dịch vụ và quyền (DevOps Guru có bật không phải kiểm ở R2 của #22);
+- đồ án cần thấy và đo được từng bước. Hộp đen chỉ cho kết quả, không cho MTTD so với ngưỡng tĩnh.
+
+Nhóm dùng tính năng có sẵn của CloudWatch cộng vài script nhỏ.
+
+### Dự báo tải để scale trước
+
+- ASG có predictive scaling: học chu kỳ tải từ lịch sử rồi thêm máy **trước** giờ cao điểm, thay vì đợi CPU vượt ngưỡng như target tracking.
+- Cách này cần lịch sử tải đủ dài, ít nhất khoảng một ngày; dự báo tốt hơn với hai tuần.
+- Trên lab, ALB và ASG bị xóa mỗi buổi (`nt548-aws-down`), nên không có lịch sử. Vì vậy predictive scaling chỉ được nêu làm hướng mở rộng.
+
+### LLMOps khác AIOps ở đâu
+
+| | AIOps | LLMOps |
+|---|---|---|
+| Đối tượng | hệ thống (app, máy, mạng) | chính model LLM |
+| AI dùng để | vận hành hệ thống | được vận hành (phiên bản, đánh giá, chi phí, độ trễ) |
+| Trong đồ án | #36 detector, #37 mẫu log, #38 tóm tắt sự cố, #39 bơm lỗi | trọng số model ở gateway (#14), eval gate (#16, không bắt buộc), canary model (#17) |
+
+LangSmith nằm giữa hai bên: trace là dữ liệu LLMOps, nhưng nhóm dùng nó làm **bằng chứng** cho tóm tắt sự cố, tức là việc của AIOps.
 
 ## Kiểm thử
 

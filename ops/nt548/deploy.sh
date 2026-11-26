@@ -62,10 +62,21 @@ write_split() {
   echo "$pct" > "$STATE/weight"
 }
 
+shares_pid() { local p; for p in $1; do [[ " $2 " == *" $p "* ]] && return 0; done; return 1; }
+
 reload() {
   if [ -n "$($LB ps -q nginx 2>/dev/null)" ]; then
     $LB exec -T nginx nginx -t -q
+    # The reload is a signal: return only once every serving worker is a new one, so the new split is in force.
+    local workers='ps -o pid,args | awk "/nginx: worker process\$/ {print \$1}" | sort | tr "\n" " "'
+    local before now i
+    before=$($LB exec -T nginx sh -c "$workers")
     $LB exec -T nginx nginx -s reload
+    for i in $(seq 50); do
+      now=$($LB exec -T nginx sh -c "$workers")
+      [ -n "$now" ] && ! shares_pid "$before" "$now" && break
+      sleep 0.1
+    done
   fi
 }
 

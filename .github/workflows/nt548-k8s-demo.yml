@@ -1,0 +1,70 @@
+name: nt548-k8s-demo
+
+# #6 (bonus) blue/green and scale on Kubernetes with kind, inside one CI job (docs/nt548/06-k8s-demo.md): the
+# Service selector switches blue -> green -> blue, kubectl scale takes blue to 3 pods, a deleted pod comes back.
+on:
+  pull_request:
+    paths: ["ops/nt548/k8s/**", ".github/workflows/nt548-k8s-demo.yml"]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"   # weekly, Monday 03:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REG: ghcr.io/luanlukim/tripguardian-nt548
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the images
+        run: |
+          docker build -q -f ops/nt548/compose/harness.Dockerfile -t "$REG/harness:ci" .
+          docker build -q -f ops/nt548/compose/web.Dockerfile -t "$REG/web:ci" .
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: nt548
+      - name: load the images and apply
+        run: |
+          kind load docker-image "$REG/harness:ci" "$REG/web:ci" --name nt548
+          kubectl apply -f ops/nt548/k8s/
+          kubectl rollout status deployment/app-blue deployment/app-green --timeout=180s
+          kubectl wait --for=condition=Ready pod/client --timeout=120s
+      - name: blue -> green -> blue, scale, self-healing
+        run: |
+          set -euo pipefail
+          served() {  # served <color>: 20 fresh requests to the Service all answered by <color>, within 30 s
+            local want=$1 start=$(date +%s) got
+            while [ $(( $(date +%s) - start )) -lt 30 ]; do
+              got=$(for i in $(seq 20); do
+                kubectl exec client -- curl -s -m 3 http://web:8080/api/harness/nt548-version | sed -n 's/.*"color": "\([a-z]*\)".*/\1/p'
+              done | sort | uniq -c | tr -s ' ' | tr '\n' ';')
+              if [ "$got" = " 20 $want;" ]; then echo "all 20 on $want after $(( $(date +%s) - start )) s"; return 0; fi
+              sleep 1
+            done
+            echo "expected 20 on $want, got: $got"; return 1
+          }
+          {
+            echo "### Kubernetes demo (kind)"; echo
+            echo "| Step | Result |"; echo "|---|---|"
+            echo "| start, selector blue | $(served blue) |"
+            kubectl patch service web -p '{"spec":{"selector":{"color":"green"}}}'
+            echo "| patch selector → green | $(served green) |"
+            kubectl patch service web -p '{"spec":{"selector":{"color":"blue"}}}'
+            echo "| rollback: selector → blue | $(served blue) |"
+            kubectl scale deployment app-blue --replicas=3
+            kubectl rollout status deployment/app-blue --timeout=120s >/dev/null
+            echo "| scale app-blue to 3 | $(kubectl get deployment app-blue -o jsonpath='{.status.readyReplicas}') pods Ready, $(served blue) |"
+            victim=$(kubectl get pods -l app=tg,color=blue -o jsonpath='{.items[0].metadata.name}')
+            kubectl delete pod "$victim" --wait=false >/dev/null
+            sleep 2
+            kubectl rollout status deployment/app-blue --timeout=120s >/dev/null
+            echo "| delete pod $victim | Deployment back to $(kubectl get deployment app-blue -o jsonpath='{.status.readyReplicas}') Ready pods |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if grep -q "expected 20" "$GITHUB_STEP_SUMMARY"; then exit 1; fi
+          test "$(kubectl get deployment app-blue -o jsonpath='{.status.readyReplicas}')" = 3
+      - if: failure()
+        run: kubectl get all -o wide; kubectl describe pods | tail -n 80

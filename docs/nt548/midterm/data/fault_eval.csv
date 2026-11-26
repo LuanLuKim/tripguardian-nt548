@@ -1,0 +1,6 @@
+﻿scenario,metric,normal_per_5s,peak_per_5s,mttd_static_s,mttd_ewma_s,mttd_iforest_s,mttd_combined_s,mttd_log_patterns_s,recovered_by,recover_command_s,fault_start_to_recovered_s,user_5xx,run_id
+llm_errors,5xx,0.0,48.0,20.0,20.0,,20.0,15.0,script (manual),23.5,108.1,558,45827111505
+llm_slow,p95,5.5,2008.0,20.0,20.0,,20.0,,script (manual),24.9,108.2,0,45827111505
+instance_down,5xx,0.1,1.0,,,,,,script (manual),11.2,103.0,1,45827111505
+bad_deploy,5xx,0.0,11.0,7.9,7.9,,7.9,5.0,canary_watch (auto),32.2,54.2,41,45827111505
+traffic_spike,requests,377.1,1895.0,10.0,10.0,,10.0,,script (manual),0.1,60.7,0,45827111505

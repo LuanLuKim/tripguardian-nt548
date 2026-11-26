@@ -47,6 +47,8 @@ Phần trăm là ước lượng theo checklist của issue.
 
 Mọi số dưới đây là từ CI hoặc lệnh chạy lại được, không phải ước lượng.
 
+Số của blue/green lấy từ [run 45819985864](https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45819985864); canary và scale từ [run 45820052392](https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45820052392); kind từ [run 45825947271](https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45825947271). Mỗi lần chạy, số dao động nhẹ: qua 6 lần chạy gần nhất, chia 10 % ra 8,6–11 % sang green.
+
 **Phát hành (T9).**
 
 | Kiểm | Kết quả | Chạy lại |
@@ -93,7 +95,7 @@ Bơm lỗi trên stack Compose, CI 26/11 ([run 45827111505](https://github.com/L
 | 5 phút không lỗi: số báo nhầm | 0 | 0 | 0 | | |
 
 Đọc số (chi tiết ở `REPORT.md` §6.4):
-- Tự động rollback cho MTTR 21,6 s và 41 lỗi. Ở ca phục hồi tay, bộ đo để lỗi kéo dài 84 s (thay cho lúc người phản ứng), và người dùng thấy 558 lỗi.
+- Tự động rollback cho MTTR 21,6 s và 41 lỗi. Ở ca phục hồi tay, bộ đo giữ lỗi 60 s thay cho lúc người phản ứng. Từ lúc bắt đầu bơm lỗi tới khi phục hồi xong mất 108 s, và người dùng thấy 558 lỗi.
 - Mẫu log bắt sớm nhất khi lỗi có dòng log riêng. Lỗi chỉ làm chậm thì chỉ metric bắt được.
 - Tắt một bản app chỉ gây 1 lỗi, vì Nginx chuyển sang bản còn lại. Phát hiện máy chết cần health check theo máy, không phải metric 5xx.
 - Isolation Forest không bắt được ca nào: nó chỉ học 90 s mà trong đó 5xx toàn là 0. Trên dữ liệu tổng hợp, nó lại là cách duy nhất bắt rò rỉ chậm. Alarm thật dùng `combined` (EWMA hoặc Isolation Forest), nên vẫn bắt mọi ca EWMA bắt.
@@ -129,7 +131,7 @@ Ngoài ra:
 
 ## 6. Chỉ số DevOps
 
-Tính từ 20/11 (ngày nhận repo) đến cuối 26/11, lấy từ GitHub API.
+Tính từ 20/11 (ngày nhận repo) đến 22:45 ngày 26/11 (lúc merge #70), lấy từ GitHub API. Dữ liệu thô của mọi bảng trong báo cáo nằm ở `data/` (CSV).
 
 **Luồng thay đổi.**
 
@@ -138,7 +140,7 @@ Tính từ 20/11 (ngày nhận repo) đến cuối 26/11, lấy từ GitHub API.
 | PR đã merge | 35: LuanLuKim 20, DontMadWhenBad 7, hohoangluan 6, dinhlong06 2 | Còn mở: #64 (báo cáo này), #63, #59, draft #50 |
 | Thời gian từ lúc mở PR tới lúc merge | trung vị 0,36 giờ; 90 % PR dưới 32 giờ | PR nhỏ, mỗi PR một việc, merge khi CI xanh |
 | Số PR merge vào `main` theo ngày | 21/11: 13; 23/11: 4; 24/11: 9; 25/11: 2; 26/11: 7 | |
-| Lượt chạy workflow xong | 174: 146 xanh (84 %), 24 đỏ, 4 hủy | |
+| Lượt chạy workflow xong | 177: 149 xanh (84 %), 24 đỏ, 4 hủy | |
 | `main` bị đỏ | 1 lần: workflow `test` ngày 21/11, trước khi CI chạy được trên checkout sạch (#1). Xanh lại sau 5 giờ; từ đó `main` luôn xanh | |
 | Phát hành | 10 lần build image lên GHCR từ `main`. Chưa deploy lên AWS | Deploy thật chờ T8 (#24, #25, #29) |
 
@@ -146,10 +148,10 @@ Tính từ 20/11 (ngày nhận repo) đến cuối 26/11, lấy từ GitHub API.
 
 | Workflow | Kiểm gì | Xanh / tổng | Trên `main` | Thời gian (trung vị) |
 |---|---|---|---|---|
-| `test` | toàn bộ test TripGuardian | 76 / 92 | 24 / 28 | 5,5 phút |
-| `nt548-ci` | lint, `tests/nt548`, stack Compose (stub và harness thật) | 36 / 39 | 11 / 11 | 2,5 phút |
+| `test` | toàn bộ test TripGuardian | 77 / 93 | 25 / 29 | 5,5 phút |
+| `nt548-ci` | lint, `tests/nt548`, stack Compose (stub và harness thật) | 37 / 40 | 12 / 12 | 2,5 phút |
 | `nt548-images` | build 3 image lên GHCR | 10 / 12 (2 hủy) | 10 / 12 | 1,3 phút |
-| `nt548-bluegreen` | chia %, sticky, đổi màu dưới tải | 10 / 13 (1 đỏ là lỗi reload, đã sửa; 2 hủy) | 2 / 4 | 7,9 phút |
+| `nt548-bluegreen` | chia %, sticky, đổi màu dưới tải | 11 / 14 (1 đỏ là lỗi reload, đã sửa; 2 hủy) | 3 / 5 | 8,0 phút |
 | `nt548-data-release` | đổi / lùi release dữ liệu | 4 / 7 (1 đỏ cố ý: gate chặn `r-b-drop`; 2 lượt 0 giây không chạy job nào) | | 1,9 phút |
 | `nt548-terraform` | `fmt`, `validate`, `terraform test` | 4 / 4 | 2 / 2 | 0,7 phút |
 | `nt548-fault-eval` | bơm lỗi, đo MTTD / MTTR | 3 / 3 | | 27,1 phút |
@@ -163,7 +165,7 @@ Tính từ 20/11 (ngày nhận repo) đến cuối 26/11, lấy từ GitHub API.
 | Rollback tay blue/green | lệnh 0,8 s, 100 % về blue sau thêm 0,1 s |
 | Canary tự rollback | 17 s với bản trả 500, 16 s với bản chậm 800 ms |
 | MTTD nhanh nhất | 5 s (mẫu log, deploy bản trả 500); metric: 7,9–20 s |
-| MTTR | tự động 21,6 s, 41 lỗi người dùng thấy; tay 84 s, 558 lỗi |
+| MTTR | tự động 21,6 s, 41 lỗi người dùng thấy; tay (bộ đo giữ lỗi 60 s thay cho người) 108 s, 558 lỗi |
 | Báo nhầm | 0 trong 5 phút không lỗi (bằng chứng còn yếu, xem §4) |
 
 ## 7. Kế hoạch tới 04/12
@@ -189,3 +191,25 @@ Mốc dự phòng: nếu đến hết 29/11 ALB + ASG chưa chạy được trê
 | Không kịp chạy trên AWS | Mất phần hạ tầng cloud và scale-out | Mốc dự phòng 29/11 ở §7. Token và account Cloudflare đã thử, dùng được |
 | Credential lab hết hạn theo phiên | Workflow deploy dừng giữa chừng | Deploy qua runner trong lab với `LabInstanceProfile`, không giữ key |
 | Số đo trên một runner không đại diện cho scale thật | Bảng scale hiện tại không cho thấy lợi ích của thêm máy | Đo lại trên ASG (#25); bảng hiện tại ghi rõ là cùng một máy |
+
+## 9. Dữ liệu
+
+Dữ liệu thô của các bảng nằm trong `data/`. Các file là CSV, mã hóa UTF-8, mở được bằng Excel.
+
+| File | Nội dung | Dùng cho |
+|---|---|---|
+| `members.csv` | khối phụ trách, số PR đã merge, số commit trên `main` của từng thành viên | §2 |
+| `prs_merged.csv` | từng PR đã merge: tác giả, giờ mở, giờ merge, số giờ chờ | §6 |
+| `prs_per_day.csv` | số PR merge mỗi ngày | §6 |
+| `workflow_runs.csv` | từng lượt chạy workflow: kết quả, thời gian, link | §6 |
+| `workflow_summary.csv` | tổng hợp theo workflow | §6 |
+| `tests_nt548.csv` | số test theo file | §5 |
+| `bluegreen.csv`, `canary.csv`, `scale.csv`, `k8s_kind.csv` | kết quả phát hành | §4 |
+| `data_release.csv` | đổi / lùi release dữ liệu, gate chặn release hỏng | §4 |
+| `fault_eval.csv`, `fault_false_alarms.csv` | bơm lỗi: MTTD theo cách phát hiện, phục hồi, lỗi người dùng thấy, báo nhầm | §4, §6 |
+| `detect_compare.csv` | so sánh bốn cách phát hiện trên chuỗi tổng hợp | §4 |
+
+Các file kết quả đo có cột `run_id`; `workflow_runs.csv` có cả link, để đối chiếu với run trên GitHub Actions. Số tính tới 22:45 ngày 26/11.
+
+`MIDTERM.html` là cùng nội dung này, dạng trang web, có thêm biểu đồ. Mở trực tiếp bằng trình duyệt, không cần mạng.
+

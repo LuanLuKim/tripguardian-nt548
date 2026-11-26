@@ -63,3 +63,6 @@ tests/fixtures/tiktok/
 *.npy
 *.parquet
 scripts/diorama/vendor/node_modules/
+
+# NT548 deploy.sh state (weights, nginx includes, access log)
+/ops/nt548/state

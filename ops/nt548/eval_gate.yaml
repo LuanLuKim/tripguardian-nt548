@@ -1,0 +1,21 @@
+# Eval gate of a model version (#16, docs/nt548/04-aiops.md): ops/nt548/eval_gate.py sends the cases below to each
+# upstream and passes a version only when every threshold holds. Cases follow the shape of
+# config/bench_assistant*.yaml ({text, ...}); the texts are written for this gate, not taken from crawled data.
+# `json: true` = the role needs a JSON object (response_format json_object), as the extractor / judge roles do.
+thresholds:
+  min_valid: 0.95     # share of answers that are valid: non-empty text, or a JSON object with "answer" when json
+  max_errors: 0.02    # share of HTTP errors / timeouts
+  max_p95_ms: 3000
+repeat: 3             # each case this many times (an error rate needs more than one try per case)
+timeout_s: 15
+cases:
+  - {text: "Gợi ý một quán cà phê yên tĩnh để làm việc buổi sáng"}
+  - {text: "Đi hai ngày một đêm thì nên xếp lịch thế nào?"}
+  - {text: "Trời mưa thì có chỗ nào chơi trong nhà?"}
+  - {text: "Đi cùng trẻ nhỏ cần chuẩn bị gì?"}
+  - {text: "Món gì nên thử vào buổi tối?"}
+  - {text: "Từ trung tâm ra điểm ngắm hoàng hôn mất bao lâu?"}
+  - {text: "Cảm ơn, mình sẽ thử nhé"}
+  - {text: "Trích tên địa điểm và giờ mở cửa từ câu: Quán A mở từ 7 giờ đến 22 giờ", json: true}
+  - {text: "Phân loại câu hỏi sau thành places / weather / distance: Mai có mưa không?", json: true}
+  - {text: "Chấm điểm 1-5 độ liên quan của câu trả lời với câu hỏi về quán ăn chay", json: true}

@@ -1,0 +1,47 @@
+name: nt548-fault-eval
+
+# #39 fault injection and evaluation on the Compose stack (ops/nt548/aiops/fault_eval.py, docs/nt548/04-aiops.md):
+# a quiet run (false alarms), then llm_errors, llm_slow, instance_down, bad_deploy (canary_watch rolls back on its
+# own) and traffic_spike under steady traffic. MTTD of the static threshold, EWMA, Isolation Forest (#36) and the log
+# patterns (#37); MTTR; false alarms. Table in the job summary, the raw run as an artifact. About 20 minutes.
+on:
+  pull_request:
+    paths: ["ops/nt548/aiops/fault_eval.py", ".github/workflows/nt548-fault-eval.yml"]
+  workflow_dispatch:
+    inputs:
+      quiet_s:
+        description: seconds of fault-free traffic for the false alarm count
+        default: "300"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nt548-fault-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy scikit-learn drain3 pyyaml
+      - run: IMAGE_TAG=new docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml build
+      - name: run the faults
+        run: python ops/nt548/aiops/fault_eval.py run --out run --quiet-s "${{ inputs.quiet_s || '300' }}"
+      - name: analyze
+        run: |
+          python ops/nt548/aiops/fault_eval.py analyze run --out run/results.json --md run/table.md
+          { echo "### Fault injection (#39), $(nproc) vCPU runner, 5 s buckets"; echo; cat run/table.md; } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nt548-fault-eval
+          path: run/
+          retention-days: 14
+      - if: always()
+        run: bash ops/nt548/deploy.sh down || true

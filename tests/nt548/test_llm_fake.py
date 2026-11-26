@@ -140,3 +140,15 @@ def test_gateway_skips_a_canary_fake_that_answers_503():
     """FAKE_ERROR_STATUS=503 on v2: the gateway cools it down and v1 answers, so callers see no error."""
     got = served_by(gateway_over(fake.Settings(version="v1"), fake.Settings(version="v2", error_rate=1.0, error_status=503)), 100)
     assert got == ["[fake v1]"] * 100
+
+
+def test_json_mode_answers_an_object_and_can_be_broken():
+    body = {"model": "gemma26b-a4b", "messages": MSGS, "response_format": {"type": "json_object"}}
+    good = client(version="v2").post("/v1/chat/completions", json=body).json()
+    obj = json.loads(good["choices"][0]["message"]["content"])
+    assert obj["version"] == "v2" and obj["answer"].startswith("[fake v2]")
+    bad = client(bad_json_rate=1.0, seed=1).post("/v1/chat/completions", json=body).json()
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(bad["choices"][0]["message"]["content"])
+    with pytest.raises(ValueError):
+        fake.Settings(bad_json_rate=2)

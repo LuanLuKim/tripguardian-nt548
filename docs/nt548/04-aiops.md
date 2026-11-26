@@ -255,6 +255,18 @@ Giới hạn:
 - Gói miễn phí giới hạn số trace mỗi tháng và thời gian lưu (kiểm lại trên trang giá của LangSmith). Tự host LangSmith cần bản enterprise. Nếu cần tự host thì Langfuse là lựa chọn mã nguồn mở tương đương.
 - Chưa chạy với LangSmith thật (chưa có key), và chưa có trên lab (chờ ASG #25 đưa biến vào máy app).
 
+## Eval gate cho phiên bản model (#16, LLMOps, không bắt buộc)
+
+```sh
+python ops/nt548/eval_gate.py --upstream v1=http://llm-fake-v1:8000 --upstream v2=http://llm-fake-v2:8000 --gate v2
+```
+
+- Gửi bộ câu cố định trong `ops/nt548/eval_gate.yaml` tới **từng** upstream. Bộ câu có 10 câu, mỗi câu 3 lần; dạng giống `config/bench_assistant*.yaml`, nội dung tự viết. Ba câu cần JSON, như vai trò Extractor / Judge.
+- Đo: tỉ lệ trả lời hợp lệ (text không rỗng; JSON object có `answer` khi câu cần JSON), tỉ lệ lỗi, p95. Ngưỡng: hợp lệ ≥ 95 %, lỗi ≤ 2 %, p95 ≤ 3 s.
+- Mã thoát 1 khi bản bị gate không qua: trọng số của bản đó ở gateway giữ 0. Canary model (#17) chỉ được tăng trọng số cho bản đã qua gate.
+- LLM giả có thêm `FAKE_BAD_JSON_RATE`: một bản trả lời được nhưng làm hỏng JSON, cắt giữa chừng như khi model chạm `max_tokens`.
+- Test `tests/nt548/test_eval_gate.py`: v2 lỗi 30 % → đỏ; v2 hỏng JSON 50 % → đỏ; v2 tốt → xanh.
+
 ## Nghiên cứu ghi vào báo cáo (#18)
 
 - AIOps: chuỗi quan sát → phát hiện → chẩn đoán → hành động; các chỉ số MTTD, MTTR, báo nhầm.

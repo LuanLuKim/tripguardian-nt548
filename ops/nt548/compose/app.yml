@@ -22,6 +22,7 @@ services:
       DATA_DIR: /data
       DATA_RELEASE: ${DATA_RELEASE:-r-a}
       DATABASE_URL: ${DATABASE_URL:-}
+      NT548_FAULT: ${NT548_FAULT:-}   # stub only: 500, 503@0.3, delay:800 (canary tests, #3 / #39)
       # every model role goes through the gateway to the fake LLMs (no key, no GPU)
       AGENT_BASE_URL: http://model-gateway:30000/v1
       AGENT_MODEL: gemma26b-a4b
@@ -43,7 +44,9 @@ services:
     volumes:
       - ${SAMPLE_DATA:-../sample-data}/${DATA_RELEASE:-r-a}:/data:ro
     ports:
-      - "8080:8080"   # edge (0.0.0.0:8080 -> web 127.0.0.1:28899) shares this network namespace, as does web
+      # edge (0.0.0.0:8080 -> web 127.0.0.1:28899) shares this network namespace, as does web. HOST_PORT: two colors on
+      # one machine behind nginx (ops/nt548/deploy.sh: blue 8081, green 8082)
+      - "${HOST_PORT:-8080}:8080"
     depends_on: [model-gateway]
     restart: unless-stopped
     logging: *logging

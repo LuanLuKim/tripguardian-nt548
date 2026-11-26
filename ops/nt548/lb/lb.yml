@@ -1,0 +1,21 @@
+# The load balancer of the two-color rehearsal on one machine: nginx on :8080, the colors on host ports 8081 / 8082
+# (app.yml with HOST_PORT). Started and reconfigured by ops/nt548/deploy.sh, which sets NT548_STATE.
+name: tg-lb
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${LB_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # the colors publish on the host
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${NT548_STATE:?set by deploy.sh}/nginx:/etc/nginx/nt548:ro
+      - ${NT548_STATE:?set by deploy.sh}/log:/var/log/nt548
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nt548-lb/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped

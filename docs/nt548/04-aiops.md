@@ -169,7 +169,9 @@ module "aiops" {
      - `spike`: mẫu mức ERROR tăng tới ít nhất `--spike` lần (mặc định 3) so với baseline.
    - Phần biến đổi được che: số thành `<NUM>`, địa chỉ thành `<IP>`, id thành `<ID>`. Mã HTTP 3 chữ số được giữ, vì nó phân biệt lượt lỗi với lượt thành công. Số thứ tự bản sao của Compose (`web-1`, `web-2`) bị bỏ khỏi tên service.
    - Test `tests/nt548/test_log_patterns.py` dùng log giả theo đúng dạng `llm-fake` in ra khi bật `FAKE_ERROR_RATE=0.3`. Kết quả: hai mẫu lỗi (`injected error status=500` và dòng access `500 Internal Server Error`) đứng đầu danh sách, nhãn `new`.
-   - Còn lại cho #37: chạy trên log Compose thật khi diễn tập; đọc CloudWatch Logs của lab (#26); so với `pattern` của Logs Insights; nối vào `incident.py watch`.
+   - Mức log đứng đầu chuỗi đem gom. Nếu không, Drain gộp `... HTTP/1.1" 200 -` với `... HTTP/1.1" 502 -` (chỉ khác một từ), và lỗi bị giấu trong mẫu của lượt thành công.
+   - CloudWatch Logs: `log_patterns.py top --log-group /nt548/app-blue --minutes 20` đọc log group của lab, lấy tên service từ log stream. `incident.py watch --log-group /nt548/app-{color}` đưa top mẫu log của 10 phút cuối vào bằng chứng; màu lấy từ tên alarm.
+   - Còn lại cho #37: chạy thật trên lab (cần log group của #26); so với lệnh `pattern` của Logs Insights.
 3. **#38 tóm tắt sự cố (LuanLuKim), bản tổng hợp xong, xem §Tóm tắt sự cố:**
    - Workflow chạy định kỳ trên runner `nt548-aws`. Khi alarm chuyển sang ALARM, workflow gom metric, top mẫu log và các lần deploy gần nhất.
    - LLM viết tóm tắt cùng giả thuyết nguyên nhân, rồi mở issue nhãn `incident`.

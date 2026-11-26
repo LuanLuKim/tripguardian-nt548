@@ -36,11 +36,13 @@ jobs:
       - name: blue -> green -> blue, scale, self-healing
         run: |
           set -euo pipefail
-          served() {  # served <color>: 20 fresh requests to the Service all answered by <color>, within 30 s
+          # served <color>: 20 fresh requests to the Service all answered by <color>, within 30 s.
+          # grep -o, not sed: the JSON has no trailing newline and GNU sed keeps it so, which joins the 20 answers into one line.
+          served() {
             local want=$1 start=$(date +%s) got
             while [ $(( $(date +%s) - start )) -lt 30 ]; do
               got=$(for i in $(seq 20); do
-                kubectl exec client -- curl -s -m 3 http://web:8080/api/harness/nt548-version | sed -n 's/.*"color": "\([a-z]*\)".*/\1/p'
+                kubectl exec client -- curl -s -m 3 http://web:8080/api/harness/nt548-version | grep -o '"color": "[a-z]*"' | cut -d'"' -f4
               done | sort | uniq -c | tr -s ' ' | tr '\n' ';')
               if [ "$got" = " 20 $want;" ]; then echo "all 20 on $want after $(( $(date +%s) - start )) s"; return 0; fi
               sleep 1

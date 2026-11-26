@@ -121,7 +121,7 @@ Chuỗi tổng hợp giống độ trễ: nền 200, nhiễu sd 10, 720 điểm,
 - EWMA nhanh, không báo nhầm, nhưng tự thích nghi theo rò rỉ chậm nên bỏ sót `drift`, và nhiễu bởi chu kỳ.
 - Isolation Forest là cách duy nhất bắt được `drift` và `seasonal_spike`. Đổi lại nó báo nhầm khoảng 6 lần trên 20 chuỗi × ~520 điểm, và bỏ sót vài gai vượt ra ngoài miền dữ liệu train (cây chỉ chia trong miền đã thấy).
 - Ghép hai cách (`combined`) bắt đủ `spike` và `level_shift`, giữ được phần mạnh của iforest; báo nhầm bằng của iforest.
-- Số trên metric thật của lab và số bơm lỗi (#39) chưa có.
+- Số trên metric thật của lab chưa có. Số khi bơm lỗi trên stack Compose (#39): `REPORT.md` §6.4.
 
 ### Trên AWS: CloudWatch Anomaly Detection (module `aiops`)
 
@@ -179,6 +179,18 @@ module "aiops" {
 4. **#39 bơm lỗi và đánh giá (DontMadWhenBad):**
    - Kịch bản: LLM giả lỗi 30 %, chậm thêm 2 s, tắt một máy app, deploy bản trả 500, tải tăng đột biến.
    - Đo MTTD của từng cách phát hiện, MTTR có tự động và không tự động, và số lần báo nhầm khi tải bình thường.
+   - Đã có `ops/nt548/aiops/fault_eval.py` và workflow `nt548-fault-eval`:
+     - `run` dựng stack blue (hai bản app) sau Nginx, chạy tải nền suốt buổi, rồi bơm lần lượt từng lỗi. Mỗi kịch bản có 90 s bình thường, sau đó là lỗi, rồi phục hồi.
+     - `analyze` đọc access log của Nginx, chia thành chuỗi theo từng ô 5 s, chạy `detect.py` (học từ 90 s đầu của kịch bản) và `log_patterns.py` trên log container.
+     - Một alarm chỉ được tính khi lỗi kéo dài 2 ô liên tiếp.
+
+     ```sh
+     python ops/nt548/aiops/fault_eval.py run --out run --quiet-s 300
+     python ops/nt548/aiops/fault_eval.py analyze run --out run/results.json --md run/table.md
+     ```
+
+   - Log container được lưu trước bước phục hồi, vì phục hồi của `bad_deploy` xóa màu green cùng log của nó.
+   - Bảng kết quả và cách đọc: `REPORT.md` §6.4.
 
 ## Tóm tắt sự cố (#38)
 

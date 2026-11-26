@@ -121,7 +121,7 @@ Chuỗi tổng hợp giống độ trễ: nền 200, nhiễu sd 10, 720 điểm,
 - EWMA nhanh, không báo nhầm, nhưng tự thích nghi theo rò rỉ chậm nên bỏ sót `drift`, và nhiễu bởi chu kỳ.
 - Isolation Forest là cách duy nhất bắt được `drift` và `seasonal_spike`. Đổi lại nó báo nhầm khoảng 6 lần trên 20 chuỗi × ~520 điểm, và bỏ sót vài gai vượt ra ngoài miền dữ liệu train (cây chỉ chia trong miền đã thấy).
 - Ghép hai cách (`combined`) bắt đủ `spike` và `level_shift`, giữ được phần mạnh của iforest; báo nhầm bằng của iforest.
-- Số trên metric thật của lab và số bơm lỗi (#39) chưa có.
+- Số trên metric thật của lab chưa có. Số khi bơm lỗi trên stack Compose (#39): `REPORT.md` §6.4.
 
 ### Trên AWS: CloudWatch Anomaly Detection (module `aiops`)
 
@@ -179,6 +179,18 @@ module "aiops" {
 4. **#39 bơm lỗi và đánh giá (DontMadWhenBad):**
    - Kịch bản: LLM giả lỗi 30 %, chậm thêm 2 s, tắt một máy app, deploy bản trả 500, tải tăng đột biến.
    - Đo MTTD của từng cách phát hiện, MTTR có tự động và không tự động, và số lần báo nhầm khi tải bình thường.
+   - Đã có `ops/nt548/aiops/fault_eval.py` và workflow `nt548-fault-eval`:
+     - `run` dựng stack blue (hai bản app) sau Nginx, chạy tải nền suốt buổi, rồi bơm lần lượt từng lỗi. Mỗi kịch bản có 90 s bình thường, sau đó là lỗi, rồi phục hồi.
+     - `analyze` đọc access log của Nginx, chia thành chuỗi theo từng ô 5 s, chạy `detect.py` (học từ 90 s đầu của kịch bản) và `log_patterns.py` trên log container.
+     - Một alarm chỉ được tính khi lỗi kéo dài 2 ô liên tiếp.
+
+     ```sh
+     python ops/nt548/aiops/fault_eval.py run --out run --quiet-s 300
+     python ops/nt548/aiops/fault_eval.py analyze run --out run/results.json --md run/table.md
+     ```
+
+   - Log container được lưu trước bước phục hồi, vì phục hồi của `bad_deploy` xóa màu green cùng log của nó.
+   - Bảng kết quả và cách đọc: `REPORT.md` §6.4.
 
 ## Tóm tắt sự cố (#38)
 
@@ -269,6 +281,18 @@ Giới hạn:
 - Tool bị crash được `src/agents/assistant/lc.py` bắt lại và trả JSON lỗi cho model đọc, nên LangSmith ghi run đó là **thành công**. Muốn thấy phải sửa code sản phẩm, việc này nằm ngoài phạm vi đồ án.
 - Gói miễn phí giới hạn số trace mỗi tháng và thời gian lưu (kiểm lại trên trang giá của LangSmith). Tự host LangSmith cần bản enterprise. Nếu cần tự host thì Langfuse là lựa chọn mã nguồn mở tương đương.
 - Chưa chạy với LangSmith thật (chưa có key), và chưa có trên lab (chờ ASG #25 đưa biến vào máy app).
+
+## Eval gate cho phiên bản model (#16, LLMOps, không bắt buộc)
+
+```sh
+python ops/nt548/eval_gate.py --upstream v1=http://llm-fake-v1:8000 --upstream v2=http://llm-fake-v2:8000 --gate v2
+```
+
+- Gửi bộ câu cố định trong `ops/nt548/eval_gate.yaml` tới **từng** upstream. Bộ câu có 10 câu, mỗi câu 3 lần; dạng giống `config/bench_assistant*.yaml`, nội dung tự viết. Ba câu cần JSON, như vai trò Extractor / Judge.
+- Đo: tỉ lệ trả lời hợp lệ (text không rỗng; JSON object có `answer` khi câu cần JSON), tỉ lệ lỗi, p95. Ngưỡng: hợp lệ ≥ 95 %, lỗi ≤ 2 %, p95 ≤ 3 s.
+- Mã thoát 1 khi bản bị gate không qua: trọng số của bản đó ở gateway giữ 0. Canary model (#17) chỉ được tăng trọng số cho bản đã qua gate.
+- LLM giả có thêm `FAKE_BAD_JSON_RATE`: một bản trả lời được nhưng làm hỏng JSON, cắt giữa chừng như khi model chạm `max_tokens`.
+- Test `tests/nt548/test_eval_gate.py`: v2 lỗi 30 % → đỏ; v2 hỏng JSON 50 % → đỏ; v2 tốt → xanh.
 
 ## Nghiên cứu ghi vào báo cáo (#18)
 

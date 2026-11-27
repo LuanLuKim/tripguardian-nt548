@@ -43,6 +43,43 @@ flowchart LR
 5. `nt548-images.yml` (`push: main`, `workflow_dispatch`): build `harness`, `web`, `llm-fake` (bảng ở `02-bluegreen-lb.md` §Image), push `ghcr.io/luanlukim/tripguardian-nt548/<image>:<sha đầy đủ>` và `:main`, label `org.opencontainers.image.revision`. Cache theo image (`type=gha`). Lần push đầu tiên, admin vào trang package trên GitHub đặt **Public** cho cả ba (package mới mặc định private), để máy app kéo được mà không cần đăng nhập.
 6. Bảo vệ nhánh `main` (Settings → Branches): bắt PR, 1 review, check `pytest`, `web`, `nt548-ci` xanh.
 
+## Deploy lên AWS (#29)
+
+`.github/workflows/nt548-deploy-aws.yml` gọi `ops/nt548/deploy_aws.sh`. Script chỉ thay đổi AWS qua `terraform apply` của `envs/demo` (hợp đồng §7.1 với T8). Lệnh duy nhất gọi thẳng AWS là `aws elbv2 describe-target-health`, và lệnh này chỉ đọc.
+
+```sh
+ops/nt548/deploy_aws.sh deploy <sha>   # màu rảnh nhận <sha> → healthy → canary 10 % → theo dõi → promote, lỗi thì lùi
+ops/nt548/deploy_aws.sh rollback       # dồn 100 % về màu kia (vẫn chạy sha cũ), in số giây
+ops/nt548/deploy_aws.sh status
+```
+
+Một lần `deploy`, khi blue đang live:
+
+| Bước | `image_tag_blue` | `image_tag_green` | `weight_blue` | Chuyển bước khi |
+|---|---|---|---|---|
+| 1. Màu rảnh lên sha mới | cũ | **mới** | 100 | mọi target của TG green `healthy` (tối đa `HEALTH_TIMEOUT`, 600 s) |
+| 2. Canary | cũ | mới | 90 | `canary_watch.py` (#3) qua. Chưa có #3 thì green còn healthy sau `CANARY_SECONDS` (300 s) |
+| 3. Promote | cũ | mới | 0 | xong; blue giữ sha cũ để lùi |
+| Lỗi ở bước 2 | cũ | mới | 100 | dừng, job đỏ |
+
+Lần sau green là màu live, vai trò đảo lại. Lần đầu (state trống) cả hai màu nhận cùng sha, blue nhận toàn bộ traffic.
+
+**Đề xuất thêm vào hợp đồng §7.1 (cần T8 đồng ý):** `envs/demo` xuất lại chính các biến đầu vào: output `image_tag_blue`, `image_tag_green`, `weight_blue`, `data_release_blue`, `data_release_green`.
+- Lý do: script đọc trạng thái hiện tại từ state Terraform (trong S3), nên không cần nơi lưu thứ hai, và runner tạo lại vẫn biết màu nào đang live.
+- Cũng nên đặt `wait_for_elb_capacity` trên ASG, để `apply` chỉ xong khi máy mới đã healthy.
+
+Workflow:
+- **Kích hoạt:** tự chạy khi `nt548-images` xong và xanh trên `main` (`workflow_run`). Chạy tay qua `workflow_dispatch`: `action` = `deploy` / `rollback` / `status`, `sha` tùy chọn.
+- **Công tắc:** không job nào chạy khi biến repo `NT548_DEPLOY_ENABLED` khác `true`. Admin bật biến này khi runner và `envs/demo` đã có; trước đó các lần merge không để lại job treo chờ runner.
+- **An toàn runner:** không có trigger `pull_request`, nên code của PR không bao giờ chạy trên runner self-hosted. Có `concurrency` để hai lần deploy không chồng nhau. Sha nhập tay phải có dạng tag Docker.
+- **Dự phòng khi runner hỏng:** `runner=github`. Job chạy trên `ubuntu-latest` với credential tạm của lab trong Environment `nt548-aws`; chỉ admin đặt Environment này, và nên bật "required reviewers".
+- **Kiểm không cần AWS:** `tests/nt548/test_deploy_aws.py` (7 test) chạy script với `terraform` và `aws` giả. Các test kiểm: thứ tự trọng số; màu không healthy thì không nhận traffic; canary hỏng thì lùi; rollback chỉ đổi trọng số; tag lạ bị từ chối.
+
+Còn lại:
+- Chạy thật trên lab, cần T8 xong #22 (runner), #24 (ALB) và `envs/demo`.
+- Đo thời gian rollback tay (mục tiêu < 1 phút).
+- `canary_watch.py` thật (#3, DontMadWhenBad).
+
 ## Bật Actions
 
 Push lên fork chưa tự tạo run (20/11): quyền Actions đã bật, workflow `active`, nhưng chỉ `workflow_dispatch` chạy. Vào tab **Actions** của fork, nếu có nút "I understand my workflows, go ahead and enable them" thì bấm. Sau đó push thử một commit và kiểm có run `push` không. Tạm thời chạy tay: Actions → test → Run workflow.

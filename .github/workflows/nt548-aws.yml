@@ -1,0 +1,73 @@
+name: nt548-aws
+
+# #27: start / end of a lab session on the self-hosted runner (ops/nt548/aws.sh, docs/nt548/08-aws-infra.md).
+# - Every night at 23:00 Vietnam time (16:00 UTC): down, in case someone forgot. It destroys envs/demo (ALB, ASGs,
+#   monitoring), then shuts the ops machine down one minute later, so this job can still report.
+# - Manual: up [sha] (ops must be running, i.e. after aws.sh up from a member's machine), down, status.
+# The runner lives on the ops machine: when the machine is stopped, a scheduled run waits in the queue. A queued
+# nightly run that only starts the next session would destroy that session, so a scheduled run more than 90 minutes
+# late does nothing.
+# Nothing runs until the repository variable NT548_DEPLOY_ENABLED is "true" (same switch as nt548-deploy-aws).
+# Safety: no pull_request trigger, so code from a PR never runs on the self-hosted runner.
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [status, up, down]
+        default: status
+      sha:
+        description: image tag for up (both colors, blue live); empty keeps what the state has
+        required: false
+      keep_ops:
+        description: down only, leave the ops machine (and this runner) running
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nt548-deploy-aws   # never in the middle of a release
+  cancel-in-progress: false
+
+env:
+  ACTION: ${{ inputs.action || 'down' }}
+  AWS_DEFAULT_REGION: us-east-1
+  TF_IN_AUTOMATION: "1"
+  NAME_PREFIX: ${{ vars.NT548_NAME_PREFIX || 'nt548' }}
+
+jobs:
+  lab:
+    if: vars.NT548_DEPLOY_ENABLED == 'true'
+    runs-on: [self-hosted, nt548-aws]
+    timeout-minutes: 30
+    steps:
+      - name: skip a nightly run that waited in the queue
+        id: late
+        if: github.event_name == 'schedule'
+        run: |
+          planned=$(date -u -d "$(date -u +%F) 16:00" +%s)
+          [ "$planned" -le "$(date +%s)" ] || planned=$((planned - 86400))
+          late=$(( ($(date +%s) - planned) / 60 ))
+          echo "minutes after 16:00 UTC: $late"
+          if [ "$late" -gt 90 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "nightly down skipped: started $late min late (the ops machine was off; a new session may be running)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.late.outputs.skip != 'true'
+      - name: aws.sh ${{ env.ACTION }}
+        if: steps.late.outputs.skip != 'true'
+        env:
+          SHA: ${{ inputs.sha }}
+          KEEP_OPS: "1"   # the runner stops its own machine in the next step, after reporting
+        run: bash ops/nt548/aws.sh "$ACTION" ${SHA:+"$SHA"}
+      - name: shut the ops machine down in one minute
+        if: steps.late.outputs.skip != 'true' && env.ACTION == 'down' && inputs.keep_ops != true
+        run: |
+          sudo shutdown -h +1 "nt548-aws down"
+          echo "ops machine shuts down in 1 minute (instance stop; aws.sh up starts it again)" >> "$GITHUB_STEP_SUMMARY"

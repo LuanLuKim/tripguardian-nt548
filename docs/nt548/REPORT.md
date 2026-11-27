@@ -89,7 +89,6 @@ _hohoangluan, dinhlong06._ Dashboard, alarm, log; ảnh chụp một alarm bắn
 _LuanLuKim, DontMadWhenBad._ Hướng dẫn chi tiết: `04-aiops.md`.
 - **AI ops của đồ án là AIOps** (chủ dự án chốt 21/11): dùng AI / ML để vận hành hệ thống, theo chuỗi quan sát → phát hiện → chẩn đoán → hành động.
 - LLMOps (eval gate #16, canary model #17) không bắt buộc.
-- Phần của DontMadWhenBad ghi tiếp ở đây khi xong: mẫu log Drain3 (#37), bơm lỗi và đo MTTD / MTTR (#39).
 
 **6.1 Quan sát (#14, #15, đã merge).**
 - `model_gateway` chia luồng theo trọng số `URL@weight`.
@@ -141,10 +140,30 @@ Ba sự cố tổng hợp cho đúng nguyên nhân đã gài:
 | LLM chậm, deploy cũ 3 giờ trước | mẫu log timeout của gateway; không đổ lỗi deploy cũ | đọc `/metrics` của gateway |
 | Tải tăng 4 lần, không deploy | tải tăng, không phải đổi code | kiểm hoạt động scale của ASG |
 
-**Còn lại:**
-- chạy trên metric thật của lab (cần ALB của T8);
-- mẫu log thật (#37);
-- bảng MTTD / MTTR / báo nhầm khi bơm lỗi thật (#39).
+**6.4 Bơm lỗi và đo (#37, #39, DontMadWhenBad).**
+- `log_patterns.py` (#37) gom log container thành mẫu bằng Drain3. Một mẫu mức ERROR là bất thường khi nó mới xuất hiện, hoặc tăng ít nhất 3 lần so với cửa sổ trước. Mức log đứng đầu chuỗi đem gom: nếu không, Drain gộp dòng `200` với dòng `502` vì hai dòng chỉ khác một từ, và lỗi bị giấu trong mẫu của lượt thành công.
+- `fault_eval.py` (#39) dựng stack blue (hai bản app) sau Nginx, chạy tải nền suốt buổi, rồi bơm lần lượt năm lỗi. Mỗi kịch bản có 90 s bình thường, sau đó là lỗi, rồi phục hồi. Chuỗi metric lấy từ access log của Nginx, mỗi ô 5 s. Alarm chỉ tính khi lỗi kéo dài 2 ô. MTTD tính từ lúc bơm lỗi tới khi alarm kêu.
+
+Kết quả CI ngày 26/11 ([run 45827111505](https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45827111505), runner 4 vCPU; 96.522 request trong 22,6 phút, 0 lỗi kết nối):
+
+| Kịch bản | Metric | Bình thường → đỉnh | Ngưỡng tĩnh | EWMA | Isolation Forest | Mẫu log | Phục hồi | 5xx người dùng thấy |
+|---|---|---|---|---|---|---|---|---|
+| LLM giả lỗi 30 % (`llm_errors`) | 5xx / 5 s | 0 → 48 | 20 s | 20 s | không bắt | **15 s** | tay: MTTD + người phản ứng + lệnh 23,5 s | 558 |
+| LLM chậm thêm 2 s (`llm_slow`) | p95 (ms) | 5,5 → 2.008 | 20 s | 20 s | không bắt | không có dòng lỗi | tay: MTTD + người phản ứng + lệnh 24,9 s | 0 |
+| Tắt một bản app (`instance_down`) | 5xx / 5 s | 0,1 → 1 | không bắt | không bắt | không bắt | không bắt | tay, lệnh 11,2 s | 1 |
+| Deploy bản trả 500 (`bad_deploy`) | 5xx / 5 s | 0 → 11 | 7,9 s | 7,9 s | không bắt | **5 s** | **tự động, 21,6 s** (`canary_watch`) | 41 |
+| Tải tăng 5 lần (`traffic_spike`) | request / 5 s | 377 → 1.895 | 10 s | 10 s | không bắt | – | hết tải | 0 |
+
+Báo nhầm trong 5 phút không có lỗi: 0 với mọi cách, trên cả ba metric; mẫu log cũng 0.
+
+Đọc kết quả:
+- **Tự động hóa giảm MTTR và số lỗi người dùng thấy.** `bad_deploy` được `canary_watch` rollback sau 21,6 s, người dùng thấy 41 lỗi 5xx. `llm_errors` cần người chạy lệnh: 15 s phát hiện, cộng thời gian người phản ứng, cộng 23,5 s chạy lệnh. Trong thời gian đó người dùng thấy 558 lỗi.
+- **Mẫu log phát hiện sớm nhất** khi lỗi có dòng log riêng: 5 s ở `bad_deploy`, 15 s ở `llm_errors`, so với 7,9 s và 20 s của metric. Mẫu mới hiện ra ngay ô đầu, còn metric phải đợi đủ hai ô. Khi lỗi không sinh dòng lỗi (`llm_slow`), chỉ metric bắt được.
+- **`instance_down` gần như không ảnh hưởng người dùng.** Nginx chuyển request sang bản còn lại, chỉ 1 request lỗi. Muốn biết một bản đã chết thì cần health check theo từng máy (target health của ALB trên AWS), không phải metric 5xx.
+- **Isolation Forest không bắt được ca nào trong lần chạy này.** Mô hình chỉ học 90 s đầu của mỗi kịch bản, và trong khoảng đó 5xx toàn là 0. Cây quyết định không tách được dữ liệu hằng số. Giá trị vượt khỏi khoảng đã học rơi vào cùng lá với điểm biên, nên không bị coi là lạ. Kết quả cũng không ổn định: ở lần chạy trước (run 45821363918) nó bắt được `traffic_spike` sau 10 s. Ngược lại, trên dữ liệu tổng hợp ở §6.2, Isolation Forest là cách duy nhất bắt được rò rỉ chậm. Hai kết quả không mâu thuẫn: Isolation Forest cần đoạn học dài và có biến động. `combined` (EWMA hoặc Isolation Forest), cái alarm của #38 nghe, vẫn bắt mọi ca EWMA bắt.
+- Giới hạn: đoạn không lỗi chỉ dài 5 phút, nên 0 báo nhầm là bằng chứng yếu. Chạy lại với `quiet_s` dài hơn qua `workflow_dispatch`. Mọi số ở đây là trên một máy, với stub thay harness thật.
+
+**Còn lại:** chạy detector và mẫu log trên metric và log thật của lab (cần ALB #24, log group #26).
 
 **LLMOps khác AIOps ở đâu** (ghi tiếp ở #18): AIOps dùng ML để vận hành *hệ thống*. LLMOps vận hành chính *model*: đánh giá phiên bản, canary model, theo dõi chất lượng câu trả lời.
 

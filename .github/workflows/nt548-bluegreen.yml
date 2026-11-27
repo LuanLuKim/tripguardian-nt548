@@ -1,0 +1,61 @@
+name: nt548-bluegreen
+
+# #2 blue/green rehearsal on Docker Compose + nginx (docs/nt548/02-bluegreen-lb.md): blue on the old image, green on
+# the new one, weight 10 -> 100 -> rollback -> promote under background traffic. Checks: split share, sticky users,
+# rollback time, no request lost. The images are built once from this commit and tagged twice (old, new); the stub
+# reports IMAGE_TAG, so the two colors are told apart. Then #3: canary_watch.py promotes a good candidate and rolls
+# back one with NT548_FAULT=500 or delay:800 (canary_rehearsal.sh).
+on:
+  pull_request:
+    paths: ["ops/nt548/**", ".github/workflows/nt548-bluegreen.yml"]
+  push:
+    branches: [main]
+    paths: ["ops/nt548/**", ".github/workflows/nt548-bluegreen.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nt548-bluegreen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REG: ghcr.io/luanlukim/tripguardian-nt548
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the images once, tag them old and new
+        run: |
+          IMAGE_TAG=new docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml build
+          for img in harness web llm-fake; do docker tag "$REG/$img:new" "$REG/$img:old"; done
+      - name: rehearsal
+        run: SUMMARY="$GITHUB_STEP_SUMMARY" bash ops/nt548/bluegreen_rehearsal.sh
+      - name: canary rehearsal (#3)
+        if: success() || failure()
+        run: |
+          bash ops/nt548/deploy.sh down; rm -rf ops/nt548/state
+          SUMMARY="$GITHUB_STEP_SUMMARY" STEP_SECONDS=15 bash ops/nt548/canary_rehearsal.sh
+      - if: always()
+        name: logs and teardown
+        run: |
+          export NT548_STATE=$PWD/ops/nt548/state
+          docker compose -f ops/nt548/lb/lb.yml logs --no-color 2>/dev/null | tail -n 40 || true
+          for p in tg-blue tg-green; do docker compose -p $p -f ops/nt548/compose/app.yml logs --no-color harness | tail -n 20 || true; done
+          bash ops/nt548/deploy.sh down || true
+
+  scale:
+    # #3 scale numbers: k6 journey against 1 and 2 replicas of one color on one runner (job summary).
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REG: ghcr.io/luanlukim/tripguardian-nt548
+    steps:
+      - uses: actions/checkout@v4
+      - run: IMAGE_TAG=new docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml build
+      - run: SUMMARY="$GITHUB_STEP_SUMMARY" VUS="20 50 100" DURATION=20s bash ops/nt548/scale_bench.sh
+      - if: always()
+        run: bash ops/nt548/deploy.sh down || true

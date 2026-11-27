@@ -1,0 +1,11 @@
+# A client inside the cluster: each check is a fresh request to the Service. A kubectl port-forward would stick to
+# the pod it picked first and not see the selector change.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+spec:
+  containers:
+    - name: curl
+      image: curlimages/curl:8.11.1
+      command: ["sleep", "3600"]

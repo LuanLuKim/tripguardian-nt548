@@ -1,0 +1,81 @@
+#!/bin/bash
+# User-data of one NT548 app instance (color ${color}), rendered by modules/app_asg (#25). Amazon Linux 2023.
+# image_tag empty -> placeholder traefik/whoami on :8080 (design §7.1); else the stack of ops/nt548/compose/app.yml
+# with sample data ${data_release}; the real harness when a database URL is given, else the harness stub.
+# Container logs go to CloudWatch Logs group '${log_group}' when it is set (#26), one stream per container.
+# Log of this script: /var/log/nt548-app.log
+set -euo pipefail
+exec > >(tee -a /var/log/nt548-app.log) 2>&1
+echo "nt548 app ${color}: image_tag='${image_tag}' data_release=${data_release} ref=${repo_ref}"
+
+dnf install -y docker git
+systemctl enable --now docker
+
+LOG_GROUP='${log_group}'
+TOKEN=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 300')
+INSTANCE=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+LOG_OPTS=()
+if [ -n "$LOG_GROUP" ]; then
+  LOG_OPTS=(--log-driver awslogs --log-opt awslogs-region=${region} --log-opt "awslogs-group=$LOG_GROUP"
+    --log-opt awslogs-create-group=true --log-opt "tag=$INSTANCE/{{.Name}}")
+fi
+
+placeholder() {
+  echo "nt548: $1 -> placeholder traefik/whoami on :8080"
+  docker run -d --name whoami --restart unless-stopped "$${LOG_OPTS[@]}" -p 8080:8080 traefik/whoami --port 8080
+  exit 0
+}
+
+[ -n "${image_tag}" ] || placeholder "no image_tag"
+
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+REPO=/opt/tripguardian-nt548
+rm -rf "$REPO" && git init -q "$REPO"
+git -C "$REPO" fetch -q --depth 1 "${repo_url}" "${repo_ref}" && git -C "$REPO" checkout -q FETCH_HEAD \
+  || placeholder "cannot fetch ${repo_ref}"
+[ -f "$REPO/ops/nt548/compose/app.yml" ] || placeholder "no ops/nt548/compose/app.yml at ${repo_ref}"
+
+HARNESS="${registry}/harness:${image_tag}"
+docker pull -q "$HARNESS"
+
+# synthetic sample data (T5): built by the image's own Python and the checked-out generator, read-only for the app
+SAMPLE="$REPO/ops/nt548/sample-data"
+chown -R 10001 "$SAMPLE"
+docker run --rm -v "$REPO:/repo" -w /repo -e LANCEDB_LOG=error "$HARNESS" python ops/nt548/sample-data/make.py
+[ -d "$SAMPLE/${data_release}" ] || { echo "nt548: no sample release ${data_release}"; exit 1; }
+
+COMPOSE=(-f "$REPO/ops/nt548/compose/app.yml")
+if [ -n "$LOG_GROUP" ]; then
+  # a second compose file swaps the json-file driver of every service for awslogs (compose replaces the options
+  # when the driver differs)
+  cat > /opt/nt548-awslogs.yml <<YML
+x-awslogs: &awslogs
+  driver: awslogs
+  options:
+    awslogs-region: ${region}
+    awslogs-group: "$LOG_GROUP"
+    awslogs-create-group: "true"
+    tag: "$INSTANCE/{{.Name}}"
+services:
+  harness: {logging: *awslogs}
+  web: {logging: *awslogs}
+  edge: {logging: *awslogs}
+  model-gateway: {logging: *awslogs}
+  llm-fake-v1: {logging: *awslogs}
+  llm-fake-v2: {logging: *awslogs}
+YML
+  COMPOSE+=(-f /opt/nt548-awslogs.yml)
+fi
+
+export COLOR="${color}" IMAGE_TAG="${image_tag}" DATA_RELEASE="${data_release}" REGISTRY="${registry}"
+export DATABASE_URL='${database_url}'
+if [ -n "$DATABASE_URL" ]; then
+  docker run --rm -e DATABASE_URL "$HARNESS" python -m db migrate
+  export HARNESS_CMD="python -m harness serve"
+fi
+docker compose "$${COMPOSE[@]}" up -d
+echo "nt548 app ${color}: up"

@@ -47,7 +47,10 @@ tests/fixtures/tiktok/
 /.venv.old-nfs/
 /.aws/
 /.codex/
-/.claude/worktrees/
+/.agents/
+/.claude/
+/.cursor/
+/.impeccable/
 
 # Large local files that must stay out of git (keep git status and the editor fast)
 /*.mp4
@@ -63,3 +66,6 @@ tests/fixtures/tiktok/
 *.npy
 *.parquet
 scripts/diorama/vendor/node_modules/
+
+# NT548 deploy.sh state (weights, nginx includes, access log)
+/ops/nt548/state

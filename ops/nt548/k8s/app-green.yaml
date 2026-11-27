@@ -1,0 +1,39 @@
+# One color of the stack as a pod (docs/nt548/06-k8s-demo.md): harness (stub), web and edge share the pod's network
+# namespace, as network_mode: service:harness does in app.yml. Image tags are set by the workflow (kind load).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-green
+  labels: {app: tg, color: green}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: tg, color: green}
+  template:
+    metadata:
+      labels: {app: tg, color: green}
+    spec:
+      containers:
+        - name: harness
+          image: ghcr.io/luanlukim/tripguardian-nt548/harness:ci
+          command: ["python", "ops/nt548/compose/harness_stub.py"]
+          env:
+            - {name: COLOR, value: green}
+            - {name: IMAGE_TAG, value: ci-green}
+        - name: web
+          image: ghcr.io/luanlukim/tripguardian-nt548/web:ci
+          env:
+            - {name: PORT, value: "28899"}
+            - {name: HARNESS_PORT, value: "8769"}
+        - name: edge
+          image: ghcr.io/luanlukim/tripguardian-nt548/web:ci
+          command: ["node", "edge.mjs"]
+          env:
+            - {name: EDGE_PORT, value: "8080"}
+            - {name: UPSTREAM_PORT, value: "28899"}
+          ports:
+            - {containerPort: 8080, name: http}
+          readinessProbe:
+            httpGet: {path: /api/harness/nt548-version, port: 8080}
+            periodSeconds: 3
+            failureThreshold: 3

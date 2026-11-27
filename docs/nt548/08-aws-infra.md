@@ -1,6 +1,8 @@
 # 08. Hạ tầng AWS bằng Terraform (T8, dinhlong06)
 
-Đọc xong làm được: dựng và xóa toàn bộ môi trường demo (mạng, ALB, hai ASG, monitoring) trên Learner Lab của mình, kể cả bootstrap. Phần `aws-up` / `aws-down` ghi tiếp vào đây khi xong.
+Đọc xong làm được: dựng và xóa toàn bộ môi trường demo (mạng, ALB, hai ASG, monitoring) trên Learner Lab của mình, kể cả bootstrap. Bật / tắt mỗi buổi bằng `ops/nt548/aws.sh`.
+
+Lần đầu trên một lab: đọc §Bootstrap và kiểm quyền, rồi §Đầu buổi, cuối buổi. Các mục module ở giữa giải thích từng phần.
 
 Kiến trúc và lý do chọn: §5 của `docs/plans/2026-11-20-nt548-devops-design.md`. Hợp đồng với workflow deploy: §7.1 cùng file.
 
@@ -238,19 +240,84 @@ State của bootstrap nằm ở `bootstrap/terraform.tfstate` trên máy ngườ
 
 Không truyền token thì máy ops lên không có runner. Thêm sau bằng `terraform apply -replace=aws_instance.ops -var runner_token=…`. Lệnh này dựng lại máy ops, nên Postgres bắt đầu trống.
 
-### Dựng môi trường demo
+### Dựng môi trường demo bằng tay
+
+`ops/nt548/aws.sh` (mục dưới) làm các bước này. Muốn tự gõ thì:
 
 ```sh
 cd ops/nt548/terraform/envs/demo
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-terraform init -backend-config=bucket=nt548-dl-tfstate-$ACCOUNT   -backend-config=key=envs/demo/nt548-dl.tfstate -backend-config=region=us-east-1
+terraform init -backend-config=bucket=nt548-dl-tfstate-$ACCOUNT \
+  -backend-config=key=envs/demo/nt548-dl.tfstate -backend-config=region=us-east-1
 terraform apply -var name_prefix=nt548-dl            # thêm -var real_harness=false để chạy harness stub
 ```
 
-Xóa cuối buổi: `terraform destroy -var name_prefix=nt548-dl`, rồi dừng máy ops. Phần tốn tiền là ALB và EC2; mạng thì miễn phí.
+## Đầu buổi, cuối buổi (#27)
+
+`ops/nt548/aws.sh` gói việc bật / tắt phần tốn tiền:
+
+| Lệnh | Làm gì |
+|---|---|
+| `aws.sh up <sha>` | bật máy ops nếu đang dừng, `terraform init` vào bucket của bootstrap, apply `envs/demo` với hai màu cùng `<sha>`, blue nhận 100 %. Không có sha: giữ những gì state đang có; state trống thì chạy image giữ chỗ |
+| `aws.sh down` | `terraform destroy` toàn bộ `envs/demo`, rồi dừng máy ops. `KEEP_OPS=1` thì để máy ops chạy |
+| `aws.sh status` | máy ops, màu nào chạy sha nào, URL ALB, số máy mỗi màu |
+| `aws.sh init` | chỉ `terraform init` (workflow deploy cần bước này trước `deploy_aws.sh`) |
+
+Biến môi trường:
+- `NAME_PREFIX`: mặc định `nt548`; mỗi người dùng tiền tố của lab mình, ví dụ `nt548-dl`.
+- `TF_ARGS`: thêm tham số cho apply / destroy, ví dụ `TF_ARGS="-var real_harness=false"`.
+
+Sha của image là commit trên `main` mà `nt548-images` đã build xong: `git rev-parse origin/main`.
+
+Workflow `nt548-aws` chạy trên runner của lab:
+- **mỗi tối 23:00 giờ Việt Nam**: `down`, phòng khi ai quên. Destroy xong thì máy ops tự tắt sau 1 phút. Job vẫn kịp báo kết quả trước khi tắt.
+- **chạy tay**: `status`, `up` (máy ops phải đang chạy), `down`.
+
+Runner nằm trên máy ops. Máy dừng thì lượt chạy hằng tối nằm chờ trong hàng đợi, và sẽ chạy khi buổi sau bật máy lên. Lúc đó nó sẽ xóa đúng buổi vừa dựng. Vì vậy lượt hằng tối nào trễ quá 90 phút thì bỏ qua.
+
+Không lượt nào chạy khi biến repo `NT548_DEPLOY_ENABLED` chưa là `true`. Đây là cùng công tắc với `nt548-deploy-aws`. Biến `NT548_NAME_PREFIX` đổi tiền tố (mặc định `nt548`, lab demo chung). Hai workflow dùng chung `concurrency`, nên `down` không bao giờ chen giữa một lần deploy.
+
+### Checklist
+
+Đầu buổi:
+1. Start Lab, chép credential từ **AWS Details** vào `~/.aws/credentials`.
+2. Ghi số **Used** của lab (góc trên bảng Learner Lab) vào bảng chi phí.
+3. `NAME_PREFIX=nt548-dl ops/nt548/aws.sh up $(git rev-parse origin/main)`, rồi mở URL ALB mà lệnh in ra.
+
+Cuối buổi:
+1. `NAME_PREFIX=nt548-dl ops/nt548/aws.sh down`.
+2. `aws.sh status` phải in `envs/demo: down` và máy ops `stopped`.
+3. Ghi lại số **Used**, tính số tiền buổi này tốn.
 
 ## Chi phí
 
-| Buổi | Người | Dựng gì | Chi tiêu lab |
-|---|---|---|---|
-| | | | |
+Ước tính theo giá us-east-1 (thiết kế §5.4, cần kiểm lại trên lab):
+
+| Thành phần | Khi nào tốn | USD / giờ |
+|---|---|---|
+| ALB | chỉ khi `envs/demo` đang dựng | ~0,023 + LCU |
+| EC2 `t3.small` app | mỗi máy đang chạy (2 khi rảnh, tới 6 khi scale) | ~0,021 mỗi máy |
+| EC2 `t3.small` ops | khi máy ops đang chạy | ~0,021 |
+| IPv4 public | ALB 2 AZ + mỗi máy đang chạy | ~0,005 mỗi địa chỉ |
+| EBS máy ops 20 GB | luôn luôn, kể cả khi dừng | ~0,002 |
+| CloudWatch: 1 dashboard, 15 alarm, log | luôn luôn khi `envs/demo` còn; dashboard thứ 4 trở đi mới tính phí | ~0,01 |
+
+Một buổi 4 giờ với 2 máy app và máy ops tốn khoảng 0,45 USD. Khi demo đã tắt, chỉ còn ổ đĩa máy ops, khoảng 0,05 USD mỗi ngày.
+
+Bảng chi tiêu thật ghi mỗi buổi. Số **Used** đọc ở bảng Learner Lab:
+
+| Ngày | Người | Lab | Dựng gì | Used đầu buổi (USD) | Used cuối buổi (USD) |
+|---|---|---|---|---|---|
+| | | | | | |
+
+## Còn phải làm trên lab
+
+Code của #22, #24, #25, #26 và #27 đã có và qua test mock. Phần dưới cần tài khoản lab và người chạy:
+
+| Issue | Việc trên lab | Ghi vào |
+|---|---|---|
+| #22 | `aws_r2_probe.sh` từ máy mình; bootstrap; runner hiện Idle; chạy lại R2 từ máy ops | bảng R2 ở trên, issue #22 |
+| #24 | đổi `weight_blue` 100 → 10 → 0, `lb_check.py split` thấy đúng tỉ lệ | mục ALB |
+| #25 | đo thời gian đổi tag → refresh xong; k6 vào URL ALB, ASG lên 2–3 máy rồi xuống | bảng đo ở mục ASG |
+| #26 | ảnh dashboard khi có tải; dừng app một màu, alarm `unhealthy` kêu, mail tới | báo cáo §AWS |
+| #27 | `up` → `down` → `up` trên lab; bật `NT548_DEPLOY_ENABLED`; xem lượt chạy 23:00 đầu tiên | bảng chi phí |

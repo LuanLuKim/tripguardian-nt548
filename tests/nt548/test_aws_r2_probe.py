@@ -1,6 +1,7 @@
 """ops/nt548/aws_r2_probe.sh (#22) against a fake `aws`: the table, denied actions, dry runs and the clean-up."""
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -53,7 +54,9 @@ def run(fake: dict, deny: str = "") -> subprocess.CompletedProcess:
                           timeout=60)
 
 
-pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
+# WSL's bash.exe cannot see these paths
+pytestmark = pytest.mark.skipif(BASH is None or (os.name == "nt" and "system32" in BASH.lower()),
+                                reason="needs a POSIX bash")
 
 
 def test_everything_allowed_exits_0_and_cleans_up(fake):

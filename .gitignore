@@ -47,7 +47,8 @@ tests/fixtures/tiktok/
 /.venv.old-nfs/
 /.aws/
 /.codex/
-/.claude/worktrees/
+/.claude/
+/.impeccable/
 
 # Large local files that must stay out of git (keep git status and the editor fast)
 /*.mp4

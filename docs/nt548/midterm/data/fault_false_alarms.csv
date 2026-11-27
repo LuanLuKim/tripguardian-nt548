@@ -1,0 +1,5 @@
+﻿metric,static,ewma,iforest,combined,minutes,run_id
+5xx,0,0,0,0,5,45827111505
+p95,0,0,0,0,5,45827111505
+requests,0,0,0,0,5,45827111505
+log_patterns,0,,,,5,45827111505

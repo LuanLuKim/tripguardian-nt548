@@ -1,0 +1,882 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Báo cáo tiến độ giữa kỳ NT548, nhóm 8</title><style>
+:root { color-scheme: light; --surface-1:#ffffff; --surface-2:#f6f7f9; --border:#dcdfe4; --text-primary:#191919;
+  --text-secondary:#5c6370; --link:#1b64be; --grid:#e8eaee; --series-1:#257de0; --series-2:#f47230; }
+@media (prefers-color-scheme: dark) { :root { color-scheme: dark; --surface-1:#191919; --surface-2:#222326;
+  --border:#3a3c40; --text-primary:#efefef; --text-secondary:#9c9c9c; --link:#84b9f3; --grid:#2c2e32;
+  --series-1:#338ced; --series-2:#e76624; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-1); color: var(--text-primary);
+  font: 15.5px/1.6 "Segoe UI", system-ui, -apple-system, "Noto Sans", Arial, sans-serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 40px 28px 80px; }
+h1 { font-size: 30px; line-height: 1.25; margin: 0 0 14px; letter-spacing: -0.01em; }
+h2 { font-size: 21px; margin: 44px 0 12px; padding-top: 18px; border-top: 1px solid var(--border); }
+blockquote { margin: 0 0 8px; padding: 12px 16px; background: var(--surface-2); border-left: 3px solid var(--series-1);
+  border-radius: 4px; color: var(--text-secondary); }
+blockquote p { margin: 0; }
+a { color: var(--link); }
+code { font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: 0.88em; background: var(--surface-2);
+  padding: 1px 5px; border-radius: 4px; }
+.tw { overflow-x: auto; margin: 12px 0 18px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { border-bottom: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+th { background: var(--surface-2); font-weight: 600; white-space: nowrap; }
+tbody tr:hover td { background: var(--surface-2); }
+figure.chart { margin: 18px 0 26px; padding: 16px 18px 10px; border: 1px solid var(--border); border-radius: 8px; }
+figcaption { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+.legend { display: flex; gap: 18px; font-size: 13px; color: var(--text-secondary); margin-bottom: 2px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+svg { width: 100%; height: auto; display: block; font-family: inherit; }
+svg .grid { stroke: var(--grid); stroke-width: 1; }
+svg .base { stroke: var(--text-secondary); stroke-width: 1; }
+svg .tick, svg .cat { fill: var(--text-secondary); font-size: 12px; }
+svg .val { fill: var(--text-primary); font-size: 12px; font-weight: 600; }
+svg .miss { fill: var(--text-secondary); font-size: 11px; font-style: italic; text-anchor: start; }
+svg .hit { fill: transparent; }
+svg .mark:hover path { opacity: 0.85; }
+.note { font-size: 13px; color: var(--text-secondary); margin: 6px 0 4px; }
+#tip { position: fixed; pointer-events: none; background: var(--text-primary); color: var(--surface-1); font-size: 13px;
+  padding: 5px 9px; border-radius: 5px; opacity: 0; transition: opacity .08s; z-index: 10; }
+@media print { main { max-width: none; padding: 0; } h2 { break-after: avoid; } figure, .tw { break-inside: avoid; } }
+</style></head><body><main><h1 id="báo-cáo-tiến-độ-giữa-kỳ-nt548-nhóm-8-27112026">Báo cáo tiến độ
+giữa kỳ NT548, nhóm 8 (27/11/2026)</h1>
+<blockquote>
+<p>Tình trạng đồ án đến ngày 26/11, kèm bằng chứng chạy lại được và kế
+hoạch tới hạn nộp <strong>04/12/2026</strong>. Repo: <a
+href="https://github.com/LuanLuKim/tripguardian-nt548">https://github.com/LuanLuKim/tripguardian-nt548</a>.
+Báo cáo cuối kỳ: <code>REPORT.md</code>. Thiết kế:
+<code>docs/plans/2026-11-20-nt548-devops-design.md</code> (bản 3). Việc
+theo dõi bằng issue GitHub; số issue (#N) và PR dẫn thẳng tới bằng
+chứng.</p>
+</blockquote>
+<h2 id="1-ý-tưởng-đồ-án">1. Ý tưởng đồ án</h2>
+<p>Đưa TripGuardian lên <strong>AWS Academy Learner Lab</strong> bằng
+code và vận hành nó như một dịch vụ thật. TripGuardian là ứng dụng lập
+lịch trình du lịch, gồm web (Node), harness (Python, FastAPI) và các
+model gọi qua gateway. Chức năng sản phẩm giữ nguyên; đồ án chỉ làm phần
+vận hành:</p>
+<ul>
+<li><strong>CI/CD:</strong> test, build image, phát hành blue/green có
+canary tự rollback.</li>
+<li><strong>Hạ tầng AWS:</strong> Terraform dựng VPC, ALB, ASG mỗi màu,
+CloudWatch.</li>
+<li><strong>DataOps:</strong> release dữ liệu có phiên bản, kiểm trước
+khi dùng, đổi và lùi như code.</li>
+<li><strong>AIOps:</strong> phát hiện bất thường bằng ML, gom mẫu log,
+tóm tắt sự cố từ bằng chứng, đo MTTD / MTTR bằng bơm lỗi.</li>
+</ul>
+<p>Ràng buộc của lab định hình kiến trúc: 50 USD mỗi người, không GPU,
+không tạo được IAM role. Vì vậy:</p>
+<ul>
+<li>LLM giả thay model thật;</li>
+<li>subnet public, không NAT;</li>
+<li>deploy qua self-hosted runner trong lab;</li>
+<li>xóa hạ tầng cuối mỗi buổi.</li>
+</ul>
+<h2 id="2-phân-công">2. Phân công</h2>
+<p>Bốn khối, hai cặp làm song song, chỉ gặp nhau ở hợp đồng giữa khối
+(thiết kế §7.1).</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Thành viên</th>
+<th>Khối phụ trách</th>
+<th>Đã xong</th>
+<th>Đang / sẽ làm</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LuanLuKim (trưởng nhóm)</td>
+<td>T9 CI/CD, T4 AIOps, T7 báo cáo</td>
+<td>CI xanh (#1); image + stack một màu (#44); gateway chia trọng số +
+<code>/metrics</code> (#14, #15); phát hiện bất thường (#36); tóm tắt sự
+cố (#38); kiểm Terraform trong CI (#49)</td>
+<td>Stack với harness thật (PR #63, CI xanh, chờ merge); deploy lên AWS
+(#29, draft #50); báo cáo, slide</td>
+</tr>
+<tr>
+<td>DontMadWhenBad</td>
+<td>T9 CI/CD, T4 AIOps, T6 Kubernetes</td>
+<td>LLM giả (#13); blue/green + Nginx (#2); canary tự rollback, k6,
+scale (#3); mẫu log Drain3 (#37); bơm lỗi, đo MTTD / MTTR (#39); eval
+gate model (#16); nghiên cứu AIOps (#18); demo kind (#6)</td>
+<td>Mẫu log và bơm lỗi trên lab</td>
+</tr>
+<tr>
+<td>hohoangluan</td>
+<td>T5 DataOps</td>
+<td>Dữ liệu mẫu (#9); harness thật chạy với dữ liệu mẫu (#8);
+<code>data_check</code> (#10); đổi / lùi release (#11); nghiên cứu DVC,
+lakeFS, Great Expectations (#12)</td>
+<td>Đổi release trên AWS</td>
+</tr>
+<tr>
+<td>dinhlong06</td>
+<td>T8 AWS</td>
+<td>Module mạng: VPC 2 AZ, subnet public, security group (#23); trace
+LangSmith làm bằng chứng sự cố (#66)</td>
+<td>Kiểm quyền lab (#22); ALB (#24); ASG (#25); CloudWatch (#26); bật /
+tắt + chi phí (#27)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="3-tiến-độ-đã-làm-đang-làm-sẽ-làm">3. Tiến độ: đã làm, đang làm,
+sẽ làm</h2>
+<p>Phần trăm là ước lượng theo checklist của issue.</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Khối</th>
+<th>Đã làm</th>
+<th>Đang làm</th>
+<th>Sẽ làm</th>
+<th>Ước lượng</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>T9 CI/CD</strong> (#28)</td>
+<td>CI xanh trên checkout sạch; 3 image trên GHCR; blue/green trên
+Compose + Nginx; canary tự promote / rollback; k6 và bảng scale; kiểm
+Terraform</td>
+<td>Script deploy blue/green qua Terraform, có test với
+<code>terraform</code> / <code>aws</code> giả (draft #50)</td>
+<td>Deploy thật lên lab qua self-hosted runner (#29)</td>
+<td>~70%</td>
+</tr>
+<tr>
+<td><strong>T4 AIOps</strong> (#4)</td>
+<td>Chuỗi quan sát → phát hiện → chẩn đoán → hành động chạy đủ trên
+Compose: <code>/metrics</code>, <code>detect.py</code>,
+<code>log_patterns.py</code>, <code>incident.py</code>,
+<code>canary_watch.py</code>; bảng MTTD / MTTR / báo nhầm (#39); eval
+gate (#16)</td>
+<td></td>
+<td>Chạy trên metric và log thật của lab (cần #24, #26); canary model
+(#17, không bắt buộc)</td>
+<td>~85%</td>
+</tr>
+<tr>
+<td><strong>T5 DataOps</strong> (#5)</td>
+<td>Dữ liệu mẫu tổng hợp; gate <code>data_check</code>; đổi / lùi
+release trên harness thật; ghi chú nghiên cứu</td>
+<td></td>
+<td>Bước đổi release trên AWS</td>
+<td>~90%</td>
+</tr>
+<tr>
+<td><strong>T6 Kubernetes</strong> (#6, điểm cộng)</td>
+<td>Manifest + workflow <code>nt548-k8s-demo</code> trên kind: đổi màu,
+scale, tự dựng lại pod</td>
+<td></td>
+<td></td>
+<td>100%</td>
+</tr>
+<tr>
+<td><strong>T8 AWS</strong> (#21)</td>
+<td>Module mạng, có test</td>
+<td>ASG mỗi màu (#25, bản nháp chưa push)</td>
+<td>Kiểm quyền lab + bootstrap (#22); ALB (#24); CloudWatch (#26);
+<code>aws-up</code> / <code>aws-down</code>, budget (#27)</td>
+<td>~10%</td>
+</tr>
+<tr>
+<td><strong>T7 báo cáo</strong> (#7)</td>
+<td>Khung <code>REPORT.md</code>; các mục CI/CD, AIOps, DataOps có số
+liệu trong hướng dẫn từng khối</td>
+<td>Báo cáo tiến độ này</td>
+<td>Mục AWS, chi phí; chuyển số đo của #2, #3, #5 vào
+<code>REPORT.md</code>; slide</td>
+<td>~35%</td>
+</tr>
+</tbody>
+</table></div>
+<p>Đường găng là <strong>T8</strong>. Mọi việc "sẽ làm" của T9, T4 và T5
+đều chờ ALB + ASG chạy thật trên lab.</p>
+<h2 id="4-kết-quả-đo-được">4. Kết quả đo được</h2>
+<p>Mọi số dưới đây là từ CI hoặc lệnh chạy lại được, không phải ước
+lượng.</p>
+<p>Số của blue/green lấy từ <a
+href="https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45819985864">run
+45819985864</a>; canary và scale từ <a
+href="https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45820052392">run
+45820052392</a>; kind từ <a
+href="https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45825947271">run
+45825947271</a>. Mỗi lần chạy, số dao động nhẹ: qua 6 lần chạy gần nhất,
+chia 10 % ra 8,6–11 % sang green.</p>
+<p><strong>Phát hành (T9).</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Kiểm</th>
+<th>Kết quả</th>
+<th>Chạy lại</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Blue/green: chia 10 %</td>
+<td>9,1 % trên 1.000 người dùng mới sang green; sticky: 0 / 20 người bị
+đổi màu</td>
+<td>workflow <code>nt548-bluegreen</code></td>
+</tr>
+<tr>
+<td>Blue/green: đổi màu dưới tải</td>
+<td>5.726 request chạy suốt <code>10 %</code> → <code>100 %</code> →
+rollback → promote: 0 lỗi kết nối, 0 5xx</td>
+<td>như trên</td>
+</tr>
+<tr>
+<td>Rollback tay</td>
+<td>lệnh 0,8 s, 100 % về blue sau thêm 0,1 s</td>
+<td>như trên</td>
+</tr>
+<tr>
+<td>Canary, bản tốt</td>
+<td>promote sau 33 s (2 bước 15 s)</td>
+<td><code>ops/nt548/canary_rehearsal.sh</code></td>
+</tr>
+<tr>
+<td>Canary, bản trả 500</td>
+<td>rollback sau 17 s ở bước 10 %; màu cũ 0 lỗi</td>
+<td>như trên</td>
+</tr>
+<tr>
+<td>Canary, bản chậm 800 ms</td>
+<td>rollback sau 16 s vì p95 (803 ms so với 2 ms)</td>
+<td>như trên</td>
+</tr>
+<tr>
+<td>Scale trên một runner 4 vCPU</td>
+<td>1 bản: 386 / 898 / 1.509 req/s ở 20 / 50 / 100 người dùng ảo; 2 bản:
+382 / 892 / 1.621. Trên một máy, thêm bản không giúp vì k6, Nginx và hai
+bản tranh nhau CPU. Scale-out thật cần ASG (#25)</td>
+<td><code>ops/nt548/scale_bench.sh</code></td>
+</tr>
+<tr>
+<td>Kubernetes (kind)</td>
+<td>đổi selector sang green: 20/20 request sang green sau 2 s; rollback
+1 s; scale lên 3 pod; xóa một pod thì Deployment tự về 3 pod</td>
+<td>workflow <code>nt548-k8s-demo</code></td>
+</tr>
+</tbody>
+</table></div>
+<figure class="chart"><figcaption>Thông lượng theo số người dùng ảo, một runner 4 vCPU</figcaption><div class="legend"><span><i style="background:var(--series-1)"></i>1 bản</span><span><i style="background:var(--series-2)"></i>2 bản</span></div><svg viewBox="0 0 760 300" role="img" aria-label="Thông lượng theo số người dùng ảo, một runner 4 vCPU"><line class="grid" x1="56" x2="748" y1="248.0" y2="248.0"/><text class="tick" x="48" y="252.0" text-anchor="end">0</text><line class="grid" x1="56" x2="748" y1="192.5" y2="192.5"/><text class="tick" x="48" y="196.5" text-anchor="end">500</text><line class="grid" x1="56" x2="748" y1="137.0" y2="137.0"/><text class="tick" x="48" y="141.0" text-anchor="end">1 000</text><line class="grid" x1="56" x2="748" y1="81.5" y2="81.5"/><text class="tick" x="48" y="85.5" text-anchor="end">1 500</text><line class="grid" x1="56" x2="748" y1="26.0" y2="26.0"/><text class="tick" x="48" y="30.0" text-anchor="end">2 000</text><text class="tick" x="48" y="14" text-anchor="end">req/s</text><g class="mark" data-tip="20 VU · 1 bản: 386 req/s"><rect class="hit" x="135.3" y="26" width="36.0" height="222"/><path d="M136.3,248.0 V209.2 Q136.3,205.2 140.3,205.2 H166.3 Q170.3,205.2 170.3,209.2 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="153.3" y="200.2" text-anchor="middle">386</text></g><g class="mark" data-tip="20 VU · 2 bản: 382 req/s"><rect class="hit" x="171.3" y="26" width="36.0" height="222"/><path d="M172.3,248.0 V209.6 Q172.3,205.6 176.3,205.6 H202.3 Q206.3,205.6 206.3,209.6 V248.0 Z" style="fill:var(--series-2)"/><text class="val" x="189.3" y="200.6" text-anchor="middle">382</text></g><text class="cat" x="171.3" y="268" text-anchor="middle">20 VU</text><g class="mark" data-tip="50 VU · 1 bản: 898 req/s"><rect class="hit" x="366.0" y="26" width="36.0" height="222"/><path d="M367.0,248.0 V152.3 Q367.0,148.3 371.0,148.3 H397.0 Q401.0,148.3 401.0,152.3 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="384.0" y="143.3" text-anchor="middle">898</text></g><g class="mark" data-tip="50 VU · 2 bản: 892 req/s"><rect class="hit" x="402.0" y="26" width="36.0" height="222"/><path d="M403.0,248.0 V153.0 Q403.0,149.0 407.0,149.0 H433.0 Q437.0,149.0 437.0,153.0 V248.0 Z" style="fill:var(--series-2)"/><text class="val" x="420.0" y="144.0" text-anchor="middle">892</text></g><text class="cat" x="402.0" y="268" text-anchor="middle">50 VU</text><g class="mark" data-tip="100 VU · 1 bản: 1 509 req/s"><rect class="hit" x="596.7" y="26" width="36.0" height="222"/><path d="M597.7,248.0 V84.5 Q597.7,80.5 601.7,80.5 H627.7 Q631.7,80.5 631.7,84.5 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="614.7" y="75.5" text-anchor="middle">1 509</text></g><g class="mark" data-tip="100 VU · 2 bản: 1 621 req/s"><rect class="hit" x="632.7" y="26" width="36.0" height="222"/><path d="M633.7,248.0 V72.1 Q633.7,68.1 637.7,68.1 H663.7 Q667.7,68.1 667.7,72.1 V248.0 Z" style="fill:var(--series-2)"/><text class="val" x="650.7" y="63.1" text-anchor="middle">1 621</text></g><text class="cat" x="632.7" y="268" text-anchor="middle">100 VU</text><line class="base" x1="56" x2="748" y1="248" y2="248"/></svg><p class="note">Hai bản trên cùng một máy gần như không tăng thông lượng. Dữ liệu: <a href="data/scale.csv">scale.csv</a>, run 45820052392.</p></figure><p>Hai lỗi lộ ra nhờ đo và đã sửa:</p>
+<ul>
+<li><code>nginx -s reload</code> trả về trước khi worker mới nhận cấu
+hình, nên ngay sau lệnh chỉ 84,5 % sang green. <code>deploy.sh</code>
+giờ chờ worker mới.</li>
+<li>Script kiểm của demo kind đếm sai câu trả lời (JSON không có xuống
+dòng cuối). App vẫn đúng; đã sửa script.</li>
+</ul>
+<p><strong>DataOps (T5).</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Kiểm</th>
+<th>Kết quả</th>
+<th>Chạy lại</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Harness thật trên dữ liệu mẫu + Postgres</td>
+<td>40/40 nơi của <code>r-a</code> tìm được qua <code>:8080</code>;
+journey vẫn mở sau khi restart harness</td>
+<td>job <code>app-real</code> của <code>nt548-ci</code> (PR #63, chờ
+merge)</td>
+</tr>
+<tr>
+<td>Đổi release <code>r-a</code> → <code>r-b</code> rồi lùi</td>
+<td>journey cũ vẫn mở khi đổi; màu thiếu release trả 409; lùi lại phục
+vụ <code>r-a</code></td>
+<td><code>nt548-data-release</code>, <code>candidate=r-b</code></td>
+</tr>
+<tr>
+<td>Release mất 20 % nơi</td>
+<td>gate chặn: <code>40 -&gt; 32 places (20% drop, limit 10%)</code>,
+không màu nào lên (job đỏ là đúng)</td>
+<td><code>nt548-data-release</code>,
+<code>candidate=r-b-drop</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>AIOps (T4).</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Kiểm</th>
+<th>Kết quả</th>
+<th>Chạy lại</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phát hiện bất thường, 5 kịch bản × 20 chuỗi tổng hợp</td>
+<td>ngưỡng tĩnh không bắt được rò rỉ chậm (0/20); Isolation Forest bắt
+15/20</td>
+<td><code>python ops/nt548/aiops/detect.py compare --seeds 20</code></td>
+</tr>
+<tr>
+<td>Tóm tắt sự cố với LLM thật</td>
+<td>3 sự cố gài, cả 3 chỉ đúng nguyên nhân; câu trả lời không dẫn được
+bằng chứng bị bỏ</td>
+<td><code>python ops/nt548/aiops/incident.py demo deploy_500</code></td>
+</tr>
+<tr>
+<td>Eval gate model</td>
+<td>bản lỗi 30 % và bản hỏng JSON 50 % bị chặn; bản tốt qua</td>
+<td><code>python ops/nt548/eval_gate.py</code></td>
+</tr>
+<tr>
+<td>Bơm lỗi trên stack Compose (#39)</td>
+<td>xem bảng dưới</td>
+<td>workflow <code>nt548-fault-eval</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Bơm lỗi trên stack Compose, CI 26/11 (<a
+href="https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45827111505">run
+45827111505</a>; 96.522 request trong 22,6 phút, 0 lỗi kết nối). MTTD
+tính từ lúc bơm lỗi tới khi alarm kêu:</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Kịch bản</th>
+<th>Ngưỡng tĩnh / EWMA</th>
+<th>Isolation Forest</th>
+<th>Mẫu log</th>
+<th>Phục hồi</th>
+<th>5xx người dùng thấy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLM giả lỗi 30 %</td>
+<td>20 s</td>
+<td>không bắt</td>
+<td><strong>15 s</strong></td>
+<td>tay: MTTD + người phản ứng + lệnh 23,5 s</td>
+<td>558</td>
+</tr>
+<tr>
+<td>LLM chậm thêm 2 s</td>
+<td>20 s</td>
+<td>không bắt</td>
+<td>không có dòng lỗi</td>
+<td>tay: MTTD + người phản ứng + lệnh 24,9 s</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Tắt một bản app</td>
+<td>không bắt</td>
+<td>không bắt</td>
+<td>không bắt</td>
+<td>tay, lệnh 11,2 s</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Deploy bản trả 500</td>
+<td>7,9 s</td>
+<td>không bắt</td>
+<td><strong>5 s</strong></td>
+<td><strong>tự động, 21,6 s</strong> (<code>canary_watch</code>)</td>
+<td>41</td>
+</tr>
+<tr>
+<td>Tải tăng 5 lần</td>
+<td>10 s</td>
+<td>không bắt</td>
+<td>–</td>
+<td>hết tải</td>
+<td>0</td>
+</tr>
+<tr>
+<td>5 phút không lỗi: số báo nhầm</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<figure class="chart"><figcaption>Thời gian phát hiện (MTTD) theo kịch bản bơm lỗi</figcaption><div class="legend"><span><i style="background:var(--series-1)"></i>Metric (EWMA)</span><span><i style="background:var(--series-2)"></i>Mẫu log (Drain3)</span></div><svg viewBox="0 0 760 300" role="img" aria-label="Thời gian phát hiện (MTTD) theo kịch bản bơm lỗi"><line class="grid" x1="56" x2="748" y1="248.0" y2="248.0"/><text class="tick" x="48" y="252.0" text-anchor="end">0</text><line class="grid" x1="56" x2="748" y1="203.6" y2="203.6"/><text class="tick" x="48" y="207.6" text-anchor="end">5</text><line class="grid" x1="56" x2="748" y1="159.2" y2="159.2"/><text class="tick" x="48" y="163.2" text-anchor="end">10</text><line class="grid" x1="56" x2="748" y1="114.8" y2="114.8"/><text class="tick" x="48" y="118.8" text-anchor="end">15</text><line class="grid" x1="56" x2="748" y1="70.4" y2="70.4"/><text class="tick" x="48" y="74.4" text-anchor="end">20</text><line class="grid" x1="56" x2="748" y1="26.0" y2="26.0"/><text class="tick" x="48" y="30.0" text-anchor="end">25</text><text class="tick" x="48" y="14" text-anchor="end">giây</text><g class="mark" data-tip="LLM lỗi 30 % · Metric (EWMA): 20 s"><rect class="hit" x="89.2" y="26" width="36.0" height="222"/><path d="M90.2,248.0 V74.4 Q90.2,70.4 94.2,70.4 H120.2 Q124.2,70.4 124.2,74.4 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="107.2" y="65.4" text-anchor="middle">20</text></g><g class="mark" data-tip="LLM lỗi 30 % · Mẫu log (Drain3): 15 s"><rect class="hit" x="125.2" y="26" width="36.0" height="222"/><path d="M126.2,248.0 V118.8 Q126.2,114.8 130.2,114.8 H156.2 Q160.2,114.8 160.2,118.8 V248.0 Z" style="fill:var(--series-2)"/><text class="val" x="143.2" y="109.8" text-anchor="middle">15</text></g><text class="cat" x="125.2" y="268" text-anchor="middle">LLM lỗi 30 %</text><g class="mark" data-tip="LLM chậm 2 s · Metric (EWMA): 20 s"><rect class="hit" x="227.6" y="26" width="36.0" height="222"/><path d="M228.6,248.0 V74.4 Q228.6,70.4 232.6,70.4 H258.6 Q262.6,70.4 262.6,74.4 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="245.6" y="65.4" text-anchor="middle">20</text></g><text class="miss" x="281.6" y="242" text-anchor="middle" transform="rotate(-90 281.6 242)">không có dòng lỗi</text><text class="cat" x="263.6" y="268" text-anchor="middle">LLM chậm 2 s</text><text class="miss" x="384.0" y="242" text-anchor="middle" transform="rotate(-90 384.0 242)">không bắt</text><text class="miss" x="420.0" y="242" text-anchor="middle" transform="rotate(-90 420.0 242)">không bắt</text><text class="cat" x="402.0" y="268" text-anchor="middle">Tắt một bản app</text><g class="mark" data-tip="Deploy bản trả 500 · Metric (EWMA): 7,9 s"><rect class="hit" x="504.4" y="26" width="36.0" height="222"/><path d="M505.4,248.0 V181.8 Q505.4,177.8 509.4,177.8 H535.4 Q539.4,177.8 539.4,181.8 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="522.4" y="172.8" text-anchor="middle">7,9</text></g><g class="mark" data-tip="Deploy bản trả 500 · Mẫu log (Drain3): 5 s"><rect class="hit" x="540.4" y="26" width="36.0" height="222"/><path d="M541.4,248.0 V207.6 Q541.4,203.6 545.4,203.6 H571.4 Q575.4,203.6 575.4,207.6 V248.0 Z" style="fill:var(--series-2)"/><text class="val" x="558.4" y="198.6" text-anchor="middle">5</text></g><text class="cat" x="540.4" y="268" text-anchor="middle">Deploy bản trả 500</text><g class="mark" data-tip="Tải tăng 5 lần · Metric (EWMA): 10 s"><rect class="hit" x="642.8" y="26" width="36.0" height="222"/><path d="M643.8,248.0 V163.2 Q643.8,159.2 647.8,159.2 H673.8 Q677.8,159.2 677.8,163.2 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="660.8" y="154.2" text-anchor="middle">10</text></g><text class="miss" x="696.8" y="242" text-anchor="middle" transform="rotate(-90 696.8 242)">không áp dụng</text><text class="cat" x="678.8" y="268" text-anchor="middle">Tải tăng 5 lần</text><line class="base" x1="56" x2="748" y1="248" y2="248"/></svg><p class="note">Thấp hơn là tốt hơn. Isolation Forest không bắt được ca nào trong lần chạy này (xem phần Đọc số). Dữ liệu: <a href="data/fault_eval.csv">fault_eval.csv</a>, run 45827111505.</p></figure><p>Đọc số (chi tiết ở <code>REPORT.md</code> §6.4):</p>
+<ul>
+<li>Tự động rollback cho MTTR 21,6 s và 41 lỗi. Ở ca phục hồi tay, bộ đo
+giữ lỗi 60 s thay cho lúc người phản ứng. Từ lúc bắt đầu bơm lỗi tới khi
+phục hồi xong mất 108 s, và người dùng thấy 558 lỗi.</li>
+<li>Mẫu log bắt sớm nhất khi lỗi có dòng log riêng. Lỗi chỉ làm chậm thì
+chỉ metric bắt được.</li>
+<li>Tắt một bản app chỉ gây 1 lỗi, vì Nginx chuyển sang bản còn lại.
+Phát hiện máy chết cần health check theo máy, không phải metric
+5xx.</li>
+<li>Isolation Forest không bắt được ca nào: nó chỉ học 90 s mà trong đó
+5xx toàn là 0. Trên dữ liệu tổng hợp, nó lại là cách duy nhất bắt rò rỉ
+chậm. Alarm thật dùng <code>combined</code> (EWMA hoặc Isolation
+Forest), nên vẫn bắt mọi ca EWMA bắt.</li>
+<li>Bản chạy đầu tiên lộ một lỗi của chính bộ đo: log của màu green bị
+xóa trước khi được lưu, nên mẫu log không thấy deploy hỏng. Đã sửa, và
+số ở trên là của lần chạy sau khi sửa.</li>
+</ul>
+<h2 id="5-test-case">5. Test case</h2>
+<p>Test của đồ án nằm trong <code>tests/nt548</code>, chạy trong job
+<code>lint-test</code> của <code>nt548-ci</code> trên mọi PR. Số dưới
+đây là của <code>main</code> sau khi merge các PR của 26/11 (<a
+href="https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45851981554">run
+45851981554</a>: 92 qua, 3 file bỏ qua).</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>File test</th>
+<th>Kiểm gì</th>
+<th>Số test</th>
+<th>Qua</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_llm_fake</code></td>
+<td>LLM giả: tương thích OpenAI, bơm lỗi / chậm / hỏng JSON theo biến
+môi trường</td>
+<td>12</td>
+<td>12</td>
+</tr>
+<tr>
+<td><code>test_harness_stub</code></td>
+<td>stub harness báo đúng màu, bơm <code>NT548_FAULT</code></td>
+<td>13</td>
+<td>13</td>
+</tr>
+<tr>
+<td><code>test_lb_check</code></td>
+<td>đo chia %, sticky, đổi màu không rớt request</td>
+<td>5</td>
+<td>5</td>
+</tr>
+<tr>
+<td><code>test_canary_watch</code></td>
+<td>quyết định promote / rollback / chờ theo 5xx và p95</td>
+<td>11</td>
+<td>11</td>
+</tr>
+<tr>
+<td><code>test_detect</code></td>
+<td>ngưỡng tĩnh, EWMA, Isolation Forest trên chuỗi tổng hợp</td>
+<td>10</td>
+<td>10</td>
+</tr>
+<tr>
+<td><code>test_log_patterns</code></td>
+<td>gom mẫu log, mẫu mới, mẫu lỗi tăng đột biến, đọc CloudWatch
+Logs</td>
+<td>13</td>
+<td>13</td>
+</tr>
+<tr>
+<td><code>test_incident</code></td>
+<td>nghi phạm đầu tiên đúng (deploy, tải, trace LangSmith); kiểm dẫn
+chứng của LLM, LLM hỏng thì về mẫu cố định; mở / comment issue</td>
+<td>21</td>
+<td>21</td>
+</tr>
+<tr>
+<td><code>test_fault_eval</code></td>
+<td>chia chuỗi theo ô 5 s; lỗi bị bắt trong vài giây, đoạn không lỗi thì
+im; MTTR đo được khi tự phục hồi</td>
+<td>3</td>
+<td>3</td>
+</tr>
+<tr>
+<td><code>test_eval_gate</code></td>
+<td>câu trả lời hợp lệ; chặn bản lỗi 30 %, bản hỏng JSON; cho bản tốt
+qua</td>
+<td>4</td>
+<td>4</td>
+</tr>
+<tr>
+<td><code>test_sample_data</code></td>
+<td>dữ liệu mẫu đủ cho harness</td>
+<td>4</td>
+<td>4</td>
+</tr>
+<tr>
+<td><code>test_data_check</code></td>
+<td>gate release dữ liệu</td>
+<td>7</td>
+<td>7</td>
+</tr>
+<tr>
+<td><code>test_data_release</code></td>
+<td>đổi / lùi release</td>
+<td>4</td>
+<td>4</td>
+</tr>
+<tr>
+<td><strong>Tổng</strong></td>
+<td></td>
+<td><strong>107</strong></td>
+<td><strong>107</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>Ba file cuối cần <code>lancedb</code>, nên <code>nt548-ci</code> bỏ
+qua chúng; workflow <code>test</code> (môi trường đầy đủ của
+TripGuardian) chạy cả ba.</p>
+<p>Ngoài ra:</p>
+<ul>
+<li>Toàn bộ test của TripGuardian trên <code>main</code>: 5.618 qua, 0
+đỏ, 434 bỏ qua, 3 phút 40 giây (<a
+href="https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45827417239">run
+45827417239</a>). Đồ án không đổi code sản phẩm, nên con số này là kiểm
+hồi quy.</li>
+<li>Gateway: 16/16 test qua.</li>
+<li>Terraform: <code>fmt</code>, <code>validate</code>,
+<code>terraform test</code> qua cho module <code>network</code> và
+<code>aiops</code> (workflow <code>nt548-terraform</code>).</li>
+<li>Script deploy AWS: 7 test với <code>terraform</code> /
+<code>aws</code> giả (draft #50, chưa merge).</li>
+</ul>
+<h2 id="6-chỉ-số-devops">6. Chỉ số DevOps</h2>
+<p>Tính từ 20/11 (ngày nhận repo) đến 22:45 ngày 26/11 (lúc merge #70),
+lấy từ GitHub API. Dữ liệu thô của mọi bảng trong báo cáo nằm ở
+<a href="data/"><code>data/</code></a> (CSV).</p>
+<p><strong>Luồng thay đổi.</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Chỉ số</th>
+<th>Giá trị</th>
+<th>Ghi chú</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PR đã merge</td>
+<td>35: LuanLuKim 20, DontMadWhenBad 7, hohoangluan 6, dinhlong06 2</td>
+<td>Còn mở: #64 (báo cáo này), #63, #59, draft #50</td>
+</tr>
+<tr>
+<td>Thời gian từ lúc mở PR tới lúc merge</td>
+<td>trung vị 0,36 giờ; 90 % PR dưới 32 giờ</td>
+<td>PR nhỏ, mỗi PR một việc, merge khi CI xanh</td>
+</tr>
+<tr>
+<td>Số PR merge vào <code>main</code> theo ngày</td>
+<td>21/11: 13; 23/11: 4; 24/11: 9; 25/11: 2; 26/11: 7</td>
+<td></td>
+</tr>
+<tr>
+<td>Lượt chạy workflow xong</td>
+<td>177: 149 xanh (84 %), 24 đỏ, 4 hủy</td>
+<td></td>
+</tr>
+<tr>
+<td><code>main</code> bị đỏ</td>
+<td>1 lần: workflow <code>test</code> ngày 21/11, trước khi CI chạy được
+trên checkout sạch (#1). Xanh lại sau 5 giờ; từ đó <code>main</code>
+luôn xanh</td>
+<td></td>
+</tr>
+<tr>
+<td>Phát hành</td>
+<td>10 lần build image lên GHCR từ <code>main</code>. Chưa deploy lên
+AWS</td>
+<td>Deploy thật chờ T8 (#24, #25, #29)</td>
+</tr>
+</tbody>
+</table></div>
+<figure class="chart"><figcaption>Số PR merge vào main mỗi ngày</figcaption><svg viewBox="0 0 760 300" role="img" aria-label="Số PR merge vào main mỗi ngày"><line class="grid" x1="56" x2="748" y1="248.0" y2="248.0"/><text class="tick" x="48" y="252.0" text-anchor="end">0</text><line class="grid" x1="56" x2="748" y1="192.5" y2="192.5"/><text class="tick" x="48" y="196.5" text-anchor="end">5</text><line class="grid" x1="56" x2="748" y1="137.0" y2="137.0"/><text class="tick" x="48" y="141.0" text-anchor="end">10</text><line class="grid" x1="56" x2="748" y1="81.5" y2="81.5"/><text class="tick" x="48" y="85.5" text-anchor="end">15</text><line class="grid" x1="56" x2="748" y1="26.0" y2="26.0"/><text class="tick" x="48" y="30.0" text-anchor="end">20</text><text class="tick" x="48" y="14" text-anchor="end">PR</text><g class="mark" data-tip="20/11 · PR: 0 PR"><rect class="hit" x="87.4" y="26" width="36.0" height="222"/><text class="val" x="105.4" y="243.0" text-anchor="middle">0</text></g><text class="cat" x="105.4" y="268" text-anchor="middle">20/11</text><g class="mark" data-tip="21/11 · PR: 13 PR"><rect class="hit" x="186.3" y="26" width="36.0" height="222"/><path d="M187.3,248.0 V107.7 Q187.3,103.7 191.3,103.7 H217.3 Q221.3,103.7 221.3,107.7 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="204.3" y="98.7" text-anchor="middle">13</text></g><text class="cat" x="204.3" y="268" text-anchor="middle">21/11</text><g class="mark" data-tip="22/11 · PR: 0 PR"><rect class="hit" x="285.1" y="26" width="36.0" height="222"/><text class="val" x="303.1" y="243.0" text-anchor="middle">0</text></g><text class="cat" x="303.1" y="268" text-anchor="middle">22/11</text><g class="mark" data-tip="23/11 · PR: 4 PR"><rect class="hit" x="384.0" y="26" width="36.0" height="222"/><path d="M385.0,248.0 V207.6 Q385.0,203.6 389.0,203.6 H415.0 Q419.0,203.6 419.0,207.6 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="402.0" y="198.6" text-anchor="middle">4</text></g><text class="cat" x="402.0" y="268" text-anchor="middle">23/11</text><g class="mark" data-tip="24/11 · PR: 9 PR"><rect class="hit" x="482.9" y="26" width="36.0" height="222"/><path d="M483.9,248.0 V152.1 Q483.9,148.1 487.9,148.1 H513.9 Q517.9,148.1 517.9,152.1 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="500.9" y="143.1" text-anchor="middle">9</text></g><text class="cat" x="500.9" y="268" text-anchor="middle">24/11</text><g class="mark" data-tip="25/11 · PR: 2 PR"><rect class="hit" x="581.7" y="26" width="36.0" height="222"/><path d="M582.7,248.0 V229.8 Q582.7,225.8 586.7,225.8 H612.7 Q616.7,225.8 616.7,229.8 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="599.7" y="220.8" text-anchor="middle">2</text></g><text class="cat" x="599.7" y="268" text-anchor="middle">25/11</text><g class="mark" data-tip="26/11 · PR: 7 PR"><rect class="hit" x="680.6" y="26" width="36.0" height="222"/><path d="M681.6,248.0 V174.3 Q681.6,170.3 685.6,170.3 H711.6 Q715.6,170.3 715.6,174.3 V248.0 Z" style="fill:var(--series-1)"/><text class="val" x="698.6" y="165.3" text-anchor="middle">7</text></g><text class="cat" x="698.6" y="268" text-anchor="middle">26/11</text><line class="base" x1="56" x2="748" y1="248" y2="248"/></svg><p class="note">Ngày 26/11 tính tới 22:45. Dữ liệu: <a href="data/prs_per_day.csv">prs_per_day.csv</a>, <a href="data/prs_merged.csv">prs_merged.csv</a>.</p></figure><p><strong>Theo workflow.</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Workflow</th>
+<th>Kiểm gì</th>
+<th>Xanh / tổng</th>
+<th>Trên <code>main</code></th>
+<th>Thời gian (trung vị)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test</code></td>
+<td>toàn bộ test TripGuardian</td>
+<td>77 / 93</td>
+<td>25 / 29</td>
+<td>5,5 phút</td>
+</tr>
+<tr>
+<td><code>nt548-ci</code></td>
+<td>lint, <code>tests/nt548</code>, stack Compose (stub và harness
+thật)</td>
+<td>37 / 40</td>
+<td>12 / 12</td>
+<td>2,5 phút</td>
+</tr>
+<tr>
+<td><code>nt548-images</code></td>
+<td>build 3 image lên GHCR</td>
+<td>10 / 12 (2 hủy)</td>
+<td>10 / 12</td>
+<td>1,3 phút</td>
+</tr>
+<tr>
+<td><code>nt548-bluegreen</code></td>
+<td>chia %, sticky, đổi màu dưới tải</td>
+<td>11 / 14 (1 đỏ là lỗi reload, đã sửa; 2 hủy)</td>
+<td>3 / 5</td>
+<td>8,0 phút</td>
+</tr>
+<tr>
+<td><code>nt548-data-release</code></td>
+<td>đổi / lùi release dữ liệu</td>
+<td>4 / 7 (1 đỏ cố ý: gate chặn <code>r-b-drop</code>; 2 lượt 0 giây
+không chạy job nào)</td>
+<td></td>
+<td>1,9 phút</td>
+</tr>
+<tr>
+<td><code>nt548-terraform</code></td>
+<td><code>fmt</code>, <code>validate</code>,
+<code>terraform test</code></td>
+<td>4 / 4</td>
+<td>2 / 2</td>
+<td>0,7 phút</td>
+</tr>
+<tr>
+<td><code>nt548-fault-eval</code></td>
+<td>bơm lỗi, đo MTTD / MTTR</td>
+<td>3 / 3</td>
+<td></td>
+<td>27,1 phút</td>
+</tr>
+<tr>
+<td><code>nt548-k8s-demo</code></td>
+<td>demo kind</td>
+<td>1 / 2 (1 đỏ do script kiểm đếm sai, đã sửa)</td>
+<td></td>
+<td>3,1 phút</td>
+</tr>
+<tr>
+<td><code>nt548-incident</code></td>
+<td>tóm tắt sự cố, mở issue</td>
+<td>2 / 2</td>
+<td></td>
+<td>0,6 phút</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Vận hành</strong> (chi tiết ở §4; đo trên Compose, chưa phải
+trên AWS).</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Chỉ số</th>
+<th>Giá trị</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rollback tay blue/green</td>
+<td>lệnh 0,8 s, 100 % về blue sau thêm 0,1 s</td>
+</tr>
+<tr>
+<td>Canary tự rollback</td>
+<td>17 s với bản trả 500, 16 s với bản chậm 800 ms</td>
+</tr>
+<tr>
+<td>MTTD nhanh nhất</td>
+<td>5 s (mẫu log, deploy bản trả 500); metric: 7,9–20 s</td>
+</tr>
+<tr>
+<td>MTTR</td>
+<td>tự động 21,6 s, 41 lỗi người dùng thấy; tay (bộ đo giữ lỗi 60 s thay
+cho người) 108 s, 558 lỗi</td>
+</tr>
+<tr>
+<td>Báo nhầm</td>
+<td>0 trong 5 phút không lỗi (bằng chứng còn yếu, xem §4)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="7-kế-hoạch-tới-0412">7. Kế hoạch tới 04/12</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Ngày</th>
+<th>Việc</th>
+<th>Người</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>27/11</td>
+<td>Kiểm quyền <code>LabRole</code> (R2) + bootstrap (#22). Quyết định:
+dựng ALB + ASG trên lab hay chuyển dự phòng</td>
+<td>dinhlong06, LuanLuKim</td>
+</tr>
+<tr>
+<td>28–29/11</td>
+<td>ALB blue/green (#24), ASG mỗi màu (#25) với image thật; mount dữ
+liệu mẫu vào máy app</td>
+<td>dinhlong06, hohoangluan</td>
+</tr>
+<tr>
+<td>30/11</td>
+<td>Deploy blue/green có canary qua <code>nt548-deploy-aws</code> (#29);
+k6 vào URL ALB, bảng scale-out 1 → 3 máy</td>
+<td>LuanLuKim, DontMadWhenBad</td>
+</tr>
+<tr>
+<td>01/12</td>
+<td>CloudWatch dashboard + alarm + log (#26); AIOps trên metric và log
+thật; đổi release dữ liệu trên AWS</td>
+<td>dinhlong06, DontMadWhenBad, hohoangluan</td>
+</tr>
+<tr>
+<td>02/12</td>
+<td><code>aws-up</code> / <code>aws-down</code>, budget, bảng chi phí
+(#27)</td>
+<td>dinhlong06</td>
+</tr>
+<tr>
+<td>02–03/12</td>
+<td>Báo cáo, slide; chạy demo hai lần từ đầu (<code>aws-up</code> → demo
+→ <code>aws-down</code>)</td>
+<td>cả nhóm</td>
+</tr>
+<tr>
+<td>04/12</td>
+<td>Nộp</td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<p>Mốc dự phòng: nếu đến hết 29/11 ALB + ASG chưa chạy được trên lab,
+chuyển sang stack Compose trên một máy + Cloudflare Tunnel. Stack này đã
+chạy đủ blue/green, canary và bơm lỗi trong CI.</p>
+<h2 id="8-rủi-ro">8. Rủi ro</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Rủi ro</th>
+<th>Ảnh hưởng</th>
+<th>Cách xử lý</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hạ tầng AWS chậm hơn lịch: kế hoạch 24/11 hẹn ALB + ASG ngày
+25–27/11, tới 26/11 mới có module mạng</td>
+<td>Deploy thật, monitoring, phần AWS của DataOps và AIOps đều chờ
+T8</td>
+<td>T8 là việc đầu tiên của cả nhóm từ 27/11. Các phần chờ T8 đã viết
+sẵn và kiểm bằng mock / Compose, nên lên lab chỉ còn bước
+<code>apply</code></td>
+</tr>
+<tr>
+<td><code>LabRole</code> thiếu quyền (R2)</td>
+<td>Một số tài nguyên không tạo được</td>
+<td>Kiểm quyền ngày 27/11 (#22); thiếu thì thay bằng phương án lab cho
+phép (thiết kế §5.2)</td>
+</tr>
+<tr>
+<td>Không kịp chạy trên AWS</td>
+<td>Mất phần hạ tầng cloud và scale-out</td>
+<td>Mốc dự phòng 29/11 ở §7. Token và account Cloudflare đã thử, dùng
+được</td>
+</tr>
+<tr>
+<td>Credential lab hết hạn theo phiên</td>
+<td>Workflow deploy dừng giữa chừng</td>
+<td>Deploy qua runner trong lab với <code>LabInstanceProfile</code>,
+không giữ key</td>
+</tr>
+<tr>
+<td>Số đo trên một runner không đại diện cho scale thật</td>
+<td>Bảng scale hiện tại không cho thấy lợi ích của thêm máy</td>
+<td>Đo lại trên ASG (#25); bảng hiện tại ghi rõ là cùng một máy</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="9-dữ-liệu">9. Dữ liệu</h2>
+<p>Dữ liệu thô của các bảng nằm trong <a href="data/"><code>data/</code></a>. Các file là
+CSV, mã hóa UTF-8, mở được bằng Excel.</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>File</th>
+<th>Nội dung</th>
+<th>Dùng cho</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="data/members.csv"><code>members.csv</code></a></td>
+<td>khối phụ trách, số PR đã merge, số commit trên <code>main</code> của
+từng thành viên</td>
+<td>§2</td>
+</tr>
+<tr>
+<td><a href="data/prs_merged.csv"><code>prs_merged.csv</code></a></td>
+<td>từng PR đã merge: tác giả, giờ mở, giờ merge, số giờ chờ</td>
+<td>§6</td>
+</tr>
+<tr>
+<td><a href="data/prs_per_day.csv"><code>prs_per_day.csv</code></a></td>
+<td>số PR merge mỗi ngày</td>
+<td>§6</td>
+</tr>
+<tr>
+<td><a href="data/workflow_runs.csv"><code>workflow_runs.csv</code></a></td>
+<td>từng lượt chạy workflow: kết quả, thời gian, link</td>
+<td>§6</td>
+</tr>
+<tr>
+<td><a href="data/workflow_summary.csv"><code>workflow_summary.csv</code></a></td>
+<td>tổng hợp theo workflow</td>
+<td>§6</td>
+</tr>
+<tr>
+<td><a href="data/tests_nt548.csv"><code>tests_nt548.csv</code></a></td>
+<td>số test theo file</td>
+<td>§5</td>
+</tr>
+<tr>
+<td><a href="data/bluegreen.csv"><code>bluegreen.csv</code></a>, <a href="data/canary.csv"><code>canary.csv</code></a>,
+<a href="data/scale.csv"><code>scale.csv</code></a>, <a href="data/k8s_kind.csv"><code>k8s_kind.csv</code></a></td>
+<td>kết quả phát hành</td>
+<td>§4</td>
+</tr>
+<tr>
+<td><a href="data/data_release.csv"><code>data_release.csv</code></a></td>
+<td>đổi / lùi release dữ liệu, gate chặn release hỏng</td>
+<td>§4</td>
+</tr>
+<tr>
+<td><a href="data/fault_eval.csv"><code>fault_eval.csv</code></a>,
+<a href="data/fault_false_alarms.csv"><code>fault_false_alarms.csv</code></a></td>
+<td>bơm lỗi: MTTD theo cách phát hiện, phục hồi, lỗi người dùng thấy,
+báo nhầm</td>
+<td>§4, §6</td>
+</tr>
+<tr>
+<td><a href="data/detect_compare.csv"><code>detect_compare.csv</code></a></td>
+<td>so sánh bốn cách phát hiện trên chuỗi tổng hợp</td>
+<td>§4</td>
+</tr>
+</tbody>
+</table></div>
+<p>Các file kết quả đo có cột <code>run_id</code>;
+<a href="data/workflow_runs.csv"><code>workflow_runs.csv</code></a> có cả link, để đối chiếu với run trên
+GitHub Actions. Số tính tới 22:45 ngày 26/11.</p>
+<p><code>MIDTERM.html</code> là cùng nội dung này, dạng trang web, có
+thêm biểu đồ. Mở trực tiếp bằng trình duyệt, không cần mạng.</p>
+</main><div id="tip"></div><script>
+const tip = document.getElementById('tip');
+document.querySelectorAll('[data-tip]').forEach(el => {
+  el.addEventListener('mousemove', e => { tip.textContent = el.dataset.tip; tip.style.opacity = 1;
+    tip.style.left = (e.clientX + 12) + 'px'; tip.style.top = (e.clientY - 30) + 'px'; });
+  el.addEventListener('mouseleave', () => { tip.style.opacity = 0; });
+});
+</script></body></html>

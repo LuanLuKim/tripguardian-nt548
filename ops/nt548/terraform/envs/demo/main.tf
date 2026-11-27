@@ -39,3 +39,24 @@ module "alb" {
   weight_blue        = var.weight_blue
   stickiness_seconds = var.stickiness_seconds
 }
+
+# One ASG per color behind its target group. Only the idle color changes in a release: the deploy workflow gives it
+# the new image_tag_<color>, waits for its instance refresh, then moves weight_blue (ops/nt548/deploy_aws.sh, #29).
+module "app" {
+  source   = "../../modules/app_asg"
+  for_each = toset(["blue", "green"])
+
+  name_prefix        = var.name_prefix
+  color              = each.key
+  subnet_ids         = module.network.public_subnet_ids
+  security_group_ids = [module.network.sg_app_id]
+  target_group_arns  = [module.alb.target_group_arns[each.key]]
+  image_tag          = each.key == "blue" ? var.image_tag_blue : var.image_tag_green
+  data_release       = each.key == "blue" ? var.data_release_blue : var.data_release_green
+  database_url       = var.database_url
+  instance_type      = var.instance_type
+  min_size           = var.min_size
+  max_size           = var.max_size
+  cpu_target         = var.cpu_target
+  region             = var.region
+}

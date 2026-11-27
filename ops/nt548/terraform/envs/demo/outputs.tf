@@ -34,3 +34,28 @@ output "weight_blue" {
   description = "The input echoed back: ops/nt548/deploy_aws.sh reads the live color from the state (#50)."
   value       = var.weight_blue
 }
+
+output "asg_name_blue" {
+  value = module.app["blue"].asg_name
+}
+
+output "asg_name_green" {
+  value = module.app["green"].asg_name
+}
+
+# The inputs echoed back, so the state alone says what runs (#50 reads them).
+output "image_tag_blue" {
+  value = var.image_tag_blue
+}
+
+output "image_tag_green" {
+  value = var.image_tag_green
+}
+
+output "data_release_blue" {
+  value = var.data_release_blue
+}
+
+output "data_release_green" {
+  value = var.data_release_green
+}

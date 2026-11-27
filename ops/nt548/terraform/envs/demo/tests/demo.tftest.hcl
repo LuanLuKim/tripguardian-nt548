@@ -16,6 +16,16 @@ mock_provider "aws" {
       latest_version = 1
     }
   }
+  mock_resource "aws_sns_topic" {
+    defaults = {
+      arn = "arn:aws:sns:us-east-1:111111111111:nt548-alarms"
+    }
+  }
+  mock_resource "aws_cloudwatch_metric_alarm" {
+    defaults = {
+      arn = "arn:aws:cloudwatch:us-east-1:111111111111:alarm:nt548-x"
+    }
+  }
   mock_data "aws_ssm_parameter" {
     defaults = {
       insecure_value = "ami-0123456789abcdef0"
@@ -104,5 +114,24 @@ run "fresh_environment_runs_the_placeholder" {
   assert {
     condition     = output.image_tag_blue == "" && output.image_tag_green == "" && module.app["blue"].runs.image_tag == "placeholder"
     error_message = "empty tags mean the placeholder; deploy_aws.sh treats that as a first deploy"
+  }
+}
+
+run "monitoring_and_aiops_alarms_share_the_topic_and_the_prefix" {
+  command = apply
+
+  assert {
+    condition     = length(output.alarm_names) == 15 && alltrue([for n in values(output.alarm_names) : startswith(n, "nt548-")])
+    error_message = "8 fixed + 1 ALB + 6 anomaly alarms, all found by incident.py watch --prefix nt548-"
+  }
+
+  assert {
+    condition     = alltrue([for a in values(module.aiops.alarm_arns) : a != ""]) && output.sns_topic_arn == "arn:aws:sns:us-east-1:111111111111:nt548-alarms"
+    error_message = "the anomaly alarms exist and notify the monitoring topic"
+  }
+
+  assert {
+    condition     = module.app["green"].log_group == "/nt548/app-green" && output.log_group_names["green"] == "/nt548/app-green"
+    error_message = "each color's containers log to that color's group"
   }
 }

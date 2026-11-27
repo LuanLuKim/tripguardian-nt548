@@ -73,6 +73,8 @@ fi
 
 export COLOR="${color}" IMAGE_TAG="${image_tag}" DATA_RELEASE="${data_release}" REGISTRY="${registry}"
 export DATABASE_URL='${database_url}'
+# the public origin: the real harness only accepts a sign-in or a new journey whose Origin equals it (#63)
+export APP_BASE_URL='${app_base_url}'
 if [ -n "$DATABASE_URL" ]; then
   docker run --rm -e DATABASE_URL "$HARNESS" python -m db migrate
   export HARNESS_CMD="python -m harness serve"

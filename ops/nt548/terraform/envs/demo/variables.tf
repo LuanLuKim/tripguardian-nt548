@@ -93,3 +93,9 @@ variable "p95_seconds" {
   type        = number
   default     = 1.5
 }
+
+variable "app_base_url" {
+  description = "Public origin users open (e.g. a Cloudflare name in front of the ALB); empty: http://<ALB DNS name>."
+  type        = string
+  default     = ""
+}

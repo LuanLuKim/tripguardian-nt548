@@ -177,6 +177,20 @@ run "tags_say_what_the_color_runs" {
   }
 }
 
+run "public_origin_reaches_the_harness" {
+  command = plan
+
+  variables {
+    image_tag    = "abc1234"
+    app_base_url = "http://nt548-alb-1.us-east-1.elb.amazonaws.com"
+  }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.app.user_data), "export APP_BASE_URL='http://nt548-alb-1.us-east-1.elb.amazonaws.com'")
+    error_message = "the real harness needs the public origin, else it refuses every write"
+  }
+}
+
 run "unknown_color_is_refused" {
   command = plan
 

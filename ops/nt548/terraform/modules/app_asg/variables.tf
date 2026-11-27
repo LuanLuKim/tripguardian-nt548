@@ -144,3 +144,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "app_base_url" {
+  description = "Public origin of the app (http://<ALB DNS name>); the real harness refuses writes from any other Origin."
+  type        = string
+  default     = ""
+}

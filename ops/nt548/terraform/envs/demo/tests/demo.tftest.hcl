@@ -26,9 +26,27 @@ mock_provider "aws" {
       arn = "arn:aws:cloudwatch:us-east-1:111111111111:alarm:nt548-x"
     }
   }
+  # one mock for both parameters: the AMI id (insecure_value) and the database URL (value)
   mock_data "aws_ssm_parameter" {
     defaults = {
       insecure_value = "ami-0123456789abcdef0"
+      value          = "postgresql://tg:pw@10.48.0.10:5432/tg"
+    }
+  }
+  # what the bootstrap (#22) created
+  mock_data "aws_vpc" {
+    defaults = {
+      id = "vpc-0123456789abcdef0"
+    }
+  }
+  mock_data "aws_subnets" {
+    defaults = {
+      ids = ["subnet-0bbbbbbbbbbbbbbbb", "subnet-0aaaaaaaaaaaaaaaa"]
+    }
+  }
+  mock_data "aws_security_group" {
+    defaults = {
+      id = "sg-0123456789abcdef0"
     }
   }
   mock_resource "aws_lb_target_group" {
@@ -133,5 +151,37 @@ run "monitoring_and_aiops_alarms_share_the_topic_and_the_prefix" {
   assert {
     condition     = module.app["green"].log_group == "/nt548/app-green" && output.log_group_names["green"] == "/nt548/app-green"
     error_message = "each color's containers log to that color's group"
+  }
+}
+
+run "network_and_database_come_from_the_bootstrap" {
+  command = apply
+
+  assert {
+    condition     = output.vpc_id == "vpc-0123456789abcdef0" && length(module.alb.target_group_arns) == 2
+    error_message = "the ALB goes into the bootstrap's VPC"
+  }
+
+  assert {
+    condition     = join(",", local.subnet_ids) == "subnet-0aaaaaaaaaaaaaaaa,subnet-0bbbbbbbbbbbbbbbb"
+    error_message = "subnets are sorted, so a lookup in another order changes nothing"
+  }
+
+  assert {
+    condition     = local.database_url == "postgresql://tg:pw@10.48.0.10:5432/tg" && length(data.aws_ssm_parameter.database_url) == 1
+    error_message = "the real harness reads the database URL the bootstrap stored in SSM"
+  }
+}
+
+run "stub_needs_no_database" {
+  command = plan
+
+  variables {
+    real_harness = false
+  }
+
+  assert {
+    condition     = local.database_url == "" && length(data.aws_ssm_parameter.database_url) == 0
+    error_message = "real_harness = false runs the harness stub, without Postgres"
   }
 }

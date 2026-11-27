@@ -1,0 +1,38 @@
+#!/bin/bash
+# User-data of the NT548 ops machine (bootstrap, #22). Amazon Linux 2023. Runs once, at the first boot.
+#   1. Docker + Postgres 16 in a container on :5432 (the security group lets only the app instances in), data on
+#      the root volume, so it survives a stop / start (aws-down stops this machine).
+#   2. Tools of the deploy jobs: git, jq, python3 + pip, Terraform.
+#   3. GitHub self-hosted runner ${runner_name} with labels ${runner_labels}, as a service of ec2-user, when a
+#      registration token is given (Settings -> Actions -> Runners -> New runner; it lives one hour).
+# Log: /var/log/nt548-ops.log
+set -euo pipefail
+exec > >(tee -a /var/log/nt548-ops.log) 2>&1
+echo "nt548 ops: start"
+
+dnf install -y docker git jq python3-pip unzip libicu
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+docker volume create nt548-pg >/dev/null
+docker run -d --name postgres --restart unless-stopped -p 5432:5432 -v nt548-pg:/var/lib/postgresql/data \
+  -e POSTGRES_USER=tg -e POSTGRES_DB=tg -e POSTGRES_PASSWORD='${db_password}' postgres:16
+
+curl -fsSL "https://releases.hashicorp.com/terraform/${tf_version}/terraform_${tf_version}_linux_amd64.zip" -o /tmp/tf.zip
+unzip -o -q /tmp/tf.zip -d /usr/local/bin && rm /tmp/tf.zip
+pip3 install -q boto3 pyyaml numpy
+
+TOKEN='${runner_token}'
+if [ -z "$TOKEN" ]; then
+  echo "nt548 ops: no runner token, runner not registered (re-run with -replace=aws_instance.ops -var runner_token=...)"
+  exit 0
+fi
+RUNNER=/home/ec2-user/actions-runner
+mkdir -p "$RUNNER"
+curl -fsSL "https://github.com/actions/runner/releases/download/v${runner_version}/actions-runner-linux-x64-${runner_version}.tar.gz" \
+  | tar xz -C "$RUNNER"
+chown -R ec2-user:ec2-user "$RUNNER"
+sudo -u ec2-user "$RUNNER/config.sh" --unattended --replace --url '${runner_url}' --token "$TOKEN" \
+  --name '${runner_name}' --labels '${runner_labels}'
+(cd "$RUNNER" && ./svc.sh install ec2-user && ./svc.sh start)
+echo "nt548 ops: runner ${runner_name} up"

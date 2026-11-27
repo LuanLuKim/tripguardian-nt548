@@ -7,13 +7,17 @@
 #   ops/nt548/deploy_aws.sh status               live color, tags, weight
 #
 # Contract with T8 (design §7.1): envs/demo takes image_tag_blue, image_tag_green, weight_blue (0-100),
-# data_release_blue, data_release_green and outputs target_group_arn_{blue,green}. This script also reads the
+# data_release_blue, data_release_green and outputs target_group_arn_{blue,green}, asg_name_{blue,green},
+# alb_arn_suffix, target_group_arn_suffix_{blue,green}. This script also reads the
 # outputs image_tag_{blue,green}, weight_blue and data_release_{blue,green} (the inputs echoed back) to know what
 # runs now; without them (first deploy, empty state) both colors get <sha> and blue takes all traffic.
-# It changes AWS only through `terraform apply`; `aws elbv2 describe-target-health` is a read.
+# It changes AWS only through `terraform apply`; the aws calls (target health, instance refreshes, CloudWatch metrics
+# in canary_watch.py) only read.
 #
 # Environment: TF_DIR (default ops/nt548/terraform/envs/demo), CANARY_WEIGHT (10), CANARY_SECONDS (300),
-# HEALTH_TIMEOUT (600), HEALTH_POLL (10), TERRAFORM (terraform), AWS (aws), PYTHON (python3).
+# HEALTH_TIMEOUT (600), HEALTH_POLL (10), NAME_PREFIX (passed to terraform when set), TERRAFORM (terraform),
+# AWS (aws), PYTHON (python3), CANARY_CMD (default: $PYTHON canary_watch.py; thresholds in canary.yaml).
+# Before the first call: ops/nt548/aws.sh init (the state is in the bootstrap's S3 bucket).
 set -euo pipefail
 
 TF_DIR=${TF_DIR:-ops/nt548/terraform/envs/demo}
@@ -25,6 +29,7 @@ TERRAFORM=${TERRAFORM:-terraform}
 AWS=${AWS:-aws}
 PYTHON=${PYTHON:-python3}
 HERE=$(cd "$(dirname "$0")" && pwd)
+CANARY_CMD=${CANARY_CMD:-$PYTHON $HERE/canary_watch.py}
 
 log() { echo "[deploy-aws] $*" >&2; }
 summary() { echo "$*"; [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY" || true; }
@@ -32,7 +37,7 @@ summary() { echo "$*"; [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHU
 tf() { "$TERRAFORM" -chdir="$TF_DIR" "$@"; }
 
 # Current release from terraform outputs, as shell assignments: TAG_BLUE TAG_GREEN WEIGHT_BLUE DATA_BLUE DATA_GREEN
-# TG_BLUE TG_GREEN (empty when not there yet).
+# TG_BLUE TG_GREEN, ALB_SUFFIX TGS_BLUE TGS_GREEN (metric dimensions), ASG_BLUE ASG_GREEN (empty when not there yet).
 read_state() {
   local json
   json=$(tf output -json 2>/dev/null || echo '{}')
@@ -43,14 +48,19 @@ v = lambda k, d="": str(o.get(k, {}).get("value", d))
 for name, key, default in [("TAG_BLUE", "image_tag_blue", ""), ("TAG_GREEN", "image_tag_green", ""),
                            ("WEIGHT_BLUE", "weight_blue", ""), ("DATA_BLUE", "data_release_blue", "r-a"),
                            ("DATA_GREEN", "data_release_green", "r-a"), ("TG_BLUE", "target_group_arn_blue", ""),
-                           ("TG_GREEN", "target_group_arn_green", "")]:
+                           ("TG_GREEN", "target_group_arn_green", ""), ("ALB_SUFFIX", "alb_arn_suffix", ""),
+                           ("TGS_BLUE", "target_group_arn_suffix_blue", ""),
+                           ("TGS_GREEN", "target_group_arn_suffix_green", ""),
+                           ("ASG_BLUE", "asg_name_blue", ""), ("ASG_GREEN", "asg_name_green", "")]:
     print(f"{name}={shlex.quote(v(key, default))}")
 ')"
 }
 
 apply() {  # apply <tag_blue> <tag_green> <weight_blue>
   log "terraform apply: blue=$1 green=$2 weight_blue=$3"
-  tf apply -auto-approve -input=false \
+  local prefix=()
+  [ -z "${NAME_PREFIX:-}" ] || prefix=(-var "name_prefix=$NAME_PREFIX")
+  tf apply -auto-approve -input=false "${prefix[@]}" \
     -var "image_tag_blue=$1" -var "image_tag_green=$2" -var "weight_blue=$3" \
     -var "data_release_blue=$DATA_BLUE" -var "data_release_green=$DATA_GREEN" >&2
 }
@@ -76,17 +86,40 @@ wait_healthy() {  # wait_healthy <color>: every target of that color's target gr
   done
 }
 
-watch_canary() {  # watch_canary <color>: canary_watch.py of #3 when it exists, else stay healthy for CANARY_SECONDS
-  local color=$1 tg
-  if [ -f "$HERE/canary_watch.py" ]; then
-    read_state
-    tg=$([ "$color" = blue ] && echo "$TG_BLUE" || echo "$TG_GREEN")
-    "$PYTHON" "$HERE/canary_watch.py" --target-group "$tg" --seconds "$CANARY_SECONDS"
-  else
-    log "canary_watch.py (#3) not there yet: only checking that $color stays healthy for ${CANARY_SECONDS}s"
+wait_refresh() {  # wait_refresh <color>: the instance refresh that a new image started on that color's ASG is over
+  # While it runs, the old instances are still healthy targets, so target health alone would pass too early.
+  local color=$1 asg status start
+  read_state
+  asg=$([ "$color" = blue ] && echo "$ASG_BLUE" || echo "$ASG_GREEN")
+  [ -n "$asg" ] || { log "no asg_name_$color output: not waiting for an instance refresh"; return 0; }
+  start=$(date +%s)
+  while :; do
+    status=$("$AWS" autoscaling describe-instance-refreshes --auto-scaling-group-name "$asg" --max-records 1       --query 'InstanceRefreshes[0].Status' --output text 2>/dev/null || echo unknown)
+    case $status in  # Pending, InProgress, Baking, Cancelling, RollbackInProgress, unknown: keep waiting
+      Successful | None | "") log "$color refresh ${status:-none} after $(( $(date +%s) - start ))s"; return 0 ;;
+      Failed | Cancelled | RollbackSuccessful | RollbackFailed) log "$color instance refresh $status"; return 1 ;;
+    esac
+    if (( $(date +%s) - start >= HEALTH_TIMEOUT )); then
+      log "$color instance refresh still $status after ${HEALTH_TIMEOUT}s"
+      return 1
+    fi
+    sleep "$HEALTH_POLL"
+  done
+}
+
+watch_canary() {  # watch_canary <color>: canary_watch.py on the ALB metrics, new color against the live one, then
+  # the new color must still be healthy
+  local color=$1 old new
+  read_state
+  if [ "$color" = blue ]; then new=$TGS_BLUE old=$TGS_GREEN; else new=$TGS_GREEN old=$TGS_BLUE; fi
+  if [ -z "$ALB_SUFFIX" ] || [ -z "$new" ] || [ -z "$old" ]; then
+    log "no alb_arn_suffix / target_group_arn_suffix_* outputs: only checking that $color stays healthy for ${CANARY_SECONDS}s"
     sleep "$CANARY_SECONDS"
-    HEALTH_TIMEOUT=1 wait_healthy "$color"
+  else
+    # shellcheck disable=SC2086
+    $CANARY_CMD --step-seconds "$CANARY_SECONDS" cloudwatch --lb "$ALB_SUFFIX" --old-tg "$old" --new-tg "$new" || return 1
   fi
+  HEALTH_TIMEOUT=1 wait_healthy "$color"
 }
 
 weights() {  # weights <live color> <weight of the idle color> -> weight_blue
@@ -113,7 +146,7 @@ deploy() {
   log "live=$live idle=$idle: $idle gets $sha"
 
   apply "$tb" "$tg" "$(weights "$live" 0)"
-  if ! wait_healthy "$idle"; then
+  if ! wait_refresh "$idle" || ! wait_healthy "$idle"; then
     summary "deploy $sha: $idle never got healthy, traffic stayed on $live"
     return 1
   fi

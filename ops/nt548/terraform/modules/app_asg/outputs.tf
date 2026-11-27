@@ -20,3 +20,8 @@ output "runs" {
   description = "What the instances run: the image tag (or placeholder) and the data release."
   value       = { image_tag = local.tags.image_tag, data_release = var.data_release }
 }
+
+output "log_group" {
+  description = "CloudWatch Logs group the containers write to ('' = json-file on the instance)."
+  value       = var.log_group
+}

@@ -59,3 +59,23 @@ output "data_release_blue" {
 output "data_release_green" {
   value = var.data_release_green
 }
+
+# ---------- monitoring (#26) ----------
+
+output "dashboard_url" {
+  value = module.monitoring.dashboard_url
+}
+
+output "sns_topic_arn" {
+  value = module.monitoring.sns_topic_arn
+}
+
+output "log_group_names" {
+  description = "color => log group of the app containers (log_patterns.py --log-group, incident.py watch --log-group)."
+  value       = module.monitoring.log_group_names
+}
+
+output "alarm_names" {
+  description = "Fixed (monitoring) and learned (aiops) alarms; all start with <name_prefix>-."
+  value       = merge(module.monitoring.alarm_names, { for k, n in module.aiops.alarm_names : "${k}-anomaly" => n })
+}

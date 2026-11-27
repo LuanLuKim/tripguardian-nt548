@@ -1,5 +1,5 @@
 # The demo environment on AWS Academy Learner Lab (us-east-1). Grows one module at a time (#21):
-#   network (#23)  ->  alb (#24)  ->  app_asg blue + green (#25)  ->  monitoring (#26), aiops (#36)
+#   network (#23)  ->  alb (#24)  ->  app_asg blue + green (#25)  ->  monitoring (#26) + aiops (#36)
 # The contract with the deploy workflow (design §7.1), complete once the ASGs are in: variables image_tag_{blue,green},
 # weight_blue, data_release_{blue,green}; outputs alb_dns_name, target_group_arn_{blue,green}, asg_name_{blue,green}.
 #
@@ -59,4 +59,33 @@ module "app" {
   max_size           = var.max_size
   cpu_target         = var.cpu_target
   region             = var.region
+  log_group          = local.log_groups[each.key]
+}
+
+# Log group names are fixed here, not read from module.monitoring, so the app does not wait for the monitoring
+# module (the awslogs driver creates a missing group anyway).
+locals {
+  log_groups = { for c in ["blue", "green"] : c => "/${var.name_prefix}/app-${c}" }
+}
+
+module "monitoring" {
+  source           = "../../modules/monitoring"
+  name_prefix      = var.name_prefix
+  region           = var.region
+  alb_arn_suffix   = module.alb.alb_arn_suffix
+  target_groups    = module.alb.target_group_arn_suffixes
+  asg_names        = { for c, m in module.app : c => m.asg_name }
+  cpu_target       = var.cpu_target
+  alarm_email      = var.alarm_email
+  p95_seconds      = var.p95_seconds
+  extra_alarm_arns = values(module.aiops.alarm_arns)
+}
+
+# Learned thresholds (#36) next to the fixed ones, on the same topic.
+module "aiops" {
+  source         = "../../modules/aiops"
+  name_prefix    = var.name_prefix
+  alb_arn_suffix = module.alb.alb_arn_suffix
+  target_groups  = module.alb.target_group_arn_suffixes
+  alarm_actions  = [module.monitoring.sns_topic_arn]
 }

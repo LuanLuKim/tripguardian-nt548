@@ -81,3 +81,15 @@ variable "cpu_target" {
   type        = number
   default     = 50
 }
+
+variable "alarm_email" {
+  description = "Address that gets the alarms by mail (confirm AWS's mail first); empty: none, incident.py polls."
+  type        = string
+  default     = ""
+}
+
+variable "p95_seconds" {
+  description = "p95 latency above which the fixed latency alarms fire."
+  type        = number
+  default     = 1.5
+}

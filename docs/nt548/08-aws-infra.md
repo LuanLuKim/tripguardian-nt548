@@ -1,6 +1,6 @@
 # 08. Hạ tầng AWS bằng Terraform (T8, dinhlong06)
 
-Đọc xong làm được: dựng và xóa mạng, ALB và hai ASG của đồ án trên Learner Lab của mình. Các phần bootstrap, monitoring ghi tiếp vào đây khi xong.
+Đọc xong làm được: dựng và xóa toàn bộ môi trường demo (mạng, ALB, hai ASG, monitoring) trên Learner Lab của mình. Các phần bootstrap, `aws-up` / `aws-down` ghi tiếp vào đây khi xong.
 
 Kiến trúc và lý do chọn: §5 của `docs/plans/2026-11-20-nt548-devops-design.md`. Hợp đồng với workflow deploy: §7.1 cùng file.
 
@@ -11,6 +11,7 @@ ops/nt548/terraform/
   modules/network/     VPC, 2 subnet public, IGW, 3 security group (#23)
   modules/alb/         ALB, target group blue / green, listener chia theo trọng số (#24)
   modules/app_asg/     launch template + ASG + scale theo CPU, gọi một lần cho mỗi màu (#25)
+  modules/monitoring/  dashboard, alarm ngưỡng cố định, SNS, log group của container (#26)
   modules/aiops/       alarm CloudWatch Anomaly Detection (#36)
   envs/demo/           môi trường demo, gọi các module; state local cho tới khi có bootstrap (#22)
 ```
@@ -130,6 +131,49 @@ Kiểm trên lab:
 | Đổi tag → refresh xong | (chưa đo) |
 | Tải k6 → số máy, p95 trước / sau | (chưa đo) |
 
+## Monitoring (#26)
+
+`modules/monitoring` tạo bốn thứ:
+- dashboard CloudWatch tên `<prefix>`;
+- alarm ngưỡng cố định cho từng màu;
+- một SNS topic `<prefix>-alarms`;
+- log group `/<prefix>/app-<màu>` giữ 7 ngày.
+
+`envs/demo` gắn thêm `modules/aiops` (#36), alarm học từ dữ liệu (Anomaly Detection). Alarm của cả hai module báo về cùng topic, nên so được hai cách trên cùng một sự cố.
+
+| Alarm | Metric (`AWS/ApplicationELB`, theo target group) | Kêu khi |
+|---|---|---|
+| `<prefix>-<màu>-5xx` | `HTTPCode_Target_5XX_Count` | quá `errors_per_minute` (5) mỗi phút, 2 trong 3 phút |
+| `<prefix>-<màu>-p95` | `TargetResponseTime` p95 | quá `p95_seconds` (1,5 s) |
+| `<prefix>-<màu>-unhealthy` | `UnHealthyHostCount` | có một máy trượt health check |
+| `<prefix>-<màu>-no-healthy` | `HealthyHostCount` | màu không còn máy healthy (mất số đo cũng tính là kêu) |
+| `<prefix>-alb-5xx` | `HTTPCode_ELB_5XX_Count`, cả ALB | ALB tự trả 502 / 503 / 504 |
+| `<prefix>-<màu>-{latency,errors,requests}-anomaly` | như trên, ngưỡng là dải học được | ra khỏi dải 2 độ lệch chuẩn (#36) |
+
+Hai alarm theo máy (`unhealthy`, `no-healthy`) lấp chỗ hở mà #39 chỉ ra: tắt một bản app chỉ gây 1 lỗi 5xx, nên metric 5xx không bắt được.
+
+Dashboard có 7 ô:
+- request, 5xx, p95, số máy healthy, mỗi màu một đường;
+- CPU từng ASG, có vạch target;
+- số máy đang chạy;
+- trạng thái mọi alarm.
+
+Log container vào log group của màu (driver `awslogs`, xem #25). Đọc log và alarm bằng công cụ AIOps:
+
+```sh
+python ops/nt548/aiops/log_patterns.py top --log-group /nt548/app-green --minutes 20
+python ops/nt548/aiops/incident.py watch --prefix nt548- --log-group '/nt548/app-{color}'
+```
+
+Muốn nhận mail khi alarm kêu thì apply với `-var alarm_email=<địa chỉ>` và bấm link xác nhận trong mail AWS gửi. Chưa xác nhận thì không có mail nào.
+
+Xuất ra: `dashboard_url`, `sns_topic_arn`, `log_group_names`, `alarm_names`.
+
+Kiểm trên lab, chụp ảnh cho báo cáo:
+1. Bắn tải k6, dashboard có số.
+2. Dừng máy của một màu (`aws autoscaling set-desired-capacity` về 0 không được vì min 1, nên dừng container: `docker stop` qua SSM). `<prefix>-<màu>-unhealthy` kêu, mail tới.
+3. `incident.py watch` mở issue `incident` từ alarm đó.
+
 ## Chạy trên Learner Lab
 
 1. Start Lab, mở **AWS Details**, chép ba dòng `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token` vào `~/.aws/credentials` (profile `default`). Credential hết hạn khi phiên lab kết thúc. Không đưa credential vào repo hay vào chat.
@@ -151,7 +195,6 @@ Mạng không tốn tiền (VPC, subnet, IGW, security group đều miễn phí)
 | Issue | Việc |
 |---|---|
 | #22 | Kiểm quyền `LabRole` (R2), ghi bảng quyền vào issue; bootstrap: S3 giữ state, máy ops `t3.small` (dùng `sg_ops_id`) + runner nhãn `nt548-aws` |
-| #26 | `modules/monitoring`; gắn luôn `modules/aiops` (#36) vào `envs/demo` |
 | #27 | `aws-up` / `aws-down`, tự xóa mỗi tối, bảng chi phí ở mục dưới |
 
 ## Chi phí

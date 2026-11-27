@@ -33,8 +33,7 @@ Phần dùng chung: `src/harness/` (HTTP/SSE, hành trình chung), `src/agents/`
 | `.prod_src/` | bản đông cứng của `src/` mà prod chạy, `./run.sh prod` tạo (`docs/OPERATIONS.md` §1) | không |
 | `frontend_images/` | ảnh chụp UI để chủ dự án duyệt (`RULE.md` §0.2) | không |
 | `.venv`, `.venv-vllm`, `.cache` | symlink sang `tripguardian-store/` trên gpu156 (`docs/OPERATIONS.md` §2) | không |
-| `.agents/`, `.cursor/` | skill dùng chung và cấu hình Cursor của dự án | có |
-| `.claude/`, `.impeccable/` | cấu hình và skill cục bộ của công cụ | không |
+| `.agents/`, `.claude/`, `.cursor/`, `.impeccable/` | cấu hình và skill cục bộ của công cụ | không |
 
 ## Tài liệu
 

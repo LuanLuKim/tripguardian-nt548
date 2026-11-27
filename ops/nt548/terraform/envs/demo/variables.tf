@@ -27,3 +27,57 @@ variable "stickiness_seconds" {
   type        = number
   default     = 300
 }
+
+variable "image_tag_blue" {
+  description = "Image tag (commit sha) blue runs; empty: the placeholder traefik/whoami (contract §7.1)."
+  type        = string
+  default     = ""
+}
+
+variable "image_tag_green" {
+  description = "Image tag (commit sha) green runs; empty: the placeholder."
+  type        = string
+  default     = ""
+}
+
+variable "data_release_blue" {
+  description = "Sample data release of blue (ops/nt548/sample-data/<id>, T5)."
+  type        = string
+  default     = "r-a"
+}
+
+variable "data_release_green" {
+  description = "Sample data release of green."
+  type        = string
+  default     = "r-a"
+}
+
+variable "database_url" {
+  description = "Postgres of the ops machine (bootstrap #22); empty: the harness stub. Pass it with TF_VAR_database_url, never in a file."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "instance_type" {
+  type    = string
+  default = "t3.small"
+}
+
+variable "min_size" {
+  description = "Instances per color at least."
+  type        = number
+  default     = 1
+}
+
+variable "max_size" {
+  description = "Instances per color at most (scale-out under load)."
+  type        = number
+  default     = 3
+}
+
+variable "cpu_target" {
+  description = "Target tracking: average CPU of a color, in percent."
+  type        = number
+  default     = 50
+}

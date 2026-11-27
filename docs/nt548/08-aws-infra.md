@@ -1,6 +1,6 @@
 # 08. Hạ tầng AWS bằng Terraform (T8, dinhlong06)
 
-Đọc xong làm được: dựng và xóa toàn bộ môi trường demo (mạng, ALB, hai ASG, monitoring) trên Learner Lab của mình. Các phần bootstrap, `aws-up` / `aws-down` ghi tiếp vào đây khi xong.
+Đọc xong làm được: dựng và xóa toàn bộ môi trường demo (mạng, ALB, hai ASG, monitoring) trên Learner Lab của mình, kể cả bootstrap. Phần `aws-up` / `aws-down` ghi tiếp vào đây khi xong.
 
 Kiến trúc và lý do chọn: §5 của `docs/plans/2026-11-20-nt548-devops-design.md`. Hợp đồng với workflow deploy: §7.1 cùng file.
 
@@ -13,12 +13,15 @@ ops/nt548/terraform/
   modules/app_asg/     launch template + ASG + scale theo CPU, gọi một lần cho mỗi màu (#25)
   modules/monitoring/  dashboard, alarm ngưỡng cố định, SNS, log group của container (#26)
   modules/aiops/       alarm CloudWatch Anomaly Detection (#36)
-  envs/demo/           môi trường demo, gọi các module; state local cho tới khi có bootstrap (#22)
+  bootstrap/           mạng, bucket state, máy ops (Postgres + runner): dựng một lần cho mỗi lab (#22)
+  envs/demo/           ALB, ASG, monitoring: dựng / xóa mỗi buổi; state trong bucket của bootstrap
 ```
 
 Mỗi module có `tests/*.tftest.hcl` chạy bằng `mock_provider`, không cần tài khoản AWS. Workflow `nt548-terraform` chạy `fmt -check`, `validate` và `test` cho mọi thư mục trên mỗi PR.
 
 ## Mạng (#23)
+
+Stack `bootstrap/` gọi module này (xem #22 bên dưới). `envs/demo` chỉ đọc lại mạng theo tên.
 
 ```mermaid
 flowchart LR
@@ -174,28 +177,77 @@ Kiểm trên lab, chụp ảnh cho báo cáo:
 2. Dừng máy của một màu (`aws autoscaling set-desired-capacity` về 0 không được vì min 1, nên dừng container: `docker stop` qua SSM). `<prefix>-<màu>-unhealthy` kêu, mail tới.
 3. `incident.py watch` mở issue `incident` từ alarm đó.
 
-## Chạy trên Learner Lab
+## Bootstrap và kiểm quyền (#22)
+
+Hạ tầng chia làm hai stack theo vòng đời:
+
+| Stack | Có gì | Sống bao lâu | Tốn tiền khi demo tắt |
+|---|---|---|---|
+| `bootstrap/` | mạng (`modules/network`), bucket S3 giữ state, máy ops `<prefix>-ops`, tham số SSM `/<prefix>/database-url` | suốt lab | ổ đĩa 20 GB của máy ops (đã dừng), khoảng 0,05 USD mỗi ngày |
+| `envs/demo/` | ALB, hai ASG, monitoring, alarm AIOps | một buổi: `aws-up` dựng, `aws-down` xóa | không, vì đã xóa |
+
+`envs/demo` tìm mạng theo tên (`<prefix>-vpc`, `<prefix>-public-*`, `<prefix>-alb`, `<prefix>-app`) và đọc URL database từ SSM. Vì vậy không cần truyền id nào giữa hai stack.
+
+Máy ops (`t3.small`, Amazon Linux 2023, `LabInstanceProfile`) chạy ba thứ:
+- Postgres 16 trong container ở cổng 5432, chỉ nhận từ SG app. Mật khẩu do Terraform sinh và cất trong SSM. Dữ liệu nằm trên ổ gốc, nên còn sau khi dừng rồi bật lại máy.
+- Terraform 1.9.8, git, jq, python3 + boto3: công cụ của các job deploy.
+- GitHub self-hosted runner `<prefix>-ops`, nhãn `nt548-aws`, chạy như service. Runner lấy credential AWS từ `LabInstanceProfile`, nên GitHub không giữ key nào.
+
+Terraform không bao giờ thay máy ops khi apply lại (`ignore_changes` trên AMI và user-data), vì runner đang chạy Terraform từ chính máy đó. Muốn dựng lại thì làm có chủ đích: `-replace=aws_instance.ops`.
+
+### Kiểm quyền LabRole (R2)
+
+Chạy trước bootstrap, một lần cho mỗi lab:
+
+```sh
+ops/nt548/aws_r2_probe.sh --out r2.md
+```
+
+Script thử từng việc mà các stack cần:
+- tạo / xóa: VPC, bucket S3, tham số SSM, target group, ALB, listener chia trọng số, launch template, ASG, chính sách target tracking, dashboard, alarm thường, alarm Anomaly Detection, SNS topic, log group;
+- dry run: chạy `t3.small` với `LabInstanceProfile`.
+
+Thứ gì tạo được thì xóa ngay. ALB chỉ sống vài giây, tốn chưa tới một cent. Bảng in ra dán vào issue #22. Mục nào **denied** thì phần đó chạy từ máy thành viên bằng credential tạm, và ghi vào báo cáo (thiết kế §5.2 bước 3).
+
+Nên chạy hai lần:
+1. từ máy mình với credential tạm;
+2. từ máy ops sau bootstrap (qua SSM), vì runner dùng `LabInstanceProfile`.
+
+| Kết quả R2 | Từ máy thành viên | Từ máy ops |
+|---|---|---|
+| (chưa chạy) | | |
+
+### Chạy bootstrap
 
 1. Start Lab, mở **AWS Details**, chép ba dòng `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token` vào `~/.aws/credentials` (profile `default`). Credential hết hạn khi phiên lab kết thúc. Không đưa credential vào repo hay vào chat.
-2. Dựng mạng:
+2. Lấy registration token của runner: GitHub → Settings → Actions → Runners → New self-hosted runner, chép token ở dòng `./config.sh --token …`. Token sống 1 giờ. Chỉ admin repo làm được bước này.
+3. Dựng:
 
    ```sh
-   cd ops/nt548/terraform/envs/demo
+   cd ops/nt548/terraform/bootstrap
    terraform init
-   terraform apply -var name_prefix=nt548-dl
+   TF_VAR_runner_token=<token> terraform apply -var name_prefix=nt548-dl
    ```
 
-3. Kiểm trên console VPC: VPC `nt548-dl-vpc`, hai subnet ở hai AZ, ba security group.
-4. Xóa cuối buổi: `terraform destroy -var name_prefix=nt548-dl`.
+4. Kiểm:
+   - VPC `nt548-dl-vpc`, bucket `nt548-dl-tfstate-<account>`, máy `nt548-dl-ops` đang chạy;
+   - sau khoảng 3 phút, runner `nt548-dl-ops` hiện **Idle** trong Settings → Actions → Runners;
+   - log của user-data: `/var/log/nt548-ops.log` trên máy ops (vào bằng SSM Session Manager).
 
-Mạng không tốn tiền (VPC, subnet, IGW, security group đều miễn phí). Phần tốn tiền bắt đầu từ ALB và EC2.
+State của bootstrap nằm ở `bootstrap/terraform.tfstate` trên máy người chạy, không vào git. Mất file này thì tài nguyên vẫn còn. Chạy lại thì Terraform báo trùng tên; khi đó `terraform import` bucket, VPC, máy ops theo tên, hoặc xóa tay rồi chạy lại.
 
-## Việc tiếp theo
+Không truyền token thì máy ops lên không có runner. Thêm sau bằng `terraform apply -replace=aws_instance.ops -var runner_token=…`. Lệnh này dựng lại máy ops, nên Postgres bắt đầu trống.
 
-| Issue | Việc |
-|---|---|
-| #22 | Kiểm quyền `LabRole` (R2), ghi bảng quyền vào issue; bootstrap: S3 giữ state, máy ops `t3.small` (dùng `sg_ops_id`) + runner nhãn `nt548-aws` |
-| #27 | `aws-up` / `aws-down`, tự xóa mỗi tối, bảng chi phí ở mục dưới |
+### Dựng môi trường demo
+
+```sh
+cd ops/nt548/terraform/envs/demo
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+terraform init -backend-config=bucket=nt548-dl-tfstate-$ACCOUNT   -backend-config=key=envs/demo/nt548-dl.tfstate -backend-config=region=us-east-1
+terraform apply -var name_prefix=nt548-dl            # thêm -var real_harness=false để chạy harness stub
+```
+
+Xóa cuối buổi: `terraform destroy -var name_prefix=nt548-dl`, rồi dừng máy ops. Phần tốn tiền là ALB và EC2; mạng thì miễn phí.
 
 ## Chi phí
 

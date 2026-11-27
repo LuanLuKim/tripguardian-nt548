@@ -10,10 +10,10 @@ variable "name_prefix" {
   default     = "nt548"
 }
 
-variable "azs" {
-  description = "Two AZs for the public subnets and the ALB."
-  type        = list(string)
-  default     = ["us-east-1a", "us-east-1b"]
+variable "real_harness" {
+  description = "true: the real harness on the Postgres of the ops machine (URL from SSM /<prefix>/database-url); false: the harness stub."
+  type        = bool
+  default     = true
 }
 
 variable "weight_blue" {
@@ -53,7 +53,7 @@ variable "data_release_green" {
 }
 
 variable "database_url" {
-  description = "Postgres of the ops machine (bootstrap #22); empty: the harness stub. Pass it with TF_VAR_database_url, never in a file."
+  description = "Override of the database URL (e.g. another Postgres); empty: real_harness decides. TF_VAR_database_url, never a file."
   type        = string
   default     = ""
   sensitive   = true

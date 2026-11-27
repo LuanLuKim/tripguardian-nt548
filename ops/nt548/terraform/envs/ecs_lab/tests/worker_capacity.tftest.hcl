@@ -1,16 +1,42 @@
-mock_provider "aws" {}
+mock_provider "aws" {
+  mock_data "aws_iam_role" {
+    defaults = { arn = "arn:aws:iam::123456789012:role/LabRole" }
+  }
+}
 
-run "two_harness_tasks_require_two_managed_workers" {
+run "services_scale_on_shared_workers" {
   command = plan
 
-  assert {
-    condition     = try(one(aws_ecs_service.harness.placement_constraints).type == "distinctInstance", false)
-    error_message = "The harness replicas must be scheduled on distinct EC2 instances."
+  variables {
+    harness_image_tag = "lab-v1"
   }
 
   assert {
-    condition     = aws_appautoscaling_target.harness.max_capacity == 2
-    error_message = "The harness scaling ceiling must fit the two-worker lab."
+    condition     = length(aws_ecs_service.harness.placement_constraints) == 0
+    error_message = "Multiple harness tasks must be able to share a worker."
+  }
+
+  assert {
+    condition     = aws_appautoscaling_target.harness.min_capacity == 1 && aws_appautoscaling_target.harness.max_capacity == 3
+    error_message = "The real harness must scale from one to three tasks."
+  }
+
+  assert {
+    condition     = aws_appautoscaling_target.web.min_capacity == 1 && aws_appautoscaling_target.web.max_capacity == 2
+    error_message = "Web must scale from one to two tasks."
+  }
+
+  assert {
+    condition     = aws_appautoscaling_policy.web_cpu.resource_id == aws_appautoscaling_target.web.resource_id
+    error_message = "The web CPU scaling policy must apply to the web service."
+  }
+
+  assert {
+    condition = alltrue([
+      for service in [aws_ecs_service.harness, aws_ecs_service.web] :
+      try(one(service.ordered_placement_strategy).type == "binpack" && one(service.ordered_placement_strategy).field == "memory", false)
+    ])
+    error_message = "Both services must pack tasks onto existing workers based on memory."
   }
 
   assert {

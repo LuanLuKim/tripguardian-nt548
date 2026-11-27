@@ -58,7 +58,7 @@ resource "aws_ecs_task_definition" "harness" {
       command   = local.real_harness ? ["python", "-m", "harness", "serve", "--host", "0.0.0.0"] : ["python", "ops/nt548/compose/harness_stub.py", "--host", "0.0.0.0"]
 
       environment = local.real_harness ? [
-        { name = "APP_BASE_URL", value = "http://127.0.0.1:28899" }
+        { name = "APP_BASE_URL", value = local.web_url }
       ] : []
 
       secrets = local.real_harness ? [
@@ -93,8 +93,9 @@ resource "aws_ecs_service" "harness" {
     weight            = 1
   }
 
-  placement_constraints {
-    type = "distinctInstance"
+  ordered_placement_strategy {
+    type  = "binpack"
+    field = "memory"
   }
 
   load_balancer {
@@ -119,8 +120,8 @@ resource "aws_appautoscaling_target" "harness" {
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.lab.name}/${aws_ecs_service.harness.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = local.real_harness ? 2 : 1
-  max_capacity       = 2
+  min_capacity       = 1
+  max_capacity       = 3
 }
 
 resource "aws_appautoscaling_policy" "harness_cpu" {

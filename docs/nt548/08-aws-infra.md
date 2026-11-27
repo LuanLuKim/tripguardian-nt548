@@ -1,6 +1,6 @@
 # 08. Hạ tầng AWS bằng Terraform (T8, dinhlong06)
 
-Đọc xong làm được: dựng và xóa mạng của đồ án trên Learner Lab của mình. Các phần ALB, ASG, bootstrap, monitoring ghi tiếp vào đây khi xong.
+Đọc xong làm được: dựng và xóa mạng và ALB của đồ án trên Learner Lab của mình. Các phần ASG, bootstrap, monitoring ghi tiếp vào đây khi xong.
 
 Kiến trúc và lý do chọn: §5 của `docs/plans/2026-11-20-nt548-devops-design.md`. Hợp đồng với workflow deploy: §7.1 cùng file.
 
@@ -9,6 +9,7 @@ Kiến trúc và lý do chọn: §5 của `docs/plans/2026-11-20-nt548-devops-de
 ```
 ops/nt548/terraform/
   modules/network/     VPC, 2 subnet public, IGW, 3 security group (#23)
+  modules/alb/         ALB, target group blue / green, listener chia theo trọng số (#24)
   modules/aiops/       alarm CloudWatch Anomaly Detection (#36)
   envs/demo/           môi trường demo, gọi các module; state local cho tới khi có bootstrap (#22)
 ```
@@ -43,6 +44,38 @@ flowchart LR
 
 Xuất ra: `vpc_id`, `public_subnet_ids`, `sg_alb_id`, `sg_app_id`, `sg_ops_id`.
 
+## ALB blue/green (#24)
+
+`modules/alb` tạo một ALB trên hai subnet public, hai target group `<prefix>-blue` / `<prefix>-green` và một listener cổng 80. Listener chia người dùng mới theo trọng số: `weight_blue` sang blue, `100 − weight_blue` sang green. Một lần phát hành chỉ đổi `weight_blue`, bằng `terraform apply` (hợp đồng §7.1 của thiết kế).
+
+| Biến (`modules/alb`) | Mặc định | Ghi chú |
+|---|---|---|
+| `weight_blue` | `100` | số nguyên 0–100 |
+| `stickiness_seconds` | `300` | sticky theo target group: người dùng ở lại màu đầu tiên trong chừng ấy giây; `0` là tắt |
+| `deregistration_delay` | `30` | giây một máy bị gỡ còn giữ request đang chạy |
+| `idle_timeout` | `120` | agent trả lời dạng stream, nên dài hơn mặc định 60 s |
+| `health_path` | `/` | health check `GET /` cổng `8080`, cần trả 200 |
+
+Xuất ra: `alb_dns_name`, `alb_arn_suffix`, `target_group_arns` và `target_group_arn_suffixes` (map theo màu), `weights`. `envs/demo` xuất lại thành `target_group_arn_blue`, `target_group_arn_green` và `weight_blue`. Script deploy (#50) đọc `weight_blue` từ state để biết màu nào đang live.
+
+Sticky và rollback vướng nhau. Sticky theo target group mạnh hơn trọng số: sau khi đổi `weight_blue`, người đã dính màu cũ vẫn vào màu cũ cho tới khi cookie hết hạn ([AWS DevOps Blog](https://aws.amazon.com/blogs/devops/blue-green-deployments-with-application-load-balancer)). Vì thế mặc định chỉ để 300 s.
+- Rollback cần mọi người về ngay: apply thêm `-var stickiness_seconds=0`.
+- Số đo rollback trên lab ghi rõ đã bật hay tắt sticky.
+
+Kiểm trên lab:
+
+```sh
+cd ops/nt548/terraform/envs/demo
+for w in 100 10 0; do
+  terraform apply -auto-approve -var weight_blue=$w
+  python ../../../lb_check.py --url "http://$(terraform output -raw alb_dns_name)" split --color green
+done
+```
+
+`lb_check.py split` không gửi cookie `AWSALBTG` của ALB, nên mỗi request là một người dùng mới.
+- Cần có ASG (#25) thì target group mới có máy trả lời. Trước đó ALB trả 503.
+- Màu đọc từ `GET /api/harness/nt548-version`, nên app cần chạy harness stub hoặc image thật. Image giữ chỗ `traefik/whoami` không có đường này.
+
 ## Chạy trên Learner Lab
 
 1. Start Lab, mở **AWS Details**, chép ba dòng `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token` vào `~/.aws/credentials` (profile `default`). Credential hết hạn khi phiên lab kết thúc. Không đưa credential vào repo hay vào chat.
@@ -64,7 +97,6 @@ Mạng không tốn tiền (VPC, subnet, IGW, security group đều miễn phí)
 | Issue | Việc |
 |---|---|
 | #22 | Kiểm quyền `LabRole` (R2), ghi bảng quyền vào issue; bootstrap: S3 giữ state, máy ops `t3.small` (dùng `sg_ops_id`) + runner nhãn `nt548-aws` |
-| #24 | `modules/alb`: ALB trên `public_subnet_ids`, SG `sg_alb_id`, target group blue / green, listener chia theo `weight_blue` |
 | #25 | `modules/app_asg` gọi hai lần, SG `sg_app_id`; user-data chạy `app.yml` hoặc `traefik/whoami` |
 | #26 | `modules/monitoring`; gắn luôn `modules/aiops` (#36) vào `envs/demo` |
 | #27 | `aws-up` / `aws-down`, tự xóa mỗi tối, bảng chi phí ở mục dưới |

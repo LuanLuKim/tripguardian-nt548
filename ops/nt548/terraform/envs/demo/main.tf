@@ -1,6 +1,6 @@
 # The demo environment on AWS Academy Learner Lab (us-east-1). Grows one module at a time (#21):
 #   network (#23)  ->  alb (#24)  ->  app_asg blue + green (#25)  ->  monitoring (#26), aiops (#36)
-# The contract with the deploy workflow (design §7.1) lands with the ALB and ASGs: variables image_tag_{blue,green},
+# The contract with the deploy workflow (design §7.1), complete once the ASGs are in: variables image_tag_{blue,green},
 # weight_blue, data_release_{blue,green}; outputs alb_dns_name, target_group_arn_{blue,green}, asg_name_{blue,green}.
 #
 # State stays local until the bootstrap stack (#22) creates the S3 bucket; then add
@@ -28,4 +28,14 @@ module "network" {
   source      = "../../modules/network"
   name_prefix = var.name_prefix
   azs         = var.azs
+}
+
+module "alb" {
+  source             = "../../modules/alb"
+  name_prefix        = var.name_prefix
+  vpc_id             = module.network.vpc_id
+  subnet_ids         = module.network.public_subnet_ids
+  security_group_id  = module.network.sg_alb_id
+  weight_blue        = var.weight_blue
+  stickiness_seconds = var.stickiness_seconds
 }

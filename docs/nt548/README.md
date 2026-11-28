@@ -4,6 +4,8 @@
 
 Thiết kế đã chốt: `docs/plans/2026-11-20-nt548-devops-design.md`. Đọc file đó trước nếu cần biết vì sao chọn cách này.
 
+Đã làm gì, công nghệ nào, DataOps và AIOps đang chạy ra sao, còn lại gì: [PROJECT-STATUS.md](PROJECT-STATUS.md). Số đo và bằng chứng: [REPORT.md](REPORT.md).
+
 ## Hệ thống đích
 
 Triển khai thật lên **AWS Academy Learner Lab** (`us-east-1`, 50 USD mỗi người, không GPU), hạ tầng dựng và xóa bằng Terraform. Chi tiết và lý do: thiết kế bản 3 §5.

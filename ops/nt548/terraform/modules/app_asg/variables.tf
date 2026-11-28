@@ -150,3 +150,14 @@ variable "app_base_url" {
   type        = string
   default     = ""
 }
+
+variable "rollout" {
+  description = "How instances move to a new launch template version: replace (new group, then the old one goes; Learner Lab denies instance refresh) or refresh (instance refresh in the same group)."
+  type        = string
+  default     = "replace"
+
+  validation {
+    condition     = contains(["replace", "refresh"], var.rollout)
+    error_message = "rollout is replace or refresh."
+  }
+}

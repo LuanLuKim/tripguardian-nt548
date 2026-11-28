@@ -88,6 +88,8 @@ wait_healthy() {  # wait_healthy <color>: every target of that color's target gr
 
 wait_refresh() {  # wait_refresh <color>: the instance refresh that a new image started on that color's ASG is over
   # While it runs, the old instances are still healthy targets, so target health alone would pass too early.
+  # With rollout = replace (the default on Learner Lab, AWS-14) the new group has no refresh: this returns at once,
+  # apply already waited for the new group, and wait_healthy waits until the old group's targets have drained.
   local color=$1 asg status start
   read_state
   asg=$([ "$color" = blue ] && echo "$ASG_BLUE" || echo "$ASG_GREEN")

@@ -70,7 +70,9 @@ module "alb" {
 }
 
 # One ASG per color behind its target group. Only the idle color changes in a release: the deploy workflow gives it
-# the new image_tag_<color>, waits for its instance refresh, then moves weight_blue (ops/nt548/deploy_aws.sh, #29).
+# the new image_tag_<color>, waits until the new version serves, then moves weight_blue (ops/nt548/deploy_aws.sh, #29).
+# rollout = replace (default): apply itself waits, since a new version is a new group (Learner Lab denies instance
+# refresh, AWS-14).
 module "app" {
   source   = "../../modules/app_asg"
   for_each = toset(["blue", "green"])
@@ -88,6 +90,7 @@ module "app" {
   min_size           = var.min_size
   max_size           = var.max_size
   cpu_target         = var.cpu_target
+  rollout            = var.rollout
   region             = var.region
   log_group          = local.log_groups[each.key]
 }

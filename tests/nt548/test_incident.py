@@ -151,9 +151,21 @@ def test_new_alarm_opens_an_issue_and_a_repeat_comments():
     body = incident.write(inc)
     gh = FakeGh([{"number": 3, "body": "another alarm"}])
     assert incident.post(inc, body, "o/r", gh) == "opened https://github.com/o/r/issues/7"
-    gh = FakeGh([{"number": 3, "body": body}])
+    # same alarm, a new episode (it went back to OK and fired again): a comment on the open issue
+    first = body.replace(incident.episode(inc), "<!-- nt548-incident-at: earlier -->")
+    gh = FakeGh([{"number": 3, "body": first}])
     assert incident.post(inc, body, "o/r", gh) == "commented on #3"
     assert not any(c[:2] == ["issue", "create"] for c in gh.calls)
+
+
+def test_scheduled_watch_reports_an_episode_once():
+    inc = case("deploy_500")
+    body = incident.write(inc)
+    for issue in ({"number": 3, "body": body},  # the issue was opened for this episode
+                  {"number": 3, "body": "x " + incident.MARKER.format(inc.alarm), "comments": [{"body": body}]}):
+        gh = FakeGh([issue])
+        assert incident.post(inc, body, "o/r", gh) == "already reported on #3"
+        assert not any(c[:2] in (["issue", "create"], ["issue", "comment"]) for c in gh.calls)
 
 
 def test_cloudwatch_anomaly_alarm_is_read_from_its_metric_math():

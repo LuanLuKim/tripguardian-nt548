@@ -50,6 +50,8 @@ ROLLBACK_CMD = "gh workflow run nt548-deploy-aws.yml -f action=rollback"
 GATEWAY_CMD = ("docker compose -f ops/nt548/compose/app.yml exec model-gateway python -c \"import urllib.request as u; "
                "print(u.urlopen('http://localhost:30000/metrics').read().decode())\" | grep gateway_upstream")
 MARKER = "<!-- nt548-incident: {} -->"
+EPISODE = "<!-- nt548-incident-at: {} {} -->"  # alarm name + when it entered ALARM: the scheduled watch reports it once
+
 
 
 @dataclass
@@ -74,6 +76,10 @@ class Incident:
 
     def of(self, kind: str) -> list[Evidence]:
         return [e for e in self.evidence if e.kind == kind]
+
+
+def episode(inc: Incident) -> str:
+    return EPISODE.format(inc.alarm, inc.started.isoformat(timespec="seconds"))
 
 
 def utc(ts: str | float | dt.datetime) -> dt.datetime:
@@ -388,7 +394,7 @@ def write(inc: Incident, llm: dict | None = None) -> str:
                   " + fixed rules")
         else:
             by = f"fixed template (LLM answer rejected: {why})"
-    out = [MARKER.format(inc.alarm), f"## Incident: {code(inc.alarm)}", "",
+    out = [MARKER.format(inc.alarm), episode(inc), f"## Incident: {code(inc.alarm)}", "",
            f"**Started:** {hm(inc.started)} · **Metric:** {inc.metric} {inc.stat} · **Written by:** {by}", "",
            "### Summary", "", summary, "", "### Likely causes (each cites the evidence below)", ""]
     out += [f"{i}. {h['text']} [{', '.join(map(str, h['evidence']))}] ({h['confidence']}, {h['by']})"
@@ -406,13 +412,17 @@ def gh(args: list[str], stdin: str | None = None) -> str:
 
 
 def post(inc: Incident, body: str, repo: str, run=gh) -> str:
-    """Comment on the open `incident` issue of this alarm, or open one. Returns what was done."""
+    """Comment on the open `incident` issue of this alarm, or open one. Returns what was done. The same ALARM episode
+    (alarm + time it entered ALARM) already on the issue is skipped, so a watch every few minutes does not repeat it."""
     run(["label", "create", "incident", "--repo", repo, "--color", "B60205", "--force",
          "--description", "opened by ops/nt548/aiops/incident.py"])
     issues = json.loads(run(["issue", "list", "--repo", repo, "--label", "incident", "--state", "open",
-                             "--json", "number,body", "--limit", "100"]) or "[]")
+                             "--json", "number,body,comments", "--limit", "100"]) or "[]")
     for i in issues:
         if MARKER.format(inc.alarm) in (i.get("body") or ""):
+            seen = [i.get("body") or ""] + [c.get("body") or "" for c in i.get("comments") or []]
+            if any(episode(inc) in b for b in seen):
+                return f"already reported on #{i['number']}"
             run(["issue", "comment", str(i["number"]), "--repo", repo, "--body-file", "-"], body)
             return f"commented on #{i['number']}"
     url = run(["issue", "create", "--repo", repo, "--label", "incident", "--title",
@@ -618,8 +628,11 @@ def main(argv: list[str] | None = None) -> int:
             if group:
                 lp = log_patterns()
                 now = dt.datetime.now(dt.timezone.utc)
-                lines = lp.cloudwatch_lines(group, now - dt.timedelta(minutes=2 * a.log_window_min), now)
-                logs = lp.top(lines, now, a.log_window_min)
+                try:
+                    lines = lp.cloudwatch_lines(group, now - dt.timedelta(minutes=2 * a.log_window_min), now)
+                    logs = lp.top(lines, now, a.log_window_min)
+                except Exception as e:  # group not there yet or not readable: summarize without log patterns
+                    print(f"log patterns of {group} skipped: {e}", file=sys.stderr)
             work.append((alarm, series, logs, deploys, traces))
         if not found:
             print(f"no alarm with prefix {a.prefix} in ALARM", file=sys.stderr)

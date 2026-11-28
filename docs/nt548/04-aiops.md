@@ -219,6 +219,7 @@ Các bước:
    - Có LLM (biến `INCIDENT_LLM_BASE_URL`, `INCIDENT_LLM_MODEL`, secret `INCIDENT_LLM_API_KEY`; endpoint kiểu OpenAI, ví dụ Workers AI) thì LLM viết lại tóm tắt và thêm giả thuyết **chỉ từ danh sách bằng chứng**.
    - Giả thuyết của luật luôn được giữ và đứng đầu. Giả thuyết của LLM nối sau. Mỗi dòng ghi nguồn (`rule` / `LLM`).
 3. **Mở issue:** mỗi alarm một issue đang mở. Alarm lặp lại thì comment vào issue đó, nhận ra nhờ dấu `<!-- nt548-incident: <alarm> -->` trong thân issue.
+   - Mỗi lần alarm vào ALARM (một *episode*) chỉ được báo một lần. Dấu thứ hai `<!-- nt548-incident-at: <alarm> <giờ vào ALARM> -->` nằm trong thân issue hoặc comment. Lượt `watch` sau gặp lại đúng episode đó thì bỏ qua (`already reported on #N`). Alarm về OK rồi bật lại thì là episode mới, được comment thêm.
 
 Giảm rủi ro LLM bịa nguyên nhân:
 - Prompt chỉ chứa số liệu đã gom, không có câu hỏi mở.
@@ -229,7 +230,8 @@ Giảm rủi ro LLM bịa nguyên nhân:
 
 Cách chạy:
 - Workflow `nt548-incident`, chạy tay: `source=demo` chạy trên runner GitHub, không cần AWS, tóm tắt hiện ở job summary; `post=true` thì mở issue thật.
-- `source=watch` chạy trên runner `nt548-aws` (#22). Thêm `schedule` vài phút một lần khi runner đã có.
+- `source=watch` chạy trên runner `nt548-aws` (#22). Chạy tay, hoặc tự chạy **10 phút một lần** (`schedule`), luôn kèm `--post`. Lượt tự chạy chỉ chạy khi công tắc `NT548_DEPLOY_ENABLED` là `true`, tức là khi lab đang bật, nên lúc lab tắt không có job nào xếp hàng. Máy ops dừng thì hàng đợi chỉ giữ một lượt (`concurrency`). Lượt đó chỉ đọc alarm, nên có chạy trễ cũng không sao.
+- Lượt `watch` đọc mẫu log của log group `/<prefix>/app-<màu>`, với màu lấy từ tên alarm. Alarm không gắn màu (`nt548-alb-5xx`), log group chưa có, hoặc đọc lỗi thì tóm tắt vẫn được viết, chỉ thiếu mẫu log.
 
 Thử với LLM thật ngày 24/11, ba sự cố demo, chạy trên máy:
 

@@ -48,12 +48,19 @@ variable "runner_labels" {
 }
 
 variable "runner_version" {
-  type    = string
-  default = "2.321.0"
+  description = "actions/runner release. GitHub refuses to register a runner older than its minimum (2.329.0 since 2026; 2.321.0 failed on 28/11)."
+  type        = string
+  default     = "2.338.2"
 }
 
 variable "terraform_version" {
   description = "Terraform installed on the runner."
   type        = string
   default     = "1.9.8"
+}
+
+variable "create_state_bucket" {
+  description = "true: this stack creates the state bucket. false (Learner Lab, whose SCP breaks the bucket resource): the bucket <name_prefix>-tfstate-<account> already exists (aws s3api create-bucket) and only its settings are managed here."
+  type        = bool
+  default     = false
 }

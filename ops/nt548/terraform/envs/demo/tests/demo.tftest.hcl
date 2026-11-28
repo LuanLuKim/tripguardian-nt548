@@ -190,3 +190,16 @@ run "stub_needs_no_database" {
     error_message = "real_harness = false runs the harness stub, without Postgres"
   }
 }
+
+run "app_base_url_is_the_alb_unless_given" {
+  command = apply
+
+  variables {
+    image_tag_blue = "aaa1111"
+  }
+
+  assert {
+    condition     = strcontains(base64decode(module.app["blue"].user_data_base64), "export APP_BASE_URL='http://nt548-alb-1.us-east-1.elb.amazonaws.com'")
+    error_message = "by default the origin is the ALB address"
+  }
+}

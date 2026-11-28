@@ -101,6 +101,7 @@ Log của chính user-data nằm ở `/var/log/nt548-app.log` trên máy (vào b
 | `image_tag_blue`, `image_tag_green` | `""` | sha của image; rỗng là image giữ chỗ |
 | `data_release_blue`, `data_release_green` | `r-a` | release dữ liệu mẫu (T5) |
 | `database_url` | `""` | Postgres của máy ops (#22); truyền bằng `TF_VAR_database_url`, không ghi vào file |
+| `app_base_url` | `""` = `http://<DNS của ALB>` | địa chỉ người dùng mở. Harness thật chỉ nhận đăng nhập / tạo journey khi `Origin` trùng địa chỉ này (#63); đặt lại nếu có tên miền phía trước ALB |
 | `min_size` / `max_size` | `1` / `3` | số máy mỗi màu |
 | `cpu_target` | `50` | % CPU trung bình mà target tracking giữ |
 | `instance_type` | `t3.small` | |

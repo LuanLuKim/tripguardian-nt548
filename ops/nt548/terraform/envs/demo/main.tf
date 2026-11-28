@@ -83,6 +83,7 @@ module "app" {
   image_tag          = each.key == "blue" ? var.image_tag_blue : var.image_tag_green
   data_release       = each.key == "blue" ? var.data_release_blue : var.data_release_green
   database_url       = local.database_url
+  app_base_url       = var.app_base_url != "" ? var.app_base_url : "http://${module.alb.alb_dns_name}"
   instance_type      = var.instance_type
   min_size           = var.min_size
   max_size           = var.max_size

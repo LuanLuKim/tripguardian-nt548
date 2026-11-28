@@ -25,3 +25,9 @@ output "log_group" {
   description = "CloudWatch Logs group the containers write to ('' = json-file on the instance)."
   value       = var.log_group
 }
+
+output "user_data_base64" {
+  description = "Rendered user-data (base64), for tests and debugging; holds the database URL, so it is sensitive."
+  value       = aws_launch_template.app.user_data
+  sensitive   = true
+}

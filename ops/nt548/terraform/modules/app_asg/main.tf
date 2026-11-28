@@ -31,6 +31,7 @@ locals {
     image_tag    = var.image_tag
     data_release = var.data_release
     database_url = var.database_url
+    app_base_url = var.app_base_url
     registry     = var.registry
     repo_url     = var.repo_url
     repo_ref     = local.repo_ref

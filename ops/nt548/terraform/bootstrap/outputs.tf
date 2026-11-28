@@ -1,6 +1,6 @@
 output "state_bucket" {
   description = "Bucket of the envs/demo state (terraform init -backend-config=bucket=<this>)."
-  value       = aws_s3_bucket.state.bucket
+  value       = local.state_bucket_id
 }
 
 output "ops_instance_id" {

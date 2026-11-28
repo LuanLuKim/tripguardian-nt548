@@ -110,8 +110,8 @@ run "a_release_changes_only_the_idle_color" {
   }
 
   assert {
-    condition     = output.asg_name_blue == "nt548-blue" && output.asg_name_green == "nt548-green"
-    error_message = "asg_name_{blue,green} follow <name_prefix>-<color>"
+    condition     = output.asg_name_blue == "nt548-blue-v1" && output.asg_name_green == "nt548-green-v1"
+    error_message = "asg_name_{blue,green} follow <name_prefix>-<color>-v<launch template version> (rollout = replace)"
   }
 
   assert {

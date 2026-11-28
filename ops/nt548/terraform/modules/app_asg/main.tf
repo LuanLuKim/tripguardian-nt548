@@ -1,11 +1,17 @@
 # One color of the app (#25): launch template + auto scaling group + CPU target tracking, attached to the color's
 # target group. Called twice (blue, green) by envs/demo. Changing image_tag or data_release changes the user-data,
-# hence a new launch template version, and the instance refresh replaces the instances: launch first, then
-# terminate (min 100 % / max 200 % healthy), so a color with one instance never drops to zero.
+# hence a new launch template version. How the instances move to it depends on var.rollout:
 #
-# The refresh runs after `terraform apply` returns. Whoever waits for the new version (ops/nt548/deploy_aws.sh, #29)
-# waits for the refresh to finish (aws autoscaling describe-instance-refreshes), not only for healthy targets: the
-# old instances are healthy too until they are replaced.
+# - "replace" (Learner Lab): the group is named after the launch template version and is create_before_destroy, so a
+#   new version makes a new group; `terraform apply` waits until its targets are healthy (wait_for_elb_capacity),
+#   then deletes the old group, whose instances drain from the target group. Learner Lab's SCP denies
+#   autoscaling:StartInstanceRefresh (AWS-14, #81), so this is the only way there. apply returns once the new
+#   version serves.
+# - "refresh": one group named <prefix>-<color>; the instance refresh replaces the instances, launch first, then
+#   terminate (min 100 % / max 200 % healthy). The refresh runs after `terraform apply` returns, so whoever waits for
+#   the new version (ops/nt548/deploy_aws.sh, #29) waits for the refresh to finish, not only for healthy targets.
+#
+# Either way a color with one instance never drops to zero.
 
 terraform {
   required_version = ">= 1.5"
@@ -24,6 +30,7 @@ data "aws_ssm_parameter" "al2023" {
 
 locals {
   name     = "${var.name_prefix}-${var.color}"
+  asg_name = var.rollout == "replace" ? "${local.name}-v${aws_launch_template.app.latest_version}" : local.name
   ami_id   = var.ami_id != "" ? var.ami_id : data.aws_ssm_parameter.al2023[0].insecure_value
   repo_ref = var.repo_ref != "" ? var.repo_ref : (var.image_tag != "" ? var.image_tag : "main")
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
@@ -76,7 +83,7 @@ resource "aws_launch_template" "app" {
 }
 
 resource "aws_autoscaling_group" "app" {
-  name                      = local.name
+  name                      = local.asg_name
   min_size                  = var.min_size
   max_size                  = var.max_size
   vpc_zone_identifier       = var.subnet_ids
@@ -92,12 +99,15 @@ resource "aws_autoscaling_group" "app" {
     version = aws_launch_template.app.latest_version
   }
 
-  instance_refresh {
-    strategy = "Rolling"
-    preferences {
-      min_healthy_percentage = 100 # launch the new instance before the old one goes
-      max_healthy_percentage = 200
-      instance_warmup        = var.warmup_seconds
+  dynamic "instance_refresh" {
+    for_each = var.rollout == "refresh" ? [1] : []
+    content {
+      strategy = "Rolling"
+      preferences {
+        min_healthy_percentage = 100 # launch the new instance before the old one goes
+        max_healthy_percentage = 200
+        instance_warmup        = var.warmup_seconds
+      }
     }
   }
 
@@ -111,7 +121,8 @@ resource "aws_autoscaling_group" "app" {
   }
 
   lifecycle {
-    ignore_changes = [desired_capacity] # target tracking owns it; an apply must not undo a scale-out
+    ignore_changes        = [desired_capacity] # target tracking owns it; an apply must not undo a scale-out
+    create_before_destroy = true               # rollout = "replace": the new group serves before the old one goes
   }
 }
 

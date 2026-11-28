@@ -85,7 +85,7 @@ done
 
 ## ASG mỗi màu (#25)
 
-`modules/app_asg` được `envs/demo` gọi hai lần, một lần cho mỗi màu. Mỗi lần tạo launch template `t3.small` (Amazon Linux 2023, `LabInstanceProfile`, chỉ IMDSv2), một ASG `<prefix>-<màu>` gắn vào target group của màu đó, và một chính sách target tracking theo CPU trung bình.
+`modules/app_asg` được `envs/demo` gọi hai lần, một lần cho mỗi màu. Mỗi lần tạo launch template `t3.small` (Amazon Linux 2023, `LabInstanceProfile`, chỉ IMDSv2), một ASG `<prefix>-<màu>-v<số phiên bản launch template>` gắn vào target group của màu đó, và một chính sách target tracking theo CPU trung bình.
 
 User-data của máy app làm các bước sau:
 1. Cài Docker và git.
@@ -105,37 +105,37 @@ Log của chính user-data nằm ở `/var/log/nt548-app.log` trên máy (vào b
 | `min_size` / `max_size` | `1` / `3` | số máy mỗi màu |
 | `cpu_target` | `50` | % CPU trung bình mà target tracking giữ |
 | `instance_type` | `t3.small` | |
+| `rollout` | `replace` | cách máy chuyển sang launch template mới, xem dưới |
 
 Xuất ra: `asg_name_blue`, `asg_name_green`. `envs/demo` cũng xuất lại `image_tag_*` và `data_release_*`, nên chỉ cần state là biết mỗi màu đang chạy gì.
 
-Đổi `image_tag_<màu>` hay `data_release_<màu>` thì user-data đổi, nên có launch template version mới. ASG chạy **instance refresh**: dựng máy mới trước, máy mới healthy rồi mới bỏ máy cũ (min 100 %, max 200 %). Màu chỉ có một máy vẫn không lúc nào về 0 máy.
+Đổi `image_tag_<màu>` hay `data_release_<màu>` thì user-data đổi, nên có launch template version mới. Máy chuyển sang bản mới theo biến `rollout`:
 
-Refresh chạy sau khi `terraform apply` trả về. Trong lúc refresh, máy cũ vẫn healthy, nên chỉ thấy target group healthy chưa đủ để biết bản mới đã lên. Phải chờ refresh xong:
+| `rollout` | Cách làm | Dùng khi |
+|---|---|---|
+| `replace` (mặc định) | Tên ASG kèm số phiên bản, ASG có `create_before_destroy`. Phiên bản mới thì Terraform dựng ASG mới, chờ target của nó healthy (`wait_for_elb_capacity`), rồi mới xóa ASG cũ; máy cũ rời target group qua `draining`. `terraform apply` trả về là bản mới đã phục vụ | Learner Lab: SCP chặn `autoscaling:StartInstanceRefresh` (403, AWS-14 ở #81) |
+| `refresh` | Một ASG `<prefix>-<màu>` cố định, **instance refresh** dựng máy mới trước, bỏ máy cũ sau (min 100 %, max 200 %). Refresh chạy sau khi `apply` trả về, nên phải chờ `describe-instance-refreshes` báo `Successful` | tài khoản AWS thường |
 
-```sh
-aws autoscaling describe-instance-refreshes --auto-scaling-group-name nt548-green \
-  --query 'InstanceRefreshes[0].[Status,PercentageComplete]' --output text   # Successful 100
-```
-
-Script deploy (#29) cần thêm bước chờ này trước khi đổi trọng số.
+Cả hai cách, màu chỉ có một máy cũng không lúc nào về 0 máy. Script deploy (#29) chờ refresh (nếu có), rồi chờ mọi target của màu đó `healthy`, tức là cả lúc máy của ASG cũ đã rời hẳn. Đổi tên ASG làm biểu đồ theo ASG trên dashboard bắt đầu chuỗi mới sau mỗi lần deploy; dashboard đọc tên mới từ `apply`.
 
 Scale:
 - Bật detailed monitoring (CPU theo phút, vài cent mỗi ngày). Với số đo 5 phút, target tracking phản ứng quá chậm cho buổi demo.
 - `desired_capacity` để cho target tracking quản lý. `terraform apply` không kéo số máy về lại.
 
 Kiểm trên lab:
-1. Đo thời gian từ lúc đổi tag tới lúc refresh xong. Ghi vào bảng dưới.
+1. Đo thời gian từ lúc đổi tag tới lúc bản mới healthy (với `replace`: thời gian của `terraform apply`). Ghi vào bảng dưới.
 2. Bắn tải bằng k6 vào URL ALB (`ops/nt548/load/`), xem ASG lên 2–3 máy rồi tự xuống:
 
    ```sh
-   watch -n 15 "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names nt548-blue \
+   watch -n 15 "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names $(terraform -chdir=ops/nt548/terraform/envs/demo output -raw asg_name_blue) \
      --query 'AutoScalingGroups[0].[DesiredCapacity,length(Instances)]' --output text"
    ```
 
 | Đo trên lab | Kết quả |
 |---|---|
-| Đổi tag → refresh xong | (chưa đo) |
-| Tải k6 → số máy, p95 trước / sau | (chưa đo) |
+| Đổi tag → bản mới healthy | `refresh`: SCP chặn (AWS-14, 27/11). `replace`: chờ đo lại trên lab |
+| Tải k6 → số máy, p95 trước / sau | 125 VU, CPU blue 95 %: target tracking tự lên 1 → 2 máy, rồi tự về 1 sau khi hết tải; p95 ở 10 VU: 9,24 ms với 1 máy, 6,64 ms với 2 máy (AWS-15, 27/11, #25) |
+| Tự lành | terminate một máy green: máy thay healthy sau 235,9 s, blue 0 lỗi trên 19.208 request (AWS-16) |
 
 ## Monitoring (#26)
 
@@ -222,9 +222,15 @@ Nên chạy hai lần:
 
 ### Chạy bootstrap
 
-1. Start Lab, mở **AWS Details**, chép ba dòng `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token` vào `~/.aws/credentials` (profile `default`). Credential hết hạn khi phiên lab kết thúc. Không đưa credential vào repo hay vào chat.
+1. Start Lab, mở **AWS Details**, chép ba dòng `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token` vào `~/.aws/credentials` (profile `default`, hoặc profile riêng rồi đặt `AWS_PROFILE`). Credential hết hạn khi phiên lab kết thúc. Không đưa credential vào repo hay vào chat.
 2. Lấy registration token của runner: GitHub → Settings → Actions → Runners → New self-hosted runner, chép token ở dòng `./config.sh --token …`. Token sống 1 giờ. Chỉ admin repo làm được bước này.
-3. Dựng:
+3. Tạo bucket state bằng CLI (một lần cho mỗi tài khoản lab). SCP của Learner Lab chặn `s3:GetBucketObjectLockConfiguration`, mà resource `aws_s3_bucket` gọi API này mỗi lần đọc lại, nên Terraform không tạo bucket (AWS-02, AWS-06 ở #80). Terraform chỉ quản lý versioning, mã hóa và chặn public của bucket. Ở tài khoản AWS thường thì thêm `-var create_state_bucket=true` và bỏ bước này.
+
+   ```sh
+   aws s3api create-bucket --bucket nt548-dl-tfstate-$(aws sts get-caller-identity --query Account --output text)
+   ```
+
+4. Dựng:
 
    ```sh
    cd ops/nt548/terraform/bootstrap
@@ -232,7 +238,9 @@ Nên chạy hai lần:
    TF_VAR_runner_token=<token> terraform apply -var name_prefix=nt548-dl
    ```
 
-4. Kiểm:
+   Bản runner mặc định là `runner_version` trong `variables.tf`. GitHub từ chối đăng ký runner cũ hơn bản tối thiểu của nó: bản `2.321.0` báo `Your runner version is out of date` ngày 28/11, nên mặc định giờ là `2.338.2`.
+
+5. Kiểm:
    - VPC `nt548-dl-vpc`, bucket `nt548-dl-tfstate-<account>`, máy `nt548-dl-ops` đang chạy;
    - sau khoảng 3 phút, runner `nt548-dl-ops` hiện **Idle** trong Settings → Actions → Runners;
    - log của user-data: `/var/log/nt548-ops.log` trên máy ops (vào bằng SSM Session Manager).

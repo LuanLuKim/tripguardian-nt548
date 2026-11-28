@@ -46,20 +46,33 @@ module "network" {
 
 # ---------- state bucket ----------
 
+# Learner Lab's SCP denies s3:GetBucketObjectLockConfiguration, which the aws_s3_bucket resource reads after every
+# create and refresh (403, AWS-02 / AWS-06 in #80). So by default the bucket is made once with the CLI
+# (`aws s3api create-bucket`, docs/nt548/08-aws-infra.md) and this stack only manages its versioning, encryption and
+# public access block, which are separate resources. create_state_bucket = true makes the bucket here (normal account).
+locals {
+  state_bucket = "${var.name_prefix}-tfstate-${data.aws_caller_identity.me.account_id}"
+}
+
 resource "aws_s3_bucket" "state" {
-  bucket        = "${var.name_prefix}-tfstate-${data.aws_caller_identity.me.account_id}"
+  count         = var.create_state_bucket ? 1 : 0
+  bucket        = local.state_bucket
   force_destroy = false # the state of envs/demo; delete it by hand if you really mean it
 }
 
+locals {
+  state_bucket_id = var.create_state_bucket ? aws_s3_bucket.state[0].id : local.state_bucket
+}
+
 resource "aws_s3_bucket_versioning" "state" {
-  bucket = aws_s3_bucket.state.id
+  bucket = local.state_bucket_id
   versioning_configuration {
     status = "Enabled"
   }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
-  bucket = aws_s3_bucket.state.id
+  bucket = local.state_bucket_id
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
@@ -68,7 +81,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
 }
 
 resource "aws_s3_bucket_public_access_block" "state" {
-  bucket                  = aws_s3_bucket.state.id
+  bucket                  = local.state_bucket_id
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true

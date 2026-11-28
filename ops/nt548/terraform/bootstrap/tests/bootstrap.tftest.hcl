@@ -69,8 +69,12 @@ run "ops_machine_runs_postgres_and_the_runner" {
 run "state_bucket_is_private_versioned_and_per_account" {
   command = apply
 
+  variables {
+    create_state_bucket = true
+  }
+
   assert {
-    condition     = aws_s3_bucket.state.bucket == "nt548-tfstate-111111111111" && output.state_bucket == aws_s3_bucket.state.bucket
+    condition     = aws_s3_bucket.state[0].bucket == "nt548-tfstate-111111111111" && output.state_bucket == aws_s3_bucket.state[0].id
     error_message = "bucket <prefix>-tfstate-<account>: unique per lab, and aws.sh can compute it"
   }
 
@@ -86,8 +90,25 @@ run "state_bucket_is_private_versioned_and_per_account" {
   }
 
   assert {
-    condition     = !aws_s3_bucket.state.force_destroy
+    condition     = !aws_s3_bucket.state[0].force_destroy
     error_message = "destroying bootstrap must not silently delete the state"
+  }
+}
+
+# Learner Lab (default): the bucket exists already; only its settings are resources, none reads Object Lock.
+run "lab_manages_the_settings_of_an_existing_bucket" {
+  command = apply
+
+  assert {
+    condition     = length(aws_s3_bucket.state) == 0 && output.state_bucket == "nt548-tfstate-111111111111"
+    error_message = "no aws_s3_bucket resource: its refresh calls GetBucketObjectLockConfiguration, which the SCP denies"
+  }
+
+  assert {
+    condition = (aws_s3_bucket_versioning.state.bucket == "nt548-tfstate-111111111111"
+      && aws_s3_bucket_versioning.state.versioning_configuration[0].status == "Enabled"
+    && aws_s3_bucket_public_access_block.state.bucket == "nt548-tfstate-111111111111")
+    error_message = "versioning and the public access block still apply to the existing bucket"
   }
 }
 

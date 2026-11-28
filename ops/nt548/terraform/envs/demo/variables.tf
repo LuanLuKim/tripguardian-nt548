@@ -82,6 +82,12 @@ variable "cpu_target" {
   default     = 50
 }
 
+variable "rollout" {
+  description = "replace: a new image is a new ASG (Learner Lab, whose SCP denies instance refresh); refresh: instance refresh in place (a normal account)."
+  type        = string
+  default     = "replace"
+}
+
 variable "alarm_email" {
   description = "Address that gets the alarms by mail (confirm AWS's mail first); empty: none, incident.py polls."
   type        = string

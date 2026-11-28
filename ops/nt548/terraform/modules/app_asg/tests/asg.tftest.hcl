@@ -7,6 +7,12 @@ mock_provider "aws" {
       insecure_value = "ami-0123456789abcdef0"
     }
   }
+  mock_resource "aws_launch_template" {
+    defaults = {
+      id             = "lt-0123456789abcdef0"
+      latest_version = 3
+    }
+  }
 }
 
 variables {
@@ -18,11 +24,6 @@ variables {
 
 run "placeholder_without_image_tag" {
   command = plan
-
-  assert {
-    condition     = aws_autoscaling_group.app.name == "nt548-blue"
-    error_message = "the group is named <name_prefix>-<color> (asg_name_<color> in the contract)"
-  }
 
   assert {
     condition     = aws_autoscaling_group.app.min_size == 1 && aws_autoscaling_group.app.max_size == 3
@@ -121,6 +122,15 @@ run "stub_without_database_and_real_harness_with_it" {
 run "refresh_launches_before_it_terminates" {
   command = plan
 
+  variables {
+    rollout = "refresh"
+  }
+
+  assert {
+    condition     = aws_autoscaling_group.app.name == "nt548-blue"
+    error_message = "with rollout = refresh the group is named <name_prefix>-<color> for good"
+  }
+
   assert {
     condition = (aws_autoscaling_group.app.instance_refresh[0].preferences[0].min_healthy_percentage == 100
     && aws_autoscaling_group.app.instance_refresh[0].preferences[0].max_healthy_percentage == 200)
@@ -135,6 +145,31 @@ run "refresh_launches_before_it_terminates" {
   assert {
     condition     = aws_launch_template.app.metadata_options[0].http_tokens == "required"
     error_message = "IMDSv2 only"
+  }
+}
+
+# Learner Lab denies autoscaling:StartInstanceRefresh (AWS-14), so the default makes a new group per version.
+run "replace_makes_a_new_group_per_launch_template_version" {
+  command = apply
+
+  variables {
+    image_tag         = "abc1234"
+    target_group_arns = ["arn:aws:elasticloadbalancing:us-east-1:111111111111:targetgroup/nt548-blue/1"]
+  }
+
+  assert {
+    condition     = aws_autoscaling_group.app.name == "nt548-blue-v3" && output.asg_name == "nt548-blue-v3"
+    error_message = "the group is named after the launch template version, so a new version forces a new group"
+  }
+
+  assert {
+    condition     = length(aws_autoscaling_group.app.instance_refresh) == 0
+    error_message = "no instance refresh: the lab's SCP would refuse it"
+  }
+
+  assert {
+    condition     = aws_autoscaling_group.app.wait_for_elb_capacity == 1
+    error_message = "apply waits for the new group's healthy target before the old group is deleted"
   }
 }
 
@@ -209,4 +244,14 @@ run "bad_data_release_is_refused" {
   }
 
   expect_failures = [var.data_release]
+}
+
+run "unknown_rollout_is_refused" {
+  command = plan
+
+  variables {
+    rollout = "blue-green"
+  }
+
+  expect_failures = [var.rollout]
 }

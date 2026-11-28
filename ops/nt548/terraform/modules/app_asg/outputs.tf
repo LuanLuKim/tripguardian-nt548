@@ -1,5 +1,5 @@
 output "asg_name" {
-  description = "Name of this color's auto scaling group (envs/demo exports it as asg_name_<color>)."
+  description = "Name of this color's auto scaling group (envs/demo exports it as asg_name_<color>). With rollout = replace it ends in -v<launch template version>."
   value       = aws_autoscaling_group.app.name
 }
 

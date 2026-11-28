@@ -21,7 +21,7 @@ Mọi phần NT548 nằm dưới tiền tố `nt548`: `ops/nt548/`, `docs/nt548/
 |---|---|---|
 | Hạ tầng như code | **Terraform** (7 module, `terraform test` với provider giả) | VPC, ALB, ASG, CloudWatch, S3 state; dựng / xóa mỗi buổi lab |
 | Cloud | **AWS**: VPC, ALB (weighted target group), EC2 Auto Scaling, CloudWatch (metric, log, alarm, Anomaly Detection), SNS, S3, SSM | chạy ứng dụng, chia traffic theo trọng số, tự scale, giám sát |
-| CI/CD | **GitHub Actions** (10 workflow `nt548-*`, 11 sau PR #91, cùng `test.yml`), **self-hosted runner** trên máy ops trong lab | test, build image, deploy, tắt lab hằng đêm, sync upstream |
+| CI/CD | **GitHub Actions** (11 workflow `nt548-*` + `test.yml`), **self-hosted runner** trên máy ops trong lab | test, build image, deploy, tắt lab hằng đêm, sync upstream |
 | Container | **Docker**, **Docker Compose**, **GHCR** | image `harness`, `web`, `llm-fake` gắn tag `:sha`; một màu = một stack Compose |
 | Phát hành | blue/green theo trọng số ALB, canary 10 %, `canary_watch.py` | đổi màu không mất request; bản lỗi tự lùi |
 | Load balancer (Compose) | **Nginx** | blue/green khi diễn tập không cần AWS |
@@ -66,13 +66,13 @@ flowchart LR
 | CI (T9, #1) | LuanLuKim | `test.yml` xanh trên checkout sạch: 5.542 test; `main` được bảo vệ | – |
 | Image, Compose (#2) | DontMadWhenBad | 3 image, `app-smoke`, `app-real` (harness thật + Postgres) | – |
 | Blue/green, canary Compose (#3) | DontMadWhenBad | tự rollback trong 17 s, màu cũ 0 lỗi; đổi màu 0 lỗi trên 5.726 request | – |
-| Deploy lên AWS (#29) | LuanLuKim | merge → promote sau 11,5 phút, không ai bấm; rollback tay trong 31 s; canary tự lùi khi thiếu mẫu | **PR #89**: lượt tự động không dựng lại môi trường đã tắt. Trên lab: bản lỗi thật bị canary lùi (tiêu chí 4) |
+| Deploy lên AWS (#29) | LuanLuKim | merge → promote sau 11,5 phút, không ai bấm; rollback tay trong 31 s; canary tự lùi khi thiếu mẫu; lượt tự động không dựng lại môi trường đã tắt (#89) | trên lab: bản lỗi thật bị canary lùi (tiêu chí 4) |
 | Hạ tầng AWS (T8, #21–#27) | dinhlong06 | bootstrap 54 s; `up` 208–337 s; `down` 147 s; scale-out 1 → 2 máy; tự lành; 35 test case AWS-xx | AWS-14 chạy lại với `main` mới; AWS-33 (lượt 23:00 gặp lab đang chạy); AWS-35 (người khác làm theo checklist) |
 | Monitoring (#26) | dinhlong06 | dashboard 7 ô; alarm `unhealthy` kêu sau 299,5 s, `5xx` sau 290,8 s, có mail | ảnh chụp cho báo cáo |
-| AIOps (T4, #4) | LuanLuKim, DontMadWhenBad | xem §6 | **PR #90** (#38): chạy định kỳ |
-| DataOps (T5, #5) | hohoangluan | xem §5 | **PR #92** (#11): bước AWS |
+| AIOps (T4, #4) | LuanLuKim, DontMadWhenBad | xem §6; chạy định kỳ đã merge (#90) | kiểm trên lab |
+| DataOps (T5, #5) | hohoangluan | xem §5; bước AWS đã merge (#92) | chạy trên lab |
 | K8s demo (#6) | DontMadWhenBad | `kind` trong CI: blue/green bằng `selector`, scale 3 pod | – |
-| Sync upstream (#7) | dinhlong06 | – | **PR #91**: `nt548-upstream-sync.yml` |
+| Sync upstream (#7) | dinhlong06 | `nt548-upstream-sync.yml` (#91) | lượt chạy đầu: gỡ xung đột `README.md`, `.gitignore` |
 | Báo cáo, slide (#7) | cả nhóm | `REPORT.md` có §10 đối chiếu 10 tiêu chí (#88) | slide (DontMadWhenBad), số chi phí theo ngày, ảnh chụp |
 
 ## 5. DataOps đang vận hành ra sao (T5, hohoangluan)
@@ -91,7 +91,7 @@ Journey của người dùng ghim release tại lúc tạo. Dữ liệu thật n
 | 1. Dựng dữ liệu mẫu (#8, #9) | `python ops/nt548/sample-data/make.py [--broken]` | `r-a` (40 nơi) và `r-b` (bỏ 2, thêm 3, đổi tên 1 nơi). Với `--broken`: `r-b-drop` (mất 20 %) và `r-b-nocoords` (thiếu tọa độ). Dựng bằng chính `corpus.releases.rebuild`, nên cùng định dạng với release thật |
 | 2. Kiểm release (#10) | `python ops/nt548/data_check.py <release> [--baseline <đang chạy>]` | 7 kiểm theo thứ tự: `manifest`, `hashes`, `release`, `schema`, `coords`, `index`, `drop` (giảm quá 10 % là chặn). Exit 1 thì không màu nào lên |
 | 3. Đổi / lùi release trên một máy (#11) | `ops/nt548/data_release.py stage`, `ops/nt548/data_rehearsal.sh`, workflow `nt548-data-release` | gate chạy trước khi đổi pointer. Màu mới mount cả hai release, nên journey cũ vẫn mở (200); màu chỉ có release mới trả 409 `stale_data_version`. Cả chuỗi 67 s |
-| 4. Đổi release trên AWS (#11, **PR #92**) | `deploy_aws.sh data r-b` hoặc `nt548-deploy-aws` với `action=data` | màu rảnh nhận `data_release=r-b` cùng image của màu live → máy mới chạy `data_check` trước khi bật app → healthy → canary 10 % → promote. Release bị chặn thì máy không bao giờ healthy, traffic ở lại màu cũ |
+| 4. Đổi release trên AWS (#11, PR #92) | `deploy_aws.sh data r-b` hoặc `nt548-deploy-aws` với `action=data` | màu rảnh nhận `data_release=r-b` cùng image của màu live → máy mới chạy `data_check` trước khi bật app → healthy → canary 10 % → promote. Release bị chặn thì máy không bao giờ healthy, traffic ở lại màu cũ |
 
 **Nguyên tắc vận hành.**
 - Không ai đổi được pointer mà không qua gate, kể cả chạy tay. Lùi khẩn cấp có `--skip-check`, lệnh in cảnh báo.
@@ -121,7 +121,7 @@ Chuỗi **quan sát → phát hiện → chẩn đoán → hành động**:
 | Phát hiện trên log (#37) | `log_patterns.py` (Drain3): mẫu ERROR mới, hoặc tăng ≥ 3 lần | xong. Bắt sớm nhất: 5 s ở ca deploy lỗi |
 | Bơm lỗi và đo (#39) | `fault_eval.py`: 5 kịch bản, MTTD / MTTR / báo nhầm | xong. Canary tự rollback bản lỗi sau 21,6 s; 0 báo nhầm |
 | Chẩn đoán (#38) | `incident.py`: gom bằng chứng E1…En (alarm, metric, detector, mẫu log, deploy gần nhất), luật cố định + LLM tùy chọn, mở issue `incident` | xong; trên lab chỉ đúng màu green từ alarm thật |
-| Chạy định kỳ (#38, **PR #90**) | `nt548-incident.yml` chạy 10 phút một lần trên runner của lab, chỉ khi lab bật | đang chờ merge. Mỗi lần alarm kêu (một *episode*) chỉ báo một lần, không spam issue |
+| Chạy định kỳ (#38, **PR #90**) | `nt548-incident.yml` chạy 10 phút một lần trên runner của lab, chỉ khi lab bật | đã merge, chưa chạy trên lab. Mỗi lần alarm kêu (một *episode*) chỉ báo một lần, không spam issue |
 | Hành động | chỉ `canary_watch` được tự rollback; lệnh khác chỉ gợi ý, người quyết định | xong |
 | LLMOps (#16, #17) | eval gate (xong); canary model (#17) | **không bắt buộc**, chưa làm #17 (tiêu chí 8 "một phần") |
 
@@ -132,7 +132,7 @@ Rủi ro LLM bịa nguyên nhân được chặn như sau:
 
 **Còn phải chạy trên lab:** bơm `NT548_FAULT=500@0.3` để alarm kêu, rồi xem issue `incident` tự mở trong khoảng 10 phút và không bị lặp.
 
-## 7. PR mở ngày 28/11 (chờ chủ dự án merge)
+## 7. PR ngày 28/11 (đã merge tối 28/11)
 
 | PR | Tài khoản | Việc | Kiểm |
 |---|---|---|---|
@@ -141,7 +141,7 @@ Rủi ro LLM bịa nguyên nhân được chặn như sau:
 | #91 | dinhlong06 | `nt548-upstream-sync.yml` + `upstream_sync.sh` | 3 test trên repo git tạm |
 | #92 | hohoangluan (script, docs), dinhlong06 (workflow) | đổi release dữ liệu trên AWS, gate `data_check` trên máy | 18 test `deploy_aws`, 12 `terraform test` |
 
-Thứ tự merge: **#89 trước #92** (cùng sửa `deploy_aws.sh`). #90 và #91 độc lập.
+#89 merge trước #92, vì cùng sửa `deploy_aws.sh`.
 
 Cần chủ repo làm thêm một việc cho #91: bật Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests".
 
@@ -149,7 +149,6 @@ Cần chủ repo làm thêm một việc cho #91: bật Settings → Actions →
 
 | Việc | Ai | Cần lab | Ghi chú |
 |---|---|---|---|
-| Merge #89–#92 | chủ dự án | không | thứ tự ở §7 |
 | Buổi lab demo chung (khoảng 2 giờ, khoảng 0,3 USD) | chủ dự án mở lab | có | trong một buổi: bản lỗi bị canary lùi (tiêu chí 4); `data r-b` / `r-b-drop` / rollback (tiêu chí 9); alarm → issue tự mở (#38); k6 chạy từ máy ops qua SSM; diễn tập demo từ đầu tới cuối, có quay màn hình |
 | AWS-14, AWS-33, AWS-35 | dinhlong06 | lab `nt548-dl` | xem #81, #83 |
 | Ảnh chụp cho báo cáo | dinhlong06 chụp, chủ dự án duyệt | – | trên Drive |
@@ -157,4 +156,4 @@ Cần chủ repo làm thêm một việc cho #91: bật Settings → Actions →
 | Slide | DontMadWhenBad | – | mỗi tiêu chí ở `REPORT.md` §10 một slide |
 | Cập nhật `REPORT.md` sau buổi lab | – | – | §4 (tiêu chí 4), §7 (DataOps trên AWS), §6 (#38 định kỳ) |
 
-Quy tắc khi tắt lab: đặt `NT548_DEPLOY_ENABLED=false` **trước** khi `aws.sh down`. Sau khi merge #89, lượt deploy tự động không còn dựng lại môi trường, nhưng tắt công tắc trước vẫn là thói quen an toàn.
+Quy tắc khi tắt lab: đặt `NT548_DEPLOY_ENABLED=false` **trước** khi `aws.sh down`. Từ #89, lượt deploy tự động không còn dựng lại môi trường, nhưng tắt công tắc trước vẫn là thói quen an toàn.

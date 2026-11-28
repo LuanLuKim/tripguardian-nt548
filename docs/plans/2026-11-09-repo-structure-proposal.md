@@ -55,8 +55,7 @@ Làm trong một commit: chuyển, sửa gốc repo, sửa `run.sh`, test, tài 
 
 | Việc | Hiện trạng | Đề xuất |
 |---|---|---|
-| Skill công cụ trong git | `.claude/skills/` 2.102 file (riêng `logo-design` 1.463 file, 14 MB), `.agents/skills/` 262 file chép lại một phần | chỉ giữ trong repo skill mà `RULE.md` §0.2 bắt buộc (`ui-ux-pro-max`) và skill dự án dùng thường xuyên (`impeccable`); còn lại cài ở cấp người dùng |
-| Mock thiết kế cũ | `docs/design/proposal-2026-10/`, `docs/design/redesign-2026-10/` (34 file), chỉ `.impeccable/config.json` còn nhắc | bỏ nếu không còn dùng để so sánh; bản đang theo là `desktop/v3-rose-photo` và `mock/` |
+| Mock thiết kế cũ | `docs/design/proposal-2026-10/`, `docs/design/redesign-2026-10/` (34 file) | bỏ nếu không còn dùng để so sánh; bản đang theo là `desktop/v3-rose-photo` và `mock/` |
 | Lịch sử git nặng | `.git` 1,9 GB (ảnh, video từng commit) | `git gc` an toàn; viết lại lịch sử (`git filter-repo`) giảm mạnh hơn nhưng cả nhóm phải clone lại |
 | Ghi chú nghiên cứu nháp | `submission/research/test.log`, `test_task.md`, `sol/` (smoke test và câu hỏi thử của agent) | bỏ, hoặc giữ nếu là nguồn của báo cáo |
 | Plan còn mở | `docs/plans/` còn: chỉ mục ngữ nghĩa lớp A, nâng cấp 2026-10-26, đề xuất RAG, tour đợt 2, 3D (3 file bàn giao), ghi chú tag, đề xuất Planning | rà từng file: phần đã có trong code thì gộp và xóa; ba file 3D gộp thành một |

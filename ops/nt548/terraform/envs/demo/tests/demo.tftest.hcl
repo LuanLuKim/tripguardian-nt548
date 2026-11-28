@@ -74,6 +74,11 @@ run "contract_outputs_exist" {
     condition     = output.weight_blue == 100
     error_message = "a fresh environment sends everyone to blue"
   }
+
+  assert {
+    condition     = output.alb_arn_suffix == "app/nt548-alb/1" && output.target_group_arn_suffix_green == "targetgroup/nt548-tg/1"
+    error_message = "the metric dimensions canary_watch.py cloudwatch needs"
+  }
 }
 
 run "weight_reaches_the_listener" {

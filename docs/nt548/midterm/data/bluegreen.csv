@@ -1,0 +1,8 @@
+﻿check,result_json,ok,run_id
+blue serves everyone,"{""n"": 200, ""colors"": {""blue"": 200}, ""pct_blue"": 100.0, ""expect"": 100.0, ""ok"": true}",True,45819985864
+split at weight 10,"{""n"": 1000, ""colors"": {""blue"": 909, ""green"": 91}, ""pct_green"": 9.1, ""expect"": 10.0, ""ok"": true}",True,45819985864
+sticky,"{""users"": 20, ""requests_each"": 100, ""users_on_two_colors"": 0, ""ok"": true}",True,45819985864
+weight 100,"{""n"": 200, ""colors"": {""green"": 200}, ""pct_green"": 100.0, ""expect"": 100.0, ""ok"": true}",True,45819985864
+rollback,"{""color"": ""blue"", ""seconds"": 0.1, ""ok"": true}",True,45819985864
+promote,"{""n"": 200, ""colors"": {""green"": 200}, ""pct_green"": 100.0, ""expect"": 100.0, ""ok"": true}",True,45819985864
+no request lost while switching,"{""requests"": 5726, ""conn_errors"": 0, ""5xx"": 0, ""ok"": true}",True,45819985864

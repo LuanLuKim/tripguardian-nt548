@@ -41,6 +41,7 @@ env:
   SHA: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
   AWS_DEFAULT_REGION: us-east-1
   TF_IN_AUTOMATION: "1"
+  NAME_PREFIX: ${{ vars.NT548_NAME_PREFIX || 'nt548' }}
 
 jobs:
   self-hosted:
@@ -53,7 +54,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      - run: terraform -chdir=ops/nt548/terraform/envs/demo init -input=false
+      - run: bash ops/nt548/aws.sh init   # the state is in the bootstrap's bucket (#22)
       - run: bash ops/nt548/deploy_aws.sh "$ACTION" "$SHA"
 
   github:
@@ -70,5 +71,6 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false   # deploy_aws.sh parses `terraform output -json`
-      - run: terraform -chdir=ops/nt548/terraform/envs/demo init -input=false
+      - run: pip install boto3 pyyaml   # canary_watch.py reads CloudWatch
+      - run: bash ops/nt548/aws.sh init
       - run: bash ops/nt548/deploy_aws.sh "$ACTION" "$SHA"

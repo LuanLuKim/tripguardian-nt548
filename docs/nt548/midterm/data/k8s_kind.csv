@@ -1,0 +1,6 @@
+﻿step,result,run_id
+"start, selector blue",all 20 on blue after 4 s,45825947271
+patch selector → green,all 20 on green after 2 s,45825947271
+rollback: selector → blue,all 20 on blue after 1 s,45825947271
+scale app-blue to 3,"3 pods Ready, all 20 on blue after 2 s",45825947271
+delete pod app-blue-68b847b5cc-5vxpl,Deployment back to 3 Ready pods,45825947271

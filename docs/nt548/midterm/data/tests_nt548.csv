@@ -1,0 +1,13 @@
+﻿file,tests,passed,runs_in
+test_llm_fake,12,12,nt548-ci
+test_harness_stub,13,13,nt548-ci
+test_lb_check,5,5,nt548-ci
+test_canary_watch,11,11,nt548-ci
+test_detect,10,10,nt548-ci
+test_log_patterns,13,13,nt548-ci
+test_incident,21,21,nt548-ci
+test_fault_eval,3,3,nt548-ci
+test_eval_gate,4,4,nt548-ci
+test_sample_data,4,4,test
+test_data_check,7,7,test
+test_data_release,4,4,test

@@ -1,0 +1,36 @@
+﻿pr,title,author,opened_utc7,merged_utc7,hours_to_merge
+19,docs(nt548): T4/T5 owners are now pairs,LuanLuKim,2026-11-21 16:27,2026-11-21 16:30,0.05
+20,docs(plans): NT548 design v3 (AWS Learner Lab),LuanLuKim,2026-11-21 16:34,2026-11-21 16:37,0.05
+30,docs(nt548): blocks owned by pairs,LuanLuKim,2026-11-21 16:42,2026-11-21 16:43,0.02
+31,build: declare missing runtime deps so CI can collect tests,LuanLuKim,2026-11-21 16:45,2026-11-21 16:51,0.11
+32,feat(gateway): weighted upstream routing (URL@weight),LuanLuKim,2026-11-21 16:48,2026-11-21 16:52,0.06
+33,docs(plans): NT548 handoff 2026-11-21,LuanLuKim,2026-11-21 16:53,2026-11-21 16:53,0.0
+34,docs(nt548): report skeleton,LuanLuKim,2026-11-21 16:57,2026-11-21 17:04,0.11
+35,"docs(plans): handoff, Actions now run on push and PR",LuanLuKim,2026-11-21 17:05,2026-11-21 17:05,0.0
+40,feat(gateway): per-upstream /metrics (Prometheus text),LuanLuKim,2026-11-21 17:22,2026-11-21 17:27,0.09
+41,docs(nt548): AI ops is AIOps,LuanLuKim,2026-11-21 17:28,2026-11-21 17:33,0.1
+42,"test: skip tests whose inputs are not in git (CI green, #1)",LuanLuKim,2026-11-21 21:46,2026-11-21 21:59,0.21
+43,feat(nt548): fake OpenAI-compatible LLM (#13),LuanLuKim,2026-11-21 21:59,2026-11-24 16:55,66.93
+44,"feat(nt548): images, one-color app.yml, nt548-ci and nt548-images (#2, #1)",LuanLuKim,2026-11-21 21:59,2026-11-24 16:55,66.93
+45,"feat(nt548): metric anomaly detection, static vs EWMA vs Isolation Forest (#36)",LuanLuKim,2026-11-21 22:03,2026-11-21 22:30,0.46
+46,docs: authors and team by GitHub handle only,LuanLuKim,2026-11-21 22:29,2026-11-21 22:36,0.12
+47,docs(plans): NT548 handoff at end of 2026-11-21,LuanLuKim,2026-11-21 22:40,2026-11-23 23:30,48.84
+48,feat(nt548): incident summary from alarm to GitHub issue (#38),LuanLuKim,2026-11-22 15:11,2026-11-23 23:30,32.32
+49,feat(nt548): CloudWatch anomaly detection alarms module (#36),LuanLuKim,2026-11-22 15:12,2026-11-23 23:31,32.3
+51,"docs(nt548): report sections 1, 4, 6 (LuanLuKim's parts)",LuanLuKim,2026-11-22 15:19,2026-11-23 23:31,32.2
+52,"feat(nt548): synthetic sample data releases r-a, r-b (#9)",hohoangluan,2026-11-24 16:06,2026-11-24 16:27,0.35
+53,"feat(nt548): R1, the real harness starts on sample data (#8)",hohoangluan,2026-11-24 16:06,2026-11-24 16:28,0.36
+56,"docs(nt548): DataOps guide, R1 result and research notes (#12)",hohoangluan,2026-11-24 16:07,2026-11-24 16:28,0.36
+57,feat(nt548): data_check for release validation (#10),hohoangluan,2026-11-24 16:14,2026-11-24 16:28,0.24
+58,"feat(nt548): nt548-data-release, switch and roll back a data release (#11)",hohoangluan,2026-11-24 16:14,2026-11-24 16:28,0.24
+60,"feat(nt548): incident summary keeps rule causes first, sturdier LLM call (#38)",LuanLuKim,2026-11-24 16:51,2026-11-25 14:23,21.53
+62,feat(nt548): network module and a first envs/demo (#23),dinhlong06,2026-11-24 17:00,2026-11-24 17:40,0.68
+65,"feat(nt548): stage is gated by data_check; review fixes of #57, #58, #56",hohoangluan,2026-11-24 17:26,2026-11-24 17:41,0.24
+66,feat(nt548): agent traces from LangSmith as incident evidence (#38),dinhlong06,2026-11-25 14:20,2026-11-25 14:27,0.11
+67,"feat(nt548): log patterns with Drain3, the input of the incident summary (#37)",DontMadWhenBad,2026-11-26 18:59,2026-11-26 20:14,1.24
+68,"feat(nt548): blue/green on Compose behind nginx, rehearsed in CI (#2)",DontMadWhenBad,2026-11-26 19:23,2026-11-26 20:14,0.84
+69,feat(nt548): automated canary and scale numbers on the Compose stack (#3),DontMadWhenBad,2026-11-26 19:28,2026-11-26 20:15,0.77
+70,feat(nt548): fault injection and MTTD / MTTR / false alarms on the Compose stack (#39),DontMadWhenBad,2026-11-26 19:37,2026-11-26 22:43,3.11
+71,docs(nt548): AIOps research notes for the report (#18),DontMadWhenBad,2026-11-26 19:40,2026-11-26 20:15,0.59
+72,feat(nt548): eval gate for model versions (#16),DontMadWhenBad,2026-11-26 19:44,2026-11-26 20:25,0.69
+73,feat(nt548): blue/green and scale on kind in CI (#6),DontMadWhenBad,2026-11-26 19:46,2026-11-26 20:15,0.49

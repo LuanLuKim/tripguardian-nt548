@@ -67,7 +67,7 @@ Lần sau green là màu live, vai trò đảo lại. Lần đầu (state trốn
 Hợp đồng với T8 (đã có ở #74–#78): `envs/demo` xuất lại các biến đầu vào (`image_tag_*`, `weight_blue`, `data_release_*`), nên script đọc màu đang live từ state Terraform. Nó cũng xuất `asg_name_*` (để chờ refresh), `alb_arn_suffix` và `target_group_arn_suffix_*` (chiều metric cho canary).
 
 Workflow:
-- **Kích hoạt:** tự chạy khi `nt548-images` xong và xanh trên `main` (`workflow_run`). Chạy tay qua `workflow_dispatch`: `action` = `deploy` / `rollback` / `status`, `sha` tùy chọn.
+- **Kích hoạt:** tự chạy khi `nt548-images` xong và xanh trên `main` (`workflow_run`). Chạy tay qua `workflow_dispatch`: `action` = `deploy` / `rollback` / `status` / `data`, `sha` tùy chọn. `data` đổi release dữ liệu của màu rảnh sang `data_release` (mặc định `r-b`), theo cùng đường canary (`05-dataops.md` §Trên AWS).
 - **Công tắc:** không job nào chạy khi biến repo `NT548_DEPLOY_ENABLED` khác `true`. Admin bật biến này khi runner và `envs/demo` đã có; trước đó các lần merge không để lại job treo chờ runner.
 - **Môi trường đang tắt:** lượt tự chạy sau merge (`workflow_run`) gặp state `envs/demo` trống thì in `envs/demo is down: nothing to deploy` và thoát 0 (`FIRST_DEPLOY=0`). Chỉ `aws.sh up` hoặc chạy tay mới được dựng lần đầu. Lý do: sự cố 28/11, một lượt deploy xếp hàng sau `aws.sh down` đã dựng lại nửa `envs/demo` rồi bị cắt khi máy ops tắt, để lại ALB và target group mồ côi.
 - **An toàn runner:** không có trigger `pull_request`, nên code của PR không bao giờ chạy trên runner self-hosted. Có `concurrency` để hai lần deploy không chồng nhau. Sha nhập tay phải có dạng tag Docker.

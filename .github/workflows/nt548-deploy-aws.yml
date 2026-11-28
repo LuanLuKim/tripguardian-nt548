@@ -2,7 +2,9 @@ name: nt548-deploy-aws
 
 # #29: blue/green release on the AWS lab through Terraform (ops/nt548/deploy_aws.sh, docs/nt548/01-ci-cd.md).
 # - After nt548-images built :<sha> on main: idle color gets it -> healthy -> 10 % canary -> watch -> promote / roll back.
-# - Manual: action=deploy (any sha already on GHCR), rollback (< 1 min, only the weight changes), status.
+# - Manual: action=deploy (any sha already on GHCR), rollback (< 1 min, only the weight changes), status,
+#   data (#11: idle color gets data_release with the live image -> canary -> promote; data_check gates it on the
+#   instance).
 # Runner: the self-hosted one in the lab (labels self-hosted, nt548-aws; credentials from LabInstanceProfile).
 # Fallback when it is broken: runner=github uses lab credentials from the nt548-aws environment (admin only).
 # Nothing runs until the repository variable NT548_DEPLOY_ENABLED is "true" (set it once the runner and envs/demo
@@ -20,11 +22,15 @@ on:
     inputs:
       action:
         type: choice
-        options: [deploy, rollback, status]
+        options: [deploy, rollback, status, data]
         default: status
       sha:
         description: image tag to deploy (default the commit this runs on)
         required: false
+      data_release:
+        description: data only, the sample release for the idle color (r-b; r-b-drop must stop at data_check)
+        required: false
+        default: r-b
       runner:
         description: self-hosted (normal) or github (fallback with credentials from the nt548-aws environment)
         type: choice
@@ -41,6 +47,7 @@ concurrency:
 env:
   ACTION: ${{ inputs.action || 'deploy' }}
   SHA: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
+  DATA_RELEASE: ${{ inputs.data_release || 'r-b' }}
   AWS_DEFAULT_REGION: us-east-1
   TF_IN_AUTOMATION: "1"
   NAME_PREFIX: ${{ vars.NT548_NAME_PREFIX || 'nt548' }}
@@ -58,7 +65,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - run: bash ops/nt548/aws.sh init   # the state is in the bootstrap's bucket (#22)
-      - run: bash ops/nt548/deploy_aws.sh "$ACTION" "$SHA"
+      - run: bash ops/nt548/deploy_aws.sh "$ACTION" "$([ "$ACTION" = data ] && echo "$DATA_RELEASE" || echo "$SHA")"
 
   github:
     if: vars.NT548_DEPLOY_ENABLED == 'true' && inputs.runner == 'github'
@@ -76,4 +83,4 @@ jobs:
           terraform_wrapper: false   # deploy_aws.sh parses `terraform output -json`
       - run: pip install boto3 pyyaml   # canary_watch.py reads CloudWatch
       - run: bash ops/nt548/aws.sh init
-      - run: bash ops/nt548/deploy_aws.sh "$ACTION" "$SHA"
+      - run: bash ops/nt548/deploy_aws.sh "$ACTION" "$([ "$ACTION" = data ] && echo "$DATA_RELEASE" || echo "$SHA")"

@@ -55,11 +55,11 @@ _LuanLuKim, DontMadWhenBad._ Hướng dẫn chi tiết: `01-ci-cd.md`. Phần c�
   Không đổi code sản phẩm.
 - Kết quả: run của PR #47 (21/11) có `pytest` 5.542 qua, 0 đỏ, 433 skip trong 3 phút 46 giây; job `web` (type check + build) 23 giây.
 
-**4.2 Image và stack một màu (#2, draft #44).**
+**4.2 Image và stack một màu (#2, #44, đã merge 24/11).**
 - `harness.Dockerfile`, `web.Dockerfile`, `ops/nt548/compose/app.yml` chạy cả stack một màu trên một máy, cổng `8080`.
 - `nt548-ci` có job `app-smoke`: build 3 image, chạy `app.yml`, kiểm `GET /` trả 200. Job cũng kiểm stub báo đúng màu, gateway trả lời qua LLM giả, và image không chứa `.env` / `data/`.
 - `nt548-images` đẩy `:sha` lên GHCR sau mỗi merge.
-- Chờ DontMadWhenBad review.
+- `nt548-ci` có thêm job `app-real` (PR #63): cùng stack với **harness thật**. Dữ liệu mẫu do `make.py` dựng và qua `data_check`; Postgres chạy cạnh stack. Kết quả: 40/40 nơi của `r-a` tìm được qua `:8080`, nơi chỉ `r-b` có thì vắng, journey vẫn mở sau khi restart harness. Harness thật cần `APP_BASE_URL` bằng địa chỉ công khai, vì web đổi header `Host`; trên AWS là DNS của ALB.
 
 **4.3 Deploy lên AWS (#29, draft #50).** `nt548-deploy-aws` gọi `ops/nt548/deploy_aws.sh`. Script chỉ thay đổi AWS qua `terraform apply` của `envs/demo`, theo hợp đồng với T8.
 
@@ -76,7 +76,7 @@ _LuanLuKim, DontMadWhenBad._ Hướng dẫn chi tiết: `01-ci-cd.md`. Phần c�
 - 7 test chạy script với `terraform` / `aws` giả: thứ tự trọng số, màu hỏng không nhận traffic, canary hỏng thì lùi, tag lạ bị từ chối.
 - Chưa chạy thật: cần runner, ALB và `envs/demo` của T8.
 
-**4.4 Kiểm Terraform trong CI (draft #49).** Workflow `nt548-terraform` chạy `fmt -check`, `validate` và `terraform test` (provider giả) cho mọi module trong `ops/nt548/terraform`, kể cả module của T8 khi thêm vào.
+**4.4 Kiểm Terraform trong CI (#49).** Workflow `nt548-terraform` chạy `fmt -check`, `validate` và `terraform test` (provider giả) cho mọi module trong `ops/nt548/terraform`, kể cả module của T8 khi thêm vào.
 
 **Còn đo:** thời gian rollback tay trên lab (mục tiêu < 1 phút), k6 không rớt request khi đổi màu (#3).
 
@@ -95,7 +95,7 @@ _LuanLuKim, DontMadWhenBad._ Hướng dẫn chi tiết: `04-aiops.md`.
 - Endpoint `/metrics` (Prometheus) đếm request theo upstream và mã trả về, đo histogram độ trễ, báo trạng thái cooldown và trọng số.
 - 16/16 test của gateway qua.
 
-**6.2 Phát hiện bất thường (#36, `detect.py` đã merge, module AWS ở draft #49).** Bốn cách trên cùng chuỗi:
+**6.2 Phát hiện bất thường (#36, `detect.py` và module AWS #49 đã merge).** Bốn cách trên cùng chuỗi:
 - ngưỡng tĩnh, như người vận hành đặt tay;
 - EWMA z-score;
 - Isolation Forest, trên giá trị, độ thay đổi, độ lệch so với trung bình trượt, và pha chu kỳ;
@@ -118,7 +118,7 @@ Kết luận trên dữ liệu tổng hợp:
 - Trên AWS, module Terraform `modules/aiops` tạo alarm CloudWatch Anomaly Detection (dải dự báo do CloudWatch học) cho p95 độ trễ, 5xx và số request theo từng target group.
 - Giới hạn: ALB bị xóa mỗi buổi, nên metric mới chưa có lịch sử và dải của CloudWatch kém tin cậy trong những giờ đầu. Vì vậy so sánh trên lab dựa vào `detect.py`.
 
-**6.3 Chẩn đoán và hành động: tóm tắt sự cố (#38, PR #48).** `incident.py` gom bằng chứng và đánh số E1…En:
+**6.3 Chẩn đoán và hành động: tóm tắt sự cố (#38, #48, #60).** `incident.py` gom bằng chứng và đánh số E1…En:
 - alarm;
 - metric trước và sau alarm;
 - detector nào bắt;
@@ -140,6 +140,15 @@ Ba sự cố tổng hợp cho đúng nguyên nhân đã gài:
 | LLM chậm, deploy cũ 3 giờ trước | mẫu log timeout của gateway; không đổ lỗi deploy cũ | đọc `/metrics` của gateway |
 | Tải tăng 4 lần, không deploy | tải tăng, không phải đổi code | kiểm hoạt động scale của ASG |
 
+Thử với LLM thật ngày 24/11 (chạy trên máy, ba sự cố trên):
+
+| LLM | Câu trả lời qua kiểm bằng chứng | Nhận xét |
+|---|---|---|
+| `gpt-6.1-sol` (qua 9router) | 3 / 3 | Tóm tắt đủ số liệu hơn mẫu cố định, nhưng rất thận trọng: một giả thuyết, độ tin `medium`, kể cả ca deploy hỏng |
+| `llama-3.3-70b` (Cloudflare Workers AI) | 1 / 2 trước khi sửa, 10 / 10 sau | Lỗi ban đầu: Workers AI cắt câu trả lời ở 256 token nên JSON hỏng. Sửa bằng JSON mode + `max_tokens`. Kết luận quyết đoán hơn, đôi khi suy diễn yếu |
+
+Vì vậy (#60) giả thuyết của luật luôn đứng đầu, và LLM chỉ viết tóm tắt và thêm giả thuyết, mỗi dòng ghi nguồn `rule` / `LLM`. Kiểm bằng chứng là phần không thể bỏ: không có nó, câu trả lời hỏng hoặc bịa của LLM sẽ đi thẳng vào issue.
+
 **6.4 Bơm lỗi và đo (#37, #39, DontMadWhenBad).**
 - `log_patterns.py` (#37) gom log container thành mẫu bằng Drain3. Một mẫu mức ERROR là bất thường khi nó mới xuất hiện, hoặc tăng ít nhất 3 lần so với cửa sổ trước. Mức log đứng đầu chuỗi đem gom: nếu không, Drain gộp dòng `200` với dòng `502` vì hai dòng chỉ khác một từ, và lỗi bị giấu trong mẫu của lượt thành công.
 - `fault_eval.py` (#39) dựng stack blue (hai bản app) sau Nginx, chạy tải nền suốt buổi, rồi bơm lần lượt năm lỗi. Mỗi kịch bản có 90 s bình thường, sau đó là lỗi, rồi phục hồi. Chuỗi metric lấy từ access log của Nginx, mỗi ô 5 s. Alarm chỉ tính khi lỗi kéo dài 2 ô. MTTD tính từ lúc bơm lỗi tới khi alarm kêu.
@@ -157,7 +166,7 @@ Kết quả CI ngày 26/11 ([run 45827111505](https://github.com/LuanLuKim/tripg
 Báo nhầm trong 5 phút không có lỗi: 0 với mọi cách, trên cả ba metric; mẫu log cũng 0.
 
 Đọc kết quả:
-- **Tự động hóa giảm MTTR và số lỗi người dùng thấy.** `bad_deploy` được `canary_watch` rollback sau 21,6 s, người dùng thấy 41 lỗi 5xx. `llm_errors` cần người chạy lệnh: 15 s phát hiện, cộng thời gian người phản ứng, cộng 23,5 s chạy lệnh. Trong thời gian đó người dùng thấy 558 lỗi.
+- **Tự động hóa giảm MTTR và số lỗi người dùng thấy.** `bad_deploy` được `canary_watch` rollback sau 21,6 s, người dùng thấy 41 lỗi 5xx. `llm_errors` cần người chạy lệnh: 15 s phát hiện, cộng thời gian người phản ứng, cộng 23,5 s chạy lệnh. Bộ đo không có người thật, nên giữ lỗi 60 s thay cho lúc người phản ứng. Từ lúc bắt đầu bơm lỗi tới khi phục hồi xong mất 108 s, và trong đó người dùng thấy 558 lỗi.
 - **Mẫu log phát hiện sớm nhất** khi lỗi có dòng log riêng: 5 s ở `bad_deploy`, 15 s ở `llm_errors`, so với 7,9 s và 20 s của metric. Mẫu mới hiện ra ngay ô đầu, còn metric phải đợi đủ hai ô. Khi lỗi không sinh dòng lỗi (`llm_slow`), chỉ metric bắt được.
 - **`instance_down` gần như không ảnh hưởng người dùng.** Nginx chuyển request sang bản còn lại, chỉ 1 request lỗi. Muốn biết một bản đã chết thì cần health check theo từng máy (target health của ALB trên AWS), không phải metric 5xx.
 - **Isolation Forest không bắt được ca nào trong lần chạy này.** Mô hình chỉ học 90 s đầu của mỗi kịch bản, và trong khoảng đó 5xx toàn là 0. Cây quyết định không tách được dữ liệu hằng số. Giá trị vượt khỏi khoảng đã học rơi vào cùng lá với điểm biên, nên không bị coi là lạ. Kết quả cũng không ổn định: ở lần chạy trước (run 45821363918) nó bắt được `traffic_spike` sau 10 s. Ngược lại, trên dữ liệu tổng hợp ở §6.2, Isolation Forest là cách duy nhất bắt được rò rỉ chậm. Hai kết quả không mâu thuẫn: Isolation Forest cần đoạn học dài và có biến động. `combined` (EWMA hoặc Isolation Forest), cái alarm của #38 nghe, vẫn bắt mọi ca EWMA bắt.

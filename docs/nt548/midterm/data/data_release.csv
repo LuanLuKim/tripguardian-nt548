@@ -1,0 +1,8 @@
+﻿rehearsal,step,run_id
+r-a -> r-b,gate: data_check passed r-b,45374830143
+r-a -> r-b,blue serves r-a; journey e1506c52493d pinned to it,45374830143
+r-a -> r-b,green serves r-b; the r-a journey still opens (both releases mounted),45374830143
+r-a -> r-b,a color with only r-b answers that journey 409 stale_data_version,45374830143
+r-a -> r-b,"rollback: green back on r-a, r-b kept on disk (releases are immutable)",45374830143
+r-a -> r-b-drop,"data_check: 40 -> 32 places (20% drop, limit 10%)",45371363748
+r-a -> r-b-drop,"gate: data_check refused r-b-drop, nothing deployed",45371363748

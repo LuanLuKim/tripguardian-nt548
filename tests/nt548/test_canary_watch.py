@@ -102,3 +102,57 @@ def test_run_rolls_back_without_traffic(tmp_path, monkeypatch):
     rc, history = cw.run({**CFG, "max_wait_seconds": 10}, log, poll=5, sleep=lambda s: None, clock=lambda: T0,
                          sh=lambda *a: done.append(a))
     assert rc == 1 and done == [("weight", "10"), ("rollback",)] and "not enough traffic" in history[0]["reason"]
+
+
+# ---------- AWS: CloudWatch source (#29) ----------
+
+class FakeCloudWatch:
+    """get_metric_data stand-in: per target group, per-minute RequestCount / 5xx sums and p95 seconds."""
+
+    def __init__(self, series):
+        self.series, self.calls = series, []
+
+    def get_metric_data(self, MetricDataQueries, StartTime, EndTime):
+        self.calls.append((MetricDataQueries, StartTime, EndTime))
+        tg = MetricDataQueries[0]["MetricStat"]["Metric"]["Dimensions"][1]["Value"]
+        n, e, p = self.series[tg]
+        return {"MetricDataResults": [{"Id": "n", "Values": n}, {"Id": "e", "Values": e}, {"Id": "p", "Values": p}]}
+
+
+def test_cloudwatch_stats_sums_counts_and_takes_the_worst_minute_p95():
+    fake = FakeCloudWatch({"targetgroup/g/2": ([40, 60], [1, 2], [0.020, 0.050])})
+    s = cw.cloudwatch_stats(fake, "app/alb/1", "targetgroup/g/2", T0, T0 + 120)
+    assert (s.n, s.n5xx, s.p95_ms) == (100, 3, 50.0)
+    q = fake.calls[0][0]
+    assert {x["MetricStat"]["Metric"]["MetricName"] for x in q} == {"RequestCount", "HTTPCode_Target_5XX_Count",
+                                                                    "TargetResponseTime"}
+    assert q[0]["MetricStat"]["Metric"]["Dimensions"][0] == {"Name": "LoadBalancer", "Value": "app/alb/1"}
+
+
+def test_cloudwatch_stats_without_data():
+    s = cw.cloudwatch_stats(FakeCloudWatch({"tg": ([], [], [])}), "lb", "tg", T0, T0 + 60)
+    assert (s.n, s.n5xx, s.p95_ms) == (0, 0, None)
+
+
+def watch(stats, cfg=None, **kw):
+    slept = []
+    code, res = cw.watch_cloudwatch({**CFG, "step_seconds": 300, "max_wait_seconds": 60, **(cfg or {})},
+                                    lambda tg, s, e: stats[tg], "old", "new", poll=30, sleep=slept.append,
+                                    clock=lambda: T0, **kw)
+    return code, res, slept
+
+
+def test_cloudwatch_watch_promotes_a_good_canary():
+    code, res, slept = watch({"old": cw.Stats(900, 1, 40.0), "new": cw.Stats(100, 0, 45.0)})
+    assert code == 0 and res["decision"] == "promote" and slept == [300]
+
+
+def test_cloudwatch_watch_rolls_back_on_5xx():
+    code, res, _ = watch({"old": cw.Stats(900, 0, 40.0), "new": cw.Stats(100, 30, 45.0)})
+    assert code == 1 and "5xx" in res["reason"]
+
+
+def test_cloudwatch_watch_rolls_back_when_traffic_never_comes():
+    code, res, slept = watch({"old": cw.Stats(900, 0, 40.0), "new": cw.Stats(3, 0, 45.0)})
+    assert code == 1 and res["reason"].startswith("not enough traffic")
+    assert slept == [300, 30, 30]  # the step, then polls until max_wait_seconds

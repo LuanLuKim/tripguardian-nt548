@@ -1,0 +1,10 @@
+﻿workflow,runs,success,failure,cancelled,main_push_success,main_push_runs,median_minutes_success
+test,93,77,16,0,25,29,5.5
+nt548-ci,40,37,3,0,12,12,2.5
+nt548-bluegreen,14,11,1,2,3,5,8.0
+nt548-images,12,10,0,2,10,12,1.3
+nt548-data-release,7,4,3,0,0,0,1.9
+nt548-terraform,4,4,0,0,2,2,0.7
+nt548-fault-eval,3,3,0,0,0,0,27.1
+nt548-incident,2,2,0,0,0,0,0.6
+nt548-k8s-demo,2,1,1,0,0,0,3.1

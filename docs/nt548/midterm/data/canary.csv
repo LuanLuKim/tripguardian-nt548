@@ -1,0 +1,4 @@
+﻿case,expected,got,seconds_to_decision,old_color_5xx,reason,run_id
+good,promote,promote,33,0,"5xx 0.0% vs 0.0%, p95 3 vs 3 ms",45820052392
+http_500,rollback,rollback,17,0,5xx 52.7% on the new color against 0.0% on the old one (limit 2% and 2.0x old),45820052392
+slow,rollback,rollback,16,0,p95 803 ms on the new color against 2 ms (limit 1.5x old and +100 ms),45820052392

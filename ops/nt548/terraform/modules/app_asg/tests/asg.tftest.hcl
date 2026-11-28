@@ -90,6 +90,12 @@ run "image_and_data_release_reach_the_instances" {
   }
 
   assert {
+    condition = strcontains(base64decode(aws_launch_template.app.user_data),
+    "python ops/nt548/data_check.py \"ops/nt548/sample-data/r-b\" \"$${BASELINE[@]}\"")
+    error_message = "the instance runs data_check on its release before serving it (DataOps gate, #11)"
+  }
+
+  assert {
     condition     = strcontains(base64decode(aws_launch_template.app.user_data), "fetch -q --depth 1 \"https://github.com/LuanLuKim/tripguardian-nt548.git\" \"abc1234\"")
     error_message = "without repo_ref the instance checks out the commit of the image"
   }

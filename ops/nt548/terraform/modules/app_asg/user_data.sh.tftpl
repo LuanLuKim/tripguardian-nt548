@@ -45,8 +45,15 @@ docker pull -q "$HARNESS"
 # synthetic sample data (T5): built by the image's own Python and the checked-out generator, read-only for the app
 SAMPLE="$REPO/ops/nt548/sample-data"
 chown -R 10001 "$SAMPLE"
-docker run --rm -v "$REPO:/repo" -w /repo -e LANCEDB_LOG=error "$HARNESS" python ops/nt548/sample-data/make.py
+docker run --rm -v "$REPO:/repo" -w /repo -e LANCEDB_LOG=error "$HARNESS" python ops/nt548/sample-data/make.py --broken
 [ -d "$SAMPLE/${data_release}" ] || { echo "nt548: no sample release ${data_release}"; exit 1; }
+# DataOps gate (#10, #11): a release data_check refuses never serves, so this color never becomes a healthy target and
+# deploy_aws.sh keeps the traffic on the live color. r-a is the reference the drop check compares with.
+BASELINE=()
+[ "${data_release}" = r-a ] || BASELINE=(--baseline ops/nt548/sample-data/r-a)
+docker run --rm -v "$REPO:/repo" -w /repo -e LANCEDB_LOG=error "$HARNESS" \
+  python ops/nt548/data_check.py "ops/nt548/sample-data/${data_release}" "$${BASELINE[@]}" \
+  || { echo "nt548: data_check refused ${data_release}, not serving it"; exit 1; }
 
 COMPOSE=(-f "$REPO/ops/nt548/compose/app.yml")
 if [ -n "$LOG_GROUP" ]; then

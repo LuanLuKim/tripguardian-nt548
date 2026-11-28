@@ -3,6 +3,8 @@
 # fallback, on a GitHub runner with lab credentials from the nt548-aws environment.
 #
 #   ops/nt548/deploy_aws.sh deploy <image-sha>   idle color gets <sha> -> healthy -> canary -> watch -> promote | roll back
+#   ops/nt548/deploy_aws.sh data <release>       same path for data (#11): idle color gets data release <release> (r-b),
+#                                                keeping the live color's image; the instance's data_check gates it
 #   ops/nt548/deploy_aws.sh rollback             all traffic back to the other color (it still runs the previous sha)
 #   ops/nt548/deploy_aws.sh status               live color, tags, weight
 #
@@ -11,6 +13,8 @@
 # alb_arn_suffix, target_group_arn_suffix_{blue,green}. This script also reads the
 # outputs image_tag_{blue,green}, weight_blue and data_release_{blue,green} (the inputs echoed back) to know what
 # runs now; without them (first deploy, empty state) both colors get <sha> and blue takes all traffic.
+# A release changes one thing on the idle color and copies the other from the live color: a code deploy carries the
+# live data release, a data release carries the live image, so neither undoes the last change of the other.
 # It changes AWS only through `terraform apply`; the aws calls (target health, instance refreshes, CloudWatch metrics
 # in canary_watch.py) only read.
 #
@@ -136,11 +140,15 @@ weights() {  # weights <live color> <weight of the idle color> -> weight_blue
 
 live_color() { if [ "${WEIGHT_BLUE:-100}" -ge 50 ]; then echo blue; else echo green; fi; }
 
-deploy() {
-  local sha=$1 live idle tb tg
-  [[ $sha =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { log "not an image tag: $sha"; return 2; }
+release() {  # release <image-sha|""> <data release|"">: one of the two changes on the idle color
+  local sha=$1 data=$2 what live idle tb tg
+  what=$([ -n "$sha" ] && echo "deploy $sha" || echo "data $data")
   read_state
   if [ -z "$TAG_BLUE" ] && [ -z "$TAG_GREEN" ]; then
+    if [ -z "$sha" ]; then
+      summary "$what: envs/demo is down, nothing to switch (aws.sh up first)"
+      return 1
+    fi
     if [ "$FIRST_DEPLOY" != 1 ]; then
       summary "envs/demo is down: nothing to deploy ($sha not applied; aws.sh up builds it)"
       return 0
@@ -152,23 +160,39 @@ deploy() {
     return 0
   fi
   live=$(live_color); idle=$([ "$live" = blue ] && echo green || echo blue)
-  tb=$TAG_BLUE; tg=$TAG_GREEN
-  if [ "$idle" = blue ]; then tb=$sha; else tg=$sha; fi
-  log "live=$live idle=$idle: $idle gets $sha"
+  local live_tag live_data
+  if [ "$live" = blue ]; then live_tag=$TAG_BLUE live_data=$DATA_BLUE; else live_tag=$TAG_GREEN live_data=$DATA_GREEN; fi
+  if [ "$idle" = blue ]; then
+    tb=${sha:-$live_tag}; tg=$TAG_GREEN; DATA_BLUE=${data:-$live_data}
+  else
+    tb=$TAG_BLUE; tg=${sha:-$live_tag}; DATA_GREEN=${data:-$live_data}
+  fi
+  log "live=$live idle=$idle: $idle gets image $([ "$idle" = blue ] && echo "$tb" || echo "$tg")," \
+    "data $([ "$idle" = blue ] && echo "$DATA_BLUE" || echo "$DATA_GREEN")"
 
   apply "$tb" "$tg" "$(weights "$live" 0)"
   if ! wait_refresh "$idle" || ! wait_healthy "$idle"; then
-    summary "deploy $sha: $idle never got healthy, traffic stayed on $live"
+    summary "$what: $idle never got healthy, traffic stayed on $live"
     return 1
   fi
   apply "$tb" "$tg" "$(weights "$live" "$CANARY_WEIGHT")"
   if ! watch_canary "$idle"; then
     apply "$tb" "$tg" "$(weights "$live" 0)"
-    summary "deploy $sha: canary on $idle failed, rolled back to $live"
+    summary "$what: canary on $idle failed, rolled back to $live"
     return 1
   fi
   apply "$tb" "$tg" "$(weights "$live" 100)"
-  summary "deploy $sha: promoted $idle (100%), $live kept for rollback"
+  summary "$what: promoted $idle (100%), $live kept for rollback"
+}
+
+deploy() {
+  [[ $1 =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { log "not an image tag: $1"; return 2; }
+  release "$1" ""
+}
+
+data() {
+  [[ $1 =~ ^r-[A-Za-z0-9_-]+$ ]] || { log "not a data release: $1 (r-a, r-b, ...)"; return 2; }
+  release "" "$1"
 }
 
 rollback() {
@@ -186,12 +210,14 @@ rollback() {
 
 status() {
   read_state
-  summary "live=$(live_color) blue=${TAG_BLUE:--} green=${TAG_GREEN:--} weight_blue=${WEIGHT_BLUE:--}"
+  summary "live=$(live_color) blue=${TAG_BLUE:--} green=${TAG_GREEN:--} weight_blue=${WEIGHT_BLUE:--}" \
+    "data_blue=$DATA_BLUE data_green=$DATA_GREEN"
 }
 
 case "${1:-}" in
   deploy) [ -n "${2:-}" ] || { echo "usage: $0 deploy <image-sha>" >&2; exit 2; }; deploy "$2" ;;
+  data) [ -n "${2:-}" ] || { echo "usage: $0 data <release>" >&2; exit 2; }; data "$2" ;;
   rollback) rollback ;;
   status) status ;;
-  *) echo "usage: $0 deploy <image-sha> | rollback | status" >&2; exit 2 ;;
+  *) echo "usage: $0 deploy <image-sha> | data <release> | rollback | status" >&2; exit 2 ;;
 esac

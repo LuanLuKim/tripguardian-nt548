@@ -22,6 +22,7 @@ jobs:
       - run: ruff check --select F,E9 ops/nt548 tests/nt548
       - run: python -m pytest -q tests/nt548
       - run: docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml config --quiet
+      - run: docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.db.yml config --quiet
 
   app-smoke:
     # app.yml as a T8 machine runs it, images built from this commit: GET / -> 200 on :8080, the stub names its color,
@@ -63,5 +64,75 @@ jobs:
                 if [ -e "$f" ]; then echo "found $f"; exit 1; fi
               done'
           done
+      - if: always()
+        run: $COMPOSE logs --no-color | tail -n 200; $COMPOSE down -v
+
+  app-real:
+    # The same one-color stack with the real harness instead of the stub (T9 x T5): synthetic sample data built by
+    # TripGuardian's own pipeline, gated by data_check, served from a read-only mount, with a Postgres next to it
+    # (app.db.yml; on AWS it is the ops machine). Every place of r-a must be found by name through :8080, none that
+    # only r-b has, and a guest journey must open again after it was created. Only the ALB is missing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COLOR: blue
+      IMAGE_TAG: ci-${{ github.sha }}
+      HARNESS_CMD: python -m harness serve
+      DATABASE_URL: postgresql://tg:tg@postgres:5432/tg
+      APP_BASE_URL: http://127.0.0.1:8080
+      DATA_RELEASE: r-a
+      COMPOSE: docker compose -f ops/nt548/compose/app.yml -f ops/nt548/compose/app.build.yml -f ops/nt548/compose/app.db.yml
+    steps:
+      - uses: actions/checkout@v4
+      - run: $COMPOSE build
+      - name: tools run in the harness image (its Python has the corpus pipeline), on this checkout
+        run: |
+          mkdir -p "$RUNNER_TEMP/work"
+          cat > "$RUNNER_TEMP/tools" <<EOF
+          #!/bin/sh
+          exec docker run --rm --user $(id -u):$(id -g) -e HOME=/tmp -e PYTHONPATH=/repo/src -e LANCEDB_LOG=error \
+            -v "$PWD:/repo" -v "$RUNNER_TEMP/work:/work" -w /repo --network host \
+            ghcr.io/luanlukim/tripguardian-nt548/harness:$IMAGE_TAG "\$@"
+          EOF
+          chmod +x "$RUNNER_TEMP/tools"
+      - name: sample releases r-a, r-b (make.py), then data_check
+        run: |
+          T="$RUNNER_TEMP/tools"
+          $T python ops/nt548/sample-data/make.py
+          $T python ops/nt548/data_check.py ops/nt548/sample-data/r-a
+          $T python ops/nt548/data_check.py ops/nt548/sample-data/r-b --baseline ops/nt548/sample-data/r-a
+      - name: Postgres up and migrated
+        run: |
+          $COMPOSE up -d postgres
+          for i in $(seq 60); do $COMPOSE exec -T postgres pg_isready -U tg -d tg >/dev/null && break; sleep 1; done
+          $COMPOSE run --rm --no-deps harness python -m db migrate
+      - run: $COMPOSE up -d
+      - name: wait for the real harness behind :8080
+        run: |
+          for i in $(seq 120); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/auth/options || true)
+            [ "$code" = 200 ] && echo "real harness answers after ${i}s" && exit 0
+            sleep 1
+          done
+          $COMPOSE ps; $COMPOSE logs harness | tail -n 80; exit 1
+      - name: not the stub
+        run: test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/harness/nt548-version)" != 200
+      - name: serves r-a, not r-b; a guest journey is created
+        run: |
+          "$RUNNER_TEMP/tools" python ops/nt548/data_release.py smoke http://127.0.0.1:8080 \
+            --expect ops/nt548/sample-data/r-a --not ops/nt548/sample-data/r-b \
+            --cookies /work/cookies.txt --create-journey /work/journey
+      - name: the journey is in Postgres and opens again after a harness restart
+        run: |
+          # web and edge live in harness's network namespace: restart it first, then them (in one call they race
+          # for a namespace that is gone)
+          $COMPOSE restart harness
+          $COMPOSE restart web edge
+          for i in $(seq 120); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/auth/options || true)" = 200 ] && break
+            sleep 1
+          done
+          "$RUNNER_TEMP/tools" python ops/nt548/data_release.py smoke http://127.0.0.1:8080 \
+            --expect ops/nt548/sample-data/r-a --cookies /work/cookies.txt --open-journey /work/journey --want 200
       - if: always()
         run: $COMPOSE logs --no-color | tail -n 200; $COMPOSE down -v

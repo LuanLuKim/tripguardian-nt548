@@ -32,6 +32,13 @@ flowchart LR
 4. `nt548-ci.yml` (`pull_request`, `push: main`), hai job:
    - `lint-test`: `ruff check --select F,E9 ops/nt548 tests/nt548`, `pytest tests/nt548`, `docker compose … config` của `app.yml`;
    - `app-smoke`: build ba image từ commit, chạy `app.yml` một màu, kiểm `GET /` trên `:8080` trả 200, stub harness báo đúng màu, gateway trả lời qua LLM giả và có `/metrics`, image không chứa `.env` / `data/`.
+   - `app-real`: cùng stack đó, nhưng chạy **harness thật**. Các bước:
+     - dữ liệu mẫu do `make.py` (T5) dựng, qua `data_check`, mount chỉ đọc;
+     - Postgres chạy cạnh stack (`app.db.yml`; trên AWS là máy ops);
+     - `data_release.py smoke` tìm từng nơi của `r-a` qua `:8080` và không thấy nơi chỉ `r-b` có;
+     - tạo journey cho guest, khởi động lại harness, mở lại journey đó (journey nằm trong Postgres).
+
+     Stack chạy đúng như trên máy EC2, chỉ thiếu ALB. Harness thật cần `APP_BASE_URL` bằng địa chỉ công khai (`http://<alb dns>` trên AWS). Thiếu biến này thì mọi thao tác ghi (đăng nhập guest, tạo journey) bị từ chối, vì web đổi header `Host` khi chuyển request vào.
    Khi có `docker-compose.yml` hai màu (#2) thì thêm `config` của nó và `nginx -t`.
 5. `nt548-images.yml` (`push: main`, `workflow_dispatch`): build `harness`, `web`, `llm-fake` (bảng ở `02-bluegreen-lb.md` §Image), push `ghcr.io/luanlukim/tripguardian-nt548/<image>:<sha đầy đủ>` và `:main`, label `org.opencontainers.image.revision`. Cache theo image (`type=gha`). Lần push đầu tiên, admin vào trang package trên GitHub đặt **Public** cho cả ba (package mới mặc định private), để máy app kéo được mà không cần đăng nhập.
 6. Bảo vệ nhánh `main` (Settings → Branches): bắt PR, 1 review, check `pytest`, `web`, `nt548-ci` xanh.

@@ -18,6 +18,19 @@ output "target_group_arn_green" {
   value = module.alb.target_group_arns["green"]
 }
 
+# Dimensions of the AWS/ApplicationELB metrics: deploy_aws.sh hands them to canary_watch.py cloudwatch (#29).
+output "alb_arn_suffix" {
+  value = module.alb.alb_arn_suffix
+}
+
+output "target_group_arn_suffix_blue" {
+  value = module.alb.target_group_arn_suffixes["blue"]
+}
+
+output "target_group_arn_suffix_green" {
+  value = module.alb.target_group_arn_suffixes["green"]
+}
+
 output "weight_blue" {
   description = "The input echoed back: ops/nt548/deploy_aws.sh reads the live color from the state (#50)."
   value       = var.weight_blue

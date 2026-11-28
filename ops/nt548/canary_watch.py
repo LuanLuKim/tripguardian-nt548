@@ -5,6 +5,8 @@ window and decides: promote, rollback, or wait for more requests. Thresholds in 
 
     python ops/nt548/canary_watch.py check --since 1764150000000            # one decision, JSON; exit 0 / 1 / 2
     python ops/nt548/canary_watch.py run                                     # drive deploy.sh through the steps
+    python ops/nt548/canary_watch.py --step-seconds 300 cloudwatch --lb app/x/1 --old-tg targetgroup/b/1 \
+        --new-tg targetgroup/g/2                                             # AWS: one step on ALB metrics (#29)
 
 `run` sets each step's weight (deploy.sh weight), watches it, and at the end promotes (exit 0) or rolls back as soon
 as a step fails (exit 1). Not enough traffic after max_wait_seconds rolls back too: no data is no proof.
@@ -105,6 +107,52 @@ def evaluate(log: Path, old: str, new: str, cfg: dict, since_ms: float, until_ms
             "new": {"color": new, **asdict(n), "ratio": round(n.ratio, 4)}}
 
 
+# ---------- AWS: the same decision on the ALB's CloudWatch metrics (ops/nt548/deploy_aws.sh, #29) ----------
+
+def cloudwatch_stats(cw, lb: str, tg: str, start: float, end: float, period: int = 60) -> Stats:
+    """Stats of one target group over [start, end) (epoch s) from AWS/ApplicationELB: requests, target 5xx, p95."""
+    dims = [{"Name": "LoadBalancer", "Value": lb}, {"Name": "TargetGroup", "Value": tg}]
+
+    def q(qid: str, metric: str, stat: str) -> dict:
+        return {"Id": qid, "ReturnData": True, "MetricStat": {
+            "Metric": {"Namespace": "AWS/ApplicationELB", "MetricName": metric, "Dimensions": dims},
+            "Period": period, "Stat": stat}}
+
+    from datetime import datetime, timezone
+    res = cw.get_metric_data(
+        MetricDataQueries=[q("n", "RequestCount", "Sum"), q("e", "HTTPCode_Target_5XX_Count", "Sum"),
+                           q("p", "TargetResponseTime", "p95")],
+        StartTime=datetime.fromtimestamp(start, timezone.utc), EndTime=datetime.fromtimestamp(end, timezone.utc))
+    values = {r["Id"]: r.get("Values", []) for r in res.get("MetricDataResults", [])}
+    p = values.get("p", [])
+    # p95 per minute -> the worst minute of the window (a conservative p95 of the whole window)
+    return Stats(n=int(sum(values.get("n", []))), n5xx=int(sum(values.get("e", []))),
+                 p95_ms=max(p) * 1000 if p else None)
+
+
+def watch_cloudwatch(cfg: dict, fetch, old_tg: str, new_tg: str, poll: float = 30.0, sleep=time.sleep,
+                     clock=time.time) -> tuple[int, dict]:
+    """Watch the new target group for step_seconds, then decide against the old one over the same window; wait up to
+    max_wait_seconds for min_requests, and roll back when they never come (no data is no proof).
+    fetch(tg, start, end) -> Stats. Returns (exit code, result) with 0 = promote, 1 = roll back."""
+    start = clock()
+    sleep(cfg["step_seconds"])
+    waited = 0.0
+    while True:
+        end = clock() + 60  # the minute in progress
+        o, n = fetch(old_tg, start, end), fetch(new_tg, start, end)
+        decision, reason = decide(o, n, cfg)
+        if decision != "wait" or waited >= cfg["max_wait_seconds"]:
+            break
+        sleep(poll)
+        waited += poll
+    if decision == "wait":
+        decision, reason = "rollback", "not enough traffic: " + reason
+    res = {"decision": decision, "reason": reason, "old": {"tg": old_tg, **asdict(o), "ratio": round(o.ratio, 4)},
+           "new": {"tg": new_tg, **asdict(n), "ratio": round(n.ratio, 4)}}
+    return EXIT[decision], res
+
+
 def state_dir() -> Path:
     return Path(os.environ.get("NT548_STATE", HERE / "state"))
 
@@ -159,12 +207,23 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--new")
     r = sub.add_parser("run", help="weight steps, then promote or roll back")
     r.add_argument("--out", type=Path, help="JSON history of the steps")
+    w = sub.add_parser("cloudwatch", help="AWS: watch one canary step on the ALB metrics (deploy_aws.sh sets weights)")
+    w.add_argument("--lb", required=True, help="ALB arn suffix (app/<name>/<id>)")
+    w.add_argument("--old-tg", required=True, help="target group arn suffix of the live color")
+    w.add_argument("--new-tg", required=True, help="target group arn suffix of the canary color")
+    w.add_argument("--region", default=os.environ.get("AWS_REGION", "us-east-1"))
     a = ap.parse_args(argv)
 
     cfg = load_config(a.config)
     for key in ("step_seconds", "max_wait_seconds"):
         if getattr(a, key) is not None:
             cfg[key] = getattr(a, key)
+    if a.cmd == "cloudwatch":
+        import boto3
+        cw = boto3.client("cloudwatch", region_name=a.region)
+        code, res = watch_cloudwatch(cfg, lambda tg, s, e: cloudwatch_stats(cw, a.lb, tg, s, e), a.old_tg, a.new_tg)
+        print(json.dumps(res))
+        return code
     log = a.log or state_dir() / "log" / "access.log"
     if a.cmd == "check":
         active, other = colors()

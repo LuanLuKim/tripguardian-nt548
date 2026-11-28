@@ -38,7 +38,7 @@ flowchart LR
 
 ## Deploy lên AWS (#29)
 
-`.github/workflows/nt548-deploy-aws.yml` gọi `ops/nt548/deploy_aws.sh`. Script chỉ thay đổi AWS qua `terraform apply` của `envs/demo` (hợp đồng §7.1 với T8). Lệnh duy nhất gọi thẳng AWS là `aws elbv2 describe-target-health`, và lệnh này chỉ đọc.
+`.github/workflows/nt548-deploy-aws.yml` gọi `ops/nt548/deploy_aws.sh`. Script chỉ thay đổi AWS qua `terraform apply` của `envs/demo` (hợp đồng §7.1 với T8). Các lệnh gọi thẳng AWS đều chỉ đọc: `describe-target-health`, `describe-instance-refreshes`, và metric CloudWatch trong `canary_watch.py`. State nằm trong bucket của bootstrap, nên trước lần chạy đầu cần `ops/nt548/aws.sh init` (workflow tự làm).
 
 ```sh
 ops/nt548/deploy_aws.sh deploy <sha>   # màu rảnh nhận <sha> → healthy → canary 10 % → theo dõi → promote, lỗi thì lùi
@@ -50,23 +50,28 @@ Một lần `deploy`, khi blue đang live:
 
 | Bước | `image_tag_blue` | `image_tag_green` | `weight_blue` | Chuyển bước khi |
 |---|---|---|---|---|
-| 1. Màu rảnh lên sha mới | cũ | **mới** | 100 | mọi target của TG green `healthy` (tối đa `HEALTH_TIMEOUT`, 600 s) |
-| 2. Canary | cũ | mới | 90 | `canary_watch.py` (#3) qua. Chưa có #3 thì green còn healthy sau `CANARY_SECONDS` (300 s) |
+| 1. Màu rảnh lên sha mới | cũ | **mới** | 100 | instance refresh của ASG green xong (`Successful`), rồi mọi target của TG green `healthy` (mỗi bước tối đa `HEALTH_TIMEOUT`, 600 s). Phải chờ refresh vì trong lúc refresh máy cũ vẫn healthy |
+| 2. Canary | cũ | mới | 90 | `canary_watch.py cloudwatch` qua: sau `CANARY_SECONDS` (300 s), so 5xx và p95 của TG green với TG blue trên metric ALB, cùng ngưỡng `canary.yaml` như trên Compose (#3); green vẫn healthy |
 | 3. Promote | cũ | mới | 0 | xong; blue giữ sha cũ để lùi |
 | Lỗi ở bước 2 | cũ | mới | 100 | dừng, job đỏ |
 
 Lần sau green là màu live, vai trò đảo lại. Lần đầu (state trống) cả hai màu nhận cùng sha, blue nhận toàn bộ traffic.
 
-**Đề xuất thêm vào hợp đồng §7.1 (cần T8 đồng ý):** `envs/demo` xuất lại chính các biến đầu vào: output `image_tag_blue`, `image_tag_green`, `weight_blue`, `data_release_blue`, `data_release_green`.
-- Lý do: script đọc trạng thái hiện tại từ state Terraform (trong S3), nên không cần nơi lưu thứ hai, và runner tạo lại vẫn biết màu nào đang live.
-- Cũng nên đặt `wait_for_elb_capacity` trên ASG, để `apply` chỉ xong khi máy mới đã healthy.
+Hợp đồng với T8 (đã có ở #74–#78): `envs/demo` xuất lại các biến đầu vào (`image_tag_*`, `weight_blue`, `data_release_*`), nên script đọc màu đang live từ state Terraform. Nó cũng xuất `asg_name_*` (để chờ refresh), `alb_arn_suffix` và `target_group_arn_suffix_*` (chiều metric cho canary).
 
 Workflow:
 - **Kích hoạt:** tự chạy khi `nt548-images` xong và xanh trên `main` (`workflow_run`). Chạy tay qua `workflow_dispatch`: `action` = `deploy` / `rollback` / `status`, `sha` tùy chọn.
 - **Công tắc:** không job nào chạy khi biến repo `NT548_DEPLOY_ENABLED` khác `true`. Admin bật biến này khi runner và `envs/demo` đã có; trước đó các lần merge không để lại job treo chờ runner.
 - **An toàn runner:** không có trigger `pull_request`, nên code của PR không bao giờ chạy trên runner self-hosted. Có `concurrency` để hai lần deploy không chồng nhau. Sha nhập tay phải có dạng tag Docker.
 - **Dự phòng khi runner hỏng:** `runner=github`. Job chạy trên `ubuntu-latest` với credential tạm của lab trong Environment `nt548-aws`; chỉ admin đặt Environment này, và nên bật "required reviewers".
-- **Kiểm không cần AWS:** `tests/nt548/test_deploy_aws.py` (7 test) chạy script với `terraform` và `aws` giả. Các test kiểm: thứ tự trọng số; màu không healthy thì không nhận traffic; canary hỏng thì lùi; rollback chỉ đổi trọng số; tag lạ bị từ chối.
+- **Kiểm không cần AWS:** `tests/nt548/test_deploy_aws.py` (12 test) chạy script với `terraform`, `aws` và canary giả. Các test kiểm:
+  - thứ tự trọng số;
+  - màu không healthy hoặc refresh hỏng thì không nhận traffic;
+  - canary so đúng TG mới với TG đang live, và kết luận rollback thì lùi;
+  - rollback chỉ đổi trọng số;
+  - tag lạ bị từ chối.
+
+  Phần CloudWatch của `canary_watch.py` có test riêng trong `test_canary_watch.py`.
 
 Còn lại:
 - Chạy thật trên lab, cần T8 xong #22 (runner), #24 (ALB) và `envs/demo`.

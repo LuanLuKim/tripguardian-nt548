@@ -154,7 +154,7 @@ def test_manual_rollback_only_moves_traffic(env):
     assert weights(s)[-1] == ("sha1", "sha2", 100)
     assert "rollback: green -> blue in" in p.stdout
     p, _ = run(env, "status")
-    assert p.stdout.strip() == "live=blue blue=sha1 green=sha2 weight_blue=100"
+    assert p.stdout.strip() == "live=blue blue=sha1 green=sha2 weight_blue=100 data_blue=r-a data_green=r-a"
 
 
 def test_rollback_with_nothing_deployed_fails(env):
@@ -200,6 +200,52 @@ def test_failed_refresh_never_gets_traffic(env):
     assert p.returncode == 1
     assert weights(s)[1:] == [("sha1", "sha2", 100)]
     assert "never got healthy" in p.stdout
+
+
+def data(s):
+    return [(a["image_tag_blue"], a["image_tag_green"], a["weight_blue"], a["data_release_blue"],
+             a["data_release_green"]) for a in s["applies"]]
+
+
+def test_data_release_goes_idle_then_canary_then_promote_with_the_live_image(env):
+    run(env, "deploy", "sha1")
+    run(env, "deploy", "sha2")  # green live on sha2, blue idle on sha1
+    p, s = run(env, "data", "r-b")
+    assert p.returncode == 0, p.stderr
+    # blue (idle) gets r-b and green's image sha2, not its own old sha1; green keeps r-a for a rollback
+    assert data(s)[-3:] == [("sha2", "sha2", 0, "r-b", "r-a"), ("sha2", "sha2", 10, "r-b", "r-a"),
+                            ("sha2", "sha2", 100, "r-b", "r-a")]
+    assert "data r-b: promoted blue" in p.stdout
+    p, s = run(env, "rollback")  # back to the old data in one apply
+    assert data(s)[-1] == ("sha2", "sha2", 0, "r-b", "r-a")
+
+
+def test_code_deploy_after_a_data_release_keeps_the_new_data(env):
+    run(env, "deploy", "sha1")
+    run(env, "data", "r-b")  # green live: sha1 + r-b
+    p, s = run(env, "deploy", "sha3")
+    assert p.returncode == 0, p.stderr
+    # blue (idle, still r-a) must get green's r-b with sha3, else the code deploy would undo the data release
+    assert data(s)[-1] == ("sha3", "sha1", 100, "r-b", "r-b")
+
+
+def test_data_release_that_never_gets_healthy_keeps_the_old_data_live(env):
+    # on AWS the instance runs data_check before the app: a refused release never becomes a healthy target
+    run(env, "deploy", "sha1")
+    p, s = run(env, "data", "r-b-drop", FAKE_UNHEALTHY_GREEN="0")
+    assert p.returncode == 1
+    assert data(s)[1:] == [("sha1", "sha1", 100, "r-a", "r-b-drop")]
+    assert "data r-b-drop: green never got healthy, traffic stayed on blue" in p.stdout
+
+
+def test_data_release_needs_a_running_environment_and_a_release_name(env):
+    p, s = run(env, "data", "r-b")
+    assert p.returncode == 1 and s["applies"] == []
+    assert "envs/demo is down" in p.stdout
+    run(env, "deploy", "sha1")
+    for bad in ("b", "r-b; rm -rf /", ""):
+        p, s = run(env, "data", bad)
+        assert p.returncode == 2 and len(s["applies"]) == 1
 
 
 def test_name_prefix_reaches_terraform(env):

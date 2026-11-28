@@ -90,7 +90,41 @@ sequenceDiagram
 
 Journey ghim release cũ được xử lý bằng cách màu mới mount **cả hai** release, còn pointer trỏ release mới. Journey mới dùng release mới, journey cũ mở lại đúng dữ liệu của nó. Chỉ dọn release cũ khi không còn journey nào ghim nó. Kết quả đo ngày 24/11: cả chuỗi chạy trong 67 s, mỗi lần harness lên mất 6 s.
 
-Workflow chưa có bước AWS. Trên AWS, việc đổi dữ liệu là đặt `data_release_green` rồi chuyển `weight_blue` qua Terraform, canary 10 → 100 (hợp đồng §7.1 ở `docs/plans/2026-11-20-nt548-devops-design.md`, `ops/nt548/deploy_aws.sh` của #29). Bước này cần ALB và ASG của T8 (#24, #25).
+### Trên AWS
+
+Lệnh `ops/nt548/deploy_aws.sh data <release>` chạy trên runner của lab, hoặc qua `nt548-deploy-aws` với `action=data`. Dữ liệu đi đúng đường của code (hợp đồng §7.1 ở `docs/plans/2026-11-20-nt548-devops-design.md`):
+
+```mermaid
+sequenceDiagram
+  participant D as deploy_aws.sh data r-b
+  participant T as terraform apply
+  participant I as máy mới của màu rảnh
+  participant A as ALB
+  D->>T: màu rảnh: data_release=r-b, image = image của màu live, weight 0
+  T->>I: launch template mới → ASG mới (rollout = replace)
+  I->>I: make.py → data_check r-b --baseline r-a
+  alt data_check đỏ
+    I-->>A: không bật app → không bao giờ healthy
+    D->>D: "never got healthy, traffic stayed on <live>"
+  else xanh
+    I-->>A: healthy
+    D->>T: weight 10 % → canary_watch → 100 % hoặc về 0 %
+  end
+```
+
+- **Thay một thứ, chép thứ còn lại.** Mỗi lần phát hành chỉ thay một thứ trên màu rảnh, thứ kia chép từ màu live:
+  - `data` thay release dữ liệu, giữ image của màu live;
+  - `deploy <sha>` thay image, giữ release dữ liệu của màu live.
+
+  Trước đây, deploy code giữ release cũ của chính màu rảnh. Như vậy lần deploy code đầu tiên sau khi đổi dữ liệu sẽ đưa dữ liệu cũ trở lại.
+- **Gate chạy ngay trên máy.** User-data của `app_asg` dựng release mẫu (kể cả `r-b-drop` và `r-b-nocoords`), rồi chạy `data_check` trên release của màu đó, kiểm mất nơi so với `r-a`, trước khi bật app. Release bị chặn thì app không chạy và target không bao giờ healthy, nên traffic ở lại màu live. Không cần cài thêm gì trên runner.
+- **Lùi:** `deploy_aws.sh rollback` là một lần `apply` đổi trọng số về màu còn release cũ.
+- **Xem:** `deploy_aws.sh status` in `data_blue` / `data_green`.
+- **Kiểm không cần AWS:** `tests/nt548/test_deploy_aws.py` (terraform, aws, canary giả) và `terraform test` của `app_asg` (gate nằm trong user-data).
+- **Còn phải chạy trên lab:**
+  - `data r-b`: API trả nơi của `r-b`, journey `r-a` cũ trả 409 vì mỗi máy chỉ mount một release;
+  - `data r-b-drop`: dừng ở gate, traffic không đổi;
+  - `rollback`: về `r-a`.
 
 ## Nghiên cứu cho báo cáo (#12)
 
@@ -120,4 +154,5 @@ Nếu đưa dữ liệu thật 274 GB lên AWS, DVC (remote S3) là bước ti�
 | `r-a`, `r-b` qua; sửa artifact / mất 20 % nơi / thiếu tọa độ / thiếu manifest bị chặn kèm lý do | `tests/nt548/test_data_check.py` | xanh |
 | Gate, đổi r-a → r-b, journey ghim, 409, rollback trên harness thật | `ops/nt548/data_rehearsal.sh`, `nt548-data-release.yml` | xanh: 67 s trên WSL, job 1 phút 50 giây trên GitHub |
 | `stage` không đổi pointer khi `data_check` đỏ; lùi release qua cùng gate; `--skip-check` | `tests/nt548/test_data_release.py` | xanh |
+| Đổi dữ liệu trên AWS: màu rảnh nhận release mới + image của màu live, canary, promote / lùi; release bị gate chặn không bao giờ nhận traffic; deploy code sau đó giữ release mới | `tests/nt548/test_deploy_aws.py`, `terraform test` của `app_asg` | xanh (giả lập); chưa chạy trên lab |
 | `r-b-drop`, `r-b-nocoords` dừng ở gate, không màu nào lên | như trên, `candidate=r-b-drop` | dừng, exit 1: `40 -> 32 places (20% drop, limit 10%)` ([run 24/11](https://github.com/LuanLuKim/tripguardian-nt548/actions/runs/45371363748)) |

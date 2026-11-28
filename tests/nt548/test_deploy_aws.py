@@ -104,6 +104,21 @@ def test_first_deploy_puts_the_sha_on_both_colors(env):
     assert s["applies"][0]["data_release_blue"] == "r-a"
 
 
+def test_automatic_run_skips_an_environment_that_is_down(env):
+    # nt548-deploy-aws.yml sets FIRST_DEPLOY=0 after a merge: an empty state is a torn-down lab, not a first deploy
+    p, s = run(env, "deploy", "sha1", FIRST_DEPLOY="0")
+    assert p.returncode == 0, p.stderr
+    assert s["applies"] == []
+    assert "envs/demo is down: nothing to deploy" in p.stdout
+
+
+def test_automatic_run_still_releases_onto_a_running_environment(env):
+    run(env, "deploy", "sha1")
+    p, s = run(env, "deploy", "sha2", FIRST_DEPLOY="0")
+    assert p.returncode == 0, p.stderr
+    assert weights(s)[1:] == [("sha1", "sha2", 100), ("sha1", "sha2", 90), ("sha1", "sha2", 0)]
+
+
 def test_deploy_goes_idle_then_canary_then_promote(env):
     run(env, "deploy", "sha1")
     p, s = run(env, "deploy", "sha2")

@@ -14,9 +14,13 @@
 # It changes AWS only through `terraform apply`; the aws calls (target health, instance refreshes, CloudWatch metrics
 # in canary_watch.py) only read.
 #
+# FIRST_DEPLOY=0 (set by nt548-deploy-aws.yml on the automatic run after a merge): an empty state means envs/demo
+# is down, so the script exits 0 without applying. Building envs/demo from nothing is aws.sh up's job (incident
+# 28/11: a merge queued behind `aws.sh down` re-created half of envs/demo and left orphans when the ops machine stopped).
 # Environment: TF_DIR (default ops/nt548/terraform/envs/demo), CANARY_WEIGHT (10), CANARY_SECONDS (300),
 # HEALTH_TIMEOUT (600), HEALTH_POLL (10), NAME_PREFIX (passed to terraform when set), TERRAFORM (terraform),
-# AWS (aws), PYTHON (python3), CANARY_CMD (default: $PYTHON canary_watch.py; thresholds in canary.yaml).
+# AWS (aws), PYTHON (python3), CANARY_CMD (default: $PYTHON canary_watch.py; thresholds in canary.yaml),
+# FIRST_DEPLOY (1: an empty state gets a first deploy; 0: it is skipped).
 # Before the first call: ops/nt548/aws.sh init (the state is in the bootstrap's S3 bucket).
 set -euo pipefail
 
@@ -30,6 +34,7 @@ AWS=${AWS:-aws}
 PYTHON=${PYTHON:-python3}
 HERE=$(cd "$(dirname "$0")" && pwd)
 CANARY_CMD=${CANARY_CMD:-$PYTHON $HERE/canary_watch.py}
+FIRST_DEPLOY=${FIRST_DEPLOY:-1}
 
 log() { echo "[deploy-aws] $*" >&2; }
 summary() { echo "$*"; [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY" || true; }
@@ -136,6 +141,10 @@ deploy() {
   [[ $sha =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { log "not an image tag: $sha"; return 2; }
   read_state
   if [ -z "$TAG_BLUE" ] && [ -z "$TAG_GREEN" ]; then
+    if [ "$FIRST_DEPLOY" != 1 ]; then
+      summary "envs/demo is down: nothing to deploy ($sha not applied; aws.sh up builds it)"
+      return 0
+    fi
     log "first deploy: both colors get $sha, blue takes all traffic"
     apply "$sha" "$sha" 100
     wait_healthy blue

@@ -8,6 +8,8 @@ name: nt548-deploy-aws
 # Nothing runs until the repository variable NT548_DEPLOY_ENABLED is "true" (set it once the runner and envs/demo
 # exist), so merges before that do not queue jobs for a runner that is not there.
 # Safety: no pull_request trigger, so code from a PR never runs on the self-hosted runner.
+# The automatic run (workflow_run) never builds envs/demo from an empty state: it only releases onto an environment
+# that is up (FIRST_DEPLOY=0). A manual deploy may, like aws.sh up (incident 28/11, docs/nt548/08-aws-infra.md).
 
 on:
   workflow_run:
@@ -42,6 +44,7 @@ env:
   AWS_DEFAULT_REGION: us-east-1
   TF_IN_AUTOMATION: "1"
   NAME_PREFIX: ${{ vars.NT548_NAME_PREFIX || 'nt548' }}
+  FIRST_DEPLOY: ${{ github.event_name == 'workflow_run' && '0' || '1' }}
 
 jobs:
   self-hosted:

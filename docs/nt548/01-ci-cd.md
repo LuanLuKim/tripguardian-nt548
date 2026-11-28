@@ -69,9 +69,10 @@ Hợp đồng với T8 (đã có ở #74–#78): `envs/demo` xuất lại các b
 Workflow:
 - **Kích hoạt:** tự chạy khi `nt548-images` xong và xanh trên `main` (`workflow_run`). Chạy tay qua `workflow_dispatch`: `action` = `deploy` / `rollback` / `status`, `sha` tùy chọn.
 - **Công tắc:** không job nào chạy khi biến repo `NT548_DEPLOY_ENABLED` khác `true`. Admin bật biến này khi runner và `envs/demo` đã có; trước đó các lần merge không để lại job treo chờ runner.
+- **Môi trường đang tắt:** lượt tự chạy sau merge (`workflow_run`) gặp state `envs/demo` trống thì in `envs/demo is down: nothing to deploy` và thoát 0 (`FIRST_DEPLOY=0`). Chỉ `aws.sh up` hoặc chạy tay mới được dựng lần đầu. Lý do: sự cố 28/11, một lượt deploy xếp hàng sau `aws.sh down` đã dựng lại nửa `envs/demo` rồi bị cắt khi máy ops tắt, để lại ALB và target group mồ côi.
 - **An toàn runner:** không có trigger `pull_request`, nên code của PR không bao giờ chạy trên runner self-hosted. Có `concurrency` để hai lần deploy không chồng nhau. Sha nhập tay phải có dạng tag Docker.
 - **Dự phòng khi runner hỏng:** `runner=github`. Job chạy trên `ubuntu-latest` với credential tạm của lab trong Environment `nt548-aws`; chỉ admin đặt Environment này, và nên bật "required reviewers".
-- **Kiểm không cần AWS:** `tests/nt548/test_deploy_aws.py` (12 test) chạy script với `terraform`, `aws` và canary giả. Các test kiểm:
+- **Kiểm không cần AWS:** `tests/nt548/test_deploy_aws.py` (14 test) chạy script với `terraform`, `aws` và canary giả. Các test kiểm:
   - thứ tự trọng số;
   - màu không healthy hoặc refresh hỏng thì không nhận traffic;
   - canary so đúng TG mới với TG đang live, và kết luận rollback thì lùi;

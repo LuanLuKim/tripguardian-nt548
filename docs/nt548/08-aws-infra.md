@@ -284,7 +284,7 @@ Workflow `nt548-aws` chạy trên runner của lab:
 
 Runner nằm trên máy ops. Máy dừng thì lượt chạy hằng tối nằm chờ trong hàng đợi, và sẽ chạy khi buổi sau bật máy lên. Lúc đó nó sẽ xóa đúng buổi vừa dựng. Vì vậy lượt hằng tối nào trễ quá 90 phút thì bỏ qua.
 
-Không lượt nào chạy khi biến repo `NT548_DEPLOY_ENABLED` chưa là `true`. Đây là cùng công tắc với `nt548-deploy-aws`. Biến `NT548_NAME_PREFIX` đổi tiền tố (mặc định `nt548`, lab demo chung). Hai workflow dùng chung `concurrency`, nên `down` không bao giờ chen giữa một lần deploy.
+Không lượt nào chạy khi biến repo `NT548_DEPLOY_ENABLED` chưa là `true`. Đây là cùng công tắc với `nt548-deploy-aws`. Biến `NT548_NAME_PREFIX` đổi tiền tố (mặc định `nt548`, lab demo chung). Hai workflow dùng chung `concurrency`, nên `down` không bao giờ chen giữa một lần deploy. Lượt deploy tự động xếp hàng sau `down` gặp state trống thì bỏ qua, không dựng lại môi trường (`FIRST_DEPLOY=0`, sự cố 28/11). Dù vậy, cuối buổi vẫn tắt `NT548_DEPLOY_ENABLED` **trước** khi `down`.
 
 ### Checklist
 

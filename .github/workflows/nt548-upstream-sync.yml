@@ -1,0 +1,100 @@
+name: nt548-upstream-sync
+
+# #7: keep the fork's product code equal to TripGuardian (docs/nt548/07-sync-report.md, ops/nt548/upstream_sync.sh).
+# - Every day at 08:00 Vietnam time (01:00 UTC) and by hand: fetch hohoangluan/tripguardian main.
+# - New commits that merge cleanly -> branch nt548/sync-<date> with a --no-ff merge -> push -> PR into main, then
+#   test + nt548-ci are dispatched on that branch (a PR opened with GITHUB_TOKEN triggers no workflow by itself).
+#   The repository setting "Allow GitHub Actions to create and approve pull requests" must be on; when it is off the
+#   branch is still pushed and the job summary links the compare page to open the PR by hand.
+# - A conflict -> nothing is pushed; one open issue labelled `nt548` lists the conflicting files (comment on repeat).
+# Runs on GitHub's runners only: no AWS, no self-hosted runner.
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream:
+        description: upstream repository URL
+        default: https://github.com/hohoangluan/tripguardian.git
+      ref:
+        description: upstream branch
+        default: main
+
+permissions:
+  contents: write        # push the sync branch
+  pull-requests: write   # open the PR
+  issues: write          # report a conflict
+  actions: write         # dispatch test / nt548-ci on the sync branch
+
+concurrency:
+  group: nt548-upstream-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: ${{ inputs.upstream || 'https://github.com/hohoangluan/tripguardian.git' }}
+  REF: ${{ inputs.ref || 'main' }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0   # the merge base with upstream
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - id: sync
+        run: bash ops/nt548/upstream_sync.sh "$UPSTREAM" "$REF"
+
+      - if: steps.sync.outputs.status == 'up-to-date'
+        run: echo "fork main already has upstream ${{ steps.sync.outputs.upstream }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - if: steps.sync.outputs.status == 'merged'
+        env:
+          BRANCH: ${{ steps.sync.outputs.branch }}
+          COMMITS: ${{ steps.sync.outputs.commits }}
+          UP_SHA: ${{ steps.sync.outputs.upstream }}
+        run: |
+          git push --force-with-lease origin "$BRANCH"
+          title="chore(nt548): sync TripGuardian $REF at $UP_SHA"
+          body="Automatic sync (#7): $COMMITS new commit(s) of $UPSTREAM $REF, merged with --no-ff, no conflict.
+          Review that no file outside the nt548 paths changed by mistake, then merge."
+          if pr=$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url') && [ -n "$pr" ]; then
+            echo "PR already open: $pr" >> "$GITHUB_STEP_SUMMARY"
+          elif pr=$(gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"); then
+            echo "opened $pr" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "branch $BRANCH pushed; GitHub Actions may not open PRs here. Open it by hand:" \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$BRANCH?expand=1" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          for wf in test.yml nt548-ci.yml; do gh workflow run "$wf" --ref "$BRANCH" || true; done
+
+      - if: steps.sync.outputs.status == 'conflict'
+        env:
+          FILES: ${{ steps.sync.outputs.files }}
+          COMMITS: ${{ steps.sync.outputs.commits }}
+          UP_SHA: ${{ steps.sync.outputs.upstream }}
+        run: |
+          {
+            echo "<!-- nt548-upstream-sync-conflict -->"
+            echo "Merging $UPSTREAM $REF at \`$UP_SHA\` ($COMMITS new commit(s)) into main conflicts. Nothing was pushed."
+            echo
+            echo "Conflicting files:"
+            for f in $FILES; do echo "- \`$f\`"; done
+            echo
+            echo "A file without the nt548 prefix here means a TripGuardian file was edited in the fork: resolve by" \
+              "hand (rule 1 of docs/nt548/README.md), see docs/nt548/07-sync-report.md. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > body.md
+          cat body.md >> "$GITHUB_STEP_SUMMARY"
+          n=$(gh issue list --label nt548 --state open --limit 100 --json number,title \
+                --jq '[.[] | select(.title | startswith("upstream sync: conflict"))][0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file body.md
+          else
+            gh issue create --label nt548 --title "upstream sync: conflict with TripGuardian $REF" --body-file body.md
+          fi
